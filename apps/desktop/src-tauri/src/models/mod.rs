@@ -38,21 +38,28 @@ pub struct SessionPage {
 /// Tolerant JSONL event shape. See specs/02-data-model.md § "Session JSONL
 /// format". `extra` captures any fields we don't model so the renderer can
 /// still display them.
+///
+/// Only `event_type` is required. Real Claude session files include meta
+/// events (`mode`, `permission-mode`, `ai-title`, `file-history-snapshot`,
+/// …) that have none of the conversational fields below — we tolerate
+/// them rather than treat them as malformed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionEvent {
 	#[serde(rename = "type")]
 	pub event_type: String,
-	pub uuid: String,
-	#[serde(rename = "parentUuid", skip_serializing_if = "Option::is_none")]
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub uuid: Option<String>,
+	#[serde(rename = "parentUuid", default, skip_serializing_if = "Option::is_none")]
 	pub parent_uuid: Option<String>,
-	pub timestamp: String,
-	#[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub timestamp: Option<String>,
+	#[serde(rename = "sessionId", default, skip_serializing_if = "Option::is_none")]
 	pub session_id: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
+	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub cwd: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
+	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub version: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
+	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub message: Option<SessionMessage>,
 	#[serde(flatten)]
 	pub extra: serde_json::Map<String, serde_json::Value>,

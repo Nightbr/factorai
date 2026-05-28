@@ -29,11 +29,14 @@ export interface SessionPage {
 
 // The JSONL event shape we parse. See specs/02-data-model.md for the
 // full schema documentation.
+//
+// Only `type` is guaranteed. Meta events (`mode`, `permission-mode`,
+// `ai-title`, `file-history-snapshot`, …) have no `uuid` or `timestamp`.
 export interface SessionEvent {
 	type: string;
-	uuid: string;
+	uuid?: string;
 	parentUuid?: string;
-	timestamp: string;
+	timestamp?: string;
 	sessionId?: string;
 	cwd?: string;
 	version?: string;

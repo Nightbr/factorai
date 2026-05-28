@@ -10,6 +10,12 @@ import { base64ToBytes } from '@lib/base64';
 import { cmd, events } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 
+// Module-level guard: survives React StrictMode double-mount of the same
+// component instance. Without this, the first mount initiates a spawn and
+// the second mount initiates another before the first resolves — leaving
+// us with two orphan claude processes per session.
+const spawningSession = new Set<string>();
+
 interface TerminalProps {
 	sessionId: string;
 	projectCwd: string | null;
@@ -61,6 +67,7 @@ export function Terminal({ sessionId, projectCwd }: TerminalProps) {
 
 	// Spawn or attach to the PTY for this session. Reads + mutates the
 	// terminal store via getState() to avoid re-running on its updates.
+	// `spawningSession` (module-level) prevents StrictMode double-spawn.
 	useEffect(() => {
 		const term = termRef.current;
 		const fit = fitRef.current;
@@ -74,6 +81,15 @@ export function Terminal({ sessionId, projectCwd }: TerminalProps) {
 
 		const bootstrap = async () => {
 			if (!activeId) {
+				if (spawningSession.has(sessionId)) {
+					// Another mount is already spawning. Bail; the data/exit
+					// listeners installed by the winning mount will receive
+					// events, and the store will update terminalId when
+					// attach() runs, which triggers a re-render where
+					// store.bySession[sessionId] is set.
+					return;
+				}
+				spawningSession.add(sessionId);
 				try {
 					const cols = term.cols || 80;
 					const rows = term.rows || 24;
@@ -85,14 +101,17 @@ export function Terminal({ sessionId, projectCwd }: TerminalProps) {
 					});
 					if (cancelled) {
 						await cmd.terminalKill(id).catch(() => {});
+						spawningSession.delete(sessionId);
 						return;
 					}
 					activeId = id;
 					useTerminalStore.getState().attach(sessionId, id);
 				} catch (e) {
 					term.write(`\r\n\x1b[31mFailed to spawn claude: ${String(e)}\x1b[0m\r\n`);
+					spawningSession.delete(sessionId);
 					return;
 				}
+				spawningSession.delete(sessionId);
 			}
 
 			const myId = activeId;

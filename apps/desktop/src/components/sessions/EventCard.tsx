@@ -21,6 +21,21 @@ export function EventCard({ event }: EventCardProps) {
 		);
 	}
 
+	// Meta events (no conversational role, no message body). Render as a
+	// compact one-line chip rather than a full card.
+	const META_EVENT_TYPES = ['mode', 'permission-mode', 'ai-title', 'last-prompt', 'file-history-snapshot'];
+	if (META_EVENT_TYPES.includes(event.type) || (!event.message && !blocks.length)) {
+		const summary = metaSummary(event);
+		return (
+			<li className="rounded-sm border border-border/40 bg-secondary/20 px-3 py-1.5 text-muted-foreground text-xs">
+				<span className="mr-2 rounded bg-secondary/60 px-1.5 py-0.5 font-mono text-[10px]">
+					{event.type}
+				</span>
+				{summary}
+			</li>
+		);
+	}
+
 	const isUser = role === 'user';
 	const isAssistant = role === 'assistant';
 
@@ -40,7 +55,7 @@ export function EventCard({ event }: EventCardProps) {
 				{!isUser && !isAssistant && <Wrench className="size-3.5 text-muted-foreground" />}
 				<span className="font-medium">{role ?? event.type}</span>
 				<span className="ml-auto font-mono text-muted-foreground">
-					{formatTime(event.timestamp)}
+					{event.timestamp ? formatTime(event.timestamp) : ''}
 				</span>
 			</header>
 			<div className="flex flex-col gap-2 p-3 text-sm">
@@ -176,5 +191,25 @@ function formatTime(iso: string): string {
 		return d.toLocaleString();
 	} catch {
 		return iso;
+	}
+}
+
+function metaSummary(event: SessionEvent): string {
+	switch (event.type) {
+		case 'ai-title':
+			return String(event.aiTitle ?? '(no title)');
+		case 'mode':
+			return String(event.mode ?? '');
+		case 'permission-mode':
+			return String(event.permissionMode ?? '');
+		case 'last-prompt': {
+			const lp = event.lastPrompt;
+			if (typeof lp === 'string') return lp.slice(0, 100);
+			return '';
+		}
+		case 'file-history-snapshot':
+			return event.isSnapshotUpdate ? 'snapshot update' : 'snapshot';
+		default:
+			return '';
 	}
 }

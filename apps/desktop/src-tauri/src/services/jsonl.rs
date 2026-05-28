@@ -132,4 +132,35 @@ mod tests {
 		let title = derive_title(None, "abc12345-rest");
 		assert_eq!(title, "abc12345");
 	}
+
+	// Real Claude events that the strict v1 parser was rejecting.
+	#[test]
+	fn parses_meta_events_without_uuid_or_timestamp() {
+		use crate::models::SessionEvent;
+
+		let mode = r#"{"type":"mode","mode":"normal","sessionId":"abc"}"#;
+		let parsed: SessionEvent = serde_json::from_str(mode).expect("mode event must parse");
+		assert_eq!(parsed.event_type, "mode");
+		assert!(parsed.uuid.is_none());
+		assert!(parsed.timestamp.is_none());
+
+		let ai_title = r#"{"type":"ai-title","aiTitle":"Build factorai","sessionId":"abc"}"#;
+		let parsed: SessionEvent = serde_json::from_str(ai_title).unwrap();
+		assert_eq!(parsed.extra.get("aiTitle").and_then(|v| v.as_str()), Some("Build factorai"));
+
+		let snapshot = r#"{"type":"file-history-snapshot","isSnapshotUpdate":true,"messageId":"m1","snapshot":{}}"#;
+		let parsed: SessionEvent = serde_json::from_str(snapshot).unwrap();
+		assert_eq!(parsed.event_type, "file-history-snapshot");
+	}
+
+	#[test]
+	fn parses_conversational_event_with_full_shape() {
+		use crate::models::SessionEvent;
+		let line = r#"{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"2026-01-01T00:00:00Z","sessionId":"s1","cwd":"/tmp","message":{"role":"user","content":"hello"}}"#;
+		let ev: SessionEvent = serde_json::from_str(line).unwrap();
+		assert_eq!(ev.event_type, "user");
+		assert_eq!(ev.uuid.as_deref(), Some("u1"));
+		assert_eq!(ev.cwd.as_deref(), Some("/tmp"));
+		assert!(ev.message.is_some());
+	}
 }
