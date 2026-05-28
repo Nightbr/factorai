@@ -11,7 +11,8 @@
 		"vite:build": "tsc --noEmit && vite build",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome lint src",
-		"format": "biome format --write src"
+		"format": "biome format --write src",
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@factorai/types": "workspace:*",
@@ -37,6 +38,7 @@
 		"@vitejs/plugin-react": "6.0.1",
 		"tailwindcss": "4.2.2",
 		"typescript": "6.0.2",
-		"vite": "8.0.3"
+		"vite": "8.0.3",
+		"vitest": "3.0.5"
 	}
 }

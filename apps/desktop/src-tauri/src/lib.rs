@@ -50,7 +50,7 @@ pub fn run() {
 			let cd = claude_dir();
 			info!(?cd, ?data_dir, "factorai booting");
 
-			let indexer = Arc::new(Indexer::new(db.clone(), cd.clone(), app.handle().clone()));
+			let indexer = Arc::new(Indexer::for_app(db.clone(), cd.clone(), app.handle().clone()));
 
 			app.manage(AppState {
 				db,
