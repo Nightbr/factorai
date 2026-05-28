@@ -39,6 +39,8 @@ export const cmd = {
 	listSessions: (projectId: string) => invoke<SessionSummary[]>('list_sessions', { projectId }),
 	getSession: (sessionId: string, offset?: number, limit?: number) =>
 		invoke<SessionPage>('get_session', { sessionId, offset, limit }),
+	getSessionTail: (sessionId: string, limit?: number) =>
+		invoke<SessionPage>('get_session_tail', { sessionId, limit }),
 
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
 	terminalSpawn: (opts: SpawnOpts) => invoke<TerminalId>('terminal_spawn', { opts }),
@@ -76,6 +78,7 @@ async function mockInvoke<T>(name: string, _args?: Record<string, unknown>): Pro
 		case 'list_sessions':
 			return [] as unknown as T;
 		case 'get_session':
+		case 'get_session_tail':
 			return { id: '', events: [], offset: 0, limit: 0, total: 0 } as unknown as T;
 		case 'resolve_project_path':
 			return null as unknown as T;

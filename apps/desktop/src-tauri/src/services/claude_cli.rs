@@ -127,12 +127,7 @@ fn first_existing(stdout: &str) -> Option<PathBuf> {
 }
 
 fn probe_known_candidates() -> Option<PathBuf> {
-	for cand in candidate_paths() {
-		if cand.exists() {
-			return Some(cand);
-		}
-	}
-	None
+	candidate_paths().into_iter().find(|p| p.exists())
 }
 
 fn candidate_paths() -> Vec<PathBuf> {

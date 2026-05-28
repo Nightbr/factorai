@@ -3,4 +3,6 @@ export const queryKeys = {
 	sessions: (projectId: string) => ['sessions', projectId] as const,
 	session: (sessionId: string, offset: number, limit: number) =>
 		['session', sessionId, offset, limit] as const,
+	sessionTail: (sessionId: string, limit: number) =>
+		['session-tail', sessionId, limit] as const,
 };
