@@ -2,7 +2,6 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal as XTerm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
@@ -45,11 +44,9 @@ export function Terminal({ sessionId, projectCwd }: TerminalProps) {
 		term.loadAddon(new SearchAddon());
 		term.loadAddon(new WebLinksAddon());
 		term.loadAddon(new UnicodeGraphemesAddon());
-		try {
-			term.loadAddon(new WebglAddon());
-		} catch (e) {
-			console.warn('WebGL addon unavailable; falling back to canvas', e);
-		}
+		// WebGL addon is deliberately not loaded: it crashes WebKitGTK on
+		// some Linux setups (the user's Zorin OS being one). Default DOM
+		// rendering is slower but reliable. Revisit if we add a setting.
 		const host = hostRef.current;
 		if (!host) return;
 		term.open(host);

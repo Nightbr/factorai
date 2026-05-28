@@ -10,7 +10,7 @@
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -322,35 +322,84 @@ impl Drop for TerminalManager {
 	}
 }
 
+/// Flush window for batched PTY output. 16ms ≈ one display frame; the
+/// renderer can't usefully consume bytes faster than that anyway, and
+/// coalescing 100s of small reads into one event has a major effect on
+/// IPC overhead when `claude --resume` is replaying a long history.
+const FLUSH_WINDOW: Duration = Duration::from_millis(16);
+/// Force-flush threshold — if the buffer crosses this size before the
+/// window fires, emit immediately so the renderer doesn't fall behind.
+const FLUSH_BYTES: usize = 32 * 1024;
+
 fn spawn_reader(
 	id: TerminalId,
 	mut reader: Box<dyn Read + Send>,
 	handle: Arc<TerminalHandle>,
 	on_data: DataCb,
 ) {
+	let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(FLUSH_BYTES)));
+	let eof = Arc::new(AtomicBool::new(false));
+
+	// Reader thread: blocking PTY reads → push into shared buffer.
+	let buf_r = buffer.clone();
+	let eof_r = eof.clone();
+	let handle_r = handle.clone();
+	let id_r = id.clone();
 	std::thread::Builder::new()
 		.name(format!("term-reader-{id}"))
 		.spawn(move || {
-			let mut buf = [0u8; 8192];
+			let mut tmp = [0u8; 8192];
 			loop {
-				match reader.read(&mut buf) {
-					Ok(0) => break, // EOF
+				match reader.read(&mut tmp) {
+					Ok(0) => break,
 					Ok(n) => {
-						handle.last_activity.store(now_ms(), Ordering::Relaxed);
-						let payload = TerminalDataEvent {
-							id: id.clone(),
-							bytes_b64: B64.encode(&buf[..n]),
-						};
-						(on_data)(payload);
+						handle_r.last_activity.store(now_ms(), Ordering::Relaxed);
+						buf_r.lock().extend_from_slice(&tmp[..n]);
 					}
 					Err(e) => {
-						warn!(%id, error = %e, "terminal read error");
+						warn!(id = %id_r, error = %e, "terminal read error");
 						break;
 					}
 				}
 			}
+			eof_r.store(true, Ordering::Release);
 		})
 		.expect("spawn term-reader thread");
+
+	// Flusher thread: ticks every FLUSH_WINDOW, emits coalesced chunks.
+	std::thread::Builder::new()
+		.name(format!("term-flush-{id}"))
+		.spawn(move || {
+			loop {
+				std::thread::sleep(FLUSH_WINDOW);
+				let chunk = {
+					let mut buf = buffer.lock();
+					if buf.is_empty() {
+						if eof.load(Ordering::Acquire) {
+							break;
+						}
+						continue;
+					}
+					std::mem::take(&mut *buf)
+				};
+				emit_data(&id, &chunk, &on_data);
+			}
+			// One last drain after the reader signaled EOF.
+			let chunk = std::mem::take(&mut *buffer.lock());
+			if !chunk.is_empty() {
+				emit_data(&id, &chunk, &on_data);
+			}
+		})
+		.expect("spawn term-flush thread");
+}
+
+fn emit_data(id: &TerminalId, bytes: &[u8], on_data: &DataCb) {
+	// Split very large chunks into FLUSH_BYTES-sized pieces so a single
+	// emit doesn't pin the renderer with a multi-MB base64 string.
+	for piece in bytes.chunks(FLUSH_BYTES) {
+		let payload = TerminalDataEvent { id: id.clone(), bytes_b64: B64.encode(piece) };
+		(on_data)(payload);
+	}
 }
 
 fn spawn_waiter(
