@@ -3,12 +3,11 @@ import { rootRoute } from './__root';
 
 function IndexView() {
 	return (
-		<main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-			<h1 className="text-4xl font-bold tracking-tight">factorai</h1>
+		<main className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+			<h2 className="text-xl font-semibold tracking-tight">factorai</h2>
 			<p className="text-muted-foreground text-sm">
-				Command center for Claude Code sessions
+				Select a project from the sidebar to see its sessions.
 			</p>
-			<p className="text-xs text-muted-foreground/70">M0 scaffold — nothing wired up yet</p>
 		</main>
 	);
 }
