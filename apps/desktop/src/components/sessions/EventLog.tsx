@@ -11,8 +11,8 @@ export function EventLog({ events }: EventLogProps) {
 	}
 	return (
 		<ul className="flex flex-col gap-2 p-6">
-			{events.map((ev) => (
-				<EventCard key={ev.uuid} event={ev} />
+			{events.map((ev, i) => (
+				<EventCard key={ev.uuid ?? `${ev.type}-${i}`} event={ev} />
 			))}
 		</ul>
 	);

@@ -209,17 +209,25 @@ impl Indexer {
 
 		for ev in EventIter::open(session_path)? {
 			turn_count += 1;
-			if let Some(ts) = parse_iso(&ev.timestamp) {
-				first_ts.get_or_insert(ts);
-				last_ts = Some(ts);
+			if let Some(ts_str) = &ev.timestamp {
+				if let Some(ts) = parse_iso(ts_str) {
+					first_ts.get_or_insert(ts);
+					last_ts = Some(ts);
+				}
 			}
 			if cwd.is_none() {
 				if let Some(c) = &ev.cwd {
 					cwd = Some(c.clone());
 				}
 			}
-			// Title hints
-			if let Some(t) = ev.extra.get("title").and_then(|v| v.as_str()) {
+			// Title hints — modern Claude writes an `ai-title` meta event with
+			// the auto-generated session name, older versions used a top-level
+			// `title` field.
+			if ev.event_type == "ai-title" {
+				if let Some(t) = ev.extra.get("aiTitle").and_then(|v| v.as_str()) {
+					title_from_event = Some(t.to_string());
+				}
+			} else if let Some(t) = ev.extra.get("title").and_then(|v| v.as_str()) {
 				title_from_event = Some(t.to_string());
 			}
 			if let Some(msg) = &ev.message {
