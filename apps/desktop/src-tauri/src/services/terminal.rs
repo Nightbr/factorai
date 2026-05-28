@@ -388,13 +388,12 @@ mod tests {
 	use super::*;
 	use std::sync::{Arc, Mutex as StdMutex};
 
-	fn make_manager() -> (
-		TerminalManager,
-		Arc<StdMutex<Vec<TerminalDataEvent>>>,
-		Arc<StdMutex<Vec<TerminalExitEvent>>>,
-	) {
-		let data: Arc<StdMutex<Vec<TerminalDataEvent>>> = Arc::new(StdMutex::new(Vec::new()));
-		let exit: Arc<StdMutex<Vec<TerminalExitEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+	type DataLog = Arc<StdMutex<Vec<TerminalDataEvent>>>;
+	type ExitLog = Arc<StdMutex<Vec<TerminalExitEvent>>>;
+
+	fn make_manager() -> (TerminalManager, DataLog, ExitLog) {
+		let data: DataLog = Arc::new(StdMutex::new(Vec::new()));
+		let exit: ExitLog = Arc::new(StdMutex::new(Vec::new()));
 		let dc = data.clone();
 		let ec = exit.clone();
 		let mgr = TerminalManager::with_callbacks(

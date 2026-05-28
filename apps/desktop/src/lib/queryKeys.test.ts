@@ -22,4 +22,12 @@ describe('queryKeys', () => {
 		const b = queryKeys.session('abc', 500, 500);
 		expect(a).not.toEqual(b);
 	});
+
+	it('sessionTail() includes id and limit', () => {
+		expect(queryKeys.sessionTail('abc', 100)).toEqual(['session-tail', 'abc', 100]);
+	});
+
+	it('sessionTail key is distinct from session key', () => {
+		expect(queryKeys.sessionTail('abc', 100)).not.toEqual(queryKeys.session('abc', 0, 100));
+	});
 });

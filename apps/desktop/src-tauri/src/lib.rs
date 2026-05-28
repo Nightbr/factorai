@@ -89,6 +89,7 @@ pub fn run() {
 			commands::projects::pin_project,
 			commands::sessions::list_sessions,
 			commands::sessions::get_session,
+			commands::sessions::get_session_tail,
 			commands::terminal::check_claude_cli,
 			commands::terminal::terminal_spawn,
 			commands::terminal::terminal_write,
