@@ -1,0 +1,18 @@
+{
+	"$schema": "https://unpkg.com/syncpack@13.0.0/dist/schema.json",
+	"versionGroups": [
+		{
+			"label": "Use workspace protocol",
+			"dependencies": ["@factorai/**"],
+			"dependencyTypes": ["dev", "prod"],
+			"pinVersion": "workspace:*"
+		}
+	],
+	"semverGroups": [
+		{
+			"range": "",
+			"dependencies": ["**"],
+			"packages": ["**"]
+		}
+	]
+}

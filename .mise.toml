@@ -1,0 +1,27 @@
+[tools]
+node = "24"
+pnpm = "10"
+rust = "stable"
+
+[env]
+NODE_ENV = "development"
+
+[tasks.dev]
+description = "Start desktop app in development mode"
+run = "turbo dev --filter=@factorai/desktop"
+
+[tasks.build]
+description = "Build all packages and apps"
+run = "turbo build"
+
+[tasks.lint]
+run = "turbo lint"
+
+[tasks.format]
+run = "turbo format"
+
+[tasks.typecheck]
+run = "turbo typecheck"
+
+[tasks.test]
+run = "turbo test"

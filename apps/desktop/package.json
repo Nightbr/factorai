@@ -1,0 +1,42 @@
+{
+	"name": "@factorai/desktop",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"dev": "tauri dev",
+		"build": "tauri build",
+		"tauri": "tauri",
+		"vite:dev": "vite",
+		"vite:build": "tsc --noEmit && vite build",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome lint src",
+		"format": "biome format --write src"
+	},
+	"dependencies": {
+		"@factorai/types": "workspace:*",
+		"@factorai/ui": "workspace:*",
+		"@tanstack/react-query": "5.95.2",
+		"@tanstack/react-router": "1.168.4",
+		"@tauri-apps/api": "2.10.1",
+		"@tauri-apps/plugin-dialog": "2.6.0",
+		"@tauri-apps/plugin-fs": "2.4.5",
+		"@tauri-apps/plugin-process": "2.3.1",
+		"@tauri-apps/plugin-shell": "2.3.5",
+		"@tauri-apps/plugin-store": "2.4.2",
+		"lucide-react": "1.7.0",
+		"react": "19.2.4",
+		"react-dom": "19.2.4",
+		"zustand": "5.0.12"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "4.2.2",
+		"@tauri-apps/cli": "2.10.1",
+		"@types/react": "19.2.14",
+		"@types/react-dom": "19.2.3",
+		"@vitejs/plugin-react": "6.0.1",
+		"tailwindcss": "4.2.2",
+		"typescript": "6.0.2",
+		"vite": "8.0.3"
+	}
+}

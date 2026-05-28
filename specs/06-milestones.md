@@ -1,0 +1,162 @@
+# Milestones
+
+Each milestone ships a working app at a higher level of capability. Don't
+move on until the current milestone passes a manual smoke test on at least
+macOS + Linux.
+
+---
+
+## M0 — Skeleton (1 day)
+
+**Goal.** `pnpm dev` opens an empty Tauri window with the factorai-v0
+toolchain wired up.
+
+**Deliverables.**
+- Workspace files: `package.json`, `pnpm-workspace.yaml`, `turbo.json`,
+  `biome.json`, `knip.json`, `.syncpackrc.json`, `.mise.toml`, `Cargo.toml`.
+- `apps/desktop` with Tauri 2 + Vite + React 19 + TanStack Router (hash).
+- `packages/types` + `packages/ui` (copied from factorai-v0, names and
+  components intact).
+- Root scripts: dev, build, lint, format, typecheck, deps:check,
+  deps:unused.
+- `mise install` produces a working dev env.
+
+**Exit criteria.**
+- `pnpm dev` boots the Tauri window with "Hello factorai" rendered.
+- `pnpm lint`, `pnpm typecheck` pass clean.
+- `pnpm deps:check` and `pnpm deps:unused` produce no findings.
+
+---
+
+## M1 — Read-only session browser (2–3 days)
+
+**Goal.** Browse and read every session on disk. No terminal yet.
+
+**Deliverables.**
+- SQLite open + migrations (`0001_init.sql`, `0002_fts.sql`).
+- IndexerService full scan + watcher.
+- Commands: `list_projects`, `list_sessions`, `get_session`,
+  `resolve_project_path`.
+- Sidebar with projects + sessions, project view, session view (JSONL
+  rendered, no terminal half yet — viewer takes the whole main pane).
+- Events wired: `indexer:progress`, `sessions:changed`.
+
+**Exit criteria.**
+- After cold start, every project under `~/.claude/projects/` appears.
+- Clicking any session shows its event log within 200ms (cached) and tail
+  updates live when the file changes (test by appending a fake line).
+- Indexer reports progress and finishes a 100-project / 500-session corpus
+  in under 10s on a typical laptop.
+
+---
+
+## M2 — Terminal & session lifecycle (2 days)
+
+**Goal.** Launch, resume, and kill `claude` sessions from inside the app.
+
+**Deliverables.**
+- TerminalManager + portable-pty integration.
+- Commands: `terminal_spawn`, `terminal_write`, `terminal_resize`,
+  `terminal_kill`, `terminal_list`.
+- Events: `terminal:data`, `terminal:status`, `terminal:exit`.
+- Terminal component using xterm.js + addons (fit, webgl, search,
+  web-links, unicode-graphemes).
+- Session view becomes split: viewer top, terminal bottom (resizable).
+- Status dots in sidebar.
+
+**Exit criteria.**
+- New session button launches `claude` with the project cwd, output
+  streams into xterm, input goes back.
+- Resume on an existing session attaches to `claude --resume <id>` and
+  re-uses the JSONL.
+- Closing the window with live PTYs always shows the kill-confirm
+  dialog. After "Quit & kill sessions", no `claude` processes remain
+  (verified with `ps`).
+
+---
+
+## M3 — Search & fork (1–2 days)
+
+**Goal.** Find anything; fork from anywhere.
+
+**Deliverables.**
+- FTS5 search with `search_sessions` command and `/search` route.
+- Search input in sidebar with debounce + dropdown of top hits.
+- Fork action in JSONL viewer right-click menu.
+- `fork_session` Rust implementation (file copy up to event uuid + new id).
+
+**Exit criteria.**
+- Typing in the search input shows top hits within 100ms on a 500-session
+  corpus.
+- Forking from event N creates a new session whose JSONL ends at N and
+  whose resume in the terminal continues forward.
+
+---
+
+## M4 — File preview, diff, CLAUDE.md (2 days)
+
+**Goal.** Side panel becomes useful.
+
+**Deliverables.**
+- Commands: `read_file`, `file_diff`, `read_claude_md`, `write_claude_md`,
+  `list_plans`, `read_plan`.
+- CodeMirror 6 file preview, lazy language detection.
+- `@codemirror/merge` diff view with prefs-driven inline/split toggle.
+- "Open file" link wiring from JSONL events (Read/Edit/Write tool uses).
+- CLAUDE.md editor with dirty-state save flow.
+
+**Exit criteria.**
+- Click a Read tool_use in the viewer → file opens in side panel with
+  correct syntax highlighting.
+- Click an Edit tool_use → diff view shows the change in the user's
+  preferred mode.
+- CLAUDE.md edits round-trip to disk; on-disk changes prompt a reload.
+
+---
+
+## M5 — Polish & first release (1 week)
+
+**Goal.** Ready to use day-to-day; first tagged release.
+
+**Deliverables.**
+- Settings UI (theme, fonts, claude path, projects dir override).
+- Keyboard shortcuts.
+- Empty states, error toasts, friendly indexing UI.
+- Icons (use placeholder for now, real icon set by release).
+- README with install instructions.
+- GitHub Action: `tauri build` on tag push, attach artifacts to release.
+- Manual smoke test pass on macOS arm64 and Ubuntu 24. (Windows is out
+  of scope for v1.)
+
+**Exit criteria.**
+- A teammate can install the .dmg / .deb / .msi and use factorai for an
+  hour without hitting a bug that breaks their flow.
+
+---
+
+## Deferred (post-MVP, in priority order)
+
+1. **MCP/IDE emulator.** Re-implement switchboard's WebSocket MCP server
+   so Claude routes file opens and diff approvals through factorai instead
+   of an external editor. Includes the "accept / reject hunk" UI we
+   skipped.
+2. **Scheduler.** A small cron-like runner that can launch a session with
+   a prompt at a given time / interval.
+3. **Grid overview.** Multi-session live xterm rendering with focused-on-
+   click. Requires WebGL addon tuning to keep frame budget sane.
+4. **Activity heatmap.** GitHub-style contribution graph over session
+   timestamps.
+5. **Launch in external terminal.** Action that spawns the OS terminal
+   (`open -a Terminal …` / xdg-open) with the right `claude` argv,
+   bypassing the embedded xterm.
+6. **Multi-window.** Detached session windows for power users running
+   many parallel agents.
+7. **Auto-updates.** Adopt `tauri-plugin-updater` once we have a signed
+   release flow.
+8. **Crash reporting / Sentry.** Wire `tauri-plugin-sentry` if/when
+   factorai gets external users. Requires a DSN — either Sentry SaaS or
+   a self-hosted instance; the plugin can't run "purely local".
+9. **Windows support.** PTY validation, path encoding edge cases,
+   build/signing pipeline.
+10. **Mobile / iPad.** Tauri 2 supports mobile. Probably never useful
+    for this product, but it's on the table.

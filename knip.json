@@ -1,0 +1,43 @@
+{
+	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"workspaces": {
+		".": {
+			"entry": ["package.json"]
+		},
+		"apps/desktop": {
+			"entry": ["src/main.tsx"],
+			"project": ["src/**/*.ts", "src/**/*.tsx"],
+			"ignoreDependencies": [
+				"@factorai/types",
+				"@factorai/ui",
+				"@tanstack/react-query",
+				"@tauri-apps/api",
+				"@tauri-apps/plugin-dialog",
+				"@tauri-apps/plugin-fs",
+				"@tauri-apps/plugin-process",
+				"@tauri-apps/plugin-shell",
+				"@tauri-apps/plugin-store",
+				"lucide-react",
+				"zustand",
+				"tailwindcss"
+			]
+		},
+		"packages/ui": {
+			"entry": ["src/index.ts"],
+			"project": ["src/**/*.ts", "src/**/*.tsx"],
+			"ignoreDependencies": ["tailwindcss"]
+		},
+		"packages/types": {
+			"entry": ["src/index.ts"],
+			"project": ["src/**/*.ts"]
+		}
+	},
+	"ignore": [
+		"**/*.test.ts",
+		"**/*.spec.ts",
+		"**/*.config.ts",
+		"**/*.config.js",
+		"apps/desktop/src/routeTree.gen.ts"
+	],
+	"ignoreBinaries": ["mise", "tauri", "cargo", "pnpm"]
+}
