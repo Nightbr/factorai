@@ -66,9 +66,13 @@ pub fn run() {
 			spawn_initial_scan(indexer.clone());
 			watcher::spawn(indexer);
 
+			// Devtools is opt-in via FACTORAI_DEVTOOLS=1 so screenshot-driven
+			// QA captures aren't cluttered by the inspector pane.
 			#[cfg(debug_assertions)]
-			if let Some(window) = app.get_webview_window("main") {
-				window.open_devtools();
+			if std::env::var("FACTORAI_DEVTOOLS").as_deref() == Ok("1") {
+				if let Some(window) = app.get_webview_window("main") {
+					window.open_devtools();
+				}
 			}
 			Ok(())
 		})
