@@ -70,16 +70,48 @@ export const events = {
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
 // Lightweight stand-ins so the renderer can boot without Rust. See
 // specs/annex-A-tolaria-patterns.md § A.7.
+//
+// Tests inject richer data via `window.__FACTORAI_TEST__` (set in
+// tests/smoke/fixtures.ts before the page navigates). Hand-rolling
+// fixtures avoids dragging msw/server mocks into the renderer.
 
-async function mockInvoke<T>(name: string, _args?: Record<string, unknown>): Promise<T> {
+interface TestFixture {
+	projects?: Project[];
+	sessionsByProject?: Record<string, SessionSummary[]>;
+	sessionPages?: Record<string, SessionPage>;
+	terminalSpawnId?: TerminalId;
+}
+
+declare global {
+	interface Window {
+		__FACTORAI_TEST__?: TestFixture;
+	}
+}
+
+function testFixture(): TestFixture | undefined {
+	return typeof window !== 'undefined' ? window.__FACTORAI_TEST__ : undefined;
+}
+
+async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Promise<T> {
+	const fx = testFixture();
 	switch (name) {
 		case 'list_projects':
-			return [] as unknown as T;
-		case 'list_sessions':
-			return [] as unknown as T;
+			return (fx?.projects ?? []) as unknown as T;
+		case 'list_sessions': {
+			const projectId = String(args?.projectId ?? '');
+			return (fx?.sessionsByProject?.[projectId] ?? []) as unknown as T;
+		}
 		case 'get_session':
-		case 'get_session_tail':
-			return { id: '', events: [], offset: 0, limit: 0, total: 0 } as unknown as T;
+		case 'get_session_tail': {
+			const sessionId = String(args?.sessionId ?? '');
+			return (fx?.sessionPages?.[sessionId] ?? {
+				id: sessionId,
+				events: [],
+				offset: 0,
+				limit: 0,
+				total: 0,
+			}) as unknown as T;
+		}
 		case 'resolve_project_path':
 			return null as unknown as T;
 		case 'pin_project':
@@ -87,7 +119,7 @@ async function mockInvoke<T>(name: string, _args?: Record<string, unknown>): Pro
 		case 'check_claude_cli':
 			return { installed: false, binaryPath: null, version: null } as unknown as T;
 		case 'terminal_spawn':
-			return 'mock-terminal-id' as unknown as T;
+			return (fx?.terminalSpawnId ?? 'mock-terminal-id') as unknown as T;
 		case 'terminal_write':
 		case 'terminal_resize':
 		case 'terminal_kill':

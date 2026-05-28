@@ -24,6 +24,10 @@
 		"packages/types": {
 			"entry": ["src/index.ts"],
 			"project": ["src/**/*.ts"]
+		},
+		"tests": {
+			"entry": ["smoke/*.spec.ts", "smoke/fixtures.ts"],
+			"project": ["**/*.ts"]
 		}
 	},
 	"ignore": [
