@@ -53,7 +53,10 @@ export function Terminal({ sessionId, projectCwd }: TerminalProps) {
 		const host = hostRef.current;
 		if (!host) return;
 		term.open(host);
-		setTimeout(() => fit.fit(), 0);
+		setTimeout(() => {
+			fit.fit();
+			term.focus();
+		}, 0);
 
 		termRef.current = term;
 		fitRef.current = fit;
