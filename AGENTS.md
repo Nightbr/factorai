@@ -65,6 +65,36 @@ Tests live next to the code: `src/lib/foo.test.ts` next to
 `src/lib/foo.ts` on the TS side; `tests/foo_integration.rs` for cross-
 module Rust tests, `#[cfg(test)] mod tests` for in-module unit tests.
 
+### 2d. Manual verification loop (agent-friendly)
+
+An agent verifying its own changes runs the loop with `scripts/qa/`:
+
+```bash
+scripts/qa/launch.sh                       # boots tauri dev, returns once window appears
+scripts/qa/screenshot.sh /tmp/qa-1.png     # captures the active factorai window
+# (interact via xdotool if installed; see below)
+scripts/qa/screenshot.sh /tmp/qa-2.png
+scripts/qa/kill.sh                         # tears down factorai + orphan claudes
+```
+
+Tooling assumptions (Linux/X11 + GNOME):
+
+- `wmctrl` for window focus — `apt install wmctrl` if missing.
+- `gnome-screenshot` for active-window captures. `import` (ImageMagick)
+  and `scrot` are tried as fallbacks.
+- `xdotool` for clicks/keystrokes is **optional**. Install with
+  `apt install xdotool` for interactive verification (clicking
+  sessions, typing into the embedded terminal). Without it, the loop
+  can still boot the app and screenshot the initial state — enough to
+  catch the "does it render at all" class of regressions.
+
+Wayland users need to swap `gnome-screenshot`/`scrot` for `grim` and
+`wmctrl` for `swaymsg` — out of scope for now.
+
+Inspired by tolaria's `~/.openclaw/skills/tolaria-qa/scripts/` (macOS
+osascript wrappers). See `specs/annex-A-tolaria-patterns.md` for the
+broader pattern.
+
 ---
 
 ## 3. Code quality floor
