@@ -72,24 +72,28 @@ An agent verifying its own changes runs the loop with `scripts/qa/`:
 ```bash
 scripts/qa/launch.sh                       # boots tauri dev, returns once window appears
 scripts/qa/screenshot.sh /tmp/qa-1.png     # captures the active factorai window
-# (interact via xdotool if installed; see below)
-scripts/qa/screenshot.sh /tmp/qa-2.png
 scripts/qa/kill.sh                         # tears down factorai + orphan claudes
 ```
 
-Tooling assumptions (Linux/X11 + GNOME):
+`FACTORAI_DEVTOOLS=1 scripts/qa/launch.sh` keeps DevTools open if you
+want the inspector available.
 
-- `wmctrl` for window focus — `apt install wmctrl` if missing.
-- `gnome-screenshot` for active-window captures. `import` (ImageMagick)
-  and `scrot` are tried as fallbacks.
-- `xdotool` for clicks/keystrokes is **optional**. Install with
-  `apt install xdotool` for interactive verification (clicking
-  sessions, typing into the embedded terminal). Without it, the loop
-  can still boot the app and screenshot the initial state — enough to
-  catch the "does it render at all" class of regressions.
+**What this catches.** Boot-time regressions — does the app start,
+does the first paint render, do projects appear in the sidebar, did
+the indexer scan complete. That's enough to catch the
+WebKitGTK / WebGL / PTY-flood class of crashes.
 
-Wayland users need to swap `gnome-screenshot`/`scrot` for `grim` and
-`wmctrl` for `swaymsg` — out of scope for now.
+**What this does NOT catch.** Anything past the first paint that
+requires clicking or typing into the WebView. `xdotool`'s synthetic
+input is filtered by WebKitGTK before it reaches React — known
+limitation, see `scripts/qa/README.md`. For deeper interaction tests,
+the planned path is **Playwright against `pnpm vite:dev`** (the
+renderer already has a mock Tauri bridge via `isTauri()` /
+`mockInvoke()` in `lib/tauri.ts`, so browser-only mode boots without
+Rust). Same approach the reference app uses.
+
+Wayland is not supported by these scripts (swap `wmctrl`/`gnome-screenshot`
+for `swaymsg`/`grim` — deferred).
 
 Inspired by the reference app's `~/.local/share/qa-scripts/` (macOS
 osascript wrappers). See `specs/annex-A-cli-agent-patterns.md` for the
