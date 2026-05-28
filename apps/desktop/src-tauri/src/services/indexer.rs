@@ -11,17 +11,45 @@ use crate::models::{IndexerPhase, IndexerProgress, SessionsChanged};
 use crate::services::jsonl::{derive_title, flatten_message_text, EventIter};
 use crate::services::path_encoding::display_name_for;
 
-/// Owns the scan + (later) watcher. Cheap to clone (Arc internals).
+pub type ProgressCb = Arc<dyn Fn(IndexerProgress) + Send + Sync>;
+pub type ChangedCb = Arc<dyn Fn(SessionsChanged) + Send + Sync>;
+
+/// Owns the scan + watcher. Cheap to clone (Arc internals). Emit is wired
+/// via callbacks so tests can construct an Indexer without a Tauri runtime.
 #[derive(Clone)]
 pub struct Indexer {
 	db: Db,
 	claude_dir: PathBuf,
-	app: AppHandle,
+	on_progress: ProgressCb,
+	on_changed: ChangedCb,
 }
 
 impl Indexer {
-	pub fn new(db: Db, claude_dir: PathBuf, app: AppHandle) -> Self {
-		Self { db, claude_dir, app }
+	/// Build an indexer wired to a live Tauri AppHandle. Used in production.
+	pub fn for_app(db: Db, claude_dir: PathBuf, app: AppHandle) -> Self {
+		let app_progress = app.clone();
+		let app_changed = app;
+		Self {
+			db,
+			claude_dir,
+			on_progress: Arc::new(move |p| {
+				let _ = app_progress.emit("indexer:progress", p);
+			}),
+			on_changed: Arc::new(move |s| {
+				let _ = app_changed.emit("sessions:changed", s);
+			}),
+		}
+	}
+
+	/// Build an indexer with explicit emit callbacks. Useful for tests that
+	/// want to capture or ignore events.
+	pub fn with_callbacks(
+		db: Db,
+		claude_dir: PathBuf,
+		on_progress: ProgressCb,
+		on_changed: ChangedCb,
+	) -> Self {
+		Self { db, claude_dir, on_progress, on_changed }
 	}
 
 	pub fn claude_dir(&self) -> &Path {
@@ -128,10 +156,10 @@ impl Indexer {
 		})?;
 
 		if !changed_ids.is_empty() {
-			let _ = self.app.emit(
-				"sessions:changed",
-				SessionsChanged { project_id: encoded.clone(), session_ids: changed_ids },
-			);
+			(self.on_changed)(SessionsChanged {
+				project_id: encoded.clone(),
+				session_ids: changed_ids,
+			});
 		}
 
 		Ok(())
@@ -251,10 +279,7 @@ impl Indexer {
 	}
 
 	fn emit_progress(&self, processed: u32, total: u32, phase: IndexerPhase) {
-		let _ = self.app.emit(
-			"indexer:progress",
-			IndexerProgress { processed, total, phase },
-		);
+		(self.on_progress)(IndexerProgress { processed, total, phase });
 	}
 }
 

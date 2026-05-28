@@ -53,13 +53,17 @@ Run, in this order, all green:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm test              # once we have tests
-cd apps/desktop/src-tauri && cargo check && cargo clippy --all-targets -- -D warnings
+pnpm test
+cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
 For UI / behaviour work, also: launch the app (`pnpm dev`) and **use
 the feature** in the actual window. Type checking does not validate
 UX. Screenshots in a commit are great.
+
+Tests live next to the code: `src/lib/foo.test.ts` next to
+`src/lib/foo.ts` on the TS side; `tests/foo_integration.rs` for cross-
+module Rust tests, `#[cfg(test)] mod tests` for in-module unit tests.
 
 ---
 

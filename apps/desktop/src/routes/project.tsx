@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { ChevronRight } from 'lucide-react';
+import { formatRelative } from '@lib/format';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { rootRoute } from './__root';
@@ -56,19 +57,6 @@ function ProjectView() {
 			</ul>
 		</main>
 	);
-}
-
-function formatRelative(ms: number): string {
-	const diff = Date.now() - ms;
-	const sec = Math.floor(diff / 1000);
-	if (sec < 60) return 'just now';
-	const min = Math.floor(sec / 60);
-	if (min < 60) return `${min}m ago`;
-	const hr = Math.floor(min / 60);
-	if (hr < 24) return `${hr}h ago`;
-	const days = Math.floor(hr / 24);
-	if (days < 30) return `${days}d ago`;
-	return new Date(ms).toLocaleDateString();
 }
 
 export const projectRoute = createRoute({
