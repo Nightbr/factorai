@@ -8,11 +8,13 @@ pub mod state;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tauri::Manager;
+use serde_json::json;
+use tauri::{Emitter, Manager, WindowEvent};
 use tracing::info;
 
 use crate::db::Db;
 use crate::services::indexer::{spawn_initial_scan, Indexer};
+use crate::services::terminal::TerminalManager;
 use crate::services::watcher;
 use crate::state::AppState;
 
@@ -51,10 +53,12 @@ pub fn run() {
 			info!(?cd, ?data_dir, "factorai booting");
 
 			let indexer = Arc::new(Indexer::for_app(db.clone(), cd.clone(), app.handle().clone()));
+			let terminals = TerminalManager::for_app(app.handle().clone());
 
 			app.manage(AppState {
 				db,
 				indexer: indexer.clone(),
+				terminals,
 				claude_dir: cd,
 				data_dir,
 			});
@@ -68,12 +72,30 @@ pub fn run() {
 			}
 			Ok(())
 		})
+		.on_window_event(|window, event| {
+			if let WindowEvent::CloseRequested { api, .. } = event {
+				if let Some(state) = window.try_state::<AppState>() {
+					let live = state.terminals.live_count();
+					if live > 0 {
+						api.prevent_close();
+						let _ = window.emit("app:quit-requested", json!({ "liveCount": live }));
+					}
+				}
+			}
+		})
 		.invoke_handler(tauri::generate_handler![
 			commands::projects::list_projects,
 			commands::projects::resolve_project_path,
 			commands::projects::pin_project,
 			commands::sessions::list_sessions,
 			commands::sessions::get_session,
+			commands::terminal::check_claude_cli,
+			commands::terminal::terminal_spawn,
+			commands::terminal::terminal_write,
+			commands::terminal::terminal_resize,
+			commands::terminal::terminal_kill,
+			commands::terminal::terminal_list,
+			commands::terminal::app_quit_confirmed,
 		])
 		.run(tauri::generate_context!())
 		.expect("error while running factorai");

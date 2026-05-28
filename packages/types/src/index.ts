@@ -76,7 +76,7 @@ export type TerminalStatus = 'running' | 'idle' | 'waiting_input' | 'stopped';
 
 export interface TerminalStatusDto {
 	id: TerminalId;
-	sessionId: string;
+	sessionId: string | null;
 	status: TerminalStatus;
 	lastActivity: number;
 }
@@ -86,6 +86,16 @@ export interface SpawnOpts {
 	cwd?: string;
 	cols: number;
 	rows: number;
+}
+
+export interface ClaudeCliStatus {
+	installed: boolean;
+	binaryPath: string | null;
+	version: string | null;
+}
+
+export interface QuitRequestedEvent {
+	liveCount: number;
 }
 
 // ── IPC events (Rust → JS) ──────────────────────────────────────────────────

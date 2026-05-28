@@ -1,5 +1,6 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router';
 import { useEffect } from 'react';
+import { QuitConfirm } from '@components/dialog/QuitConfirm';
 import { AppShell } from '@components/layout/AppShell';
 import { events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
@@ -16,9 +17,12 @@ function RootLayout() {
 	}, [setProgress]);
 
 	return (
-		<AppShell>
-			<Outlet />
-		</AppShell>
+		<>
+			<AppShell>
+				<Outlet />
+			</AppShell>
+			<QuitConfirm />
+		</>
 	);
 }
 
