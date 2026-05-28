@@ -8,12 +8,16 @@
 		"format": "turbo format",
 		"typecheck": "turbo typecheck",
 		"test": "turbo test",
+		"e2e": "playwright test",
+		"e2e:ui": "playwright test --ui",
 		"deps:check": "syncpack list-mismatches",
 		"deps:fix": "syncpack fix-mismatches",
 		"deps:unused": "knip"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
+		"@playwright/test": "1.60.0",
+		"@types/node": "22.13.4",
 		"knip": "5.38.2",
 		"syncpack": "13.0.0",
 		"turbo": "2.7.5"
@@ -24,6 +28,6 @@
 		"pnpm": ">=10.0.0"
 	},
 	"pnpm": {
-		"onlyBuiltDependencies": ["@biomejs/biome", "esbuild"]
+		"onlyBuiltDependencies": ["@biomejs/biome", "esbuild", "@playwright/test"]
 	}
 }

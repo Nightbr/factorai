@@ -54,6 +54,7 @@ Run, in this order, all green:
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm e2e
 cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
@@ -65,7 +66,29 @@ Tests live next to the code: `src/lib/foo.test.ts` next to
 `src/lib/foo.ts` on the TS side; `tests/foo_integration.rs` for cross-
 module Rust tests, `#[cfg(test)] mod tests` for in-module unit tests.
 
-### 2d. Manual verification loop (agent-friendly)
+### 2d. Playwright smoke tests (`tests/smoke/`)
+
+`pnpm e2e` runs Playwright against `pnpm vite:dev` (the renderer in
+browser-only mode — no Tauri). The renderer detects browser-only via
+`isTauri()` in `lib/tauri.ts` and falls back to `mockInvoke()`.
+
+Tests inject data by calling `installMockBridge(page, fixture)` before
+`page.goto(...)`. The mock layer reads `window.__FACTORAI_TEST__`.
+Convention: one fixture factory per "shape" of state
+(`fixtureOneProjectOneSession()` etc. in `tests/smoke/fixtures.ts`).
+
+Tag tests with `@smoke` in the title; the suite stays under a few
+seconds. Heavier tests go in a future `tests/regression/` lane.
+
+`pnpm e2e:ui` opens the Playwright UI runner — useful for iterating
+on a flaky test.
+
+**Driving Playwright from this conversation.** The repo ships
+`.mcp.json` configuring `@playwright/mcp@latest`. If `playwright` MCP
+tools aren't yet listed in the available tools, restart Claude Code
+so the new server config loads.
+
+### 2e. Manual verification loop (agent-friendly)
 
 An agent verifying its own changes runs the loop with `scripts/qa/`:
 
