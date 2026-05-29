@@ -8,7 +8,7 @@ main.rs               # calls lib::run()
 commands/
   mod.rs
   projects.rs         # list_projects, resolve_project_path, pin_project
-  sessions.rs         # list_sessions, get_session, search_sessions, fork_session
+  sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, list_dir, file_diff
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
@@ -47,8 +47,12 @@ pin_project(id: String, pinned: bool) -> ()
 // sessions
 list_sessions(project_id: String) -> Vec<SessionSummary>
 get_session(session_id: String, offset: usize, limit: usize) -> SessionPage
+get_session_tail(session_id: String, limit: usize) -> SessionPage
 search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<SearchHit>
-fork_session(session_id: String, at_event_uuid: String) -> NewSessionRef
+// NOTE: fork_session was specced but cut from the MVP (see 05-features.md F6).
+// SearchHit = { sessionId, projectId, title, role, snippet } — no event_index,
+// the FTS index stores no per-event position. `title` is JOINed from sessions
+// for a human-readable result label.
 
 // terminal
 terminal_spawn(opts: SpawnOpts) -> TerminalId          // resume_session_id?, cwd, cols, rows

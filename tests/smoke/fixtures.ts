@@ -8,13 +8,14 @@
  */
 
 import type { Page } from '@playwright/test';
-import type { Project, SessionPage, SessionSummary, TerminalId } from '@factorai/types';
+import type { Project, SearchHit, SessionPage, SessionSummary, TerminalId } from '@factorai/types';
 
 export interface TestFixture {
 	projects?: Project[];
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	searchHits?: SearchHit[];
 }
 
 /**
@@ -59,4 +60,21 @@ export function fixtureOneProjectOneSession(): TestFixture {
 			},
 		},
 	};
+}
+
+/** Same base shape plus a couple of search hits for the /search route. */
+export function fixtureWithSearchHits(): TestFixture {
+	const base = fixtureOneProjectOneSession();
+	const projectId = base.projects?.[0]?.id ?? '';
+	const sessionId = base.sessionsByProject?.[projectId]?.[0]?.id ?? '';
+	const searchHits: SearchHit[] = [
+		{
+			sessionId,
+			projectId,
+			title: 'Refactor the auth middleware',
+			role: 'user',
+			snippet: 'please refactor the auth middleware to use jwt …',
+		},
+	];
+	return { ...base, searchHits };
 }

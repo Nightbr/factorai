@@ -75,21 +75,24 @@ toolchain wired up.
 
 ---
 
-## M3 — Search & fork (1–2 days)
+## M3 — Search (1 day)
 
-**Goal.** Find anything; fork from anywhere.
+**Goal.** Find any session by its content. (Fork was cut — see
+05-features.md F6.)
 
 **Deliverables.**
-- FTS5 search with `search_sessions` command and `/search` route.
-- Search input in sidebar with debounce + dropdown of top hits.
-- Fork action in JSONL viewer right-click menu.
-- `fork_session` Rust implementation (file copy up to event uuid + new id).
+- FTS5 search: `search_sessions(query, project_id?, limit)` command +
+  `services/search.rs` query builder over `messages_fts`.
+- Search input in the sidebar (debounced).
+- `/search` route listing hits grouped by session, each with a `snippet()`
+  excerpt; click → open that session.
 
 **Exit criteria.**
-- Typing in the search input shows top hits within 100ms on a 500-session
+- Typing in the search input shows top hits within ~100ms on a 500-session
   corpus.
-- Forking from event N creates a new session whose JSONL ends at N and
-  whose resume in the terminal continues forward.
+- A search hit opens the matching session's terminal view.
+- A query with FTS metacharacters (`"`, `*`, `:`) returns results or empty,
+  never an error.
 
 ---
 

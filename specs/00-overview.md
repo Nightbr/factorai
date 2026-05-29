@@ -8,7 +8,7 @@ modern Rust + TypeScript stack (Tauri 2, React 19, Biome, Turborepo, pnpm).
 
 The product is a unified GUI for everything that lives in
 `~/.claude/projects/`: browsing past sessions, searching their content,
-resuming/forking them, launching new ones into an embedded terminal, and
+resuming them, launching new ones into an embedded terminal, and
 previewing files Claude touched.
 
 ## Identity
@@ -30,10 +30,9 @@ that happens to start from the same problem space.
 | ----------------------- | --------------------------------------------------------------- |
 | Project list            | Folders found under `~/.claude/projects/`, decoded to real paths |
 | Session browser         | List sessions per project; metadata (title, last activity, turn count) |
-| Session JSONL viewer    | Render assistant/user/tool turns from a session file            |
 | Full-text search        | Search across all sessions by message content                   |
 | Embedded terminal       | xterm.js in webview, PTY in Rust, one tab per session           |
-| Launch / resume / fork  | Start `claude`, `claude --resume <id>`, fork at a chosen turn   |
+| Launch / resume         | Start `claude` or `claude --resume <id>` in the terminal        |
 | File preview side panel | Open a file in CodeMirror with syntax highlighting              |
 | Diff viewer             | Inline + side-by-side diff for a file change (read-only initially) |
 | Plans / CLAUDE.md       | Browse and edit `CLAUDE.md` and `.claude/plans/*.md` per project|

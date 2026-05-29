@@ -4,8 +4,9 @@ use rusqlite::params;
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{SessionEvent, SessionPage, SessionSummary};
+use crate::models::{SearchHit, SessionEvent, SessionPage, SessionSummary};
 use crate::services::jsonl::EventIter;
+use crate::services::search;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -76,6 +77,22 @@ pub fn get_session_tail(
 		.collect();
 
 	Ok(SessionPage { id: session_id, events, offset, limit, total })
+}
+
+/// Full-text search across all indexed sessions (spec F4). `project_id`
+/// optionally restricts to one project. Returns up to `limit` (default 200,
+/// hard-capped at 200) ranked hits.
+#[tauri::command]
+pub fn search_sessions(
+	state: State<'_, AppState>,
+	query: String,
+	project_id: Option<String>,
+	limit: Option<usize>,
+) -> AppResult<Vec<SearchHit>> {
+	let limit = limit.unwrap_or(200);
+	state
+		.db
+		.with(|conn| search::search(conn, &query, project_id.as_deref(), limit))
 }
 
 fn lookup_project_and_total(

@@ -67,6 +67,8 @@ export type ContentBlock =
 export interface SearchHit {
 	sessionId: string;
 	projectId: string;
+	/** Session title (may be empty if not yet derived). */
+	title: string;
 	role: string;
 	snippet: string;
 }
