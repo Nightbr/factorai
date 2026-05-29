@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-detects source files from the consuming app's root
+   (apps/desktop), which does NOT include this workspace package. Without
+   this, utility classes used *only* inside @factorai/ui primitives
+   (e.g. the Dialog overlay's `bg-black/80`, `max-w-lg`, `translate-x-[-50%]`)
+   are never generated, so those components render unstyled / invisible.
+   Point Tailwind at this package's own sources so their classes emit. */
+@source "../**/*.{ts,tsx}";
+
 /* ── Design tokens ────────────────────────────────────────────────────────── */
 @theme {
 	--font-family-sans: Inter, system-ui, sans-serif;

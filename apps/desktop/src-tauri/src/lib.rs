@@ -82,7 +82,16 @@ pub fn run() {
 					let live = state.terminals.live_count();
 					if live > 0 {
 						api.prevent_close();
-						let _ = window.emit("app:quit-requested", json!({ "liveCount": live }));
+						// Emit via the AppHandle, NOT `window.emit`: in Tauri v2 the
+						// `Window` from `on_window_event` emits to window-level
+						// listeners, but the frontend's `listen()` is registered on
+						// the webview, so `window.emit` never reaches it. The app
+						// handle broadcasts to the webview. Without this the quit
+						// confirm dialog never appeared and the close button did
+						// nothing while sessions were live.
+						let _ = window
+							.app_handle()
+							.emit("app:quit-requested", json!({ "liveCount": live }));
 					}
 				}
 			}
