@@ -53,8 +53,8 @@ apps/desktop/src/
 | `/`                        | redirect              | → `/projects` or empty state                |
 | `/projects`                | ProjectsView          | grid of project cards                       |
 | `/projects/$id`            | ProjectView           | session list, opens last session by default |
-| `/projects/$id/sessions/$sessionId` | SessionView  | terminal + side panel                       |
-| `/search?q=...`            | SearchView            | global FTS, jumps to session at hit         |
+| `/projects/$id/sessions/$sessionId` | SessionView  | terminal-only (header + xterm)              |
+| `/search?q=...`            | SearchView            | global FTS; a hit opens its session         |
 | `/settings`                | SettingsView          | theme, font, paths                          |
 
 Hash history (same as factorai-v0) — no server-side routes needed.
@@ -205,20 +205,18 @@ diffs we use `@codemirror/merge` with the prefs-driven mode toggle.
 For MVP both are read-only. "Accept / reject" of diffs ships in v2 alongside
 the MCP/IDE emulator.
 
-## JSONL viewer
+## Session content rendering
 
-`EventLog.tsx` virtualizes the events using a simple "windowed list" (no
-external lib for MVP — sessions cap out around a few thousand turns). Each
-event renders one of a handful of card shapes:
+There is **no** chronological JSONL viewer. M1's `EventLog` / `EventCard`
+were removed in `c6374d6` (mounting 100+ React cards in one paint froze the
+Linux webview); the session view is terminal-only (see 05-features.md F3).
 
-- **user** — markdown via `marked` (sanitized).
-- **assistant** — same, with a different border.
-- **tool_use** — collapsible JSON view, a "view file" link if the tool name
-  is one we know touches files (`Read`, `Edit`, `Write`).
-- **tool_result** — collapsed by default.
-- **summary** / **rename** — chip rendering.
-
-Click on any event uuid → "Fork here" action (calls `fork_session`).
+The only surface that renders session content is the **search results**
+view (`/search`, F4). It lists `search_sessions` hits, each a small row:
+project + session title, the matched role, and a `snippet()` excerpt
+(highlighted match). Rows are bounded (≤ `limit`, default 200) so no
+virtualization is needed. Click a row → navigate to that session (opens its
+terminal). No "fork" action — fork was cut from the MVP.
 
 ## @factorai/ui components used
 

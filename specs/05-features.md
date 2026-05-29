@@ -50,41 +50,55 @@ session view. Keyboard: ↑/↓ to navigate, Enter to open.
 
 ---
 
-## F3 — Session JSONL viewer
+## F3 — Session view (terminal-only)
 
-**Behavior.** Render the events of an opened session as a chronological
-event log: user, assistant, tool calls/results, summaries.
+**Behavior.** Opening a session shows the embedded terminal (F5) filling
+the pane, with a thin header for the project name + session id. There is
+**no** chronological JSONL event viewer.
 
-**UI.** Main pane (top half by default). Markdown bodies rendered with
-`marked`. Tool calls collapsed; click to expand. A vertical timeline rail
-with hover affordances on each event.
+> **History note.** M1 shipped a full JSONL event viewer (`EventLog` /
+> `EventCard`). It was removed in `c6374d6`: mounting 100+ stateful React
+> components in a single paint froze the WebKitGTK webview on Linux even
+> with tail-pagination. The session view is now terminal-first
+> (switchboard-style). The only surface that renders session content is
+> search results (F4), which show short `snippet()` excerpts — cheap to
+> render and bounded in count.
 
-**Backend.** `get_session(session_id, offset, limit)` — paginated for very
-long sessions.
+**Backend.** `get_session(session_id, offset, limit)` and
+`get_session_tail` remain available for future use (e.g. a search-hit
+context preview) but are not wired into the session view.
 
 **Edge cases.**
-- Malformed line in JSONL → skip and log; don't break the view.
-- File grows mid-view (live session) → tail by reacting to the watcher.
+- Malformed line in JSONL → skip and log during indexing; never fatal.
 
-**Switchboard ref.** `jsonl-viewer.js`.
+**Switchboard ref.** `main.js` terminal-first layout. (The old
+`jsonl-viewer.js` port is retired.)
 
 ---
 
 ## F4 — Full-text search
 
-**Behavior.** Search across all sessions by message body. Optional filter
-to current project.
+**Behavior.** Search across all indexed sessions by message body. Keep it
+simple: one query string, optional filter to a single project, ranked
+results. No event-level navigation (the session view is terminal-only — see
+F3), so a hit identifies a *session*, not a position within it.
 
-**UI.** Sidebar search input plus a dedicated `/search` route that lists
-hits with snippets. Click a hit → open session at that event.
+**UI.** Sidebar search input (debounced) plus a dedicated `/search` route
+that lists hits grouped by session, each with a `snippet()` excerpt and the
+matched role. Click a hit → navigate to that session (opens its terminal).
 
-**Backend.** `search_sessions(query, project_id?, limit)` → FTS5 with
-`snippet()`. Returns up to 200 hits with `(session_id, event_index,
-snippet)`.
+**Backend.** `search_sessions(query, project_id?, limit)` → FTS5 over
+`messages_fts` with `snippet()` + `bm25()` ranking. Returns up to `limit`
+(default/cap 200) hits, each `{ sessionId, projectId, title, role, snippet }`
+(`title` JOINed from `sessions` for the result label). The FTS index stores
+no per-event position, so hits carry no `event_index`.
 
 **Edge cases.**
-- Empty query → clear results.
-- Index not yet built → show "indexing…" with progress.
+- Empty / whitespace query → clear results, no command call.
+- FTS special characters → the query is passed as a quoted FTS string so a
+  stray `"` or `*` can't error the match.
+- Index not yet built (cold start) → results are simply empty until the
+  initial scan completes; the sidebar already surfaces `indexer:progress`.
 
 **Switchboard ref.** none — switchboard searches in JS over JSON; we
 upgrade this to SQL FTS.
@@ -93,9 +107,8 @@ upgrade this to SQL FTS.
 
 ## F5 — Embedded terminal
 
-**Behavior.** Launch `claude` (or `claude --resume <id>` or
-`claude --resume <id> --fork-from <uuid>`) inside an xterm.js terminal,
-backed by a PTY in Rust.
+**Behavior.** Launch `claude` (or `claude --resume <id>`) inside an
+xterm.js terminal, backed by a PTY in Rust.
 
 **UI.** Main pane top half. Toolbar: Resume/Restart, Kill, Copy selection,
 Search-in-terminal (`Cmd+F`).
@@ -120,27 +133,21 @@ detect waiting-for-input.
 
 ---
 
-## F6 — Resume & fork
+## F6 — Resume
 
 **Behavior.** Resume = start a new PTY against an existing session id.
-Fork = pick any event uuid in the JSONL viewer, create a fresh session id,
-copy the JSONL up to that event, then launch resume against the new id.
+Opening a session view spawns `claude --resume <id>` (F5); there is no
+separate resume button in the MVP.
 
-**UI.** Resume = a button on a stopped session, or implicit when opening a
-session view that has no live PTY. Fork = right-click any event in the
-viewer → "Fork from here".
+> **Fork removed.** Earlier drafts specced a "fork from event N" feature
+> (`fork_session`, copy JSONL up to a chosen event uuid). It was cut from
+> the MVP: its only sensible entry point was a right-click on an event in
+> the JSONL viewer, and that viewer was removed (see F3). Forking is not on
+> the post-MVP list either unless a concrete need resurfaces.
 
-**Backend.** `fork_session(session_id, at_event_uuid)`:
-- Read source `.jsonl` lines up to and including the target uuid.
-- Generate a new uuid; write `<new>.jsonl` into the same project dir.
-- Return `{ newSessionId }`.
-- A subsequent `terminal_spawn({ resumeSessionId })` boots the fork.
+**Backend.** None beyond `terminal_spawn({ resumeSessionId })`.
 
-**Edge cases.**
-- Target uuid not found → InvalidInput error.
-- Source file modified mid-fork → re-read and retry once; fail loud after.
-
-**Switchboard ref.** `main.js` fork IPC, `read-session-file.js`.
+**Switchboard ref.** `main.js` (resume path).
 
 ---
 

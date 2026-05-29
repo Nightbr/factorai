@@ -5,4 +5,6 @@ export const queryKeys = {
 		['session', sessionId, offset, limit] as const,
 	sessionTail: (sessionId: string, limit: number) =>
 		['session-tail', sessionId, limit] as const,
+	search: (query: string, projectId: string | null) =>
+		['search', query, projectId] as const,
 };

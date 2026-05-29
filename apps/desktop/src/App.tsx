@@ -3,9 +3,10 @@ import { createHashHistory, createRouter, RouterProvider } from '@tanstack/react
 import { indexRoute } from './routes/index';
 import { projectRoute } from './routes/project';
 import { rootRoute } from './routes/__root';
+import { searchRoute } from './routes/search';
 import { sessionRoute } from './routes/session';
 
-const routeTree = rootRoute.addChildren([indexRoute, projectRoute, sessionRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, projectRoute, sessionRoute, searchRoute]);
 
 const router = createRouter({ routeTree, history: createHashHistory() });
 

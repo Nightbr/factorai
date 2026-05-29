@@ -5,6 +5,7 @@ import type {
 	IndexerProgressEvent,
 	Project,
 	QuitRequestedEvent,
+	SearchHit,
 	SessionPage,
 	SessionSummary,
 	SessionsChangedEvent,
@@ -41,6 +42,8 @@ export const cmd = {
 		invoke<SessionPage>('get_session', { sessionId, offset, limit }),
 	getSessionTail: (sessionId: string, limit?: number) =>
 		invoke<SessionPage>('get_session_tail', { sessionId, limit }),
+	searchSessions: (query: string, projectId?: string, limit?: number) =>
+		invoke<SearchHit[]>('search_sessions', { query, projectId, limit }),
 
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
 	terminalSpawn: (opts: SpawnOpts) => invoke<TerminalId>('terminal_spawn', { opts }),
@@ -80,6 +83,7 @@ interface TestFixture {
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	searchHits?: SearchHit[];
 }
 
 declare global {
@@ -111,6 +115,15 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				limit: 0,
 				total: 0,
 			}) as unknown as T;
+		}
+		case 'search_sessions': {
+			const query = String(args?.query ?? '').trim();
+			const projectId = args?.projectId ? String(args.projectId) : null;
+			if (!query) return [] as unknown as T;
+			const hits = (fx?.searchHits ?? []).filter(
+				(h) => !projectId || h.projectId === projectId,
+			);
+			return hits as unknown as T;
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;

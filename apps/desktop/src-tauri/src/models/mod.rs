@@ -25,6 +25,18 @@ pub struct SessionSummary {
 	pub cwd: Option<String>,
 }
 
+/// One full-text search result. Mirrors `@factorai/types` `SearchHit`.
+/// Identifies a *session* (no per-event position — the FTS index stores none).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+	pub session_id: String,
+	pub project_id: String,
+	pub title: String,
+	pub role: String,
+	pub snippet: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionPage {
