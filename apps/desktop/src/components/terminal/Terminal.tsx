@@ -9,11 +9,46 @@ import { base64ToBytes } from '@lib/base64';
 import { cmd, events } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 
-// Module-level guard: survives React StrictMode double-mount of the same
-// component instance. Without this, the first mount initiates a spawn and
-// the second mount initiates another before the first resolves — leaving
-// us with two orphan claude processes per session.
-const spawningSession = new Set<string>();
+// Module-level map of in-flight spawn promises, keyed by session. React
+// StrictMode mounts every effect twice (mount → cleanup → mount); without a
+// shared promise the two mounts would each kick off a `terminal_spawn`,
+// leaving an orphan claude. By memoising the spawn here, both mounts await
+// the SAME spawn and the second reuses the first's terminal id.
+//
+// Critically, we do NOT kill the terminal on effect cleanup. Terminals live
+// in `terminalStore` keyed by session and are meant to persist across
+// navigation; the only teardown path is `kill_all()` on app quit (ADR-0005).
+// The previous code killed on the StrictMode cleanup, which — once the
+// backend `kill()` deadlock was fixed — actually tore the terminal down and
+// left an empty pane on every open in dev.
+const spawnInFlight = new Map<string, Promise<string>>();
+
+function ensureTerminal(
+	sessionId: string,
+	projectCwd: string | null,
+	cols: number,
+	rows: number,
+): Promise<string> {
+	const existing = useTerminalStore.getState().bySession[sessionId];
+	if (existing) return Promise.resolve(existing);
+
+	let pending = spawnInFlight.get(sessionId);
+	if (!pending) {
+		pending = cmd
+			.terminalSpawn({ resumeSessionId: sessionId, cwd: projectCwd ?? undefined, cols, rows })
+			.then((id) => {
+				useTerminalStore.getState().attach(sessionId, id);
+				spawnInFlight.delete(sessionId);
+				return id;
+			})
+			.catch((e) => {
+				spawnInFlight.delete(sessionId);
+				throw e;
+			});
+		spawnInFlight.set(sessionId, pending);
+	}
+	return pending;
+}
 
 interface TerminalProps {
 	sessionId: string;
@@ -65,73 +100,42 @@ export function Terminal({ sessionId, projectCwd }: TerminalProps) {
 		};
 	}, []);
 
-	// Spawn or attach to the PTY for this session. Reads + mutates the
-	// terminal store via getState() to avoid re-running on its updates.
-	// `spawningSession` (module-level) prevents StrictMode double-spawn.
+	// Spawn (or reuse) the PTY for this session and attach data/exit
+	// listeners. The spawn is shared via `ensureTerminal` so StrictMode's
+	// double-mount can't create two PTYs. On cleanup we only drop the
+	// listeners — we never kill the terminal (see `spawnInFlight` above).
 	useEffect(() => {
 		const term = termRef.current;
 		const fit = fitRef.current;
 		if (!term || !fit) return;
 
-		let cancelled = false;
+		let disposed = false;
 		let unlistenData: (() => void) | undefined;
 		let unlistenExit: (() => void) | undefined;
-		const store = useTerminalStore.getState();
-		let activeId: string | null = store.bySession[sessionId] ?? null;
 
-		const bootstrap = async () => {
-			if (!activeId) {
-				if (spawningSession.has(sessionId)) {
-					// Another mount is already spawning. Bail; the data/exit
-					// listeners installed by the winning mount will receive
-					// events, and the store will update terminalId when
-					// attach() runs, which triggers a re-render where
-					// store.bySession[sessionId] is set.
-					return;
-				}
-				spawningSession.add(sessionId);
-				try {
-					const cols = term.cols || 80;
-					const rows = term.rows || 24;
-					const id = await cmd.terminalSpawn({
-						resumeSessionId: sessionId,
-						cwd: projectCwd ?? undefined,
-						cols,
-						rows,
-					});
-					if (cancelled) {
-						await cmd.terminalKill(id).catch(() => {});
-						spawningSession.delete(sessionId);
-						return;
+		ensureTerminal(sessionId, projectCwd, term.cols || 80, term.rows || 24)
+			.then(async (id) => {
+				if (disposed) return;
+				unlistenData = await events.onTerminalData((ev) => {
+					if (ev.id === id) term.write(base64ToBytes(ev.bytesB64));
+				});
+				unlistenExit = await events.onTerminalExit((ev) => {
+					if (ev.id === id) {
+						term.write(
+							`\r\n\x1b[90m[process exited${ev.code !== null ? `: ${ev.code}` : ''}]\x1b[0m\r\n`,
+						);
+						useTerminalStore.getState().detach(sessionId);
 					}
-					activeId = id;
-					useTerminalStore.getState().attach(sessionId, id);
-				} catch (e) {
+				});
+			})
+			.catch((e) => {
+				if (!disposed) {
 					term.write(`\r\n\x1b[31mFailed to spawn claude: ${String(e)}\x1b[0m\r\n`);
-					spawningSession.delete(sessionId);
-					return;
-				}
-				spawningSession.delete(sessionId);
-			}
-
-			const myId = activeId;
-			unlistenData = await events.onTerminalData((ev) => {
-				if (ev.id === myId) term.write(base64ToBytes(ev.bytesB64));
-			});
-			unlistenExit = await events.onTerminalExit((ev) => {
-				if (ev.id === myId) {
-					term.write(
-						`\r\n\x1b[90m[process exited${ev.code !== null ? `: ${ev.code}` : ''}]\x1b[0m\r\n`,
-					);
-					useTerminalStore.getState().detach(sessionId);
 				}
 			});
-		};
-
-		bootstrap();
 
 		return () => {
-			cancelled = true;
+			disposed = true;
 			unlistenData?.();
 			unlistenExit?.();
 		};

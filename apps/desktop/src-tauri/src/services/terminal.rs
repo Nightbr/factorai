@@ -18,7 +18,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use dashmap::DashMap;
 use parking_lot::Mutex;
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tracing::{debug, info, warn};
@@ -88,7 +88,16 @@ struct TerminalHandle {
 	session_id: Option<String>,
 	master: Mutex<Box<dyn MasterPty + Send>>,
 	writer: Mutex<Box<dyn Write + Send>>,
-	child: Mutex<Box<dyn Child + Send + Sync>>,
+	/// A killer cloned from the child at spawn time. We deliberately do NOT
+	/// store the `Child` itself here: the waiter thread owns it and blocks on
+	/// `wait()` for the process's entire lifetime. If we held the `Child`
+	/// behind a `Mutex` (as we once did), every `kill()` would block on that
+	/// lock until the process exited on its own — deadlocking the caller.
+	/// Since `terminal_kill` is a synchronous Tauri command it runs on the
+	/// main thread, so that deadlock froze the whole GUI on terminal open
+	/// (StrictMode's spawn-race kill) and on quit (`kill_all`). A `ChildKiller`
+	/// signals the process without touching the waiter's `Child`.
+	killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 	status: Mutex<TerminalStatus>,
 	last_activity: AtomicI64,
 }
@@ -218,6 +227,9 @@ impl TerminalManager {
 			.slave
 			.spawn_command(cmd)
 			.map_err(|e| AppError::Process(format!("spawn: {e}")))?;
+		// Clone a killer now, before the child is moved into the waiter thread.
+		// See `TerminalHandle::killer` for why the child isn't shared.
+		let killer = child.clone_killer();
 		drop(pair.slave); // close slave end in the parent so EOF works
 		let writer = pair
 			.master
@@ -235,7 +247,7 @@ impl TerminalManager {
 			session_id: opts.resume_session_id.clone(),
 			master: Mutex::new(pair.master),
 			writer: Mutex::new(writer),
-			child: Mutex::new(child),
+			killer: Mutex::new(killer),
 			status: Mutex::new(TerminalStatus::Running),
 			last_activity: AtomicI64::new(now_ms()),
 		});
@@ -244,8 +256,10 @@ impl TerminalManager {
 
 		// Reader thread: pump PTY bytes → on_data event.
 		spawn_reader(id.clone(), reader, handle.clone(), self.on_data.clone());
-		// Wait thread: emit on_exit when the child terminates.
-		spawn_waiter(id.clone(), handle.clone(), self.on_status.clone(), self.on_exit.clone(), self.terminals.clone());
+		// Wait thread: owns the child and blocks on `wait()`; emits on_exit
+		// when it terminates. Owning (not sharing) the child is what keeps
+		// `kill()` from blocking — see `TerminalHandle::killer`.
+		spawn_waiter(id.clone(), child, handle.clone(), self.on_status.clone(), self.on_exit.clone(), self.terminals.clone());
 
 		Ok(id)
 	}
@@ -280,9 +294,9 @@ impl TerminalManager {
 			.terminals
 			.get(id)
 			.ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
-		let mut child = handle.child.lock();
-		// Best effort — child may already be gone.
-		let _ = child.kill();
+		// Signal via the killer, not the child — the waiter thread owns the
+		// child and is parked in `wait()`. Best effort: it may already be gone.
+		let _ = handle.killer.lock().kill();
 		Ok(())
 	}
 
@@ -298,7 +312,7 @@ impl TerminalManager {
 		for id in &ids {
 			if let Some(entry) = self.terminals.remove(id) {
 				let (_, handle) = entry;
-				let _ = handle.child.lock().kill();
+				let _ = handle.killer.lock().kill();
 			}
 		}
 	}
@@ -315,7 +329,7 @@ impl Drop for TerminalManager {
 			let ids: Vec<TerminalId> = self.terminals.iter().map(|e| e.key().clone()).collect();
 			for id in &ids {
 				if let Some((_, handle)) = self.terminals.remove(id) {
-					let _ = handle.child.lock().kill();
+					let _ = handle.killer.lock().kill();
 				}
 			}
 		}
@@ -404,6 +418,7 @@ fn emit_data(id: &TerminalId, bytes: &[u8], on_data: &DataCb) {
 
 fn spawn_waiter(
 	id: TerminalId,
+	mut child: Box<dyn Child + Send + Sync>,
 	handle: Arc<TerminalHandle>,
 	on_status: StatusCb,
 	on_exit: ExitCb,
@@ -412,7 +427,9 @@ fn spawn_waiter(
 	std::thread::Builder::new()
 		.name(format!("term-wait-{id}"))
 		.spawn(move || {
-			let exit_code = handle.child.lock().wait().ok().and_then(|s| s.exit_code().try_into().ok());
+			// This thread exclusively owns `child`; nothing else can touch it,
+			// so blocking here for the process's whole life holds no shared lock.
+			let exit_code = child.wait().ok().and_then(|s| s.exit_code().try_into().ok());
 			{
 				let mut st = handle.status.lock();
 				*st = TerminalStatus::Stopped;
