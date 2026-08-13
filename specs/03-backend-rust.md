@@ -63,7 +63,7 @@ terminal_kill(id: TerminalId) -> ()
 terminal_list() -> Vec<TerminalStatusDto>
 
 // files
-read_file(path: String, max_bytes: Option<usize>) -> FileContents     // includes mime + size
+read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated flags
 list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped
 file_diff(path: String, original: String, modified: String) -> DiffPayload
 
@@ -241,6 +241,24 @@ Rules, all enforced in Rust so the renderer stays dumb:
   which the tree renders as an inline row instead of a toast.
 - Individual entries that fail mid-iteration (a racing delete) are skipped
   rather than failing the whole listing.
+
+`read_file(path, max_bytes?) -> FileContents` backs the viewer (F7):
+
+- Binary is decided by a null byte in the first 8KB. Binary files return
+  **empty** `contents` with `isBinary` set — no point shipping bytes the UI
+  won't render — but `size` is still reported so the card can say how big the
+  thing it's refusing to show is.
+- `max_bytes` defaults to 5MB. We read one byte past the cap to detect
+  overflow without re-stat'ing a file that may have changed underneath us,
+  then cut to the cap and set `truncated`. `size` is always the true size on
+  disk. The UI offers "Show anyway", which refetches with `max_bytes: None`.
+- Invalid UTF-8 without null bytes is read **lossily** rather than rejected: a
+  latin-1 source file is still worth reading, and real binaries were already
+  ruled out.
+- No `mime` field. It existed in the original spec to pick a viewer, but the
+  renderer resolves a language from the extension through Monaco's own
+  language registry (ADR-0007), so a `mime_guess` dependency would be a
+  second and worse source of the same answer.
 
 Read-only, like the rest of our disk access (ADR-0004).
 

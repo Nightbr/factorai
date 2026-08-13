@@ -136,3 +136,25 @@ pub struct DirListing {
 	pub total: usize,
 	pub truncated: bool,
 }
+
+/// A file's contents for the viewer. Mirrors `@factorai/types` `FileContents`.
+/// See specs/05-features.md F7.
+///
+/// No `mime` field: the viewer resolves a language from the extension using
+/// Monaco's own language registry (ADR-0007), so a mime guess would be a
+/// second, worse source of the same answer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileContents {
+	pub path: String,
+	/// Empty when `is_binary`, or cut at the cap when `truncated`.
+	pub contents: String,
+	/// True size on disk, whatever we actually returned.
+	pub size: u64,
+	/// A null byte turned up in the first 8KB.
+	pub is_binary: bool,
+	/// The file is longer than the requested cap.
+	pub truncated: bool,
+	/// Lines in `contents` (0 for empty or binary).
+	pub line_count: usize,
+}
