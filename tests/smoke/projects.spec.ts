@@ -47,5 +47,29 @@ test.describe('projects sidebar', () => {
 		// xterm host renders a div under the terminal panel. xterm injects
 		// the .xterm class on the host element it opens into.
 		await expect(page.locator('.xterm')).toBeVisible();
+		// The mock bridge resolves terminal_spawn, so the session registers as
+		// live → the header exposes the Stop control (running lifecycle).
+		await expect(page.getByRole('button', { name: /stop/i })).toBeVisible();
+	});
+
+	test('@smoke opening a session spawns the PTY at the pane size', async ({ page }) => {
+		const fx = fixtureOneProjectOneSession();
+		await installMockBridge(page, fx);
+		await page.goto('/');
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		await expect(page.locator('.xterm')).toBeVisible();
+
+		const spawn = await page.evaluate(
+			() => window.__FACTORAI_TEST_CALLS__?.find((c) => c.name === 'terminal_spawn')?.args,
+		);
+		const opts = spawn?.opts as { cols: number; rows: number } | undefined;
+
+		// Regression guard: the PTY used to be spawned before its host element had
+		// layout, so it was born at xterm's 80x24 default and claude rendered in
+		// 80 columns until the next window resize. The pane in the test viewport is
+		// far wider and taller than that.
+		expect(opts?.cols).toBeGreaterThan(80);
+		expect(opts?.rows).toBeGreaterThan(24);
 	});
 });

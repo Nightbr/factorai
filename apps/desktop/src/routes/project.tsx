@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { ChevronRight } from 'lucide-react';
+import { StatusDot } from '@components/layout/StatusDot';
 import { formatRelative } from '@lib/format';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
+import { useTerminalStore } from '@store/terminalStore';
 import { rootRoute } from './__root';
 
 function ProjectView() {
@@ -16,6 +18,7 @@ function ProjectView() {
 		queryKey: queryKeys.projects(),
 		queryFn: () => cmd.listProjects(),
 	});
+	const bySession = useTerminalStore((s) => s.bySession);
 
 	const project = projectsQ.data?.find((p) => p.id === id);
 
@@ -28,9 +31,7 @@ function ProjectView() {
 				)}
 			</header>
 
-			{sessionsQ.isLoading && (
-				<p className="text-muted-foreground text-sm">Loading sessions…</p>
-			)}
+			{sessionsQ.isLoading && <p className="text-muted-foreground text-sm">Loading sessions…</p>}
 			{sessionsQ.data && sessionsQ.data.length === 0 && (
 				<p className="text-muted-foreground text-sm">No sessions in this project yet.</p>
 			)}
@@ -44,10 +45,12 @@ function ProjectView() {
 							className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
 						>
 							<div className="min-w-0 flex-1">
-								<div className="truncate font-medium">{s.title || s.id.slice(0, 8)}</div>
+								<div className="flex items-center gap-2">
+									{bySession[s.id] && <StatusDot status={bySession[s.id].status} />}
+									<span className="truncate font-medium">{s.title || s.id.slice(0, 8)}</span>
+								</div>
 								<div className="text-muted-foreground text-xs">
-									{s.turnCount} turn{s.turnCount === 1 ? '' : 's'} ·{' '}
-									{formatRelative(s.updatedAt)}
+									{s.turnCount} turn{s.turnCount === 1 ? '' : 's'} · {formatRelative(s.updatedAt)}
 								</div>
 							</div>
 							<ChevronRight className="size-4 text-muted-foreground" />
