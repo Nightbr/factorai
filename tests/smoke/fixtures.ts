@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 import type {
 	DirEntry,
 	DirListing,
+	FileContents,
 	Project,
 	SearchHit,
 	SessionPage,
@@ -27,6 +28,9 @@ export interface TestFixture {
 	/** Directory listings keyed by absolute path (F12 file tree). Paths the
 	 *  test never expands can be omitted — the mock treats them as empty. */
 	dirListings?: Record<string, DirListing>;
+	/** File contents keyed by absolute path (F7 viewer). An unlisted path makes
+	 *  read_file reject with NotFound, same as a deleted file. */
+	files?: Record<string, FileContents>;
 }
 
 declare global {
@@ -99,10 +103,28 @@ function listing(entries: DirEntry[], over: Partial<DirListing> = {}): DirListin
 	return { entries, total: entries.length, truncated: false, ...over };
 }
 
+function contents(path: string, text: string, over: Partial<FileContents> = {}): FileContents {
+	return {
+		path,
+		contents: text,
+		size: text.length,
+		isBinary: false,
+		truncated: false,
+		// Mirrors Rust's `lines().count()`: a trailing newline ends the last line
+		// rather than starting an empty one.
+		lineCount: text ? text.replace(/\n$/, '').split('\n').length : 0,
+		...over,
+	};
+}
+
 /**
  * Base shape plus a two-level file tree under the project root, including the
  * awkward cases: a symlink out of the project (not expandable) and a truncated
  * directory (the "N more entries" row).
+ *
+ * Also carries `files` for the F7 viewer: a readable source file, a binary, an
+ * oversized one, and `main.py`, which is deliberately **absent** from `files`
+ * so read_file rejects it the way a deleted file would.
  */
 export function fixtureWithFileTree(): TestFixture {
 	const base = fixtureOneProjectOneSession();
@@ -117,11 +139,31 @@ export function fixtureWithFileTree(): TestFixture {
 				entry(root, 'vendor', { isDir: true, isSymlink: true, symlinkOutsideRoot: true }),
 				entry(root, 'Cargo.toml'),
 				entry(root, 'README.md'),
+				entry(root, 'logo.png'),
+				entry(root, 'huge.log'),
 				entry(root, 'main.py'),
 			]),
 			// 2 of 12 — exercises the truncation row.
 			[apps]: listing([entry(apps, 'desktop', { isDir: true }), entry(apps, 'index.ts')], {
 				total: 12,
+				truncated: true,
+			}),
+		},
+		files: {
+			[`${root}/Cargo.toml`]: contents(
+				`${root}/Cargo.toml`,
+				'[package]\nname = "foo"\nversion = "0.1.0"\n',
+			),
+			[`${root}/README.md`]: contents(`${root}/README.md`, '# foo\n\nA test project.\n'),
+			[`${root}/logo.png`]: contents(`${root}/logo.png`, '', {
+				isBinary: true,
+				size: 20_480,
+				lineCount: 0,
+			}),
+			// Came back cut at the backend's cap; the footer should offer "Show
+			// anyway", and the uncapped re-read resolves it (see mockInvoke).
+			[`${root}/huge.log`]: contents(`${root}/huge.log`, 'x'.repeat(64), {
+				size: 12_582_912,
 				truncated: true,
 			}),
 		},

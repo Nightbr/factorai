@@ -11,6 +11,15 @@ export default defineConfig({
 	// runtime, which a Tauri app with no network access requires.
 	plugins: [tailwindcss(), react(), Icons({ compiler: 'jsx', jsx: 'react' })],
 	clearScreen: false,
+	optimizeDeps: {
+		// Monaco arrives through a lazy chunk, so Vite would only discover it the
+		// first time a file is opened — then prebundle and reload the page
+		// mid-interaction. Listing it here gets that work done at server start.
+		include: [
+			'monaco-editor/editor/editor.api',
+			'monaco-editor/basic-languages/monaco.contribution',
+		],
+	},
 	server: {
 		port: 1420,
 		strictPort: true,

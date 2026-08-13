@@ -102,7 +102,9 @@ test.describe('file tree panel', () => {
 
 		// Persisted through localStorage, so it comes back open on the same route.
 		await expect(page.getByTestId('file-tree-panel')).toBeVisible();
-		await expect(page.getByTestId('file-tree-panel').getByRole('button', { name: 'foo' })).toBeVisible();
+		await expect(
+			page.getByTestId('file-tree-panel').getByRole('button', { name: 'foo' }),
+		).toBeVisible();
 	});
 
 	test('@smoke a route with no project explains itself instead of erroring', async ({ page }) => {

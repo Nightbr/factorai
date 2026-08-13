@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, Link2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
-import { cmd, openExternally } from '@lib/tauri';
+import { useFileViewer } from '@hooks/useFileViewer';
+import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { expandedFor, usePanelStore } from '@store/panelStore';
 
@@ -35,6 +36,7 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 	const selected = usePanelStore((s) => s.selectedPath === entry.path);
 	const toggleExpanded = usePanelStore((s) => s.toggleExpanded);
 	const select = usePanelStore((s) => s.select);
+	const { open: openViewer } = useFileViewer();
 
 	// A symlink pointing out of the project is shown but not walked.
 	const canExpand = entry.isDir && !entry.symlinkOutsideRoot;
@@ -49,7 +51,15 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 
 	function activate() {
 		select(entry.path);
-		if (canExpand) toggleExpanded(projectId, entry.path);
+		if (canExpand) {
+			toggleExpanded(projectId, entry.path);
+		} else if (!entry.isDir) {
+			// Single click opens the viewer (F7). "Open in default app" lives in
+			// the viewer's header rather than on a double-click: the first click of
+			// a double-click already opens the modal, and the second would land on
+			// its overlay.
+			openViewer(entry.path);
+		}
 	}
 
 	const hint = entry.symlinkOutsideRoot
@@ -67,16 +77,6 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 					selected ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/50'
 				}`}
 				onClick={activate}
-				onDoubleClick={() => {
-					// Directories have nothing to open; files go to the OS default app.
-					if (!entry.isDir) void openExternally(entry.path);
-				}}
-				onKeyDown={(e) => {
-					if (e.key === 'Enter' && !entry.isDir) {
-						e.preventDefault();
-						void openExternally(entry.path);
-					}
-				}}
 			>
 				{entry.isDir ? (
 					<ChevronRight

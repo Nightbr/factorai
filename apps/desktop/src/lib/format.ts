@@ -14,3 +14,25 @@ export function formatRelative(ms: number, now: number = Date.now()): string {
 	if (days < 30) return `${days}d ago`;
 	return new Date(ms).toLocaleDateString();
 }
+
+const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+/**
+ * File size for the viewer footer and the too-big / binary cards. Binary
+ * units (1024), one decimal above KB — "1.2 MB" reads better than "1258291 B"
+ * and better than "1.258 MB".
+ */
+export function formatBytes(bytes: number): string {
+	if (!Number.isFinite(bytes) || bytes < 0) return '—';
+	if (bytes < 1024) return `${Math.round(bytes)} B`;
+
+	let value = bytes;
+	let unit = 0;
+	while (value >= 1024 && unit < UNITS.length - 1) {
+		value /= 1024;
+		unit++;
+	}
+	// Keep 3 significant-ish digits: 9.8 MB, but 128 MB rather than 128.0 MB.
+	const rounded = value >= 100 ? Math.round(value) : Math.round(value * 10) / 10;
+	return `${rounded} ${UNITS[unit]}`;
+}

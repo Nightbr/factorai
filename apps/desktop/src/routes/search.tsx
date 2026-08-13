@@ -6,7 +6,7 @@ import { rootRoute } from './__root';
 
 function SearchView() {
 	const { q } = searchRoute.useSearch();
-	const query = q.trim();
+	const query = (q ?? '').trim();
 
 	const hitsQ = useQuery({
 		queryKey: queryKeys.search(query, null),
@@ -70,8 +70,12 @@ function SearchView() {
 export const searchRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: '/search',
-	validateSearch: (search: Record<string, unknown>): { q: string } => ({
-		q: typeof search.q === 'string' ? search.q : '',
+	// `q` is optional so that every route's search params are optional. That
+	// uniformity is what lets route-agnostic navigation (the `?file=` viewer
+	// param, and the tab system later) update search without knowing which
+	// route it's on. The view normalises a missing `q` to ''.
+	validateSearch: (search: Record<string, unknown>): { q?: string } => ({
+		q: typeof search.q === 'string' ? search.q : undefined,
 	}),
 	component: SearchView,
 });

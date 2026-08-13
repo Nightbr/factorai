@@ -33,9 +33,10 @@ apps/desktop/src/
 │   │   ├── FileTreeNode.tsx         # one row, recursive, lazy list_dir
 │   │   └── FileIcon.tsx             # icon-key → SVG (ADR-0006)
 │   ├── viewer/
-│   │   ├── FilePreview.tsx          # CodeMirror read-only
-│   │   ├── DiffView.tsx             # CodeMirror @merge inline/side-by-side
-│   │   └── ViewerToolbar.tsx
+│   │   ├── monaco.ts                # sole Monaco import site + theme
+│   │   ├── FileView.tsx             # one file, read-only, host-agnostic
+│   │   ├── FileViewerModal.tsx      # V0 host (tabs replace it later)
+│   │   └── DiffView.tsx             # Monaco diff editor (F8, not built)
 │   └── plans/
 │       ├── ClaudeMdEditor.tsx
 │       └── PlanList.tsx
@@ -45,7 +46,8 @@ apps/desktop/src/
 │   ├── terminalStore.ts     # terminal handle ↔ session mapping
 │   └── prefsStore.ts        # persisted via tauri-plugin-store
 ├── hooks/
-│   └── useActiveProject.ts  # project the current route is about
+│   ├── useActiveProject.ts  # project the current route is about
+│   └── useFileViewer.ts     # ?file= — which file the viewer shows
 ├── lib/
 │   ├── tauri.ts             # typed invoke + listen wrappers
 │   ├── queryKeys.ts
@@ -245,14 +247,31 @@ function Terminal({ sessionId }: { sessionId: string }) {
 Resize: a `ResizeObserver` calls `FitAddon.fit()` then sends the new
 `cols`/`rows` to `terminal_resize`.
 
-## File preview & diff
+## File viewer & diff
 
-CodeMirror 6 host components live in `components/viewer/`. Language
-selection uses `@codemirror/language-data` (lazy-loads extensions). For
-diffs we use `@codemirror/merge` with the prefs-driven mode toggle.
+**Monaco**, not CodeMirror 6 — see ADR-0007 for why the spec's original
+choice was superseded (the diff editor F8 needs, mainly).
 
-For MVP both are read-only. "Accept / reject" of diffs ships in v2 alongside
-the MCP/IDE emulator.
+`components/viewer/` holds all of it, and nothing outside that directory
+imports Monaco:
+
+- `monaco.ts` — the only Monaco import site. Pulls `editor.api` plus
+  `basic-languages/monaco.contribution`, which is every Monarch grammar with
+  **no** web-worker requirement (the workers back language services, i.e.
+  IntelliSense, which a read-only viewer doesn't want). Also owns the
+  `factorai-dark` theme and language resolution via Monaco's own registry.
+- `FileView.tsx` — one file, read-only, modal-agnostic. Runs the `read_file`
+  query, renders the editor / binary card / empty state, and the footer.
+- `FileViewerModal.tsx` — V0 host. `React.lazy`-loads `FileView`, so Monaco
+  lands in a chunk fetched on first open and the initial bundle is unchanged.
+
+`vite.config.ts` lists both Monaco entry points in `optimizeDeps.include`;
+without that, Vite discovers them the first time a file is opened and reloads
+the page mid-interaction.
+
+For MVP the viewer is read-only, with no edit affordance at all — editing
+arrives with F9's CLAUDE.md editor. "Accept / reject" of diffs ships in v2
+alongside the MCP/IDE emulator.
 
 ## Session content rendering
 
