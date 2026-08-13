@@ -3,6 +3,7 @@ import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
 	ClaudeCliStatus,
 	DirListing,
+	FileContents,
 	IndexerProgressEvent,
 	Project,
 	QuitRequestedEvent,
@@ -49,6 +50,10 @@ export const cmd = {
 	/** List one directory. `root` is the project root — only used to flag
 	 *  symlinks that point out of the project. */
 	listDir: (path: string, root?: string) => invoke<DirListing>('list_dir', { path, root }),
+	/** Read a file for the viewer. `maxBytes` omitted uses the backend's 5MB
+	 *  default; pass null to lift the cap after warning the user. */
+	readFile: (path: string, maxBytes?: number | null) =>
+		invoke<FileContents>('read_file', { path, maxBytes }),
 
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
 	terminalSpawn: (opts: SpawnOpts) => invoke<TerminalId>('terminal_spawn', { opts }),
@@ -104,6 +109,8 @@ interface TestFixture {
 	searchHits?: SearchHit[];
 	/** Directory listings keyed by absolute path, for the F12 file tree. */
 	dirListings?: Record<string, DirListing>;
+	/** File contents keyed by absolute path, for the F7 viewer. */
+	files?: Record<string, FileContents>;
 }
 
 /** One mocked command call, recorded in order while a fixture is installed. */
@@ -163,6 +170,21 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// An unlisted path is an empty directory, not an error — fixtures only
 			// declare the paths a test actually expands.
 			return (listing ?? { entries: [], total: 0, truncated: false }) as unknown as T;
+		}
+		case 'read_file': {
+			const path = String(args?.path ?? '');
+			const file = fx?.files?.[path];
+			if (!file) throw { kind: 'NotFound', message: `path ${path}` };
+			// Honour the cap so a test can exercise the "Show anyway" flow.
+			const cap = args?.maxBytes;
+			if (typeof cap === 'number' && file.contents.length > cap) {
+				return {
+					...file,
+					contents: file.contents.slice(0, cap),
+					truncated: true,
+				} as unknown as T;
+			}
+			return file as unknown as T;
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;

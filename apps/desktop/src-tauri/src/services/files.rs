@@ -1,15 +1,17 @@
-//! Directory listing for the project file tree (specs/05-features.md F12).
+//! Reading project files: the tree's directory listings (F12) and the file
+//! viewer's contents (F7).
 //!
-//! Deliberately shallow: one call lists exactly one directory. The tree in the
-//! renderer expands lazily, so we never walk `node_modules` / `.venv` / a
-//! symlink cycle — there is no recursion here to run away with.
+//! `list_dir` is deliberately shallow — one call lists exactly one directory.
+//! The tree in the renderer expands lazily, so we never walk `node_modules` /
+//! `.venv` / a symlink cycle; there is no recursion here to run away with.
 
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{AppError, AppResult};
-use crate::models::{DirEntry, DirListing};
+use crate::models::{DirEntry, DirListing, FileContents};
 
 /// Upper bound on entries returned for a single directory. Generated
 /// directories (build output, caches) can hold tens of thousands of files and
@@ -114,6 +116,80 @@ fn escapes_root(path: &Path, root_canon: Option<&Path>) -> bool {
 
 fn to_millis(t: SystemTime) -> Option<i64> {
 	t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as i64)
+}
+
+/// Default ceiling on how much of a file we hand the viewer. Monaco copes with
+/// a few MB of source; it does not cope with a 200MB log, and neither does the
+/// IPC hop. Callers can pass `None` to lift it after the UI has warned.
+pub const DEFAULT_MAX_BYTES: usize = 5 * 1024 * 1024;
+
+/// Bytes sniffed for a null to decide "binary". Enough to catch real binaries
+/// without reading a whole file we're about to refuse.
+const SNIFF_BYTES: usize = 8 * 1024;
+
+/// Read a file for the viewer (specs/05-features.md F7).
+///
+/// Binary files come back with empty `contents` and `is_binary` set — the UI
+/// shows a card rather than a screen of replacement characters. Text longer
+/// than `max_bytes` comes back cut at that many bytes with `truncated` set;
+/// `size` is always the true size on disk so the UI can say what it's hiding.
+pub fn read_file(path: &str, max_bytes: Option<usize>) -> AppResult<FileContents> {
+	let cap = max_bytes.unwrap_or(DEFAULT_MAX_BYTES);
+	let p = Path::new(path);
+
+	let meta = fs::metadata(p).map_err(|e| match e.kind() {
+		std::io::ErrorKind::NotFound => AppError::NotFound(format!("path {path}")),
+		std::io::ErrorKind::PermissionDenied => AppError::Io(format!("permission denied: {path}")),
+		_ => AppError::Io(format!("{path}: {e}")),
+	})?;
+	if meta.is_dir() {
+		return Err(AppError::InvalidInput(format!("is a directory: {path}")));
+	}
+	let size = meta.len();
+
+	let mut file = fs::File::open(p).map_err(|e| match e.kind() {
+		std::io::ErrorKind::PermissionDenied => AppError::Io(format!("permission denied: {path}")),
+		_ => AppError::Io(format!("{path}: {e}")),
+	})?;
+
+	// Read at most one byte past the cap: that extra byte is how we know the
+	// file was longer than the cap without stat'ing against a file that may
+	// have changed underneath us.
+	let mut buf = Vec::new();
+	file.by_ref()
+		.take(cap as u64 + 1)
+		.read_to_end(&mut buf)
+		.map_err(|e| AppError::Io(format!("{path}: {e}")))?;
+
+	if buf.iter().take(SNIFF_BYTES).any(|b| *b == 0) {
+		return Ok(FileContents {
+			path: path.to_string(),
+			contents: String::new(),
+			size,
+			is_binary: true,
+			truncated: false,
+			line_count: 0,
+		});
+	}
+
+	let truncated = buf.len() > cap;
+	if truncated {
+		buf.truncate(cap);
+	}
+
+	// Lossy on purpose: a latin-1 source file or a stray invalid sequence is
+	// still worth reading, and we've already ruled out real binaries.
+	let contents = String::from_utf8_lossy(&buf).into_owned();
+	let line_count = if contents.is_empty() { 0 } else { contents.lines().count() };
+
+	Ok(FileContents {
+		path: path.to_string(),
+		contents,
+		size,
+		is_binary: false,
+		truncated,
+		line_count,
+	})
 }
 
 #[cfg(test)]
@@ -234,6 +310,121 @@ mod tests {
 		assert!(entry.is_symlink);
 		assert!(!entry.is_dir);
 		assert!(entry.symlink_outside_root);
+	}
+
+	#[test]
+	fn reads_text_with_a_line_count() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("a.rs");
+		fs::write(&p, "fn main() {}\nlet x = 1;\n").unwrap();
+
+		let f = read_file(p.to_str().unwrap(), None).unwrap();
+
+		assert_eq!(f.contents, "fn main() {}\nlet x = 1;\n");
+		assert_eq!(f.size, 24);
+		assert_eq!(f.line_count, 2);
+		assert!(!f.is_binary);
+		assert!(!f.truncated);
+	}
+
+	#[test]
+	fn an_empty_file_reads_as_empty_not_as_an_error() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("empty.txt");
+		File::create(&p).unwrap();
+
+		let f = read_file(p.to_str().unwrap(), None).unwrap();
+
+		assert_eq!(f.contents, "");
+		assert_eq!(f.size, 0);
+		assert_eq!(f.line_count, 0);
+		assert!(!f.is_binary);
+	}
+
+	#[test]
+	fn a_null_byte_marks_the_file_binary_and_withholds_contents() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("blob.bin");
+		fs::write(&p, b"PNG\x00\x01\x02rest of the file").unwrap();
+
+		let f = read_file(p.to_str().unwrap(), None).unwrap();
+
+		assert!(f.is_binary);
+		assert!(f.contents.is_empty(), "no point shipping bytes we won't render");
+		// Size is still reported — the UI says how big the thing it can't show is.
+		assert_eq!(f.size, 22);
+	}
+
+	#[test]
+	fn a_null_byte_past_the_sniff_window_is_not_treated_as_binary() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("late-null.txt");
+		let mut bytes = vec![b'a'; SNIFF_BYTES + 10];
+		bytes.push(0);
+		fs::write(&p, &bytes).unwrap();
+
+		let f = read_file(p.to_str().unwrap(), None).unwrap();
+
+		assert!(!f.is_binary);
+	}
+
+	#[test]
+	fn truncates_at_the_cap_and_still_reports_the_real_size() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("big.txt");
+		fs::write(&p, "0123456789").unwrap();
+
+		let f = read_file(p.to_str().unwrap(), Some(4)).unwrap();
+
+		assert!(f.truncated);
+		assert_eq!(f.contents, "0123");
+		assert_eq!(f.size, 10);
+
+		// Lifting the cap returns everything.
+		let full = read_file(p.to_str().unwrap(), None).unwrap();
+		assert!(!full.truncated);
+		assert_eq!(full.contents, "0123456789");
+	}
+
+	#[test]
+	fn a_file_exactly_at_the_cap_is_not_reported_truncated() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("exact.txt");
+		fs::write(&p, "0123").unwrap();
+
+		let f = read_file(p.to_str().unwrap(), Some(4)).unwrap();
+
+		assert!(!f.truncated);
+		assert_eq!(f.contents, "0123");
+	}
+
+	#[test]
+	fn invalid_utf8_without_nulls_is_read_lossily() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("latin1.txt");
+		// 0xE9 is `é` in latin-1 and invalid on its own in UTF-8.
+		fs::write(&p, b"caf\xE9 au lait").unwrap();
+
+		let f = read_file(p.to_str().unwrap(), None).unwrap();
+
+		assert!(!f.is_binary);
+		assert!(f.contents.contains("caf"));
+		assert!(f.contents.contains("au lait"));
+	}
+
+	#[test]
+	fn reading_a_missing_path_or_a_directory_fails_distinctly() {
+		let dir = tempdir().unwrap();
+		let missing = dir.path().join("nope.txt");
+
+		assert!(matches!(
+			read_file(missing.to_str().unwrap(), None),
+			Err(AppError::NotFound(_))
+		));
+		assert!(matches!(
+			read_file(dir.path().to_str().unwrap(), None),
+			Err(AppError::InvalidInput(_))
+		));
 	}
 
 	#[test]

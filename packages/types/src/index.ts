@@ -129,6 +129,26 @@ export interface DirListing {
 	truncated: boolean;
 }
 
+/**
+ * A file's contents for the viewer (F7).
+ *
+ * No `mime`: the viewer resolves a language from the extension via Monaco's
+ * own language registry (ADR-0007).
+ */
+export interface FileContents {
+	path: string;
+	/** Empty when `isBinary`, or cut at the cap when `truncated`. */
+	contents: string;
+	/** True size on disk, whatever was actually returned. */
+	size: number;
+	/** A null byte turned up in the first 8KB. */
+	isBinary: boolean;
+	/** Longer than the requested cap — refetch with no cap to see it all. */
+	truncated: boolean;
+	/** Lines in `contents` (0 for empty or binary). */
+	lineCount: number;
+}
+
 // ── IPC events (Rust → JS) ──────────────────────────────────────────────────
 
 export interface IndexerProgressEvent {
