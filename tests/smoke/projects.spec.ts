@@ -42,8 +42,11 @@ test.describe('projects sidebar', () => {
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
 
-		// Session route header shows the session id (font-mono).
-		await expect(page.locator('header').getByText('session-uuid-001')).toBeVisible();
+		// The header names the session by its indexed title (F6) — the raw uuid
+		// moved to the hover title, so identity is still pinned here.
+		await expect(page.locator('header').getByTitle('session-uuid-001')).toHaveText(
+			'Refactor the auth middleware',
+		);
 		// xterm host renders a div under the terminal panel. xterm injects
 		// the .xterm class on the host element it opens into.
 		await expect(page.locator('.xterm')).toBeVisible();

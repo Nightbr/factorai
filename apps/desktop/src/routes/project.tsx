@@ -1,7 +1,10 @@
+import { Button } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Plus } from 'lucide-react';
+import { useMemo } from 'react';
 import { StatusDot } from '@components/layout/StatusDot';
+import { useStartSession } from '@hooks/useStartSession';
 import { formatRelative } from '@lib/format';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -19,45 +22,106 @@ function ProjectView() {
 		queryFn: () => cmd.listProjects(),
 	});
 	const bySession = useTerminalStore((s) => s.bySession);
+	const startSession = useStartSession();
 
 	const project = projectsQ.data?.find((p) => p.id === id);
+	// Same rule as the sidebar's +: without a resolved cwd, claude would boot in
+	// $HOME and file the session under another project.
+	const canStart = project ? project.realPath !== null : false;
+
+	// Live sessions this project has that the index hasn't seen. A session gets
+	// no `sessions` row until claude writes its transcript and the watcher
+	// reindexes, which for a brand-new one is only after the first message —
+	// without these rows the session you just started vanishes from the list the
+	// moment you navigate away, even though its PTY is very much alive.
+	const pending = useMemo(() => {
+		// Wait for the real list: treating "not loaded yet" as "not indexed" would
+		// flash every live session as a new one.
+		if (!sessionsQ.data) return [];
+		const indexed = new Set(sessionsQ.data.map((s) => s.id));
+		return Object.entries(bySession)
+			.filter(([sessionId, t]) => t.projectId === id && !indexed.has(sessionId))
+			.map(([sessionId, t]) => ({ sessionId, status: t.status }));
+	}, [bySession, sessionsQ.data, id]);
+
+	const isEmpty = sessionsQ.data?.length === 0 && pending.length === 0;
 
 	return (
 		<main className="flex h-full flex-col gap-4 p-6">
-			<header>
-				<h2 className="text-lg font-semibold">{project?.displayName ?? id}</h2>
-				{project?.realPath && (
-					<p className="font-mono text-muted-foreground text-xs">{project.realPath}</p>
-				)}
+			<header className="flex items-start gap-4">
+				<div className="min-w-0 flex-1">
+					<h2 className="text-lg font-semibold">{project?.displayName ?? id}</h2>
+					{project?.realPath && (
+						<p className="font-mono text-muted-foreground text-xs">{project.realPath}</p>
+					)}
+				</div>
+				{/* See Sidebar for why the title sits on a wrapper rather than the
+				    Button itself. */}
+				<span
+					title={canStart ? undefined : 'No project folder on disk — cannot start a session here'}
+				>
+					<Button
+						size="sm"
+						className="gap-1.5"
+						disabled={!canStart}
+						onClick={() => void startSession(id)}
+					>
+						<Plus className="size-3.5" /> New session
+					</Button>
+				</span>
 			</header>
 
 			{sessionsQ.isLoading && <p className="text-muted-foreground text-sm">Loading sessions…</p>}
-			{sessionsQ.data && sessionsQ.data.length === 0 && (
-				<p className="text-muted-foreground text-sm">No sessions in this project yet.</p>
+			{isEmpty && (
+				<p className="text-muted-foreground text-sm">
+					No sessions in this project yet — start one with <b>New session</b>.
+				</p>
 			)}
 
-			<ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
-				{sessionsQ.data?.map((s) => (
-					<li key={s.id}>
-						<Link
-							to="/projects/$projectId/sessions/$sessionId"
-							params={{ projectId: id, sessionId: s.id }}
-							className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
-						>
-							<div className="min-w-0 flex-1">
-								<div className="flex items-center gap-2">
-									{bySession[s.id] && <StatusDot status={bySession[s.id].status} />}
-									<span className="truncate font-medium">{s.title || s.id.slice(0, 8)}</span>
+			{(pending.length > 0 || (sessionsQ.data?.length ?? 0) > 0) && (
+				<ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
+					{pending.map((p) => (
+						<li key={p.sessionId}>
+							<Link
+								to="/projects/$projectId/sessions/$sessionId"
+								params={{ projectId: id, sessionId: p.sessionId }}
+								className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
+							>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<StatusDot status={p.status} />
+										<span className="truncate font-medium">New session</span>
+									</div>
+									<div className="text-muted-foreground text-xs">
+										Nothing recorded yet — it appears with a title once you send a message.
+									</div>
 								</div>
-								<div className="text-muted-foreground text-xs">
-									{s.turnCount} turn{s.turnCount === 1 ? '' : 's'} · {formatRelative(s.updatedAt)}
+								<ChevronRight className="size-4 text-muted-foreground" />
+							</Link>
+						</li>
+					))}
+					{sessionsQ.data?.map((s) => (
+						<li key={s.id}>
+							<Link
+								to="/projects/$projectId/sessions/$sessionId"
+								params={{ projectId: id, sessionId: s.id }}
+								className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
+							>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										{bySession[s.id] && <StatusDot status={bySession[s.id].status} />}
+										<span className="truncate font-medium">{s.title || s.id.slice(0, 8)}</span>
+									</div>
+									<div className="text-muted-foreground text-xs">
+										{s.turnCount} turn{s.turnCount === 1 ? '' : 's'} · {formatRelative(s.updatedAt)}
+									</div>
 								</div>
-							</div>
-							<ChevronRight className="size-4 text-muted-foreground" />
-						</Link>
-					</li>
-				))}
-			</ul>
+								<ChevronRight className="size-4 text-muted-foreground" />
+							</Link>
+						</li>
+					))}
+				</ul>
+			)}
 		</main>
 	);
 }

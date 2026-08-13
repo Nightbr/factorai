@@ -1,3 +1,4 @@
+import type { SessionSummary } from '@factorai/types';
 import { Button } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute } from '@tanstack/react-router';
@@ -10,6 +11,21 @@ import { queryKeys } from '@lib/queryKeys';
 import { useTerminalStore } from '@store/terminalStore';
 import { rootRoute } from './__root';
 
+/**
+ * What to call this session in the header.
+ *
+ * A session factorai just started has no index row until claude writes its
+ * transcript and the watcher reindexes, so it gets a name rather than the raw
+ * uuid it is routed by. An indexed session with no derived title falls back to
+ * its short id, matching the session list.
+ */
+function sessionLabel(sessionId: string, sessions: SessionSummary[] | undefined): string {
+	if (!sessions) return sessionId.slice(0, 8);
+	const session = sessions.find((s) => s.id === sessionId);
+	if (!session) return 'New session';
+	return session.title.trim() || sessionId.slice(0, 8);
+}
+
 function SessionView() {
 	const { sessionId, projectId } = sessionRoute.useParams();
 
@@ -19,6 +35,14 @@ function SessionView() {
 	});
 	const project = projectsQ.data?.find((p) => p.id === projectId);
 	const projectCwd = project?.realPath ?? null;
+
+	// Shares the project route's cache entry, so arriving from the session list
+	// costs nothing. Refetched on `sessions:changed`-driven invalidation, which
+	// is what swaps "New session" for the derived title.
+	const sessionsQ = useQuery({
+		queryKey: queryKeys.sessions(projectId),
+		queryFn: () => cmd.listSessions(projectId),
+	});
 
 	const live = useTerminalStore((s) => s.bySession[sessionId]);
 	// Remounting the Terminal (new key) tears down the dead xterm and triggers
@@ -32,8 +56,10 @@ function SessionView() {
 				<span className="truncate text-foreground text-sm">
 					{project?.displayName ?? projectId}
 				</span>
-				<span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-					{sessionId}
+				{/* The full id is one hover away rather than spending header width on
+				    36 characters nobody reads. */}
+				<span className="min-w-0 flex-1 truncate text-muted-foreground text-xs" title={sessionId}>
+					{sessionLabel(sessionId, sessionsQ.data)}
 				</span>
 				{live ? (
 					<Button
