@@ -81,13 +81,21 @@ export type TerminalStatus = 'running' | 'idle' | 'waiting_input' | 'stopped';
 
 export interface TerminalStatusDto {
 	id: TerminalId;
-	sessionId: string | null;
+	sessionId: string;
+	projectId: string;
 	status: TerminalStatus;
 	lastActivity: number;
 }
 
 export interface SpawnOpts {
-	resumeSessionId?: string;
+	/** The session this PTY runs. Always set: factorai names its own sessions
+	 *  (ADR-0008), so a brand-new one has an id before any process exists. The
+	 *  backend decides `--resume` vs `--session-id` by probing for the
+	 *  transcript — callers never say which they want. */
+	sessionId: string;
+	/** Encoded project dir name under `~/.claude/projects/`, used to locate
+	 *  that transcript. */
+	projectId: string;
 	cwd?: string;
 	cols: number;
 	rows: number;

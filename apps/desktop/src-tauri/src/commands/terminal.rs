@@ -10,6 +10,17 @@ pub fn check_claude_cli() -> ClaudeCliStatus {
 	check_cli()
 }
 
+/// The session id to open for a "new session" in this project.
+///
+/// factorai names its own sessions (ADR-0008) so the id exists before any
+/// process does — the route, the xterm pool and the status store are all keyed
+/// by it. Reuses a live, never-messaged session rather than starting a second
+/// `claude` in the same project; see `TerminalManager::next_session_id`.
+#[tauri::command]
+pub fn start_session(state: State<'_, AppState>, project_id: String) -> String {
+	state.terminals.next_session_id(&project_id)
+}
+
 #[tauri::command]
 pub fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<String> {
 	state.terminals.spawn(opts)
