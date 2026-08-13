@@ -66,7 +66,9 @@ toolchain wired up.
 
 **Exit criteria.**
 - New session button launches `claude` with the project cwd, output
-  streams into xterm, input goes back.
+  streams into xterm, input goes back. **Met late** — the button needed an
+  id to route to, which arrived with ADR-0008 (`start_session` +
+  `--session-id`); see 05-features.md F6.
 - Resume on an existing session attaches to `claude --resume <id>` and
   re-uses the JSONL.
 - Closing the window with live PTYs always shows the kill-confirm

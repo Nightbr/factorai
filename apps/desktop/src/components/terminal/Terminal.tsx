@@ -163,7 +163,7 @@ function ensureTerminal(
 	let pending = spawnInFlight.get(sessionId);
 	if (!pending) {
 		pending = cmd
-			.terminalSpawn({ resumeSessionId: sessionId, cwd: projectCwd ?? undefined, cols, rows })
+			.terminalSpawn({ sessionId, projectId, cwd: projectCwd ?? undefined, cols, rows })
 			.then((id) => {
 				useTerminalStore.getState().attach(sessionId, id, projectId);
 				spawnInFlight.delete(sessionId);

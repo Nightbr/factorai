@@ -56,11 +56,14 @@ search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<
 // for a human-readable result label.
 
 // terminal
-terminal_spawn(opts: SpawnOpts) -> TerminalId          // resume_session_id?, cwd, cols, rows
+start_session(project_id: String) -> SessionId          // see "Session ids" below
+terminal_spawn(opts: SpawnOpts) -> TerminalId           // session_id, project_id, cwd?, cols, rows
 terminal_write(id: TerminalId, data: String) -> ()
 terminal_resize(id: TerminalId, cols: u16, rows: u16) -> ()
 terminal_kill(id: TerminalId) -> ()
 terminal_list() -> Vec<TerminalStatusDto>
+// TerminalStatusDto = { id, sessionId, projectId, status, lastActivity }.
+// sessionId is never null: every PTY runs a named session (ADR-0008).
 
 // files
 read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated flags
@@ -122,8 +125,9 @@ non-`.jsonl` files.
 Owns the `DashMap<TerminalId, Terminal>`. On `terminal_spawn`:
 
 1. Resolve binary via `find_claude_binary()` (see below).
-2. Build argv: `[claude]` or `[claude, --resume, <id>]`, with cwd from
-   options or session's last known cwd.
+2. Build argv: `[claude, <flag>, <session_id>]`, where the flag comes from the
+   transcript probe under "Session ids" — with cwd from options or the
+   session's last known cwd.
 3. Open PTY via `portable_pty::native_pty_system().openpty(size)`.
 4. Spawn child, attach reader on a blocking thread, forward chunks into a
    tokio mpsc, fan out as `terminal:data` events.
@@ -142,6 +146,35 @@ On window close (`tauri::WindowEvent::CloseRequested`):
 
 `kill_all()` is also wired to `Drop` on `TerminalManager` as a last-ditch
 backstop so we never leak children on crashes. **No orphan zombies, ever.**
+
+### Session ids
+
+factorai names its own sessions — see ADR-0008 for why. Two consequences for
+this module.
+
+**`SpawnOpts` carries `{ session_id, project_id, cwd?, cols, rows }`.** There
+is no `resume_session_id` and no mode flag: the caller supplies the id, and
+`session_flag()` decides how it reaches the CLI by probing for
+`<claude_dir>/projects/<project_id>/<session_id>.jsonl`.
+
+| transcript | argv                          |
+| ---------- | ----------------------------- |
+| exists     | `claude --resume <id>`        |
+| missing    | `claude --session-id <id>`    |
+
+Probing per spawn (rather than remembering how a session started) is what
+makes Restart correct for a session that was created new and has since been
+messaged. `project_id` is already the encoded directory name, so locating the
+transcript is a join — never a re-encode of `cwd`, which is ambiguous when a
+path contains a literal `-`.
+
+**`start_session(project_id)` returns the id to route to.** A fresh v4 UUID,
+unless the project already has a live session with no transcript — one that
+has never been messaged, and so is indistinguishable from the one being asked
+for. That reuse keeps an impatient double-click from starting two `claude`
+processes. It lives here rather than in the renderer because the sidebar's
+per-project button fires on projects whose session list was never fetched, and
+because the filesystem can't lag the way the index can.
 
 ### `find_claude_binary()` — three-tier discovery
 

@@ -53,7 +53,7 @@ pub fn run() {
 			info!(?cd, ?data_dir, "factorai booting");
 
 			let indexer = Arc::new(Indexer::for_app(db.clone(), cd.clone(), app.handle().clone()));
-			let terminals = TerminalManager::for_app(app.handle().clone());
+			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone());
 
 			app.manage(AppState {
 				db,
@@ -107,6 +107,7 @@ pub fn run() {
 			commands::files::list_dir,
 			commands::files::read_file,
 			commands::terminal::check_claude_cli,
+			commands::terminal::start_session,
 			commands::terminal::terminal_spawn,
 			commands::terminal::terminal_write,
 			commands::terminal::terminal_resize,

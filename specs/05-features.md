@@ -133,11 +133,51 @@ detect waiting-for-input.
 
 ---
 
-## F6 — Resume
+## F6 — Resume & new session
 
-**Behavior.** Resume = start a new PTY against an existing session id.
-Opening a session view spawns `claude --resume <id>` (F5); there is no
-separate resume button in the MVP.
+**Behavior.** Both are the same act: point a PTY at a session id. Opening a
+session view spawns `claude` for that id (F5) — resuming it if it has a
+transcript, claiming the id if it doesn't. There is no separate resume
+button.
+
+**New session** means factorai picks the id first. `start_session(projectId)`
+returns it, the UI navigates to
+`/projects/$projectId/sessions/$sessionId`, and the terminal mounts and
+spawns exactly as it does for an existing session. The id is real from t=0,
+so the route is linkable and the status dot works before `claude` prints a
+byte. See ADR-0008.
+
+**UI.** Two entry points, both landing you in the new session's terminal
+with the cursor focused:
+
+- Sidebar: a `+` on each project row, revealed on hover/focus. It is a
+  sibling of the row's `<Link>`, not nested inside it.
+- Project view: a `New session` button in the header, which is also what the
+  "no sessions yet" empty state offers.
+
+Both are **disabled** when the project's `realPath` is null or no longer
+exists, with a tooltip saying so. Without a valid cwd `claude` would boot in
+`$HOME` and file the session under a *different* project — the click and the
+result would disagree.
+
+`Cmd/Ctrl + N` (see "Keyboard shortcuts") is not wired yet.
+
+**Reachability before indexing.** A new session has no `sessions` row until
+`claude` writes its transcript and the watcher reindexes, so the project view
+unions `list_sessions` with the live terminals for that project that have no
+row yet, showing them at the top as `New session` with a status dot. Without
+that union a session you navigate away from is unreachable until you type in
+it. The sidebar's per-project count stays index-derived. The session header
+shows `New session` until a title exists rather than a bare UUID.
+
+**Edge cases.**
+- Clicking `+` twice: the second click returns the still-unmessaged session
+  from the first, not a second `claude`.
+- Abandoning a new session (stop it without typing): it leaves the store, the
+  pseudo-row disappears, and nothing was written to `~/.claude`. Returning to
+  that URL later claims the id again and boots a working session.
+- A session id in the URL that is neither indexed nor live behaves the same
+  way — the probe finds no transcript, so it starts rather than errors.
 
 > **Fork removed.** Earlier drafts specced a "fork from event N" feature
 > (`fork_session`, copy JSONL up to a chosen event uuid). It was cut from
@@ -145,7 +185,10 @@ separate resume button in the MVP.
 > the JSONL viewer, and that viewer was removed (see F3). Forking is not on
 > the post-MVP list either unless a concrete need resurfaces.
 
-**Backend.** None beyond `terminal_spawn({ resumeSessionId })`.
+**Backend.** `start_session(projectId)` plus
+`terminal_spawn({ sessionId, projectId, cwd })`. The `--resume` vs
+`--session-id` choice is the backend's, made by probing for the transcript —
+see `specs/03-backend-rust.md` § "Session ids".
 
 **Switchboard ref.** `main.js` (resume path).
 
@@ -362,7 +405,7 @@ limits — its own feature, not a side effect of this one.
 | `Cmd/Ctrl + K`    | Focus sidebar search            |
 | `Cmd/Ctrl + F`    | Find in viewer or terminal      |
 | `Cmd/Ctrl + G`    | Go to line (editor only)        |
-| `Cmd/Ctrl + N`    | New session in active project   |
+| `Cmd/Ctrl + N`    | New session in active project (not wired yet — F6 ships the buttons only) |
 | `Cmd/Ctrl + W`    | Kill active terminal            |
 | `Cmd/Ctrl + ,`    | Open settings                   |
 

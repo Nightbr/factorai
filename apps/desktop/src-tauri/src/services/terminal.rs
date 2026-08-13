@@ -9,7 +9,7 @@
 //! invoked from `Drop` as a last-ditch backstop.
 
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,8 +41,14 @@ pub enum TerminalStatus {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOpts {
-	/// If set, launches `claude --resume <id>` instead of a fresh session.
-	pub resume_session_id: Option<String>,
+	/// The session this PTY runs. factorai always names the session — for an
+	/// existing one that is Claude's id, for a new one an id we minted (see
+	/// `next_session_id` and ADR-0008). Whether it becomes `--resume` or
+	/// `--session-id` is decided by `session_flag`, not by the caller.
+	pub session_id: String,
+	/// Encoded project directory name under `~/.claude/projects/`. Used to
+	/// locate the session's transcript; see `jsonl_path`.
+	pub project_id: String,
 	/// Working directory. Defaults to user $HOME when not provided.
 	pub cwd: Option<String>,
 	pub cols: u16,
@@ -53,7 +59,8 @@ pub struct SpawnOpts {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalStatusDto {
 	pub id: TerminalId,
-	pub session_id: Option<String>,
+	pub session_id: String,
+	pub project_id: String,
 	pub status: TerminalStatus,
 	pub last_activity: i64,
 }
@@ -85,7 +92,8 @@ type StatusCb = Arc<dyn Fn(TerminalStatusEvent) + Send + Sync>;
 type ExitCb = Arc<dyn Fn(TerminalExitEvent) + Send + Sync>;
 
 struct TerminalHandle {
-	session_id: Option<String>,
+	session_id: String,
+	project_id: String,
 	master: Mutex<Box<dyn MasterPty + Send>>,
 	writer: Mutex<Box<dyn Write + Send>>,
 	/// A killer cloned from the child at spawn time. We deliberately do NOT
@@ -108,17 +116,21 @@ pub struct TerminalManager {
 	on_data: DataCb,
 	on_status: StatusCb,
 	on_exit: ExitCb,
+	/// Claude's config dir, for locating session transcripts. Spawn decisions
+	/// read the filesystem rather than the index, so they can't go stale.
+	claude_dir: PathBuf,
 	/// Override for tests. None → use `find_claude_binary()` at spawn time.
 	binary_override: Option<PathBuf>,
 }
 
 impl TerminalManager {
-	pub fn for_app(app: AppHandle) -> Self {
+	pub fn for_app(app: AppHandle, claude_dir: PathBuf) -> Self {
 		let app_data = app.clone();
 		let app_status = app.clone();
 		let app_exit = app;
 		Self {
 			terminals: Arc::new(DashMap::new()),
+			claude_dir,
 			on_data: Arc::new(move |e| {
 				let _ = app_data.emit("terminal:data", e);
 			}),
@@ -132,12 +144,18 @@ impl TerminalManager {
 		}
 	}
 
-	pub fn with_callbacks(on_data: DataCb, on_status: StatusCb, on_exit: ExitCb) -> Self {
+	pub fn with_callbacks(
+		claude_dir: PathBuf,
+		on_data: DataCb,
+		on_status: StatusCb,
+		on_exit: ExitCb,
+	) -> Self {
 		Self {
 			terminals: Arc::new(DashMap::new()),
 			on_data,
 			on_status,
 			on_exit,
+			claude_dir,
 			binary_override: None,
 		}
 	}
@@ -160,6 +178,7 @@ impl TerminalManager {
 				TerminalStatusDto {
 					id: entry.key().clone(),
 					session_id: h.session_id.clone(),
+					project_id: h.project_id.clone(),
 					status: *h.status.lock(),
 					last_activity: h.last_activity.load(Ordering::Relaxed),
 				}
@@ -167,8 +186,32 @@ impl TerminalManager {
 			.collect()
 	}
 
-	/// Spawn `claude` (or `claude --resume <id>`) in a PTY. Returns the
-	/// new terminal id.
+	/// The session id a "new session" click in `project_id` should land on.
+	///
+	/// A live session with no transcript on disk has never been messaged, so
+	/// it is indistinguishable from the one the user is asking for — hand it
+	/// back instead of piling a second `claude` onto the same project. Only
+	/// when there is no such session is a fresh id minted.
+	///
+	/// Deciding here rather than in the frontend is what lets both entry
+	/// points behave identically: the sidebar's per-project button fires on
+	/// projects whose session list was never fetched, so TypeScript cannot
+	/// answer "has this been messaged" without a round trip anyway. This also
+	/// can't race the indexer's 1s debounce, because it reads the transcript
+	/// directly rather than the index.
+	pub fn next_session_id(&self, project_id: &str) -> String {
+		for entry in self.terminals.iter() {
+			let h = entry.value();
+			if h.project_id == project_id
+				&& !jsonl_path(&self.claude_dir, project_id, &h.session_id).exists()
+			{
+				return h.session_id.clone();
+			}
+		}
+		Uuid::new_v4().to_string()
+	}
+
+	/// Spawn `claude` for a session in a PTY. Returns the new terminal id.
 	pub fn spawn(&self, opts: SpawnOpts) -> AppResult<TerminalId> {
 		self.spawn_with_argv(opts, None)
 	}
@@ -188,10 +231,8 @@ impl TerminalManager {
 					None => find_claude_binary()?,
 				};
 				let mut v = vec![bin.to_string_lossy().to_string()];
-				if let Some(sid) = &opts.resume_session_id {
-					v.push("--resume".into());
-					v.push(sid.clone());
-				}
+				v.push(session_flag(&self.claude_dir, &opts.project_id, &opts.session_id).into());
+				v.push(opts.session_id.clone());
 				v
 			}
 		};
@@ -244,7 +285,8 @@ impl TerminalManager {
 		info!(%id, argv = ?argv, cwd = ?cwd_path, "spawned terminal");
 
 		let handle = Arc::new(TerminalHandle {
-			session_id: opts.resume_session_id.clone(),
+			session_id: opts.session_id.clone(),
+			project_id: opts.project_id.clone(),
 			master: Mutex::new(pair.master),
 			writer: Mutex::new(writer),
 			killer: Mutex::new(killer),
@@ -442,6 +484,36 @@ fn spawn_waiter(
 		.expect("spawn term-wait thread");
 }
 
+/// Where Claude Code writes a session's transcript. `project_id` is already
+/// the encoded directory name (`-home-alice-code-foo`), so this is a join
+/// rather than a re-encode of the cwd — no ambiguity about embedded dashes.
+fn jsonl_path(claude_dir: &Path, project_id: &str, session_id: &str) -> PathBuf {
+	claude_dir
+		.join("projects")
+		.join(project_id)
+		.join(format!("{session_id}.jsonl"))
+}
+
+/// The flag that carries a session id into `claude`.
+///
+/// The two are mutually exclusive and both fail loudly when given the wrong
+/// kind of id: `--resume` on an unknown id finds no conversation, and
+/// `--session-id` on a known one exits with "Session ID … is already in use"
+/// (both verified against the installed CLI). The transcript on disk is the
+/// only authority on which kind an id is.
+///
+/// Probing per spawn — rather than remembering how a session started — is
+/// what makes restart correct in every case. A session created new and then
+/// messaged has a transcript, so it resumes; one abandoned before its first
+/// message has none, so it claims its id again.
+fn session_flag(claude_dir: &Path, project_id: &str, session_id: &str) -> &'static str {
+	if jsonl_path(claude_dir, project_id, session_id).exists() {
+		"--resume"
+	} else {
+		"--session-id"
+	}
+}
+
 fn now_ms() -> i64 {
 	std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
@@ -458,11 +530,16 @@ mod tests {
 	type ExitLog = Arc<StdMutex<Vec<TerminalExitEvent>>>;
 
 	fn make_manager() -> (TerminalManager, DataLog, ExitLog) {
+		make_manager_in(PathBuf::from("/nonexistent-claude-dir"))
+	}
+
+	fn make_manager_in(claude_dir: PathBuf) -> (TerminalManager, DataLog, ExitLog) {
 		let data: DataLog = Arc::new(StdMutex::new(Vec::new()));
 		let exit: ExitLog = Arc::new(StdMutex::new(Vec::new()));
 		let dc = data.clone();
 		let ec = exit.clone();
 		let mgr = TerminalManager::with_callbacks(
+			claude_dir,
 			Arc::new(move |e| dc.lock().unwrap().push(e)),
 			Arc::new(|_| {}),
 			Arc::new(move |e| ec.lock().unwrap().push(e)),
@@ -470,12 +547,31 @@ mod tests {
 		(mgr, data, exit)
 	}
 
+	/// SpawnOpts for a test that overrides argv — the ids are carried into the
+	/// handle but never reach a command line.
+	fn opts(cols: u16, rows: u16) -> SpawnOpts {
+		SpawnOpts {
+			session_id: "11111111-2222-3333-4444-555555555555".into(),
+			project_id: "-tmp-test-project".into(),
+			cwd: None,
+			cols,
+			rows,
+		}
+	}
+
+	/// Create the transcript `session_flag` probes for.
+	fn write_transcript(claude_dir: &Path, project_id: &str, session_id: &str) {
+		let path = jsonl_path(claude_dir, project_id, session_id);
+		std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+		std::fs::write(&path, "{}\n").unwrap();
+	}
+
 	#[test]
 	fn spawn_runs_and_streams_output() {
 		let (mgr, data, exit) = make_manager();
 		let id = mgr
 			.spawn_with_argv(
-				SpawnOpts { resume_session_id: None, cwd: None, cols: 80, rows: 24 },
+				opts(80, 24),
 				Some(vec![
 					"/bin/sh".into(),
 					"-c".into(),
@@ -512,7 +608,7 @@ mod tests {
 		let (mgr, data, exit) = make_manager();
 		let id = mgr
 			.spawn_with_argv(
-				SpawnOpts { resume_session_id: None, cwd: None, cols: 80, rows: 24 },
+				opts(80, 24),
 				Some(vec![
 					"/bin/sh".into(),
 					"-c".into(),
@@ -551,7 +647,7 @@ mod tests {
 		let (mgr, _data, exit) = make_manager();
 		let id = mgr
 			.spawn_with_argv(
-				SpawnOpts { resume_session_id: None, cwd: None, cols: 80, rows: 24 },
+				opts(80, 24),
 				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 60".into()]),
 			)
 			.expect("spawn sleep");
@@ -572,7 +668,7 @@ mod tests {
 		let (mgr, _data, _exit) = make_manager();
 		let id = mgr
 			.spawn_with_argv(
-				SpawnOpts { resume_session_id: None, cwd: None, cols: 80, rows: 24 },
+				opts(80, 24),
 				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
 			)
 			.unwrap();
@@ -584,11 +680,93 @@ mod tests {
 	}
 
 	#[test]
+	fn jsonl_path_joins_the_encoded_project_dir() {
+		assert_eq!(
+			jsonl_path(Path::new("/home/a/.claude"), "-home-a-code-foo", "abc-123"),
+			PathBuf::from("/home/a/.claude/projects/-home-a-code-foo/abc-123.jsonl")
+		);
+	}
+
+	#[test]
+	fn session_flag_claims_an_id_with_no_transcript() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		// Nothing on disk: this session does not exist yet, so the id is ours to
+		// claim. `--resume` here would fail with "no conversation found".
+		assert_eq!(
+			session_flag(tmp.path(), "-tmp-proj", "11111111-2222-3333-4444-555555555555"),
+			"--session-id"
+		);
+	}
+
+	#[test]
+	fn session_flag_resumes_an_id_with_a_transcript() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let sid = "11111111-2222-3333-4444-555555555555";
+		write_transcript(tmp.path(), "-tmp-proj", sid);
+		// Claude rejects `--session-id` on an id it already knows ("already in
+		// use"), so an existing transcript must flip us to `--resume`. This is
+		// the case that makes Restart correct after the first message.
+		assert_eq!(session_flag(tmp.path(), "-tmp-proj", sid), "--resume");
+	}
+
+	#[test]
+	fn session_flag_is_scoped_per_project() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let sid = "11111111-2222-3333-4444-555555555555";
+		write_transcript(tmp.path(), "-tmp-other", sid);
+		// Same session id, different project dir — not our transcript.
+		assert_eq!(session_flag(tmp.path(), "-tmp-proj", sid), "--session-id");
+	}
+
+	#[test]
+	fn next_session_id_mints_a_fresh_uuid_when_nothing_is_live() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let (mgr, _d, _e) = make_manager_in(tmp.path().to_path_buf());
+		let a = mgr.next_session_id("-tmp-proj");
+		let b = mgr.next_session_id("-tmp-proj");
+		assert_ne!(a, b, "each call with nothing to reuse is a new session");
+		assert_eq!(a.len(), 36, "expected a uuid, got {a}");
+	}
+
+	#[test]
+	fn next_session_id_reuses_a_live_session_with_no_transcript() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let (mgr, _d, _e) = make_manager_in(tmp.path().to_path_buf());
+		let mut o = opts(80, 24);
+		o.project_id = "-tmp-proj".into();
+		let session = o.session_id.clone();
+		mgr.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+			.unwrap();
+
+		// Live, never messaged → the click lands on it rather than a second claude.
+		assert_eq!(mgr.next_session_id("-tmp-proj"), session);
+		// A different project must not borrow it.
+		assert_ne!(mgr.next_session_id("-tmp-elsewhere"), session);
+		mgr.kill_all();
+	}
+
+	#[test]
+	fn next_session_id_skips_a_live_session_that_has_been_messaged() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let (mgr, _d, _e) = make_manager_in(tmp.path().to_path_buf());
+		let mut o = opts(80, 24);
+		o.project_id = "-tmp-proj".into();
+		let session = o.session_id.clone();
+		write_transcript(tmp.path(), "-tmp-proj", &session);
+		mgr.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+			.unwrap();
+
+		// It has real content, so "new session" must not hijack it.
+		assert_ne!(mgr.next_session_id("-tmp-proj"), session);
+		mgr.kill_all();
+	}
+
+	#[test]
 	fn kill_all_drops_every_terminal() {
 		let (mgr, _data, _exit) = make_manager();
 		for _ in 0..3 {
 			mgr.spawn_with_argv(
-				SpawnOpts { resume_session_id: None, cwd: None, cols: 80, rows: 24 },
+				opts(80, 24),
 				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
 			)
 			.unwrap();

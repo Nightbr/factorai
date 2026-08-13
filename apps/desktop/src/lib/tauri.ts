@@ -56,6 +56,9 @@ export const cmd = {
 		invoke<FileContents>('read_file', { path, maxBytes }),
 
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
+	/** The session id to open for a "new session" in this project — a fresh
+	 *  uuid, or a live one that has never been messaged. See ADR-0008. */
+	startSession: (projectId: string) => invoke<string>('start_session', { projectId }),
 	terminalSpawn: (opts: SpawnOpts) => invoke<TerminalId>('terminal_spawn', { opts }),
 	terminalWrite: (id: TerminalId, data: string) => invoke<void>('terminal_write', { id, data }),
 	terminalResize: (id: TerminalId, cols: number, rows: number) =>
@@ -106,6 +109,8 @@ interface TestFixture {
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	/** Session id `start_session` hands back for a new-session click. */
+	newSessionId?: string;
 	searchHits?: SearchHit[];
 	/** Directory listings keyed by absolute path, for the F12 file tree. */
 	dirListings?: Record<string, DirListing>;
@@ -188,6 +193,12 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return undefined as unknown as T;
 		case 'check_claude_cli':
 			return { installed: false, binaryPath: null, version: null } as unknown as T;
+		case 'start_session':
+			// The real command may hand back a live never-messaged session instead
+			// of a fresh id (it probes the transcript on disk). The mock always
+			// returns the same id — simulating the reuse rule here would only
+			// assert the mock, and the renderer's path is identical either way.
+			return (fx?.newSessionId ?? '00000000-0000-4000-8000-000000000000') as unknown as T;
 		case 'terminal_spawn':
 			return (fx?.terminalSpawnId ?? 'mock-terminal-id') as unknown as T;
 		case 'terminal_write':
