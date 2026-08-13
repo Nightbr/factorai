@@ -36,6 +36,9 @@
 		"zustand": "5.0.12"
 	},
 	"devDependencies": {
+		"@iconify-json/vscode-icons": "1.2.72",
+		"@svgr/core": "8.1.0",
+		"@svgr/plugin-jsx": "8.1.0",
 		"@tailwindcss/vite": "4.2.2",
 		"@tauri-apps/cli": "2.11.2",
 		"@types/react": "19.2.14",
@@ -43,6 +46,7 @@
 		"@vitejs/plugin-react": "6.0.1",
 		"tailwindcss": "4.2.2",
 		"typescript": "6.0.2",
+		"unplugin-icons": "23.0.1",
 		"vite": "8.0.3",
 		"vitest": "3.0.5"
 	}
