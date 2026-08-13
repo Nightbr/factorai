@@ -47,8 +47,14 @@ function ProjectView() {
 	const isEmpty = sessionsQ.data?.length === 0 && pending.length === 0;
 
 	return (
-		<main className="flex h-full flex-col gap-4 p-6">
-			<header className="flex items-start gap-4">
+		// The header stays put and the list scrolls under it. `min-h-0` on the
+		// scroller is what makes that work: without it the flex child takes its
+		// content's height, grows past the pane, and AppShell's overflow-hidden
+		// content region just clips the overflow — with 70 sessions the rows below
+		// the fold were unreachable, with no scrollbar anywhere. Same shape as
+		// routes/search.tsx.
+		<main className="flex h-full flex-col">
+			<header className="flex shrink-0 items-start gap-4 px-6 pt-6 pb-4">
 				<div className="min-w-0 flex-1">
 					<h2 className="text-lg font-semibold">{project?.displayName ?? id}</h2>
 					{project?.realPath && (
@@ -71,57 +77,60 @@ function ProjectView() {
 				</span>
 			</header>
 
-			{sessionsQ.isLoading && <p className="text-muted-foreground text-sm">Loading sessions…</p>}
-			{isEmpty && (
-				<p className="text-muted-foreground text-sm">
-					No sessions in this project yet — start one with <b>New session</b>.
-				</p>
-			)}
+			<div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+				{sessionsQ.isLoading && <p className="text-muted-foreground text-sm">Loading sessions…</p>}
+				{isEmpty && (
+					<p className="text-muted-foreground text-sm">
+						No sessions in this project yet — start one with <b>New session</b>.
+					</p>
+				)}
 
-			{(pending.length > 0 || (sessionsQ.data?.length ?? 0) > 0) && (
-				<ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
-					{pending.map((p) => (
-						<li key={p.sessionId}>
-							<Link
-								to="/projects/$projectId/sessions/$sessionId"
-								params={{ projectId: id, sessionId: p.sessionId }}
-								className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
-							>
-								<div className="min-w-0 flex-1">
-									<div className="flex items-center gap-2">
-										<StatusDot status={p.status} />
-										<span className="truncate font-medium">New session</span>
+				{(pending.length > 0 || (sessionsQ.data?.length ?? 0) > 0) && (
+					<ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
+						{pending.map((p) => (
+							<li key={p.sessionId}>
+								<Link
+									to="/projects/$projectId/sessions/$sessionId"
+									params={{ projectId: id, sessionId: p.sessionId }}
+									className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
+								>
+									<div className="min-w-0 flex-1">
+										<div className="flex items-center gap-2">
+											<StatusDot status={p.status} />
+											<span className="truncate font-medium">New session</span>
+										</div>
+										<div className="text-muted-foreground text-xs">
+											Nothing recorded yet — it appears with a title once you send a message.
+										</div>
 									</div>
-									<div className="text-muted-foreground text-xs">
-										Nothing recorded yet — it appears with a title once you send a message.
+									<ChevronRight className="size-4 text-muted-foreground" />
+								</Link>
+							</li>
+						))}
+						{sessionsQ.data?.map((s) => (
+							<li key={s.id}>
+								<Link
+									to="/projects/$projectId/sessions/$sessionId"
+									params={{ projectId: id, sessionId: s.id }}
+									className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
+								>
+									<div className="min-w-0 flex-1">
+										<div className="flex items-center gap-2">
+											{bySession[s.id] && <StatusDot status={bySession[s.id].status} />}
+											<span className="truncate font-medium">{s.title || s.id.slice(0, 8)}</span>
+										</div>
+										<div className="text-muted-foreground text-xs">
+											{s.turnCount} turn{s.turnCount === 1 ? '' : 's'} ·{' '}
+											{formatRelative(s.updatedAt)}
+										</div>
 									</div>
-								</div>
-								<ChevronRight className="size-4 text-muted-foreground" />
-							</Link>
-						</li>
-					))}
-					{sessionsQ.data?.map((s) => (
-						<li key={s.id}>
-							<Link
-								to="/projects/$projectId/sessions/$sessionId"
-								params={{ projectId: id, sessionId: s.id }}
-								className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
-							>
-								<div className="min-w-0 flex-1">
-									<div className="flex items-center gap-2">
-										{bySession[s.id] && <StatusDot status={bySession[s.id].status} />}
-										<span className="truncate font-medium">{s.title || s.id.slice(0, 8)}</span>
-									</div>
-									<div className="text-muted-foreground text-xs">
-										{s.turnCount} turn{s.turnCount === 1 ? '' : 's'} · {formatRelative(s.updatedAt)}
-									</div>
-								</div>
-								<ChevronRight className="size-4 text-muted-foreground" />
-							</Link>
-						</li>
-					))}
-				</ul>
-			)}
+									<ChevronRight className="size-4 text-muted-foreground" />
+								</Link>
+							</li>
+						))}
+					</ul>
+				)}
+			</div>
 		</main>
 	);
 }
