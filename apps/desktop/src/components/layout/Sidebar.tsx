@@ -1,12 +1,15 @@
 import { Input } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { FolderGit2, Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { Search } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
+import { StatusDot } from '@components/layout/StatusDot';
+import { useActiveProject } from '@hooks/useActiveProject';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { useIndexerStore } from '@store/indexerStore';
+import { useTerminalStore } from '@store/terminalStore';
 
 export function Sidebar() {
 	const navigate = useNavigate();
@@ -16,10 +19,12 @@ export function Sidebar() {
 		refetchInterval: 2000,
 	});
 	const progress = useIndexerStore((s) => s.progress);
-	const params = useParams({ strict: false });
-	const activeProjectId =
-		(params as { id?: string; projectId?: string }).id ??
-		(params as { id?: string; projectId?: string }).projectId;
+	const bySession = useTerminalStore((s) => s.bySession);
+	const liveProjectIds = useMemo(
+		() => new Set(Object.values(bySession).map((t) => t.projectId)),
+		[bySession],
+	);
+	const { projectId: activeProjectId } = useActiveProject();
 
 	// Debounced search: typing navigates to /search?q=… (the route runs the
 	// query). Empty input doesn't navigate, so clearing the box is harmless.
@@ -33,11 +38,8 @@ export function Sidebar() {
 
 	return (
 		<>
-			<header className="flex items-center gap-2 border-b border-border px-4 py-3">
-				<FolderGit2 className="size-4 text-primary" />
-				<span className="font-semibold tracking-tight">factorai</span>
-			</header>
-
+			{/* The app's brand row lives in TopBar now — the sidebar starts at
+			    its search box. */}
 			<div className="border-b border-border px-3 py-2">
 				<div className="relative">
 					<Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 size-3.5 text-muted-foreground" />
@@ -77,12 +79,9 @@ export function Sidebar() {
 											: 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
 									}`}
 								>
-									<ProjectIcon
-										name={p.displayName}
-										path={p.realPath ?? p.id}
-										size={16}
-									/>
+									<ProjectIcon name={p.displayName} path={p.realPath ?? p.id} size={16} />
 									<span className="min-w-0 flex-1 truncate">{p.displayName}</span>
+									{liveProjectIds.has(p.id) && <StatusDot status="running" />}
 									<span className="tabular-nums text-muted-foreground text-xs">
 										{p.sessionCount}
 									</span>

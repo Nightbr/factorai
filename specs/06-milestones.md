@@ -123,7 +123,14 @@ toolchain wired up.
 
 **Deliverables.**
 - Settings UI (theme, fonts, claude path, projects dir override).
-- Keyboard shortcuts.
+- **Custom window titlebar.** Drop the OS decorations
+  (`decorations: false`) and reimplement minimise / maximise / close in
+  `TopBar`, which is already full-window width for exactly this reason.
+  Needs a drag region, per-platform control placement (traffic lights left
+  on macOS, buttons right on Linux) and a double-click-to-maximise handler.
+- Keyboard shortcuts. Includes a home for the file-tree toggle — note
+  `Ctrl+B` is unavailable (readline / tmux collision inside the embedded
+  terminal), so this needs a real binding scheme, not one `useEffect`.
 - Empty states, error toasts, friendly indexing UI.
 - Icons (use placeholder for now, real icon set by release).
 - README with install instructions.

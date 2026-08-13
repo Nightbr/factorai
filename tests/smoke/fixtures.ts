@@ -8,7 +8,15 @@
  */
 
 import type { Page } from '@playwright/test';
-import type { Project, SearchHit, SessionPage, SessionSummary, TerminalId } from '@factorai/types';
+import type {
+	DirEntry,
+	DirListing,
+	Project,
+	SearchHit,
+	SessionPage,
+	SessionSummary,
+	TerminalId,
+} from '@factorai/types';
 
 export interface TestFixture {
 	projects?: Project[];
@@ -16,6 +24,18 @@ export interface TestFixture {
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
 	searchHits?: SearchHit[];
+	/** Directory listings keyed by absolute path (F12 file tree). Paths the
+	 *  test never expands can be omitted — the mock treats them as empty. */
+	dirListings?: Record<string, DirListing>;
+}
+
+declare global {
+	interface Window {
+		__FACTORAI_TEST__?: TestFixture;
+		/** Mocked command calls in order — see `mockInvoke` in lib/tauri.ts. Lets
+		 *  a test assert on the arguments the renderer sent. */
+		__FACTORAI_TEST_CALLS__?: Array<{ name: string; args?: Record<string, unknown> }>;
+	}
 }
 
 /**
@@ -58,6 +78,52 @@ export function fixtureOneProjectOneSession(): TestFixture {
 				limit: 100,
 				total: 42,
 			},
+		},
+	};
+}
+
+function entry(path: string, name: string, over: Partial<DirEntry> = {}): DirEntry {
+	return {
+		name,
+		path: `${path}/${name}`,
+		isDir: false,
+		isSymlink: false,
+		symlinkOutsideRoot: false,
+		size: 128,
+		modifiedAt: null,
+		...over,
+	};
+}
+
+function listing(entries: DirEntry[], over: Partial<DirListing> = {}): DirListing {
+	return { entries, total: entries.length, truncated: false, ...over };
+}
+
+/**
+ * Base shape plus a two-level file tree under the project root, including the
+ * awkward cases: a symlink out of the project (not expandable) and a truncated
+ * directory (the "N more entries" row).
+ */
+export function fixtureWithFileTree(): TestFixture {
+	const base = fixtureOneProjectOneSession();
+	const root = base.projects?.[0]?.realPath ?? '';
+	const apps = `${root}/apps`;
+
+	return {
+		...base,
+		dirListings: {
+			[root]: listing([
+				entry(root, 'apps', { isDir: true }),
+				entry(root, 'vendor', { isDir: true, isSymlink: true, symlinkOutsideRoot: true }),
+				entry(root, 'Cargo.toml'),
+				entry(root, 'README.md'),
+				entry(root, 'main.py'),
+			]),
+			// 2 of 12 — exercises the truncation row.
+			[apps]: listing([entry(apps, 'desktop', { isDir: true }), entry(apps, 'index.ts')], {
+				total: 12,
+				truncated: true,
+			}),
 		},
 	};
 }

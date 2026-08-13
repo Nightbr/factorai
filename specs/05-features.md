@@ -248,6 +248,61 @@ influence Rust (claude binary path, projects dir override).
 
 ---
 
+## F12 — Project file tree
+
+**Behavior.** Browse the active project's directory on disk in a right-hand
+panel. One level loads at a time, when you expand it.
+
+**UI.** `FileTreePanel` lives in the **app shell**, not a route: it stays
+open when you go from a project's session list into a session, which is
+where a file tree earns its keep — next to a running terminal. Which
+project it shows follows the route (`/projects/$id` or
+`/projects/$projectId/sessions/$sessionId`); a route with neither says
+"Select a project to browse its files."
+
+- Toggled from the `PanelRight` button at the right of the app top bar.
+  Open state and width persist (see below). No keyboard shortcut yet:
+  `Ctrl+B` is readline's back-a-char and tmux's prefix, so binding it would
+  break typing in the embedded claude terminal.
+- Panel header: `Files`, collapse-all, refresh, close. The header is where
+  a `Changes` tab (git status) goes when that ships.
+- Row: chevron for directories, language icon for files (ADR-0006), name,
+  and a link glyph on symlinks. Single click selects; a directory also
+  toggles. Double-click or `Enter` on a file opens it in the OS default
+  app via `plugin-shell`'s `open` (`shell:allow-open` is already granted).
+- Root row is the project's display name, expanded the first time the tree
+  is shown for that project. Collapse-all collapses the root too, and
+  isn't undone on the next render.
+- Resizable by dragging the panel's left edge, 200–600px, keyboard
+  accessible via arrow keys on the separator.
+
+**Backend.** `list_dir(path, root?)` — see specs/03-backend-rust.md
+§ `files` for the sorting, `.git` exclusion, entry cap and symlink rules.
+
+**State.** `panelStore` (zustand). `open` and `width` persist to
+localStorage; expanded paths are per-project and deliberately **not**
+persisted — a path that existed last session may be gone, and rehydrating
+a tree of stale paths is worse than starting collapsed. Migrates behind
+`prefsStore` / `tauri-plugin-store` when F11 lands.
+
+**Freshness.** No watcher. Each directory query has a 15s staleTime and
+opts into refetch-on-window-focus (the app default is off), plus the
+explicit refresh button. Pointing a recursive watcher at arbitrary project
+directories means ignore rules, per-project watcher lifecycle and inotify
+limits — its own feature, not a side effect of this one.
+
+**Edge cases.**
+- Project has no resolvable path → "Project folder not found on disk."
+  The toggle keeps working.
+- Unreadable directory → inline `permission denied` row in the tree, not a
+  toast.
+- Directory over the cap → trailing "… N more entries" row, so truncation
+  is visible rather than silent.
+- Symlink out of the project → shown with a dimmed chevron, never expanded.
+- Empty directory → `empty` row, so an expanded node never looks stuck.
+
+---
+
 ## Cross-cutting concerns
 
 ### Keyboard shortcuts

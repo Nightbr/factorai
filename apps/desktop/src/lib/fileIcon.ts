@@ -1,5 +1,5 @@
 /**
- * Filename → icon key for the file tree (F11).
+ * Filename → icon key for the file tree (F12).
  *
  * Pure strings only, no icon imports, so it unit-tests without the Vite icon
  * plugin (same split as `lib/icon.ts`). The keys are resolved to actual SVG
