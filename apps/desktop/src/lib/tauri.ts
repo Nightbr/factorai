@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
 	ClaudeCliStatus,
+	DirListing,
 	IndexerProgressEvent,
 	Project,
 	QuitRequestedEvent,
@@ -45,6 +46,10 @@ export const cmd = {
 	searchSessions: (query: string, projectId?: string, limit?: number) =>
 		invoke<SearchHit[]>('search_sessions', { query, projectId, limit }),
 
+	/** List one directory. `root` is the project root — only used to flag
+	 *  symlinks that point out of the project. */
+	listDir: (path: string, root?: string) => invoke<DirListing>('list_dir', { path, root }),
+
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
 	terminalSpawn: (opts: SpawnOpts) => invoke<TerminalId>('terminal_spawn', { opts }),
 	terminalWrite: (id: TerminalId, data: string) => invoke<void>('terminal_write', { id, data }),
@@ -84,11 +89,23 @@ interface TestFixture {
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
 	searchHits?: SearchHit[];
+	/** Directory listings keyed by absolute path, for the F11 file tree. */
+	dirListings?: Record<string, DirListing>;
+}
+
+/** One mocked command call, recorded in order while a fixture is installed. */
+interface MockCall {
+	name: string;
+	args?: Record<string, unknown>;
 }
 
 declare global {
 	interface Window {
 		__FACTORAI_TEST__?: TestFixture;
+		/** Log of mocked command calls — lets smoke tests assert on the arguments
+		 *  the renderer sent, not just on what it rendered. Only populated when a
+		 *  fixture is installed. */
+		__FACTORAI_TEST_CALLS__?: MockCall[];
 	}
 }
 
@@ -98,6 +115,10 @@ function testFixture(): TestFixture | undefined {
 
 async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Promise<T> {
 	const fx = testFixture();
+	if (fx) {
+		window.__FACTORAI_TEST_CALLS__ ??= [];
+		window.__FACTORAI_TEST_CALLS__.push({ name, args });
+	}
 	switch (name) {
 		case 'list_projects':
 			return (fx?.projects ?? []) as unknown as T;
@@ -124,6 +145,13 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				(h) => !projectId || h.projectId === projectId,
 			);
 			return hits as unknown as T;
+		}
+		case 'list_dir': {
+			const path = String(args?.path ?? '');
+			const listing = fx?.dirListings?.[path];
+			// An unlisted path is an empty directory, not an error — fixtures only
+			// declare the paths a test actually expands.
+			return (listing ?? { entries: [], total: 0, truncated: false }) as unknown as T;
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;

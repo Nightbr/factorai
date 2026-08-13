@@ -103,6 +103,32 @@ export interface QuitRequestedEvent {
 	liveCount: number;
 }
 
+// ── Files ───────────────────────────────────────────────────────────────────
+
+/** One entry in a project directory listing (F11 file tree). */
+export interface DirEntry {
+	name: string;
+	/** Absolute path on disk — pass it straight back to `listDir` to expand. */
+	path: string;
+	/** True for directories and for symlinks resolving to one. */
+	isDir: boolean;
+	isSymlink: boolean;
+	/** Symlink resolving outside the project root (or unresolvable): shown,
+	 *  never expanded. */
+	symlinkOutsideRoot: boolean;
+	/** Bytes for files, 0 for directories. */
+	size: number;
+	/** Epoch milliseconds, null when the filesystem won't say. */
+	modifiedAt: number | null;
+}
+
+export interface DirListing {
+	entries: DirEntry[];
+	/** Entries found before the cap — `total > entries.length` when truncated. */
+	total: number;
+	truncated: boolean;
+}
+
 // ── IPC events (Rust → JS) ──────────────────────────────────────────────────
 
 export interface IndexerProgressEvent {

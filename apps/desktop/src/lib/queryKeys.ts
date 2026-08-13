@@ -7,4 +7,7 @@ export const queryKeys = {
 		['session-tail', sessionId, limit] as const,
 	search: (query: string, projectId: string | null) =>
 		['search', query, projectId] as const,
+	/** One directory's listing in the file tree. Keyed by absolute path so
+	 *  every expanded node caches independently. */
+	dir: (path: string) => ['dir', path] as const,
 };

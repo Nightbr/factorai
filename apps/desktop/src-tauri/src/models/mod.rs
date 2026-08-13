@@ -105,3 +105,34 @@ pub struct SessionsChanged {
 	pub project_id: String,
 	pub session_ids: Vec<String>,
 }
+
+/// One entry in a project directory listing. Mirrors `@factorai/types`
+/// `DirEntry`. See specs/05-features.md F11.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirEntry {
+	pub name: String,
+	/// Absolute path on disk — the renderer passes it straight back to
+	/// `list_dir` when expanding, so it never has to join paths itself.
+	pub path: String,
+	/// True for directories and for symlinks that resolve to one.
+	pub is_dir: bool,
+	pub is_symlink: bool,
+	/// A symlink whose target resolves outside the project root (or can't be
+	/// resolved at all). The tree shows it but refuses to expand it.
+	pub symlink_outside_root: bool,
+	/// Bytes for files, 0 for directories.
+	pub size: u64,
+	/// Epoch milliseconds, `None` if the platform or filesystem won't say.
+	pub modified_at: Option<i64>,
+}
+
+/// One directory's worth of entries. `total` counts what we found before the
+/// entry cap, so the UI can report how many rows it isn't showing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirListing {
+	pub entries: Vec<DirEntry>,
+	pub total: usize,
+	pub truncated: bool,
+}

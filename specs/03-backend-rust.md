@@ -20,6 +20,7 @@ services/
   terminal.rs         # TerminalManager — owns PTYs
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
+  files.rs            # list_dir — one level of a project directory
 db/
   mod.rs              # open(), migrate(), Pool wrapper
   migrations/
@@ -63,7 +64,7 @@ terminal_list() -> Vec<TerminalStatusDto>
 
 // files
 read_file(path: String, max_bytes: Option<usize>) -> FileContents     // includes mime + size
-list_dir(path: String) -> Vec<DirEntry>
+list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped
 file_diff(path: String, original: String, modified: String) -> DiffPayload
 
 // memory / plans
@@ -215,6 +216,33 @@ one-line change once the path is read in one place.
 Query FTS5 with the user's input, expand using `MATCH 'token*'` for
 prefixes. Hydrate hits by joining back to `sessions`. Return snippets via
 `snippet()` SQL function.
+
+### `files`
+
+`list_dir(path, root?) -> DirListing` lists **one** directory — there is no
+recursion in the backend at all. The file tree (F11) expands lazily, one call
+per opened node, which is what keeps `node_modules` / `.venv` / symlink cycles
+from ever being walked.
+
+Rules, all enforced in Rust so the renderer stays dumb:
+
+- `.git` is skipped. Every other dotfile and cache directory is listed —
+  `.claude/` is one of the more interesting directories in this app.
+- Sort is directories first, then case-insensitive by name (ties broken
+  case-sensitively so the order is total).
+- Capped at `MAX_ENTRIES` (2000) **after** sorting, so the prefix is
+  deterministic. `total` reports what was found and `truncated` says whether
+  anything was cut.
+- A symlink is flagged (`isSymlink`), and `symlinkOutsideRoot` is set when its
+  target resolves outside `root` or can't be resolved at all. The tree shows
+  those rows but won't expand them.
+- Missing path → `NotFound`. A file rather than a directory →
+  `InvalidInput`. An unreadable directory → `Io("permission denied: …")`,
+  which the tree renders as an inline row instead of a toast.
+- Individual entries that fail mid-iteration (a racing delete) are skipped
+  rather than failing the whole listing.
+
+Read-only, like the rest of our disk access (ADR-0004).
 
 ## State management
 
