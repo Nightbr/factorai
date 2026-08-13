@@ -60,6 +60,19 @@ export const cmd = {
 	appQuitConfirmed: () => invoke<void>('app_quit_confirmed'),
 };
 
+/**
+ * Open a path with the OS default application. The plugin is imported lazily so
+ * browser-only dev (and Playwright) never load it — there it's a no-op rather
+ * than a rejected invoke.
+ */
+export async function openExternally(path: string): Promise<void> {
+	if (!isTauri()) return;
+	// plugin-shell 2.3.x calls this `open`; the capability grant is
+	// `shell:allow-open` in capabilities/default.json.
+	const { open } = await import('@tauri-apps/plugin-shell');
+	await open(path);
+}
+
 export const events = {
 	onIndexerProgress: (cb: (p: IndexerProgressEvent) => void) =>
 		listen<IndexerProgressEvent>('indexer:progress', cb),
@@ -89,7 +102,7 @@ interface TestFixture {
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
 	searchHits?: SearchHit[];
-	/** Directory listings keyed by absolute path, for the F11 file tree. */
+	/** Directory listings keyed by absolute path, for the F12 file tree. */
 	dirListings?: Record<string, DirListing>;
 }
 
@@ -141,9 +154,7 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			const query = String(args?.query ?? '').trim();
 			const projectId = args?.projectId ? String(args.projectId) : null;
 			if (!query) return [] as unknown as T;
-			const hits = (fx?.searchHits ?? []).filter(
-				(h) => !projectId || h.projectId === projectId,
-			);
+			const hits = (fx?.searchHits ?? []).filter((h) => !projectId || h.projectId === projectId);
 			return hits as unknown as T;
 		}
 		case 'list_dir': {

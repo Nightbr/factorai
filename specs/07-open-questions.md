@@ -157,4 +157,60 @@ there's nothing to disturb. Branch-based workflow starts at M1.
 
 ## New questions (added during implementation)
 
-_None yet. Append below as they come up._
+---
+
+## Q14 — Where does the file tree panel live? → **app shell, not a route**
+
+**Decision.** `FileTreePanel` mounts in `AppShell` and follows the route's
+project, rather than being rendered by `routes/project.tsx`.
+
+The feature was asked for as "a panel on the project page", but a tree that
+vanishes the moment you open a session disappears exactly when it's most
+useful — beside a running terminal. Shell placement is a superset of the
+original ask and costs one `useParams({ strict: false })` lookup, the same
+trick `Sidebar` already used.
+
+Consequence: the app needed somewhere to hang the toggle, which is what
+introduced `TopBar` (Q15).
+
+---
+
+## Q15 — Toggle affordance for a shell-level panel → **full-width top bar**
+
+**Decision.** Add a 40px `TopBar` spanning the **whole** window, above the
+sidebar, holding the brand (moved out of `Sidebar`), reserved space for a
+future global search, and the panel toggle at the right.
+
+Full width rather than content-width because the custom titlebar (M5) wants
+that exact geometry — window controls right, drag region across the middle.
+Building it content-width now would mean restructuring the shell then, and
+leaves the app with two header rows at different offsets in the meantime.
+
+No keyboard shortcut ships with it: `Ctrl+B` — the obvious binding — is
+readline's back-a-char and tmux's prefix, so a global handler would break
+typing inside the embedded claude terminal. Deferred to M5's keybinding
+work.
+
+---
+
+## Q16 — Icon set for file types → **vscode-icons via unplugin-icons**
+
+**Decision.** See ADR-0006. The mockup that prompted the feature was
+Material Icon Theme, which ships 1250 loose SVGs and a Node-oriented entry
+point; globbing those out of a pnpm-symlinked `node_modules` is fragile, so
+we took the iconify collection with static per-type imports instead. Close
+in spirit, not pixel-identical.
+
+---
+
+## Q17 — Keeping the tree fresh → **staleTime + focus refetch, no watcher**
+
+**Decision.** Each directory query gets a 15s `staleTime` and opts into
+`refetchOnWindowFocus` (the app-wide default is `false`), plus an explicit
+refresh button in the panel header.
+
+A recursive `notify` watcher on arbitrary project directories is a real
+feature, not a flag: it needs ignore rules so `node_modules` / `.venv`
+churn doesn't flood the channel, per-project watcher lifecycle, and inotify
+watch-limit handling on Linux. The existing watcher is scoped to
+`~/.claude/projects` and stays that way.

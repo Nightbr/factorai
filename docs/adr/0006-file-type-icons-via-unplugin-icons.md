@@ -1,10 +1,10 @@
 # ADR-0006 — File-type icons via `unplugin-icons` + `@iconify-json/vscode-icons`
 
-**Status.** Accepted (F11 file tree, 2026-08-13).
+**Status.** Accepted (F12 file tree, 2026-08-13).
 
 ## Context
 
-The project file tree (specs/05-features.md F11) needs per-filetype icons —
+The project file tree (specs/05-features.md F12) needs per-filetype icons —
 a python logo on `conftest.py`, a whale on `Dockerfile`, `{}` on
 `project.json`. Recognising a file by its icon is most of what makes a tree
 scannable, and `lucide-react` (already a dependency) has no language logos:
@@ -82,5 +82,5 @@ The mapping is split in two on purpose:
 
 ## Related
 
-- `specs/05-features.md` F11 (project file tree)
+- `specs/05-features.md` F12 (project file tree)
 - `apps/desktop/src/lib/fileIcon.ts`, `components/files/FileIcon.tsx`

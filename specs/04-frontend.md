@@ -16,8 +16,10 @@ apps/desktop/src/
 │   └── settings.tsx
 ├── components/
 │   ├── layout/
-│   │   ├── AppShell.tsx     # sidebar + main split
+│   │   ├── AppShell.tsx     # top bar + sidebar | content | panel
+│   │   ├── TopBar.tsx       # brand, reserved space, panel toggle
 │   │   ├── Sidebar.tsx      # projects, search input, status dots
+│   │   ├── PanelResizer.tsx # drag handle for the right panel
 │   │   └── StatusBar.tsx
 │   ├── sessions/
 │   │   ├── SessionList.tsx
@@ -26,6 +28,10 @@ apps/desktop/src/
 │   ├── terminal/
 │   │   ├── Terminal.tsx     # xterm host
 │   │   └── TerminalToolbar.tsx
+│   ├── files/
+│   │   ├── FileTreePanel.tsx        # right panel: header + root node
+│   │   ├── FileTreeNode.tsx         # one row, recursive, lazy list_dir
+│   │   └── FileIcon.tsx             # icon-key → SVG (ADR-0006)
 │   ├── viewer/
 │   │   ├── FilePreview.tsx          # CodeMirror read-only
 │   │   ├── DiffView.tsx             # CodeMirror @merge inline/side-by-side
@@ -38,9 +44,12 @@ apps/desktop/src/
 │   ├── sessionStore.ts      # active session + side-panel state
 │   ├── terminalStore.ts     # terminal handle ↔ session mapping
 │   └── prefsStore.ts        # persisted via tauri-plugin-store
+├── hooks/
+│   └── useActiveProject.ts  # project the current route is about
 ├── lib/
 │   ├── tauri.ts             # typed invoke + listen wrappers
 │   ├── queryKeys.ts
+│   ├── fileIcon.ts          # filename → icon key (pure)
 │   └── format.ts
 └── styles/
     └── globals.css          # imports @factorai/ui/styles
@@ -61,27 +70,40 @@ Hash history (same as factorai-v0) — no server-side routes needed.
 
 ## Layout pattern
 
+`AppShell` is a column: a full-window top bar, then a row of sidebar,
+route content, and the right-hand panel.
+
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  Sidebar (220px)         │   Main                                  │
-│                          │  ┌──────────────────────────────────┐   │
-│  Projects                │  │ Terminal (xterm)                 │   │
-│  ├ factorai            • │  │                                  │   │
-│  ├ heypearl              │  ├──────────────────────────────────┤   │
-│  └ ...                   │  │ Side panel: viewer | diff | plan │   │
-│                          │  │                                  │   │
-│  Sessions (current proj) │  │ (collapsible / resizable)        │   │
-│  ┌ session-a    busy •   │  └──────────────────────────────────┘   │
-│  └ session-b             │                                          │
-│                          │                                          │
-│  [search input]          │                                          │
-└────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ ◱ factorai        (reserved: search, window controls)          [▣]   │  TopBar, 40px
+├───────────────┬──────────────────────────────────┬───────────────────┤
+│ [search]      │  Route content                   │ Files       ⇕ ⟳ ✕ │
+│               │                                  │ ▾ factorai        │
+│ Projects      │  session list, or terminal,      │   ▸ apps          │
+│ ├ factorai  • │  or search results               │   ▸ specs         │
+│ ├ heypearl    │                                  │     Cargo.toml    │
+│ └ ...         │                                  │     README.md     │
+│               │                                  │                   │
+│ Indexing…     │                                  │                   │
+└───────────────┴──────────────────────────────────┴───────────────────┘
+   w-64                                              200–600px, draggable
 ```
 
-The side panel is toggled by the JSONL viewer's "open file" links, by
-clicking a tool_use event that touched a file, or manually. Split via
-panel-resizing primitives (probably a tiny custom hook + CSS grid; no need
-to pull in `react-resizable-panels` for MVP).
+The top bar spans the **full window width** deliberately: that's the shape
+the custom titlebar needs when we drop the OS decorations (M5), so that
+step adds buttons instead of restructuring the shell. The app's brand row
+lives there rather than at the top of the sidebar.
+
+The right panel holds the **project file tree** (F12) and lives in the
+shell, not a route, so it survives navigating from a project into one of
+its sessions. Which project it shows follows the route params.
+`PanelResizer` is a plain pointer-capture drag on the panel's left edge —
+no `react-resizable-panels` dependency. Resizing on the session route
+shrinks xterm, and the terminal's `ResizeObserver` → `fit()` → `onResize`
+chain pushes the new geometry to the PTY.
+
+The file *preview / diff* panel (F7, F8) is a separate surface, opened from
+"open file" links, and is not built yet.
 
 ## State stores (Zustand)
 
@@ -122,6 +144,33 @@ Owns the mapping of (sessionId → terminalId). When the user navigates to a
 session that already has a live PTY, the Terminal component reattaches by
 listening to its `terminal:data` event and writing to xterm. On unmount we
 do **not** kill the PTY — only an explicit "close terminal" action does.
+
+### `panelStore`
+
+The right-hand panel (F12 file tree). Built — see
+`store/panelStore.ts`.
+
+```ts
+type PanelState = {
+  open: boolean;                                    // persisted
+  width: number;                                    // persisted, 200–600
+  expandedByProject: Record<string, Set<string>>;   // NOT persisted
+  selectedPath: string | null;
+  toggle / setOpen / setWidth: …
+  toggleExpanded / seedRoot / collapseAll: (projectId, …) => void;
+};
+```
+
+`open` and `width` round-trip through zustand's `persist` middleware into
+localStorage — not `tauri-plugin-store` — so browser-only dev and the
+Playwright suite exercise the same code path. They move behind `prefsStore`
+when that lands (`sidePanelWidth` below is the same preference).
+
+Expanded paths are per project and deliberately not persisted: a path that
+existed last session may be gone, and rehydrating a tree of stale paths is
+worse than starting collapsed. `seedRoot` expands the root the *first* time
+a project's tree renders, distinguishing "never seeded" (`undefined`) from
+"collapsed everything" (empty set) so collapse-all isn't undone.
 
 ### `prefsStore`
 

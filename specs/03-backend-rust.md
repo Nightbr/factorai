@@ -220,7 +220,7 @@ prefixes. Hydrate hits by joining back to `sessions`. Return snippets via
 ### `files`
 
 `list_dir(path, root?) -> DirListing` lists **one** directory — there is no
-recursion in the backend at all. The file tree (F11) expands lazily, one call
+recursion in the backend at all. The file tree (F12) expands lazily, one call
 per opened node, which is what keeps `node_modules` / `.venv` / symlink cycles
 from ever being walked.
 

@@ -107,7 +107,7 @@ pub struct SessionsChanged {
 }
 
 /// One entry in a project directory listing. Mirrors `@factorai/types`
-/// `DirEntry`. See specs/05-features.md F11.
+/// `DirEntry`. See specs/05-features.md F12.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirEntry {

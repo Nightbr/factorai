@@ -1,4 +1,4 @@
-//! Directory listing for the project file tree (specs/05-features.md F11).
+//! Directory listing for the project file tree (specs/05-features.md F12).
 //!
 //! Deliberately shallow: one call lists exactly one directory. The tree in the
 //! renderer expands lazily, so we never walk `node_modules` / `.venv` / a

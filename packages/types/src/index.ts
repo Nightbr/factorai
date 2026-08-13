@@ -105,7 +105,7 @@ export interface QuitRequestedEvent {
 
 // ── Files ───────────────────────────────────────────────────────────────────
 
-/** One entry in a project directory listing (F11 file tree). */
+/** One entry in a project directory listing (F12 file tree). */
 export interface DirEntry {
 	name: string;
 	/** Absolute path on disk — pass it straight back to `listDir` to expand. */
