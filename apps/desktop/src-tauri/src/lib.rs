@@ -104,6 +104,7 @@ pub fn run() {
 			commands::sessions::get_session,
 			commands::sessions::get_session_tail,
 			commands::sessions::search_sessions,
+			commands::files::list_dir,
 			commands::terminal::check_claude_cli,
 			commands::terminal::terminal_spawn,
 			commands::terminal::terminal_write,
