@@ -16,7 +16,8 @@ test.describe('full-text search', () => {
 
 		// Clicking the hit opens that session's terminal view.
 		await page.getByText(/please refactor the auth middleware/i).click();
-		await expect(page.locator('header').getByText('session-uuid-001')).toBeVisible();
+		// Header names the session by title; the uuid is on the hover title (F6).
+		await expect(page.locator('header').getByTitle('session-uuid-001')).toBeVisible();
 		await expect(page.locator('.xterm')).toBeVisible();
 	});
 

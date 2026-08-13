@@ -155,10 +155,24 @@ with the cursor focused:
 - Project view: a `New session` button in the header, which is also what the
   "no sessions yet" empty state offers.
 
-Both are **disabled** when the project's `realPath` is null or no longer
-exists, with a tooltip saying so. Without a valid cwd `claude` would boot in
-`$HOME` and file the session under a *different* project — the click and the
-result would disagree.
+Both are **disabled** when the project's `realPath` is null, with a tooltip
+saying so. That is the case that would otherwise misfile: with no cwd to pass,
+`claude` boots in `$HOME` and the session lands under a *different* project
+than the row that was clicked.
+
+A `realPath` that resolved once but has since been deleted is **not**
+pre-disabled — `list_projects` reports the `cwd` recorded in the transcript and
+never stats it. `terminal_spawn` refuses that spawn instead, and `Terminal`
+prints the error in the pane. **This has to be enforced in the backend**:
+`portable_pty`'s `CommandBuilder::cwd` does not fail on a missing directory, it
+just starts the child somewhere else — `$HOME` — which silently produces
+exactly the misfiling the disabled button exists to prevent. Found in QA, see
+the guard in `spawn_with_argv`.
+
+Pre-disabling the button for that case wants a `missing` flag on `Project`,
+which F1's grayed-out missing-project state needs anyway; it belongs there, not
+here. The backend guard means the worst outcome meanwhile is a clear error
+rather than a session in the wrong project.
 
 `Cmd/Ctrl + N` (see "Keyboard shortcuts") is not wired yet.
 

@@ -18,7 +18,7 @@ apps/desktop/src/
 │   ├── layout/
 │   │   ├── AppShell.tsx     # top bar + sidebar | content | panel
 │   │   ├── TopBar.tsx       # brand, reserved space, panel toggle
-│   │   ├── Sidebar.tsx      # projects, search input, status dots
+│   │   ├── Sidebar.tsx      # projects, search input, status dots, new-session +
 │   │   ├── PanelResizer.tsx # drag handle for the right panel
 │   │   └── StatusBar.tsx
 │   ├── sessions/
@@ -90,6 +90,30 @@ route content, and the right-hand panel.
 └───────────────┴──────────────────────────────────┴───────────────────┘
    w-64                                              200–600px, draggable
 ```
+
+## Starting a session
+
+`useStartSession()` is the single entry point behind both new-session buttons
+(the sidebar row's hover `+` and the project header's button): it calls
+`start_session(projectId)` and navigates to the returned id. Nothing else is
+needed to get a terminal — the session route mounts `Terminal`, which spawns
+the PTY for whatever id is in the URL, so "new" and "resume" are one path. The
+id is minted in Rust rather than by `crypto.randomUUID()` here, because the
+reuse rule needs the filesystem; see ADR-0008 and F6.
+
+Two presentation consequences, both because a new session has no `sessions`
+row until Claude writes its transcript:
+
+- `ProjectView` unions `list_sessions` with the live terminals for that
+  project that have no row yet, rendering them first as `New session`. It
+  waits for `sessionsQ.data` before deciding — treating "not loaded" as "not
+  indexed" would flash every live session as new.
+- `SessionView`'s header names the session by its indexed title, falling back
+  to `New session` when there is no row and to the short id when a row has no
+  derived title. The full uuid moved to the element's `title`.
+
+The sidebar's per-project session count stays index-derived — it counts what's
+on disk, not what's running.
 
 The top bar spans the **full window width** deliberately: that's the shape
 the custom titlebar needs when we drop the OS decorations (M5), so that
