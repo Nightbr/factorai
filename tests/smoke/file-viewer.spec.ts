@@ -113,6 +113,77 @@ test.describe('file viewer', () => {
 		]);
 	});
 
+	test('@smoke markdown opens rendered, and can be switched to source', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		// Rendered by default: a real heading element and a GFM table, neither of
+		// which Monaco would produce.
+		const md = viewer.getByTestId('markdown-view');
+		await expect(md).toBeVisible();
+		await expect(md.getByRole('heading', { name: 'foo' })).toBeVisible();
+		await expect(md.getByRole('table')).toBeVisible();
+		await expect(viewer.getByTestId('file-view-editor')).toHaveCount(0);
+
+		await viewer.getByRole('button', { name: 'View source' }).click();
+
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+		await expect(viewer.getByTestId('markdown-view')).toHaveCount(0);
+
+		// And back again.
+		await viewer.getByRole('button', { name: 'Preview' }).click();
+		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
+	});
+
+	test('@smoke a relative markdown link opens that file in the viewer', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		await viewer.getByRole('link', { name: 'the guide' }).click();
+
+		// docs/guide.md resolved against the README's directory. Scoped to the
+		// rendered body — the modal title says "guide.md", which also matches.
+		await expect(
+			viewer.getByTestId('markdown-view').getByRole('heading', { name: 'Guide' }),
+		).toBeVisible();
+		expect(page.url()).toContain(encodeURIComponent(`${ROOT}/docs/guide.md`));
+	});
+
+	test('@smoke the header controls sit on one row with the close button', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const names = ['Copy path', 'Open in default app', 'Close viewer'];
+		const boxes = [];
+		for (const name of names) {
+			const box = await viewer.getByRole('button', { name }).boundingBox();
+			expect(box, `${name} should be rendered`).not.toBeNull();
+			boxes.push(box as { y: number; height: number });
+		}
+
+		// Same vertical centre, within a pixel — the built-in absolutely
+		// positioned close button used to sit off this row.
+		const centres = boxes.map((b) => b.y + b.height / 2);
+		for (const c of centres) {
+			expect(Math.abs(c - centres[0])).toBeLessThanOrEqual(1);
+		}
+
+		// Closing through the header button clears the URL like Esc does.
+		await viewer.getByRole('button', { name: 'Close viewer' }).click();
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
+		expect(page.url()).not.toContain('file=');
+	});
+
 	test('@smoke a file that vanished since the tree listed it explains itself', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

@@ -1,1 +1,6 @@
 @import "@factorai/ui/styles";
+
+/* `prose` classes for the markdown preview in the file viewer (F7). Registered
+   here rather than in @factorai/ui: the plugin is a desktop-app dependency and
+   nothing in the primitives package renders markdown. */
+@plugin "@tailwindcss/typography";

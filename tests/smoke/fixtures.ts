@@ -154,7 +154,21 @@ export function fixtureWithFileTree(): TestFixture {
 				`${root}/Cargo.toml`,
 				'[package]\nname = "foo"\nversion = "0.1.0"\n',
 			),
-			[`${root}/README.md`]: contents(`${root}/README.md`, '# foo\n\nA test project.\n'),
+			[`${root}/README.md`]: contents(
+				`${root}/README.md`,
+				[
+					'# foo',
+					'',
+					'A test project. See [the guide](docs/guide.md) or',
+					'[the website](https://example.com).',
+					'',
+					'| Package | Purpose |',
+					'| --- | --- |',
+					'| `foo-core` | Shared helpers |',
+					'',
+				].join('\n'),
+			),
+			[`${root}/docs/guide.md`]: contents(`${root}/docs/guide.md`, '# Guide\n\nDeeper docs.\n'),
 			[`${root}/logo.png`]: contents(`${root}/logo.png`, '', {
 				isBinary: true,
 				size: 20_480,

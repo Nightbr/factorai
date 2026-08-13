@@ -34,12 +34,15 @@
 		"monaco-editor": "0.56.0",
 		"react": "19.2.4",
 		"react-dom": "19.2.4",
+		"react-markdown": "10.1.0",
+		"remark-gfm": "4.0.1",
 		"zustand": "5.0.12"
 	},
 	"devDependencies": {
 		"@iconify-json/vscode-icons": "1.2.72",
 		"@svgr/core": "8.1.0",
 		"@svgr/plugin-jsx": "8.1.0",
+		"@tailwindcss/typography": "0.5.20",
 		"@tailwindcss/vite": "4.2.2",
 		"@tauri-apps/cli": "2.11.2",
 		"@types/react": "19.2.14",

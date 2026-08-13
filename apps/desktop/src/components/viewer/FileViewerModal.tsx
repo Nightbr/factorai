@@ -1,5 +1,5 @@
-import { Button, Dialog, DialogContent, DialogTitle } from '@factorai/ui';
-import { Check, Copy, ExternalLink } from 'lucide-react';
+import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from '@factorai/ui';
+import { Check, Copy, ExternalLink, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { openExternally } from '@lib/tauri';
 
@@ -21,6 +21,8 @@ interface FileViewerModalProps {
 	/** Absolute path to show, or null for closed. Driven by `?file=`. */
 	path: string | null;
 	onClose: () => void;
+	/** Swap the viewer to another file — relative markdown links use this. */
+	onOpenPath: (path: string) => void;
 }
 
 /**
@@ -30,7 +32,7 @@ interface FileViewerModalProps {
  * shell gets replaced. Dismissal (Esc, click-outside, the close button) all
  * route through `onClose`, which clears the URL param.
  */
-export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
+export function FileViewerModal({ path, onClose, onOpenPath }: FileViewerModalProps) {
 	const [copied, setCopied] = useState(false);
 
 	if (!path) return null;
@@ -52,17 +54,21 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
 		>
 			<DialogContent
 				data-testid="file-viewer"
+				// `hideClose`: the built-in close button is absolutely positioned at
+				// right-4 top-4, which can't share a baseline with this header's own
+				// controls. We render DialogClose in-flow with them instead.
+				hideClose
 				className="flex h-[85vh] w-[90vw] max-w-none flex-col gap-0 overflow-hidden p-0"
 			>
-				<header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
-					<div className="min-w-0 flex-1">
+				<header className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5">
+					<div className="min-w-0 flex-1 pr-2">
 						<DialogTitle className="truncate font-medium text-sm">{name}</DialogTitle>
 						{parent && <p className="truncate font-mono text-muted-foreground text-xs">{parent}</p>}
 					</div>
 					<Button
 						variant="ghost"
 						size="icon"
-						className="size-7"
+						className="size-7 shrink-0"
 						aria-label="Copy path"
 						title="Copy path"
 						onClick={() => void copyPath()}
@@ -76,15 +82,24 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
 					<Button
 						variant="ghost"
 						size="icon"
-						className="size-7"
+						className="size-7 shrink-0"
 						aria-label="Open in default app"
 						title="Open in default app"
 						onClick={() => void openExternally(path)}
 					>
 						<ExternalLink className="size-3.5 text-muted-foreground" />
 					</Button>
-					{/* Dialog renders its own close button top-right; leave room for it. */}
-					<span className="w-5" />
+					<DialogClose asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							className="size-7 shrink-0"
+							aria-label="Close viewer"
+							title="Close viewer"
+						>
+							<X className="size-3.5 text-muted-foreground" />
+						</Button>
+					</DialogClose>
 				</header>
 
 				<Suspense
@@ -94,7 +109,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
 						</p>
 					}
 				>
-					<FileView path={path} />
+					<FileView path={path} onOpenPath={onOpenPath} />
 				</Suspense>
 			</DialogContent>
 		</Dialog>
