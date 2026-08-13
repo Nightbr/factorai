@@ -247,6 +247,18 @@ impl TerminalManager {
 			.map(PathBuf::from)
 			.or_else(dirs::home_dir)
 			.unwrap_or_else(|| PathBuf::from("/"));
+		// `CommandBuilder::cwd` does NOT fail on a directory that isn't there —
+		// the child simply starts somewhere else, which for us was $HOME. That is
+		// silent misfiling: "new session" on a project whose folder has since been
+		// deleted would create the session under the $HOME project instead, and
+		// the click and the result would disagree. Refuse instead; the renderer
+		// prints the error in the terminal pane.
+		if !cwd_path.is_dir() {
+			return Err(AppError::NotFound(format!(
+				"working directory {} does not exist",
+				cwd_path.display()
+			)));
+		}
 		cmd.cwd(&cwd_path);
 		// Inherit the parent env so PATH / TERM / HOME etc. are present.
 		for (k, v) in std::env::vars_os() {
@@ -677,6 +689,24 @@ mod tests {
 		assert_eq!(listing[0].id, id);
 		assert_eq!(listing[0].status, TerminalStatus::Running);
 		let _ = mgr.kill(&id);
+	}
+
+	#[test]
+	fn spawn_refuses_a_cwd_that_does_not_exist() {
+		let (mgr, _d, _e) = make_manager();
+		let mut o = opts(80, 24);
+		o.cwd = Some("/definitely/not/a/directory".into());
+		let err = mgr
+			.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "true".into()]))
+			.expect_err("a missing cwd must not spawn");
+		// portable-pty starts the child elsewhere rather than failing, so without
+		// this guard a new session in a deleted project folder would be filed
+		// under $HOME's project instead of the one that was clicked.
+		assert!(
+			matches!(err, AppError::NotFound(_)),
+			"expected NotFound, got {err:?}"
+		);
+		assert_eq!(mgr.live_count(), 0, "nothing should have been spawned");
 	}
 
 	#[test]

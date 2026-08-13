@@ -6,6 +6,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
 import { base64ToBytes } from '@lib/base64';
+import { formatError } from '@lib/errors';
 import { cmd, events } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 
@@ -131,7 +132,7 @@ function attachPty(
 			entry.cleanup.push(unData, unExit);
 		})
 		.catch((e) => {
-			term.write(`\r\n\x1b[31mFailed to spawn claude: ${String(e)}\x1b[0m\r\n`);
+			term.write(`\r\n\x1b[31mFailed to spawn claude: ${formatError(e)}\x1b[0m\r\n`);
 		});
 }
 
