@@ -49,7 +49,7 @@ function RootLayout() {
 			<AppShell>
 				<Outlet />
 			</AppShell>
-			<FileViewerModal path={viewer.path} onClose={viewer.close} />
+			<FileViewerModal path={viewer.path} onClose={viewer.close} onOpenPath={viewer.open} />
 			<QuitConfirm />
 		</>
 	);

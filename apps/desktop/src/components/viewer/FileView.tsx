@@ -1,7 +1,8 @@
 import { Button } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { FileWarning } from 'lucide-react';
+import { Code2, Eye, FileWarning } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { MarkdownView } from '@components/viewer/MarkdownView';
 import { formatBytes } from '@lib/format';
 import { cmd, openExternally } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -28,11 +29,15 @@ function basename(path: string): string {
 
 interface FileViewProps {
 	path: string;
+	/** Open another file in the viewer — used by relative markdown links. */
+	onOpenPath?: (path: string) => void;
 }
 
-export function FileView({ path }: FileViewProps) {
+export function FileView({ path, onOpenPath }: FileViewProps) {
 	// The user asked to see an oversized file anyway → read with no cap.
 	const [uncapped, setUncapped] = useState(false);
+	// Markdown opens rendered; `preview` is ignored for everything else.
+	const [preview, setPreview] = useState(true);
 
 	const fileQ = useQuery({
 		queryKey: queryKeys.file(path, uncapped),
@@ -45,6 +50,8 @@ export function FileView({ path }: FileViewProps) {
 
 	const file = fileQ.data;
 	const language = file && !file.isBinary ? languageForFile(basename(path)) : 'plaintext';
+	const isMarkdown = language === 'markdown';
+	const showPreview = isMarkdown && preview;
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -55,13 +62,32 @@ export function FileView({ path }: FileViewProps) {
 				{file && !file.isBinary && file.contents.length === 0 && (
 					<Centered>This file is empty.</Centered>
 				)}
-				{file && !file.isBinary && file.contents.length > 0 && (
+				{file && !file.isBinary && file.contents.length > 0 && !showPreview && (
 					<Editor contents={file.contents} language={language} />
+				)}
+				{file && !file.isBinary && file.contents.length > 0 && showPreview && (
+					<MarkdownView
+						source={file.contents}
+						path={path}
+						onOpenPath={onOpenPath ?? (() => undefined)}
+					/>
 				)}
 			</div>
 
 			{file && !file.isBinary && (
 				<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
+					{isMarkdown && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="-ml-1 h-6 gap-1.5 px-2 text-xs"
+							aria-pressed={preview}
+							onClick={() => setPreview((p) => !p)}
+						>
+							{preview ? <Code2 className="size-3.5" /> : <Eye className="size-3.5" />}
+							{preview ? 'View source' : 'Preview'}
+						</Button>
+					)}
 					<span>{languageLabel(language)}</span>
 					<span aria-hidden="true">·</span>
 					<span>{formatBytes(file.size)}</span>
@@ -120,7 +146,10 @@ function Editor({ contents, language }: EditorProps) {
 			domReadOnly: true,
 			minimap: { enabled: false },
 			lineNumbers: 'on',
-			wordWrap: 'off',
+			// Wrapped, so reading a file never means scrolling sideways. Long
+			// wrapped lines get a hanging indent so continuations are obvious.
+			wordWrap: 'on',
+			wrappingIndent: 'indent',
 			scrollBeyondLastLine: false,
 			renderLineHighlight: 'line',
 			fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',

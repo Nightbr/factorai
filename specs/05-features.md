@@ -162,13 +162,31 @@ between the project page, its sessions and open files — so `FileView` is
 written self-contained and modal-agnostic, and `FileViewerModal` is just its
 first host.
 
-- Header: file name, dimmed parent directory, copy-path, open-in-default-app,
-  close.
-- Footer: language · size · line count · `read-only`.
-- Monaco config: line numbers on, minimap **off** (noise at modal width), no
-  word wrap, find widget on `Cmd/Ctrl+F`, and `automaticLayout: true` —
-  Monaco measures its container on create, and inside a dialog that is
-  mid-open-animation that measures zero.
+- Header: file name, dimmed parent directory, then copy-path,
+  open-in-default-app and close — all three **in flow on one row**.
+  `DialogContent` takes `hideClose` for this: its built-in close button is
+  absolutely positioned at `right-4 top-4` and can never share a baseline
+  with a dialog's own toolbar.
+- Footer: language · size · line count · `read-only`, plus the markdown
+  toggle when relevant.
+- Monaco config: line numbers on, minimap **off** (noise at modal width),
+  **word wrap on** with `wrappingIndent: 'indent'` so reading a file never
+  means scrolling sideways, find widget on `Cmd/Ctrl+F`, and
+  `automaticLayout: true` — Monaco measures its container on create, and
+  inside a dialog that is mid-open-animation that measures zero.
+
+**Markdown.** A `.md` file opens **rendered** (`react-markdown` +
+`remark-gfm`, so GFM tables work), with a footer toggle to "View source" and
+back. Raw HTML in the document is *not* rendered — react-markdown's default —
+so an embedded `<script>` stays inert text; we deliberately don't add
+`rehype-raw`. Styling is `@tailwindcss/typography`'s `prose` classes tuned to
+the app palette. Links:
+
+- `http(s):` / `mailto:` → handed to the OS, never navigating the webview out
+  of the app.
+- relative → resolved against the file's own directory and opened **in the
+  viewer**, so a README's link to `docs/guide.md` just works.
+- `#anchor` → ignored for now.
 
 **Opening.** A **single** click on a file row opens the viewer; directories
 still toggle. "Open in default app" moved into the viewer header — it used to

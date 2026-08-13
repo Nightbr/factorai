@@ -37,7 +37,7 @@
 	},
 	"plugins": {
 		"shell": {
-			"open": true
+			"open": "((mailto:|tel:)[\\w+][^\\s]*|https?://\\w[^\\s]*|/[\\w.][^\\n]*)"
 		}
 	}
 }

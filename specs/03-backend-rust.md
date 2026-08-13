@@ -315,3 +315,27 @@ Conversion from `anyhow::Error`, `rusqlite::Error`, `std::io::Error` via
 `$APPDATA/**` (read+write). We do **not** grant blanket FS access. Project
 file reads inside the user's repo go through a typed command that checks
 the path is under a known project cwd.
+
+`shell:allow-open` needs a **custom validation regex** in
+`tauri.conf.json > plugins > shell > open`:
+
+```json
+"open": "((mailto:|tel:)[\\w+][^\\s]*|https?://\\w[^\\s]*|/[\\w.][^\\n]*)"
+```
+
+The plugin's default regex is URL-only
+(`^((mailto:\w+)|(tel:\w+)|(https?://\w+)).+`), so "open in default app" on a
+*file path* fails validation — the symptom is an unhandled rejection reading
+"Scoped command argument at position 0 was found, but failed regex
+validation". The last branch permits absolute POSIX paths (we're macOS +
+Linux only, so a path always starts with `/`), requiring a word character or
+dot after the slash so flag-like arguments (`-i`, `--enable-debugging`) can't
+pass as paths — the plugin's docs warn about exactly that.
+
+**The outer parentheses are load-bearing.** The plugin wraps the pattern in
+`^...$`, and with top-level alternation that reads as "starts with A" OR
+"ends with B" — a path scope written as `^A|B$` would accept anything merely
+*ending* in a path, e.g. `relative/path.md`. `tests/shell_open_scope.rs`
+pins this: it parses the real `tauri.conf.json` and asserts what the scope
+accepts and rejects, because this is a config value with no compile-time
+check whose only failure signal is a rejected promise in the webview.
