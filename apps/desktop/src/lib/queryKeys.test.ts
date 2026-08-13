@@ -7,10 +7,7 @@ describe('queryKeys', () => {
 	});
 
 	it('sessions() includes the project id', () => {
-		expect(queryKeys.sessions('-Users-alice-foo')).toEqual([
-			'sessions',
-			'-Users-alice-foo',
-		]);
+		expect(queryKeys.sessions('-Users-alice-foo')).toEqual(['sessions', '-Users-alice-foo']);
 	});
 
 	it('session() includes id, offset, limit', () => {
@@ -29,5 +26,15 @@ describe('queryKeys', () => {
 
 	it('sessionTail key is distinct from session key', () => {
 		expect(queryKeys.sessionTail('abc', 100)).not.toEqual(queryKeys.session('abc', 0, 100));
+	});
+
+	it('dir() keys per absolute path', () => {
+		expect(queryKeys.dir('/a/b')).toEqual(['dir', '/a/b']);
+		expect(queryKeys.dir('/a/b')).not.toEqual(queryKeys.dir('/a/c'));
+	});
+
+	it('file() separates capped from uncapped reads', () => {
+		expect(queryKeys.file('/a/b.ts', false)).toEqual(['file', '/a/b.ts', 'capped']);
+		expect(queryKeys.file('/a/b.ts', true)).not.toEqual(queryKeys.file('/a/b.ts', false));
 	});
 });

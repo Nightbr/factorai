@@ -101,16 +101,21 @@ toolchain wired up.
 **Goal.** Side panel becomes useful.
 
 **Deliverables.**
-- Commands: `read_file`, `file_diff`, `read_claude_md`, `write_claude_md`,
-  `list_plans`, `read_plan`.
-- CodeMirror 6 file preview, lazy language detection.
-- `@codemirror/merge` diff view with prefs-driven inline/split toggle.
+- Commands: `read_file` ✅, `file_diff`, `read_claude_md`,
+  `write_claude_md`, `list_plans`, `read_plan`.
+- Monaco file viewer ✅ (landed early with F12's file tree — modal for now,
+  per-project tabs later; ADR-0007 replaces the CodeMirror 6 plan).
+- Monaco diff editor (`createDiffEditor`) with a prefs-driven inline/split
+  toggle. Needs `editor.worker` wired through Vite's `?worker` import — the
+  viewer deliberately ships without any worker.
 - "Open file" link wiring from JSONL events (Read/Edit/Write tool uses).
-- CLAUDE.md editor with dirty-state save flow.
+  Cheap now: it's a navigation to `?file=`, not a new mechanism.
+- CLAUDE.md editor with dirty-state save flow. First place the app is not
+  read-only.
 
 **Exit criteria.**
-- Click a Read tool_use in the viewer → file opens in side panel with
-  correct syntax highlighting.
+- Click a Read tool_use in the viewer → file opens with correct syntax
+  highlighting.
 - Click an Edit tool_use → diff view shows the change in the user's
   preferred mode.
 - CLAUDE.md edits round-trip to disk; on-disk changes prompt a reload.

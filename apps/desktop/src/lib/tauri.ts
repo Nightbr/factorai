@@ -174,16 +174,12 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		case 'read_file': {
 			const path = String(args?.path ?? '');
 			const file = fx?.files?.[path];
+			// An unlisted path rejects like a deleted file, so the viewer's
+			// not-found path is reachable from a fixture.
 			if (!file) throw { kind: 'NotFound', message: `path ${path}` };
-			// Honour the cap so a test can exercise the "Show anyway" flow.
-			const cap = args?.maxBytes;
-			if (typeof cap === 'number' && file.contents.length > cap) {
-				return {
-					...file,
-					contents: file.contents.slice(0, cap),
-					truncated: true,
-				} as unknown as T;
-			}
+			// An uncapped read is never truncated — same as the backend. Lets a
+			// fixture declare `truncated: true` and have "Show anyway" resolve it.
+			if (args?.maxBytes === null) return { ...file, truncated: false } as unknown as T;
 			return file as unknown as T;
 		}
 		case 'resolve_project_path':

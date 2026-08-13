@@ -151,24 +151,56 @@ separate resume button in the MVP.
 
 ---
 
-## F7 — File preview
+## F7 — File viewer
 
-**Behavior.** Open a file (path = absolute on disk) in CodeMirror with
-syntax highlighting based on extension.
+**Behavior.** Open a file from the tree (F12) read-only, with syntax
+highlighting, in Monaco (ADR-0007 — this supersedes the CodeMirror 6 plan).
 
-**UI.** Side panel. Toolbar: copy path, open in default app, close. Text
-files only; binaries get a "Cannot preview binary file (N bytes)" card.
+**UI.** V0 is a **modal**, ~90vw × 85vh: the cheapest UX that gets the
+feature useful. The eventual shape is a per-project **tab system** switching
+between the project page, its sessions and open files — so `FileView` is
+written self-contained and modal-agnostic, and `FileViewerModal` is just its
+first host.
 
-**Backend.** `read_file(path, max_bytes?)`. Default cap 5MB; larger files
-show a "Show anyway" affordance that re-fetches with no cap.
+- Header: file name, dimmed parent directory, copy-path, open-in-default-app,
+  close.
+- Footer: language · size · line count · `read-only`.
+- Monaco config: line numbers on, minimap **off** (noise at modal width), no
+  word wrap, find widget on `Cmd/Ctrl+F`, and `automaticLayout: true` —
+  Monaco measures its container on create, and inside a dialog that is
+  mid-open-animation that measures zero.
+
+**Opening.** A **single** click on a file row opens the viewer; directories
+still toggle. "Open in default app" moved into the viewer header — it used to
+be the tree's double-click, which can't coexist with click-to-open, because
+the first click of a double-click opens the modal and the second lands on its
+overlay.
+
+**State.** The open file lives in the URL as `?file=<absolute path>`,
+validated on the **root** route so every route inherits it (the viewer is
+app-level, mounted in `__root` beside `QuitConfirm`). That means reload and
+HMR reopen the file, browser-back closes it, and the tab system grows out of
+the same place — `?file=` becomes a list of open paths. See
+`hooks/useFileViewer.ts`.
+
+**Backend.** `read_file(path, max_bytes?)` — see specs/03-backend-rust.md
+§ `files`.
 
 **Edge cases.**
-- Path doesn't exist → "File not found". Possibly stale link from an older
-  session.
-- Binary detection: sniff for null bytes in first 8KB.
+- Binary (null byte in the first 8KB) → "Cannot preview binary file (N
+  bytes)" plus an open-in-default-app button. Images are **not** rendered
+  yet; that needs bytes rather than text (a base64 mode or the Tauri asset
+  protocol with a path scope).
+- Over the 5MB cap → footer says `truncated` and offers "Show anyway", which
+  refetches uncapped. Capped and uncapped reads are separate query keys, so
+  the second read actually happens.
+- Path gone since the tree listed it → "File not found. The tree may be out
+  of date — try refreshing it." (the tree has no watcher, by F12's design).
+- Empty file → "This file is empty." rather than a blank editor that looks
+  broken.
 
 **The prior app ref.** `file-panel.js`, `viewer-panel.js`,
-`viewer-toolbar.js`, `codemirror-setup.js`.
+`viewer-toolbar.js` (its `codemirror-setup.js` no longer applies).
 
 ---
 
