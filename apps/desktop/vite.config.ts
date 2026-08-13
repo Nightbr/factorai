@@ -1,10 +1,15 @@
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-	plugins: [tailwindcss(), react()],
+	// `Icons` compiles the `~icons/<collection>/<name>` imports in
+	// lib/fileIcon.ts into React components at build time (ADR-0006). Only the
+	// icons we import statically end up in the bundle — nothing is fetched at
+	// runtime, which a Tauri app with no network access requires.
+	plugins: [tailwindcss(), react(), Icons({ compiler: 'jsx', jsx: 'react' })],
 	clearScreen: false,
 	server: {
 		port: 1420,
