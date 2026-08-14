@@ -107,7 +107,7 @@ export function SessionTabs() {
 				// `overflow-x-auto` with the bar hidden: at 40px tall a scrollbar would
 				// eat a third of the strip. The wheel handler below is what makes it
 				// reachable without one.
-				className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+				className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1"
 				onWheel={(e) => {
 					// A vertical wheel over a horizontal strip does nothing by default,
 					// which reads as "these tabs are stuck".
@@ -125,13 +125,26 @@ export function SessionTabs() {
 							aria-selected={isActive}
 							data-session-id={id}
 							draggable
-							onDragStart={() => setDragging(id)}
+							onDragStart={(e) => {
+								// Setting data is what actually starts a native drag — without
+								// it the browser treats the gesture as a text selection and no
+								// drop target ever fires. This is why reordering did nothing.
+								e.dataTransfer.setData('text/plain', id);
+								e.dataTransfer.effectAllowed = 'move';
+								setDragging(id);
+							}}
 							onDragEnd={() => setDragging(null)}
 							onDragOver={(e) => {
-								// Without this the drop never fires — the default is "not a
-								// drop target".
+								// Without preventDefault the element is "not a drop target" and
+								// the drop is refused.
 								e.preventDefault();
-								if (dragging && dragging !== id) reorder(dragging, index);
+								e.dataTransfer.dropEffect = 'move';
+							}}
+							onDrop={(e) => {
+								e.preventDefault();
+								const dragged = dragging ?? e.dataTransfer.getData('text/plain');
+								if (dragged && dragged !== id) reorder(dragged, index);
+								setDragging(null);
 							}}
 							className={`group flex h-7 max-w-44 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-xs transition-colors ${
 								isActive

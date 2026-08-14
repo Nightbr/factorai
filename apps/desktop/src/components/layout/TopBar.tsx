@@ -22,8 +22,9 @@ export function TopBar() {
 			    the bar looks exactly as it did before the first one starts. Window
 			    controls land right of the panel toggle when M5 drops the OS
 			    decorations; the drag region will have to share this row with them. */}
+			{/* No spacer beside it: two `flex-1` siblings split the row, so the
+			    strip only ever got half the width it could scroll within. */}
 			<SessionTabs />
-			<div className="flex-1" />
 
 			<IconButton
 				size="md"

@@ -208,7 +208,11 @@ function SessionList({ project }: { project: Project }) {
 						<span className="min-w-0 flex-1 truncate">
 							{session.title.trim() || session.id.slice(0, 8)}
 						</span>
-						{bySession[session.id] && <StatusDot status={bySession[session.id].status} />}
+						{bySession[session.id] && (
+							// Smaller than the standalone dot: in a list of nested rows at
+							// 12px text, the full-size dot is the loudest thing on screen.
+							<StatusDot status={bySession[session.id].status} className="size-1.5" />
+						)}
 					</Link>
 				</li>
 			))}
