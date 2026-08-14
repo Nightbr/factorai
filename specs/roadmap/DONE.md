@@ -3,6 +3,42 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Sidebar rebuilt around projects you actually use** — 2026-08-14, shipped in v0.3.0. Sort by
+  Recent or Name with Expand/Collapse all; projects expand to their 10 most relevant sessions
+  (running first, then most-recently-active); pinning lifts a project into a block above a divider,
+  stored in the `projects.pinned` column that had been built in M1 and never wired up. The sidebar
+  resizes like the file panel — one `PanelResizer` told which edge it's on — and its header stays
+  put while the list scrolls, by living outside the scroll container rather than by
+  `position: sticky` inside it.
+
+  **Affordances got a house style.** Icon-only controls became an `IconButton` primitive that never
+  paints a background: the hover state is the icon taking colour, because a filled block behind a
+  14px glyph is bigger than the thing it highlights. Every clickable element gets `cursor: pointer`
+  from **one base rule** — Tailwind v4's Preflight sets `cursor: default` on buttons, so nothing had
+  one — and the vendored shadcn menus had to give up their hard-coded `cursor-default`, since a
+  class on the element always beats a bare-selector rule. Both rules are in `AGENTS.md § Design
+  rules`, and `affordances.spec.ts` asserts the *computed* styles rather than the source.
+
+  **The avatar badge took three goes, and the last one found the real bug.** The status dot moved
+  onto the project avatar, but nudging it never quite landed: the wrapper was `inline-block` around
+  an inline-level tile, so the tile sat on a line box inside its own wrapper and the inherited
+  `line-height` pushed it down a couple of pixels — while the badge, positioned against the wrapper,
+  stayed put. Avatar and badge were answering to different rectangles. Fixed by making the wrapper
+  `inline-flex` with a block-level child, and the geometry is now asserted in pixels (tile fills
+  wrapper, badge centre on the right edge, 40–50% above the top, badged and plain rows the same
+  height) because the failure is two pixels — invisible at 1x, obvious at 6x.
+
+  **Two defaults that were quietly wrong.** `WebLinksAddon` calls `window.open`, which a Tauri
+  webview ignores, so Ctrl/Cmd-clicking a URL in the terminal did nothing; it now goes through the
+  shell plugin, on modifier-click only, since Claude Code is a TUI where a bare click would ambush
+  you with a browser. And the updater was running under `pnpm dev`, where the binary's version
+  trails every release — so it downloaded ~80MB on each launch and offered to restart the developer
+  into a release build of the code they were editing. Its guard sits *after* the browser-only
+  branch, because the Playwright lane is a dev build too.
+
+  Zoom controls landed in the sidebar footer (webview zoom, so the terminal reflows and the PTY
+  learns its new size, rather than a CSS transform that would blur it and lie).
+
 - **OTA updates, and the repo went public to make them possible** — 2026-08-14. The header shows
   `v0.2.0 ready · Restart` once a new release is downloaded and staged; checking and downloading
   are silent, and nothing ever restarts itself. F14, ADR-0010.
