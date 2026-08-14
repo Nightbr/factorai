@@ -1,7 +1,7 @@
-import type { SessionSummary } from '@factorai/types';
+import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, useNavigate } from '@tanstack/react-router';
 import { Play, Square } from 'lucide-react';
 import { useState } from 'react';
 import { StatusDot } from '@components/layout/StatusDot';
@@ -48,6 +48,36 @@ function SessionView() {
 	// Remounting the Terminal (new key) tears down the dead xterm and triggers
 	// a fresh spawn — used to restart a stopped session.
 	const [restartNonce, setRestartNonce] = useState(0);
+	const navigate = useNavigate();
+
+	/**
+	 * Stopping a session ends your business with it, so leave rather than
+	 * parking on a dead pane reading `[process exited]`.
+	 *
+	 * The pooled xterm is disposed too, not just killed: terminals survive
+	 * navigation by design (they live in `terminalStore`, not in this
+	 * component), so keeping it would mean coming back to this URL later and
+	 * finding that same exit message instead of a working session. Disposed, the
+	 * next visit spawns fresh against the same session id and resumes the
+	 * transcript — F6's rule that opening a session view *is* starting it.
+	 *
+	 * A process that exits on its own is deliberately NOT redirected: then the
+	 * exit message is the thing you came to read, and Restart is right there.
+	 */
+	async function stopSession(terminalId: TerminalId) {
+		try {
+			await cmd.terminalKill(terminalId);
+		} catch (e) {
+			// Leaving anyway. A kill that failed means the PTY may still be
+			// running, and the project page will say so through its status dot —
+			// better than sitting on a page whose button appeared to do nothing.
+			console.error('terminal_kill failed', e);
+		}
+		disposeTerminal(sessionId);
+		// The project route names its param `id`; only the session route calls it
+		// `projectId` (see useActiveProject, which reads both).
+		void navigate({ to: '/projects/$id', params: { id: projectId } });
+	}
 
 	return (
 		<main className="flex h-full flex-col bg-[#0c0e12]">
@@ -66,7 +96,7 @@ function SessionView() {
 						size="sm"
 						variant="outline"
 						className="h-7 gap-1.5"
-						onClick={() => cmd.terminalKill(live.terminalId)}
+						onClick={() => void stopSession(live.terminalId)}
 					>
 						<Square className="size-3" /> Stop
 					</Button>
