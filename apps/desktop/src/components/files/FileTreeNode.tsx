@@ -76,14 +76,14 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 				title={hint}
 				aria-expanded={canExpand ? expanded : undefined}
 				style={{ paddingLeft: depth * INDENT + 6 }}
-				className={`flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-sm transition-colors ${
+				className={`group flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-sm transition-colors ${
 					selected ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/50'
 				}`}
 				onClick={activate}
 			>
 				{entry.isDir ? (
 					<ChevronRight
-						className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${
+						className={`size-3.5 shrink-0 text-muted-foreground transition-all group-hover:text-primary ${
 							expanded ? 'rotate-90' : ''
 						} ${canExpand ? '' : 'opacity-30'}`}
 					/>

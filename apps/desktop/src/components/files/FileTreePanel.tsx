@@ -2,7 +2,7 @@ import type { DirEntry } from '@factorai/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronsDownUp, RefreshCw, X } from 'lucide-react';
 import { useEffect } from 'react';
-import { Button } from '@factorai/ui';
+import { IconButton } from '@factorai/ui';
 import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
 import { useActiveProject } from '@hooks/useActiveProject';
@@ -61,39 +61,30 @@ function PanelBody() {
 				</div>
 				{tab === 'files' && (
 					<>
-						<Button
-							variant="ghost"
-							size="icon"
-							className="size-6"
+						<IconButton
 							aria-label="Collapse all"
 							title="Collapse all"
 							disabled={!projectId}
 							onClick={() => projectId && collapseAll(projectId)}
 						>
-							<ChevronsDownUp className="size-3.5 text-muted-foreground" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							className="size-6"
+							<ChevronsDownUp />
+						</IconButton>
+						<IconButton
 							aria-label="Refresh tree"
 							title="Refresh tree"
 							onClick={() => queryClient.invalidateQueries({ queryKey: ['dir'] })}
 						>
-							<RefreshCw className="size-3.5 text-muted-foreground" />
-						</Button>
+							<RefreshCw />
+						</IconButton>
 					</>
 				)}
-				<Button
-					variant="ghost"
-					size="icon"
-					className="size-6"
-					aria-label="Close file tree"
-					title="Close file tree"
-					onClick={() => setOpen(false)}
-				>
-					<X className="size-3.5 text-muted-foreground" />
-				</Button>
+				<IconButton
+							aria-label="Close file tree"
+							title="Close file tree"
+							onClick={() => setOpen(false)}
+						>
+							<X />
+						</IconButton>
 			</header>
 
 			<div className="min-h-0 flex-1 overflow-auto py-1">

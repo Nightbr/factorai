@@ -1,4 +1,4 @@
-import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from '@factorai/ui';
+import { Dialog, DialogClose, DialogContent, DialogTitle, IconButton } from '@factorai/ui';
 import { Check, Copy, ExternalLink, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import type { DiffMode } from '@hooks/useFileViewer';
@@ -71,40 +71,26 @@ export function FileViewerModal({ path, diff, onClose, onOpenPath }: FileViewerM
 						<DialogTitle className="truncate font-medium text-sm">{name}</DialogTitle>
 						{parent && <p className="truncate font-mono text-muted-foreground text-xs">{parent}</p>}
 					</div>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="size-7 shrink-0"
+					<IconButton
+						size="md"
 						aria-label="Copy path"
 						title="Copy path"
 						onClick={() => void copyPath()}
 					>
-						{copied ? (
-							<Check className="size-3.5 text-primary" />
-						) : (
-							<Copy className="size-3.5 text-muted-foreground" />
-						)}
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="size-7 shrink-0"
+						{copied ? <Check className="text-primary" /> : <Copy />}
+					</IconButton>
+					<IconButton
+						size="md"
 						aria-label="Open in default app"
 						title="Open in default app"
 						onClick={() => void openExternally(path)}
 					>
-						<ExternalLink className="size-3.5 text-muted-foreground" />
-					</Button>
+						<ExternalLink />
+					</IconButton>
 					<DialogClose asChild>
-						<Button
-							variant="ghost"
-							size="icon"
-							className="size-7 shrink-0"
-							aria-label="Close viewer"
-							title="Close viewer"
-						>
-							<X className="size-3.5 text-muted-foreground" />
-						</Button>
+						<IconButton size="md" aria-label="Close viewer" title="Close viewer">
+							<X />
+						</IconButton>
 					</DialogClose>
 				</header>
 
