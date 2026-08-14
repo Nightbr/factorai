@@ -59,3 +59,18 @@ test('@smoke a chevron takes colour when its row is hovered', async ({ page }) =
 	await chevron.hover();
 	await expect(chevron).not.toHaveCSS('color', atRest);
 });
+
+test('@smoke menu items get a pointer too', async ({ page }) => {
+	await installMockBridge(page, fixtureTwoProjectsManySessions());
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Sort and expand projects' }).click();
+
+	// The vendored shadcn primitives ship `cursor-default` on menu rows, which
+	// beat the base rule until it was removed — a class on the element always
+	// wins over a bare-selector rule.
+	const item = page.getByRole('menuitem', { name: 'Expand all' });
+	const radio = page.getByRole('menuitemradio', { name: 'Recent' });
+	await expect(item).toHaveCSS('cursor', 'pointer');
+	await expect(radio).toHaveCSS('cursor', 'pointer');
+});
