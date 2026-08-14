@@ -15,8 +15,24 @@ const LABEL: Record<TerminalStatus, string> = {
 	stopped: 'Stopped',
 };
 
-/** Small coloured dot for a session's PTY status. Pulses while running. */
-export function StatusDot({ status, className }: { status: TerminalStatus; className?: string }) {
+/**
+ * Small coloured dot for a session's PTY status.
+ *
+ * **Still by default.** The pulse is opt-in because the app now shows this dot
+ * in several places at once — sidebar projects, sidebar sessions, tabs — and a
+ * dozen things breathing at their own rate is a christmas tree, not a signal.
+ * It earns the animation in the session header, where there is exactly one and
+ * it describes what you are looking at.
+ */
+export function StatusDot({
+	status,
+	className,
+	pulse = false,
+}: {
+	status: TerminalStatus;
+	className?: string;
+	pulse?: boolean;
+}) {
 	return (
 		<span
 			title={LABEL[status]}
@@ -27,7 +43,7 @@ export function StatusDot({ status, className }: { status: TerminalStatus; class
 			className={cn(
 				'inline-block size-2 shrink-0 rounded-full',
 				COLOR[status],
-				status === 'running' && 'animate-running-pulse',
+				pulse && status === 'running' && 'animate-running-pulse',
 				className,
 			)}
 		/>
