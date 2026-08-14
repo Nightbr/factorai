@@ -11,9 +11,15 @@ from, for cross-checking.
 **Behavior.** On launch, show every project under `~/.claude/projects/`,
 ordered by `last_session_at DESC`. Pinned projects float to the top.
 
-**UI.** Sidebar section. Each row: display name, session count, status dot
-(any live terminal in this project → green). Click → navigate to project
-view. Right-click → Pin / Unpin / Reveal in file manager.
+**UI.** Sidebar section. Each row: a collapse/expand chevron, display name,
+session count, status dot (any live terminal in this project → green). Click →
+navigate to project view. Right-click → Pin / Unpin / Reveal in file manager.
+
+The section header carries a sort control: **Recent** (the backend's
+`last_session_at DESC` order, left exactly as returned rather than re-derived
+client-side) or **Name**, plus **Expand all** / **Collapse all**. Sort and
+expansion persist in `sidebarStore` — unlike the file tree's expanded *paths*,
+which go stale when a directory is deleted, a project id stays valid.
 
 **Backend.** `list_projects()`, `pin_project()`,
 `resolve_project_path()`. The list comes from the cached `projects` table;
@@ -38,6 +44,13 @@ title, relative timestamp, turn count, and a status badge.
 
 **UI.** Sidebar (or full pane when on `/projects/$id`). Click → open
 session view. Keyboard: ↑/↓ to navigate, Enter to open.
+
+An expanded project lists its **10 most relevant** sessions inline: anything
+with a live PTY first, then most-recently-active. Running-first is the point —
+what an agent is doing *now* matters more than what you touched last, so a live
+session stays at the top even when it is the stalest by timestamp. Anything
+beyond the ten is an `N more…` link to the project page, rather than an
+unbounded list in a narrow column.
 
 **Backend.** `list_sessions(project_id)`.
 
@@ -577,6 +590,41 @@ hook is simply inert there.
   AppImage only (ADR-0010).
 - macOS first install is still unsigned and needs the Gatekeeper dance; updates
   applied in-place afterwards don't re-quarantine.
+
+---
+
+## F15 — Zoom
+
+**Behavior.** Scale the whole app up or down, persisted across launches.
+
+**UI.** Three controls in the sidebar footer, beside the indexer status: `−`,
+the current level, `+`. Clicking the level resets to 100% — the affordance
+every browser has, and it saves a third button in a 288px footer. Each button
+disables at its limit (50% / 200%), which is how clamping shows up to a user.
+
+**Why the webview, not CSS.** `getCurrentWebview().setZoom()` rather than a CSS
+transform or a root font-size: the embedded terminal draws to a canvas sized
+from its container, so webview zoom makes it reflow properly — the container's
+`ResizeObserver` refits xterm and the new cols/rows reach the PTY — whereas a
+transform would scale a bitmap and blur the text while lying to the PTY about
+its size.
+
+**Backend.** None of ours. `core:webview:allow-set-webview-zoom` in
+`capabilities/default.json`; the API is imported lazily and skipped outside
+Tauri, so browser-only dev and Playwright exercise the control's state without
+a webview to scale.
+
+**Edge cases.**
+- Repeated steps drift in floating point (`0.8 - 0.1` is `0.7000000000000001`),
+  which would render as `70.00000000000001%` and never compare equal to the
+  floor. `clampZoom` rounds to one decimal.
+- A persisted value that isn't a finite number (an older build, a hand-edited
+  store) falls back to 100% rather than propagating `NaN` into `setZoom`.
+
+**Not wired: keyboard shortcuts.** `Cmd/Ctrl +/-/0` are the obvious bindings
+and Tauri offers `zoomHotkeysEnabled` as a one-line config, but the embedded
+terminal has first claim on keystrokes — the same reasoning that keeps `Ctrl+B`
+off the file-tree toggle (Q15). It belongs to the keybinding pass.
 
 ---
 
