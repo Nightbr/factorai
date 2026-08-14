@@ -1,16 +1,41 @@
-import { Button, Input } from '@factorai/ui';
+import type { Project } from '@factorai/types';
+import {
+	Button,
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+	Input,
+} from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { Plus, Search } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
+import { ArrowUpDown, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { ProjectIcon } from '@components/layout/ProjectIcon';
-import { StatusDot } from '@components/layout/StatusDot';
+import { SidebarProject } from '@components/layout/SidebarProject';
 import { useActiveProject } from '@hooks/useActiveProject';
-import { useStartSession } from '@hooks/useStartSession';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { useIndexerStore } from '@store/indexerStore';
+import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
 import { useTerminalStore } from '@store/terminalStore';
+
+/**
+ * Order projects for display (specs/05-features.md F1).
+ *
+ * `recent` keeps the backend's order — `last_session_at DESC` — rather than
+ * re-sorting client-side, so the list matches what the indexer decided.
+ * Pure and exported so the rule is testable without a render.
+ */
+export function sortProjects(projects: Project[], sort: ProjectSort): Project[] {
+	if (sort === 'recent') return projects;
+	return [...projects].sort((a, b) =>
+		a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }),
+	);
+}
 
 export function Sidebar() {
 	const navigate = useNavigate();
@@ -26,7 +51,13 @@ export function Sidebar() {
 		[bySession],
 	);
 	const { projectId: activeProjectId } = useActiveProject();
-	const startSession = useStartSession();
+
+	const sort = useSidebarStore((s) => s.sort);
+	const setSort = useSidebarStore((s) => s.setSort);
+	const expandAll = useSidebarStore((s) => s.expandAll);
+	const collapseAll = useSidebarStore((s) => s.collapseAll);
+
+	const projects = useMemo(() => sortProjects(projectsQ.data ?? [], sort), [projectsQ.data, sort]);
 
 	// Debounced search: typing navigates to /search?q=… (the route runs the
 	// query). Empty input doesn't navigate, so clearing the box is harmless.
@@ -56,9 +87,40 @@ export function Sidebar() {
 			</div>
 
 			<nav className="flex-1 overflow-y-auto py-2">
-				<div className="px-3 pb-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
-					Projects
+				<div className="flex items-center gap-1 px-3 pb-1">
+					<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
+						Projects
+					</span>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="size-5"
+								aria-label="Sort and expand projects"
+								title="Sort and expand projects"
+							>
+								<ArrowUpDown className="size-3.5 text-muted-foreground" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-40">
+							<DropdownMenuLabel>Sort</DropdownMenuLabel>
+							<DropdownMenuRadioGroup
+								value={sort}
+								onValueChange={(value) => setSort(value as ProjectSort)}
+							>
+								<DropdownMenuRadioItem value="recent">Recent</DropdownMenuRadioItem>
+								<DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
+							</DropdownMenuRadioGroup>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onSelect={() => expandAll(projects.map((p) => p.id))}>
+								Expand all
+							</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => collapseAll()}>Collapse all</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
+
 				{projectsQ.isLoading && (
 					<div className="px-4 py-2 text-muted-foreground text-xs">Loading…</div>
 				)}
@@ -68,74 +130,14 @@ export function Sidebar() {
 					</div>
 				)}
 				<ul>
-					{projectsQ.data?.map((p) => {
-						const isActive = activeProjectId === p.id;
-						// No resolved cwd means we never found a `cwd` in this project's
-						// sessions, so there is nowhere to start one: claude would boot in
-						// $HOME and file the new session under a *different* project than
-						// the row that was clicked.
-						const canStart = p.realPath !== null;
-						return (
-							// The row is the <li>, so the hover background covers both the
-							// link and the + beside it. The + is a SIBLING of the Link —
-							// nesting a button inside an anchor is invalid, and the two
-							// would fight over the click.
-							<li
-								key={p.id}
-								className={`group flex items-center pr-1 transition-colors ${
-									isActive ? 'bg-secondary' : 'hover:bg-secondary/50'
-								}`}
-							>
-								<Link
-									to="/projects/$id"
-									params={{ id: p.id }}
-									className={`flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 text-sm ${
-										isActive
-											? 'text-foreground'
-											: 'text-muted-foreground group-hover:text-foreground'
-									}`}
-								>
-									<ProjectIcon name={p.displayName} path={p.realPath ?? p.id} size={16} />
-									<span className="min-w-0 flex-1 truncate">{p.displayName}</span>
-									{liveProjectIds.has(p.id) && <StatusDot status="running" />}
-									<span className="tabular-nums text-muted-foreground text-xs">
-										{p.sessionCount}
-									</span>
-								</Link>
-								{/* The title lives on the wrapper: Button sets
-								    disabled:pointer-events-none, which suppresses a native
-								    tooltip on the element itself — exactly when the
-								    explanation matters most. */}
-								<span
-									// `flex` matters: as a plain inline span this wrapper placed the
-									// button on its own line box, floating the + ~4px above the
-									// session count beside it. A flex container centers it on the row.
-									className="flex items-center"
-									title={
-										canStart
-											? `New session in ${p.displayName}`
-											: 'No project folder on disk — cannot start a session here'
-									}
-								>
-									<Button
-										variant="ghost"
-										size="icon"
-										// Deliberately smaller than the standard size-6 icon button:
-										// at the end of a dense row its hover/focus box otherwise
-										// runs into the session count next to it.
-										// Hidden until hover to keep the list quiet, but always
-										// focusable: focus-visible brings it back for keyboards.
-										className="ml-1 size-4 shrink-0 rounded opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
-										aria-label={`New session in ${p.displayName}`}
-										disabled={!canStart}
-										onClick={() => void startSession(p.id)}
-									>
-										<Plus className="size-3 text-muted-foreground" />
-									</Button>
-								</span>
-							</li>
-						);
-					})}
+					{projects.map((p) => (
+						<SidebarProject
+							key={p.id}
+							project={p}
+							isActive={activeProjectId === p.id}
+							isLive={liveProjectIds.has(p.id)}
+						/>
+					))}
 				</ul>
 			</nav>
 

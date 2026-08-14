@@ -262,3 +262,58 @@ export function fixtureWithChanges(): TestFixture {
 		},
 	};
 }
+
+/**
+ * Two projects, the second holding more sessions than the sidebar shows, for
+ * the F1 sort menu and the F2 expandable session list.
+ *
+ * `zulu` sorts after `alpha` by name but is listed first, which is what
+ * `list_projects` does — recency order, not alphabetical.
+ */
+export function fixtureTwoProjectsManySessions(): TestFixture {
+	const zulu: Project = {
+		id: '-home-alice-code-zulu',
+		realPath: '/home/alice/code/zulu',
+		displayName: 'zulu',
+		lastSessionAt: Date.now() - 1_000,
+		sessionCount: 12,
+		pinned: false,
+	};
+	const alpha: Project = {
+		id: '-home-alice-code-alpha',
+		realPath: '/home/alice/code/alpha',
+		displayName: 'alpha',
+		lastSessionAt: Date.now() - 90_000,
+		sessionCount: 1,
+		pinned: false,
+	};
+
+	// 12 sessions, oldest first on purpose: the sidebar has to reorder them.
+	const zuluSessions: SessionSummary[] = Array.from({ length: 12 }, (_, i) => ({
+		id: `zulu-session-${String(i).padStart(2, '0')}`,
+		projectId: zulu.id,
+		title: `Zulu task ${i}`,
+		createdAt: Date.now() - 500_000,
+		updatedAt: Date.now() - (12 - i) * 60_000,
+		turnCount: i + 1,
+		cwd: zulu.realPath,
+	}));
+
+	return {
+		projects: [zulu, alpha],
+		sessionsByProject: {
+			[zulu.id]: zuluSessions,
+			[alpha.id]: [
+				{
+					id: 'alpha-session-1',
+					projectId: alpha.id,
+					title: 'Alpha only task',
+					createdAt: Date.now() - 900_000,
+					updatedAt: Date.now() - 90_000,
+					turnCount: 3,
+					cwd: alpha.realPath,
+				},
+			],
+		},
+	};
+}
