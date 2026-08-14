@@ -29,6 +29,13 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   Gotcha worth keeping: `gh secret set NAME --body ""` hangs forever waiting on stdin, so the
   empty passphrase is an empty literal in the workflow rather than a secret.
 
+  **Verified end to end, not just unit-tested.** Cut and published v0.2.0, installed that
+  AppImage, published v0.2.1, then launched the v0.2.0 install: it found the release on startup,
+  downloaded and staged it, and showed `v0.2.1 ready · Restart`. The installed file's md5 went
+  from `72814c03…` to `69365c39…` — byte-identical to the published v0.2.1 AppImage, so the swap
+  is real and not a UI state. Clicking Restart replaced the process (pid 473460 → 474787) and the
+  badge was gone afterwards, because the check now finds nothing.
+
 - **Changes tab, git decorations and the diff viewer** — 2026-08-14. The right panel gained a
   `Files | Changes` strip; the tree gained git paint and nothing else. Four slices: specs +
   ADR-0009, the Rust (`git_status` / `git_blob` / `ignored` on `list_dir`), the tab and the Monaco
