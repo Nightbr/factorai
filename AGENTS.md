@@ -5,7 +5,7 @@
 > Inspired by [refactoringhq/tolaria](https://github.com/refactoringhq/tolaria),
 > stripped to what's load-bearing for a solo / small-team project.
 
-Quick links: [specs/](specs/) · [docs/adr/](docs/adr/)
+Quick links: [specs/](specs/) · [specs/roadmap/](specs/roadmap/) · [docs/adr/](docs/adr/)
 
 ---
 
@@ -222,6 +222,14 @@ since code is exact and prose is loose.
 If you change the contract (new command, new event, renamed field),
 update the relevant spec **in the same commit** as the code.
 
+`specs/roadmap/` is the exception to "design source of truth": it holds
+**sequencing**, not design. `TODO.md` says what to do next and in what
+order, `DONE.md` logs what landed. A feature is never specified there —
+if a roadmap item and a spec disagree about behaviour, the spec wins (or
+the spec is wrong and gets fixed first, per § 2a). When an item ships,
+the same commit updates the spec it changed, *then* the entry moves to
+`DONE.md`.
+
 ---
 
 ## 7. Reference
@@ -263,6 +271,9 @@ cargo test
 - `specs/04-frontend.md` — routes, components, state shape.
 - `specs/05-features.md` — feature-by-feature behaviour.
 - `specs/06-milestones.md` — what ships in M0..M5.
+- `specs/roadmap/TODO.md` — the agreed next steps, in priority order.
+  Read it before re-deriving a plan; `specs/roadmap/DONE.md` is the
+  dated log of what landed and the gotchas found on the way.
 - `specs/annex-A-tolaria-patterns.md` — proven patterns lifted from
   tolaria with file:line references.
 
