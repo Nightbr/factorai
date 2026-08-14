@@ -154,7 +154,12 @@ Concrete rules:
 
 - shadcn-style primitives live in `@factorai/ui`. Use them. Don't put
   raw `<input>`, `<button>`, `<select>` elements in app code — use
-  `Input`, `Button`, `Select` from `@factorai/ui`.
+  `Input`, `Button`, `Select` from `@factorai/ui`. The exception is a
+  bare icon affordance in a dense row (the sidebar's pin and `+`),
+  where `Button`'s chrome reads as a widget rather than an
+  affordance — those are plain elements, styled muted-at-rest and
+  full-colour on hover.
+
 - State: Zustand for client state, TanStack Query for server-state
   caches (Tauri command results). PTY data **never** goes through
   React state — it streams from events directly into xterm.
@@ -163,6 +168,21 @@ Concrete rules:
 - Aliases:
   `@/*`, `@components/*`, `@hooks/*`, `@lib/*`, `@store/*`, `@routes/*`
   — defined in both `tsconfig.json` and `vite.config.ts`.
+
+### Design rules
+
+- **Anything clickable shows `cursor: pointer`.** Tailwind v4's
+  Preflight sets `cursor: default` on buttons, so this does not happen
+  by itself. It is one base rule in
+  `packages/ui/src/styles/globals.css` covering `button`, `a[href]`,
+  `select`, `summary`, `label[for]` and the ARIA interactive roles —
+  **not** a `cursor-pointer` class per control, which gets forgotten
+  exactly where a control is hand-rolled. Disabled controls are
+  excluded: a pointer on something inert is a lie. If you add a new
+  interactive role, add it there rather than patching the component.
+- Rows you act on repeatedly (pinned, selected) keep their hover
+  affordances permanently visible; everything else stays quiet until
+  hovered.
 
 ### Backend
 

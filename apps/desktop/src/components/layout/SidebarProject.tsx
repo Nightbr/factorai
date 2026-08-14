@@ -52,6 +52,10 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 	// there is nowhere to start one: claude would boot in $HOME and file the new
 	// session under a *different* project than the row that was clicked.
 	const canStart = project.realPath !== null;
+	// Pinned and selected projects keep their controls on show: both are rows you
+	// act on repeatedly, so the affordance shouldn't need hunting for. Everything
+	// else stays quiet until hovered.
+	const alwaysShowControls = project.pinned || isActive;
 
 	return (
 		<li>
@@ -98,7 +102,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					// `group/pin` scopes the glyph swap below to THIS icon's hover, not
 					// the row's — the row already owns the bare `group`.
 					className={`group/pin flex shrink-0 items-center rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 ${
-						project.pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+						alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
 					}`}
 					aria-label={project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`}
 					title={project.pinned ? 'Unpin' : 'Pin to top'}
@@ -132,7 +136,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 						// Always there on a pinned project: those are the ones you start
 						// work in, so the affordance shouldn't need hunting for.
 						className={`flex shrink-0 items-center rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-30 ${
-							project.pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+							alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
 						}`}
 						aria-label={`New session in ${project.displayName}`}
 						disabled={!canStart}
