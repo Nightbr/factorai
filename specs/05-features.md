@@ -23,9 +23,18 @@ taught anyone to right-click, and building a context-menu system for one action
 would drag "Reveal in file manager" along with it. Pinned projects rise into a
 block at the top of the list, separated by a divider with **no header** — the
 filled pin on each row is what says why they're up there, and it doubles as the
-unpin target. The icon is the same glyph either way, filled when pinned: a
-slashed `PinOff` on an unpinned row reads as "unpin", the opposite of what
-clicking it does.
+unpin target. The glyph shows **state at rest and action on hover**: an
+unpinned row gets an outline pin, a pinned one a filled pin, and hovering a
+pinned pin swaps it to a slashed `PinOff` — so the icon answers both "is this
+pinned?" and "what will clicking do?" without a tooltip. A slashed pin on an
+*unpinned* row would say the opposite of what clicking does, so it is never
+used there.
+
+Neither the pin nor the `+` wears button chrome: a filled hover background
+behind a 14px glyph in a dense row reads as a widget when all it is is an
+affordance. Both sit muted at rest and take full colour only under the cursor.
+On a **pinned** project both stay visible without hovering — those are the
+projects you start work in, so the affordance shouldn't need hunting for.
 
 The flag is the `projects.pinned` column via `pin_project` — **not** a client
 preference, so it is per-machine and survives reindexing (the indexer's upsert
