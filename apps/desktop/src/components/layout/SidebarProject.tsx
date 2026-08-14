@@ -68,7 +68,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					type="button"
 					aria-label={expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`}
 					aria-expanded={expanded}
-					className="flex shrink-0 items-center py-2 pr-0.5 pl-1.5"
+					className="flex shrink-0 items-center py-2 pr-2 pl-1.5"
 					onClick={() => toggleProject(project.id)}
 				>
 					<ChevronRight
@@ -88,7 +88,6 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					<ProjectIcon name={project.displayName} path={project.realPath ?? project.id} size={16} />
 					<span className="min-w-0 flex-1 truncate">{project.displayName}</span>
 					{isLive && <StatusDot status="running" />}
-					<span className="tabular-nums text-muted-foreground text-xs">{project.sessionCount}</span>
 				</Link>
 
 				{/* The title lives on the wrapper: Button sets

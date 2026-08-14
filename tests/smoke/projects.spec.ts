@@ -18,8 +18,10 @@ test.describe('projects sidebar', () => {
 		// in the header, so filter to the list region.
 		const sidebar = page.locator('aside');
 		await expect(sidebar.getByText('foo')).toBeVisible();
-		// Session count shows next to it.
-		await expect(sidebar.getByText('1', { exact: true })).toBeVisible();
+		// The session count used to sit at the end of the row and was dropped: it
+		// competed with the status dot for the eye, and the number of sessions a
+		// project has is not what you scan a sidebar for.
+		await expect(sidebar.getByText('1', { exact: true })).toHaveCount(0);
 	});
 
 	test('@smoke clicking a project navigates to its session list', async ({ page }) => {
