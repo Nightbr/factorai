@@ -1,5 +1,4 @@
 import { useRef } from 'react';
-import { clampPanelWidth } from '@store/panelStore';
 
 /** How far one arrow-key press moves the edge. */
 const KEY_STEP = 16;
@@ -7,23 +6,29 @@ const KEY_STEP = 16;
 interface PanelResizerProps {
 	width: number;
 	onWidth: (width: number) => void;
+	/**
+	 * Which edge of its panel this handle sits on, which decides the sign of the
+	 * drag: a `left` handle belongs to a right-hand panel that grows leftwards,
+	 * so a negative-x delta widens it; a `right` handle is the mirror.
+	 */
+	edge: 'left' | 'right';
+	label: string;
+	/** Each panel has its own sensible range, so clamping is the caller's. */
+	clamp: (width: number) => number;
 }
 
 /**
- * Drag handle on the panel's left edge. Pointer capture means the drag keeps
- * tracking even when the cursor outruns the 4px strip, which is most of the
- * time.
- *
- * The panel grows leftwards, so a negative-x delta is a wider panel.
+ * Drag handle on a panel's edge. Pointer capture means the drag keeps tracking
+ * even when the cursor outruns the 4px strip, which is most of the time.
  */
-export function PanelResizer({ width, onWidth }: PanelResizerProps) {
+export function PanelResizer({ width, onWidth, edge, label, clamp }: PanelResizerProps) {
 	const drag = useRef<{ x: number; width: number } | null>(null);
 
 	return (
 		<div
 			role="separator"
 			aria-orientation="vertical"
-			aria-label="Resize file tree"
+			aria-label={label}
 			tabIndex={0}
 			className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 focus-visible:bg-primary/50 focus-visible:outline-none"
 			onPointerDown={(e) => {
@@ -33,7 +38,8 @@ export function PanelResizer({ width, onWidth }: PanelResizerProps) {
 			onPointerMove={(e) => {
 				const start = drag.current;
 				if (!start) return;
-				onWidth(clampPanelWidth(start.width - (e.clientX - start.x)));
+				const delta = e.clientX - start.x;
+				onWidth(clamp(edge === 'left' ? start.width - delta : start.width + delta));
 			}}
 			onPointerUp={(e) => {
 				drag.current = null;
@@ -43,12 +49,14 @@ export function PanelResizer({ width, onWidth }: PanelResizerProps) {
 				drag.current = null;
 			}}
 			onKeyDown={(e) => {
-				if (e.key === 'ArrowLeft') {
+				const grow = edge === 'left' ? 'ArrowLeft' : 'ArrowRight';
+				const shrink = edge === 'left' ? 'ArrowRight' : 'ArrowLeft';
+				if (e.key === grow) {
 					e.preventDefault();
-					onWidth(clampPanelWidth(width + KEY_STEP));
-				} else if (e.key === 'ArrowRight') {
+					onWidth(clamp(width + KEY_STEP));
+				} else if (e.key === shrink) {
 					e.preventDefault();
-					onWidth(clampPanelWidth(width - KEY_STEP));
+					onWidth(clamp(width - KEY_STEP));
 				}
 			}}
 		/>

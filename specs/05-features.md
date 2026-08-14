@@ -11,9 +11,16 @@ from, for cross-checking.
 **Behavior.** On launch, show every project under `~/.claude/projects/`,
 ordered by `last_session_at DESC`. Pinned projects float to the top.
 
-**UI.** Sidebar section. Each row: a collapse/expand chevron, display name,
-status dot (any live terminal in this project → green), and — on hover — a pin
-and a `+` for a new session. The session count was dropped from the row: it
+**UI.** Sidebar section. Each row: a collapse/expand chevron, the project
+avatar **badged with the status dot** when any terminal in it is live, the
+display name, and — on hover — a pin and a `+` for a new session. The badge sits
+on the avatar's corner rather than as another item in the row: at four possible
+elements (chevron, avatar, name, dot, pin, `+`) the row was reading as a
+toolbar.
+
+The sidebar is **resizable** by the same handle mechanism as the file panel —
+one `PanelResizer` told which edge it sits on, since the sign of the drag is
+all that differs. Width persists (180–480px). The session count was dropped from the row: it
 competed with the status dot for the end of the row, and it is not what you
 scan a sidebar for.
 
@@ -452,7 +459,9 @@ project it shows follows the route (`/projects/$id` or
   is shown for that project. Collapse-all collapses the root too, and
   isn't undone on the next render.
 - Resizable by dragging the panel's left edge, 200–600px, keyboard
-  accessible via arrow keys on the separator.
+  accessible via arrow keys on the separator. The scrolling area reserves a
+  right-hand gutter so rows never run under the scrollbar — which a long tree
+  or a large change set will otherwise produce.
 
 **Backend.** `list_dir(path, root?)` — see specs/03-backend-rust.md
 § `files` for the sorting, `.git` exclusion, entry cap and symlink rules.

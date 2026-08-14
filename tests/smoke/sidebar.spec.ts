@@ -118,3 +118,45 @@ test.describe('pinned projects', () => {
 	});
 
 });
+
+test.describe('sidebar resizing', () => {
+	test('@smoke the separator resizes the sidebar and the width persists', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		const sidebar = page.getByTestId('sidebar');
+		const before = (await sidebar.boundingBox())?.width ?? 0;
+		expect(before).toBeGreaterThan(0);
+
+		// Keyboard rather than a drag: same code path through clampSidebarWidth,
+		// and it doesn't depend on pointer capture behaving in a headless browser.
+		const separator = page.getByRole('separator', { name: 'Resize sidebar' });
+		await separator.focus();
+		await separator.press('ArrowRight');
+		await separator.press('ArrowRight');
+
+		const after = (await sidebar.boundingBox())?.width ?? 0;
+		expect(after).toBeGreaterThan(before);
+
+		await page.reload();
+		const restored = (await page.getByTestId('sidebar').boundingBox())?.width ?? 0;
+		expect(restored).toBe(after);
+	});
+
+	test('@smoke a live project badges its avatar rather than its row', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		// Open a session so the project has a live PTY.
+		await page.getByRole('button', { name: 'Expand zulu' }).click();
+		await page.getByRole('link', { name: /Zulu task 11/ }).click();
+		await expect(page.locator('.xterm')).toBeVisible();
+
+		// The dot is inside the avatar, not a sibling in the row.
+		const badgedIcon = page
+			.locator('aside')
+			.getByTestId('project-icon')
+			.filter({ has: page.locator('[title="Running"]') });
+		await expect(badgedIcon).toHaveCount(1);
+	});
+});
