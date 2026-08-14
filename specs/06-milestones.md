@@ -171,8 +171,9 @@ toolchain wired up.
    bypassing the embedded xterm.
 6. **Multi-window.** Detached session windows for power users running
    many parallel agents.
-7. **Auto-updates.** Adopt `tauri-plugin-updater` once we have a signed
-   release flow.
+7. ~~**Auto-updates.**~~ **Shipped 2026-08-14** — see F14 and ADR-0010.
+   The signing flow it was waiting on is a minisign key held as a repository
+   secret, not Apple code-signing, which remains outstanding.
 8. **Crash reporting / Sentry.** Wire `tauri-plugin-sentry` if/when
    factorai gets external users. Requires a DSN — either Sentry SaaS or
    a self-hosted instance; the plugin can't run "purely local".

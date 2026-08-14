@@ -40,11 +40,11 @@ jobs:
             platform: macos-latest
             # One dmg that runs natively on both Apple Silicon and Intel,
             # rather than two assets and a "which one?" question.
-            # --bundles dmg: tauri.conf also lists the "app" target, which
-            # otherwise ships a second, unversioned factorai_universal.app.tar.gz
-            # next to the dmg. That tarball exists to feed an auto-updater we
-            # don't have, so it's a confusing duplicate download.
-            args: --target universal-apple-darwin --bundles dmg
+            # app + dmg: the dmg is what people download, the .app.tar.gz is
+            # what the updater consumes (F14). Both are wanted now — this
+            # deliberately reverses the earlier --bundles dmg, which was correct
+            # only while there was no updater to feed.
+            args: --target universal-apple-darwin --bundles app,dmg
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
           - name: Linux (x86_64)
             # NOT ubuntu-22.04: it starts deprecation on 2026-09-17 with
@@ -54,7 +54,10 @@ jobs:
             # README. To widen it again, build inside an ubuntu:22.04 container
             # on a supported runner rather than pinning a dying image.
             platform: ubuntu-24.04
-            args: --bundles deb,appimage
+            # AppImage only: Tauri's updater can replace an AppImage in place
+            # but never a .deb, since apt owns those files. Shipping a .deb that
+            # silently never self-updates is worse than not shipping one.
+            args: --bundles appimage
             rust-targets: ''
     runs-on: ${{ matrix.platform }}
 
@@ -126,19 +129,27 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater artifacts. Without these the build still succeeds
+          # but ships unsigned bundles the app will refuse to install.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # The key is generated without a passphrase; the CLI still wants the
+          # variable present or it prompts and hangs the job.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
           tagName: ${{ github.ref_name }}
           releaseName: factorai ${{ github.ref_name }}
           releaseDraft: true
-          # Honest while the app is 0.x and the README says there are no
-          # packaged builds yet.
-          prerelease: true
+          # NOT a prerelease, despite 0.x: GitHub's /releases/latest — which the
+          # updater endpoint resolves through — skips prereleases entirely, so
+          # marking them would leave every installed app polling a 404 forever.
+          # Draft still gates it: nothing is visible to the updater until you
+          # publish the draft by hand.
+          prerelease: false
           generateReleaseNotes: true
-          # We ship no auto-updater (06-milestones.md, deferred #7), so there
-          # are no signatures and no latest.json to publish. Both default to
-          # true, hence set explicitly.
-          uploadUpdaterJson: false
-          uploadUpdaterSignatures: false
+          # latest.json is the manifest the app polls; the .sig files are what
+          # prove an update came from us (F14, ADR-0010).
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
           args: ${{ matrix.args }}
