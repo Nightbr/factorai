@@ -1,6 +1,5 @@
 import type { Project } from '@factorai/types';
 import {
-	Button,
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -9,6 +8,7 @@ import {
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
+	IconButton,
 	Input,
 } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -117,15 +117,12 @@ export function Sidebar() {
 					</span>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="icon"
-								className="size-5"
+							<IconButton
 								aria-label="Sort and expand projects"
 								title="Sort and expand projects"
 							>
-								<ArrowUpDown className="size-3.5 text-muted-foreground" />
-							</Button>
+								<ArrowUpDown />
+							</IconButton>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-40">
 							<DropdownMenuLabel>Sort</DropdownMenuLabel>

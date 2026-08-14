@@ -154,11 +154,8 @@ Concrete rules:
 
 - shadcn-style primitives live in `@factorai/ui`. Use them. Don't put
   raw `<input>`, `<button>`, `<select>` elements in app code — use
-  `Input`, `Button`, `Select` from `@factorai/ui`. The exception is a
-  bare icon affordance in a dense row (the sidebar's pin and `+`),
-  where `Button`'s chrome reads as a widget rather than an
-  affordance — those are plain elements, styled muted-at-rest and
-  full-colour on hover.
+  `Input`, `Button`, `Select` from `@factorai/ui`. Icon-only controls
+  use **`IconButton`**, not `Button variant="ghost" size="icon"`.
 
 - State: Zustand for client state, TanStack Query for server-state
   caches (Tauri command results). PTY data **never** goes through
@@ -180,6 +177,17 @@ Concrete rules:
   exactly where a control is hand-rolled. Disabled controls are
   excluded: a pointer on something inert is a lie. If you add a new
   interactive role, add it there rather than patching the component.
+- **Icon buttons paint no background, ever.** Their hover state is the
+  **icon taking colour** (`hover:text-primary`), not a filled block
+  behind it: at 14px the block is bigger than the thing it highlights
+  and reads as a widget rather than an affordance. That is what
+  `IconButton` in `@factorai/ui` is for — use it rather than
+  `Button variant="ghost" size="icon"`, and don't add `hover:bg-*` to
+  it. It deliberately carries no `cursor-pointer` class either, so the
+  base rule above stays in charge of disabled controls.
+- **Chevrons colour on hover too** — the sidebar's expand toggle from
+  its own hover, the file tree's from its row's (`group-hover`), since
+  there the whole row is the click target.
 - Rows you act on repeatedly (pinned, selected) keep their hover
   affordances permanently visible; everything else stays quiet until
   hovered.

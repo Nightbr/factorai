@@ -1,4 +1,5 @@
 import type { Project, SessionSummary } from '@factorai/types';
+import { IconButton } from '@factorai/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, Pin, PinOff, Plus } from 'lucide-react';
@@ -68,19 +69,14 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					isActive ? 'bg-secondary' : 'hover:bg-secondary/50'
 				}`}
 			>
-				<button
-					type="button"
+				<IconButton
 					aria-label={expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`}
 					aria-expanded={expanded}
-					className="flex shrink-0 items-center py-2 pr-2 pl-1.5"
+					className="my-1 mr-1 ml-1"
 					onClick={() => toggleProject(project.id)}
 				>
-					<ChevronRight
-						className={`size-3.5 text-muted-foreground transition-transform ${
-							expanded ? 'rotate-90' : ''
-						}`}
-					/>
-				</button>
+					<ChevronRight className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+				</IconButton>
 
 				<Link
 					to="/projects/$id"
@@ -94,14 +90,10 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					{isLive && <StatusDot status="running" />}
 				</Link>
 
-				<button
-					type="button"
-					// No button chrome: a filled hover background on a 14px glyph in a
-					// dense row reads as a widget, when all these are is an affordance.
-					// Dim at rest, full colour under the cursor.
+				<IconButton
 					// `group/pin` scopes the glyph swap below to THIS icon's hover, not
 					// the row's — the row already owns the bare `group`.
-					className={`group/pin flex shrink-0 items-center rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 ${
+					className={`group/pin transition-all focus-visible:opacity-100 ${
 						alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
 					}`}
 					aria-label={project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`}
@@ -112,13 +104,13 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 						<>
 							{/* Filled at rest says "pinned"; slashed under the cursor says
 							    what the click will do. */}
-							<Pin className="size-3.5 fill-current group-hover/pin:hidden" />
-							<PinOff className="hidden size-3.5 group-hover/pin:block" />
+							<Pin className="fill-current group-hover/pin:hidden" />
+							<PinOff className="hidden group-hover/pin:block" />
 						</>
 					) : (
-						<Pin className="size-3.5" />
+						<Pin />
 					)}
-				</button>
+				</IconButton>
 
 				{/* The title lives on the wrapper: a disabled button sets
 				    pointer-events-none, which suppresses a native tooltip on the
@@ -131,19 +123,18 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 							: 'No project folder on disk — cannot start a session here'
 					}
 				>
-					<button
-						type="button"
-						// Always there on a pinned project: those are the ones you start
-						// work in, so the affordance shouldn't need hunting for.
-						className={`flex shrink-0 items-center rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-30 ${
+					<IconButton
+						// Always there on a pinned or selected project: those are the ones
+						// you start work in, so the affordance shouldn't need hunting for.
+						className={`transition-all focus-visible:opacity-100 ${
 							alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
 						}`}
 						aria-label={`New session in ${project.displayName}`}
 						disabled={!canStart}
 						onClick={() => void startSession(project.id)}
 					>
-						<Plus className="size-3.5" />
-					</button>
+						<Plus />
+					</IconButton>
 				</span>
 			</div>
 

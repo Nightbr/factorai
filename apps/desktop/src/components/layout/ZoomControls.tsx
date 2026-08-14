@@ -1,4 +1,4 @@
-import { Button } from '@factorai/ui';
+import { IconButton } from '@factorai/ui';
 import { Minus, Plus } from 'lucide-react';
 import { useEffect } from 'react';
 import { isTauri } from '@lib/tauri';
@@ -37,17 +37,14 @@ export function ZoomControls() {
 
 	return (
 		<div className="flex items-center gap-0.5" data-testid="zoom-controls">
-			<Button
-				variant="ghost"
-				size="icon"
-				className="size-5"
+			<IconButton
 				aria-label="Zoom out"
 				title="Zoom out"
 				disabled={zoom <= MIN_ZOOM}
 				onClick={zoomOut}
 			>
-				<Minus className="size-3 text-muted-foreground" />
-			</Button>
+				<Minus />
+			</IconButton>
 			<button
 				type="button"
 				// Clicking the readout resets — the affordance every browser has, and
@@ -59,17 +56,14 @@ export function ZoomControls() {
 			>
 				{zoomPercent(zoom)}
 			</button>
-			<Button
-				variant="ghost"
-				size="icon"
-				className="size-5"
+			<IconButton
 				aria-label="Zoom in"
 				title="Zoom in"
 				disabled={zoom >= MAX_ZOOM}
 				onClick={zoomIn}
 			>
-				<Plus className="size-3 text-muted-foreground" />
-			</Button>
+				<Plus />
+			</IconButton>
 		</div>
 	);
 }

@@ -1,4 +1,4 @@
-import { Button } from '@factorai/ui';
+import { IconButton } from '@factorai/ui';
 import { FolderGit2, PanelRight } from 'lucide-react';
 import { UpdateBadge } from '@components/layout/UpdateBadge';
 import { usePanelStore } from '@store/panelStore';
@@ -25,17 +25,18 @@ export function TopBar() {
 			{/* Renders only once an update is staged and waiting for a restart. */}
 			<UpdateBadge />
 
-			<Button
-				variant="ghost"
-				size="icon"
-				className="size-7"
+			<IconButton
+				size="md"
+				// Open is a state, not a hover: it keeps full foreground colour so the
+				// panel's visibility is readable without reaching for the mouse.
+				className={open ? 'text-foreground' : undefined}
 				aria-label="Toggle file tree"
 				aria-pressed={open}
 				title="Toggle file tree"
 				onClick={toggle}
 			>
-				<PanelRight className={open ? 'text-foreground' : 'text-muted-foreground'} />
-			</Button>
+				<PanelRight />
+			</IconButton>
 		</header>
 	);
 }
