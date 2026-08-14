@@ -256,6 +256,19 @@ cargo test
   hardcode paths.
 - The DevTools window is enabled via the `devtools` cargo feature on
   Tauri 2; it's already on in our `Cargo.toml`.
+- **Turborepo 2.x runs tasks in strict env mode**, so anything not in
+  `globalPassThroughEnv` is stripped before the app ever starts. Under
+  `pnpm dev` the app saw 15 env vars instead of 74. That broke
+  "open in default app" and every external link on Linux: with
+  `XDG_DATA_DIRS` unset, `xdg-open` falls back to
+  `/usr/local/share:/usr/share`, can't see desktop files exported by
+  Flatpak or snap, and drops through to its hardcoded `x-www-browser`
+  chain — so links opened whatever `update-alternatives` points at
+  rather than your actual default browser. `turbo.json` now passes the
+  XDG/desktop-integration vars through. Symptoms of this class ("works
+  when I run the binary directly, not under `pnpm dev`") are almost
+  always a stripped env — compare `/proc/<pid>/environ` against your
+  shell before blaming the app.
 
 ### Helpful files when picking up work
 
