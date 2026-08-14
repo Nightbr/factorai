@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { QuitConfirm } from '@components/dialog/QuitConfirm';
 import { AppShell } from '@components/layout/AppShell';
 import { FileViewerModal } from '@components/viewer/FileViewerModal';
-import { useFileViewer } from '@hooks/useFileViewer';
+import { type DiffMode, isDiffMode, useFileViewer } from '@hooks/useFileViewer';
 import { events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { useTerminalStore } from '@store/terminalStore';
@@ -49,7 +49,12 @@ function RootLayout() {
 			<AppShell>
 				<Outlet />
 			</AppShell>
-			<FileViewerModal path={viewer.path} onClose={viewer.close} onOpenPath={viewer.open} />
+			<FileViewerModal
+				path={viewer.path}
+				diff={viewer.diff}
+				onClose={viewer.close}
+				onOpenPath={viewer.open}
+			/>
 			<QuitConfirm />
 		</>
 	);
@@ -60,8 +65,11 @@ export const rootRoute = createRootRoute({
 	// viewer is app-level, mounted here beside QuitConfirm: every route then
 	// inherits the param, which is what lets `useFileViewer` update it without
 	// knowing which route is mounted. See hooks/useFileViewer.ts.
-	validateSearch: (search: Record<string, unknown>): { file?: string } => ({
+	// `&diff=` turns the same viewer into a diff of that file (F13); the modes
+	// are validated here so a hand-edited URL can't reach the editor.
+	validateSearch: (search: Record<string, unknown>): { file?: string; diff?: DiffMode } => ({
 		file: typeof search.file === 'string' && search.file ? search.file : undefined,
+		diff: isDiffMode(search.diff) ? search.diff : undefined,
 	}),
 	component: RootLayout,
 });
