@@ -13,11 +13,13 @@ import { useUpdater } from '@hooks/useUpdater';
 import { useTerminalStore } from '@store/terminalStore';
 
 /**
- * "Update ready — Restart" in the top bar (specs/05-features.md F14).
+ * The updater's whole surface, in the sidebar footer (specs/05-features.md
+ * F14).
  *
- * Renders nothing at all until a new version has been downloaded and staged:
- * checking and downloading are silent, because an announcement you can't act on
- * yet is just noise beside a running agent.
+ * At rest it is a quiet "Check for updates" — a label that happens to be
+ * clickable, so the updater is observable rather than a thing that silently
+ * might be working. Checking and downloading stay understated; only a staged
+ * version earns the accent.
  *
  * **Restarting is a quit.** `relaunch()` tears the process down, and with it
  * every live PTY — but it never fires `CloseRequested`, so the quit guard
@@ -25,11 +27,24 @@ import { useTerminalStore } from '@store/terminalStore';
  * a word. Hence the same confirmation here, on the same terms.
  */
 export function UpdateBadge() {
-	const { state, restart } = useUpdater();
+	const { state, checkNow, restart } = useUpdater();
 	const liveCount = useTerminalStore((s) => Object.keys(s.bySession).length);
 	const [confirming, setConfirming] = useState(false);
 
-	if (state.phase !== 'ready') return null;
+	if (state.phase !== 'ready') {
+		return (
+			<button
+				type="button"
+				data-testid="update-check"
+				className="truncate text-muted-foreground/60 text-xs transition-colors hover:text-foreground disabled:hover:text-muted-foreground/60"
+				disabled={state.phase === 'checking' || state.phase === 'downloading'}
+				title="Check for updates now"
+				onClick={checkNow}
+			>
+				{LABELS[state.phase]}
+			</button>
+		);
+	}
 
 	function onRestart() {
 		if (liveCount > 0) {
@@ -79,3 +94,13 @@ export function UpdateBadge() {
 		</>
 	);
 }
+
+const LABELS: Record<'idle' | 'checking' | 'upToDate' | 'downloading' | 'error', string> = {
+	idle: 'Check for updates',
+	checking: 'Checking…',
+	upToDate: 'Up to date',
+	downloading: 'Downloading update…',
+	// Deliberately not the error text: a failed check means the app is simply
+	// not the newest, which is not worth a red line in the footer forever.
+	error: 'Check for updates',
+};

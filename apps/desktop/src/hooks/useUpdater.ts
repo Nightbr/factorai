@@ -9,9 +9,14 @@ export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export type UpdateState =
 	| { phase: 'idle' }
+	| { phase: 'checking' }
+	| { phase: 'upToDate' }
 	| { phase: 'downloading'; version: string }
 	| { phase: 'ready'; version: string }
 	| { phase: 'error'; message: string };
+
+/** How long "Up to date" lingers before the control goes quiet again. */
+const UP_TO_DATE_MS = 4000;
 
 /**
  * Auto-update against the GitHub release manifest (specs/05-features.md F14).
@@ -27,6 +32,10 @@ export type UpdateState =
  */
 export function useUpdater(): {
 	state: UpdateState;
+	/** Check now rather than waiting for the poll. Surfaced in the footer so the
+	 *  updater is observable at all — otherwise its only visible state is the
+	 *  badge that appears hours later. */
+	checkNow: () => void;
 	restart: () => void;
 } {
 	const [state, setState] = useState<UpdateState>({ phase: 'idle' });
@@ -34,8 +43,9 @@ export function useUpdater(): {
 	// only find the same release and re-download it.
 	const installed = useRef(false);
 
-	const check = useCallback(async () => {
+	const check = useCallback(async (manual = false) => {
 		if (installed.current) return;
+		if (manual) setState({ phase: 'checking' });
 		if (!isTauri()) {
 			// Browser-only dev and the Playwright lane: the plugin isn't there to
 			// talk to, so the badge is driven from the fixture instead.
@@ -43,6 +53,8 @@ export function useUpdater(): {
 			if (staged) {
 				installed.current = true;
 				setState({ phase: 'ready', version: staged });
+			} else if (manual) {
+				setState({ phase: 'upToDate' });
 			}
 			return;
 		}
@@ -57,7 +69,10 @@ export function useUpdater(): {
 		try {
 			const { check: checkForUpdate } = await import('@tauri-apps/plugin-updater');
 			const update = await checkForUpdate();
-			if (!update) return;
+			if (!update) {
+				if (manual) setState({ phase: 'upToDate' });
+				return;
+			}
 
 			installed.current = true;
 			setState({ phase: 'downloading', version: update.version });
@@ -80,6 +95,14 @@ export function useUpdater(): {
 		return () => clearInterval(timer);
 	}, [check]);
 
+	// "Up to date" is an acknowledgement, not a state worth keeping: let it fade
+	// so the footer settles back to its quiet label.
+	useEffect(() => {
+		if (state.phase !== 'upToDate') return;
+		const timer = setTimeout(() => setState({ phase: 'idle' }), UP_TO_DATE_MS);
+		return () => clearTimeout(timer);
+	}, [state.phase]);
+
 	const restart = useCallback(() => {
 		if (!isTauri()) {
 			recordMockCall('relaunch');
@@ -93,5 +116,5 @@ export function useUpdater(): {
 		})();
 	}, []);
 
-	return { state, restart };
+	return { state, checkNow: () => void check(true), restart };
 }

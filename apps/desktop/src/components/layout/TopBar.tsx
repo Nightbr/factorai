@@ -1,6 +1,6 @@
 import { IconButton } from '@factorai/ui';
 import { FolderGit2, PanelRight } from 'lucide-react';
-import { UpdateBadge } from '@components/layout/UpdateBadge';
+import { SessionTabs } from '@components/layout/SessionTabs';
 import { usePanelStore } from '@store/panelStore';
 
 /**
@@ -18,12 +18,12 @@ export function TopBar() {
 			<FolderGit2 className="size-4 text-primary" />
 			<span className="font-semibold text-sm tracking-tight">factorai</span>
 
-			{/* Reserved: global search lands here, then window controls to the
-			    right of the panel toggle. */}
+			{/* Tabs take the middle. They render nothing when no session is live, so
+			    the bar looks exactly as it did before the first one starts. Window
+			    controls land right of the panel toggle when M5 drops the OS
+			    decorations; the drag region will have to share this row with them. */}
+			<SessionTabs />
 			<div className="flex-1" />
-
-			{/* Renders only once an update is staged and waiting for a restart. */}
-			<UpdateBadge />
 
 			<IconButton
 				size="md"

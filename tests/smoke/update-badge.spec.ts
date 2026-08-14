@@ -9,11 +9,20 @@ import { fixtureOneProjectOneSession, installMockBridge } from './fixtures';
  * wrong: whether a restart can kill a live agent session without asking.
  */
 test.describe('update badge', () => {
-	test('@smoke stays hidden when there is no staged update', async ({ page }) => {
+	test('@smoke offers a manual check when nothing is staged', async ({ page }) => {
 		await installMockBridge(page, fixtureOneProjectOneSession());
 		await page.goto('/');
 
+		// The restart badge is absent, but the footer still says what the updater
+		// is for — and clicking it checks now rather than waiting for the poll.
 		await expect(page.getByTestId('update-badge')).toHaveCount(0);
+		const check = page.getByTestId('update-check');
+		await expect(check).toHaveText('Check for updates');
+
+		await check.click();
+		await expect(check).toHaveText('Up to date');
+		// …and it settles back rather than leaving a stale acknowledgement.
+		await expect(check).toHaveText('Check for updates', { timeout: 6000 });
 	});
 
 	test('@smoke shows the staged version and restarts when nothing is running', async ({

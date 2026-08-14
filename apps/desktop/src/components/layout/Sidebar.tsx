@@ -16,6 +16,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { SidebarProject } from '@components/layout/SidebarProject';
+import { UpdateBadge } from '@components/layout/UpdateBadge';
 import { ZoomControls } from '@components/layout/ZoomControls';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { cmd } from '@lib/tauri';
@@ -114,7 +115,7 @@ export function Sidebar() {
 			    header then needs an opaque background and a z-index to stop rows
 			    showing through as they pass under, and it still scrolls a pixel
 			    before it sticks. A sibling above the scroller simply never moves. */}
-			<div className="flex shrink-0 items-center gap-1 pt-3 pr-1 pb-2 pl-3">
+			<div className="flex shrink-0 items-center gap-1 pt-3 pr-3 pb-2 pl-3">
 				<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
 					Projects
 				</span>
@@ -184,11 +185,14 @@ export function Sidebar() {
 			</nav>
 
 			<footer className="flex items-center gap-2 border-t border-border py-1.5 pr-1.5 pl-3 text-muted-foreground text-xs">
+				{/* Indexing is transient and worth saying; "Idle" was a label for the
+				    absence of news. In its place, the updater — the one background
+				    thing whose state you might actually want to poke. */}
 				<span className="min-w-0 flex-1 truncate">
 					{progress && progress.phase !== 'idle' ? (
 						`Indexing… ${progress.processed}/${progress.total}`
 					) : (
-						<span className="text-muted-foreground/60">Idle</span>
+						<UpdateBadge />
 					)}
 				</span>
 				<ZoomControls />
