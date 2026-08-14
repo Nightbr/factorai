@@ -46,6 +46,14 @@ export function useUpdater(): {
 			}
 			return;
 		}
+		// Inside a real webview — but never in a dev build. `pnpm dev` runs an
+		// unpackaged binary whose version (0.1.0 in tauri.conf) trails every
+		// release, so the updater finds an "update" on each launch, downloads
+		// ~80MB, and offers to restart the developer into a release build of the
+		// code they are editing. Checked *after* the browser-only branch above:
+		// the Playwright lane is also a dev build, and its fixture-driven badge
+		// must keep working.
+		if (import.meta.env.DEV) return;
 		try {
 			const { check: checkForUpdate } = await import('@tauri-apps/plugin-updater');
 			const update = await checkForUpdate();
