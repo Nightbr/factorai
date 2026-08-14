@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { isTauri } from '@lib/tauri';
+import { isTauri, mockStagedUpdate, recordMockCall } from '@lib/tauri';
 
 /** How often to look for a new release while the app is open.
  *
@@ -35,7 +35,17 @@ export function useUpdater(): {
 	const installed = useRef(false);
 
 	const check = useCallback(async () => {
-		if (!isTauri() || installed.current) return;
+		if (installed.current) return;
+		if (!isTauri()) {
+			// Browser-only dev and the Playwright lane: the plugin isn't there to
+			// talk to, so the badge is driven from the fixture instead.
+			const staged = mockStagedUpdate();
+			if (staged) {
+				installed.current = true;
+				setState({ phase: 'ready', version: staged });
+			}
+			return;
+		}
 		try {
 			const { check: checkForUpdate } = await import('@tauri-apps/plugin-updater');
 			const update = await checkForUpdate();
@@ -63,6 +73,10 @@ export function useUpdater(): {
 	}, [check]);
 
 	const restart = useCallback(() => {
+		if (!isTauri()) {
+			recordMockCall('relaunch');
+			return;
+		}
 		void (async () => {
 			const { relaunch } = await import('@tauri-apps/plugin-process');
 			// No kill_all() here: relaunch tears the process down, and `Drop` on
