@@ -74,3 +74,25 @@ test('@smoke menu items get a pointer too', async ({ page }) => {
 	await expect(item).toHaveCSS('cursor', 'pointer');
 	await expect(radio).toHaveCSS('cursor', 'pointer');
 });
+
+test('@smoke only the session header dot animates', async ({ page }) => {
+	await installMockBridge(page, fixtureTwoProjectsManySessions());
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Expand zulu' }).click();
+	await page.getByRole('link', { name: /Zulu task 11/ }).click();
+	await expect(page.locator('.xterm')).toBeVisible();
+
+	// The one describing what you're looking at pulses…
+	const headerDot = page.locator('main header [title="Running"]');
+	await expect(headerDot).toHaveCount(1);
+	expect(await headerDot.evaluate((el) => getComputedStyle(el).animationName)).not.toBe('none');
+
+	// …and every other dot on screen is still. With sidebar projects, sidebar
+	// sessions and tabs all showing status, a dozen independent pulses is a
+	// christmas tree rather than a signal.
+	const elsewhere = page.locator('aside [title="Running"]');
+	expect(await elsewhere.count()).toBeGreaterThan(0);
+	for (const dot of await elsewhere.all()) {
+		expect(await dot.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+	}
+});

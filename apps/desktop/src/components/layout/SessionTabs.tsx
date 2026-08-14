@@ -8,11 +8,11 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@factorai/ui';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { AlertTriangle, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StatusDot } from '@components/layout/StatusDot';
+import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { disposeTerminal } from '@components/terminal/Terminal';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -49,6 +49,14 @@ export function SessionTabs() {
 	);
 
 	const titles = useSessionTitles(tabs.map((t) => t.live));
+	// Every tab is a live PTY by definition, so a status dot on each would be a
+	// row of green telling you nothing. The project avatar answers the question
+	// you actually have with several sessions open: which project is this one?
+	const projectsQ = useQuery({ queryKey: queryKeys.projects(), queryFn: () => cmd.listProjects() });
+	const projectById = useMemo(
+		() => new Map((projectsQ.data ?? []).map((p) => [p.id, p])),
+		[projectsQ.data],
+	);
 
 	// Switching sessions from the sidebar (or a keyboard, later) must not leave
 	// you looking at the wrong end of a scrolled strip.
@@ -146,9 +154,15 @@ export function SessionTabs() {
 								}
 							}}
 							tabIndex={0}
-							title={titles.get(id) ?? id}
+							title={`${projectById.get(live.projectId)?.displayName ?? live.projectId} — ${
+								titles.get(id) ?? id
+							}`}
 						>
-							<StatusDot status={live.status} />
+							<ProjectIcon
+								name={projectById.get(live.projectId)?.displayName ?? live.projectId}
+								path={projectById.get(live.projectId)?.realPath ?? live.projectId}
+								size={14}
+							/>
 							<span className="min-w-0 flex-1 truncate">{titles.get(id) ?? shortId(id)}</span>
 							{/* Only where the pointer already is, or on the active tab: a row
 							    of permanent × buttons is a row of accidents waiting. */}

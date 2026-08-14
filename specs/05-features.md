@@ -396,6 +396,12 @@ running, idle, waiting-input, stopped. Bubble up to sidebar.
 **Backend.** In-memory `TerminalManager` state, derived from output flow +
 prompt detection. Emits `terminal:status` events.
 
+**Only one dot animates.** The running pulse is opt-in (`<StatusDot pulse />`)
+and used in exactly one place: the session header, where there is a single dot
+describing what you are looking at. Sidebar projects, sidebar sessions and tabs
+show the same colours without motion — a dozen things breathing at their own
+rate is a christmas tree, not a signal.
+
 **Edge cases.**
 - False positive on "waiting for input" (some interactive curl output looks
   like a prompt) → fine; the user can see the terminal and react.
@@ -686,11 +692,13 @@ process exits, however it exited. The header stays an honest picture of what is
 running rather than a second list to keep in sync — and it renders nothing at
 all when nothing is live, so the bar looks untouched until the first session.
 
-**UI.** Status dot, session title, and a close button that appears on hover or
-on the active tab; a permanent row of `×` is a row of accidents waiting. The
-project name lives in the tooltip: tabs are usually within one project, and at
-~176px the project prefix truncates away the part that distinguishes a tab from
-its neighbour. A session too new to be indexed shows its short id, matching the
+**UI.** Project avatar, session title, and a close button that appears on hover
+or on the active tab; a permanent row of `×` is a row of accidents waiting.
+
+**The avatar, not a status dot.** Every tab is a live PTY by definition, so a
+dot on each would be a row of green saying nothing; the avatar answers the
+question you actually have with several open — which project is this one? The
+project's name joins the title in the tooltip. A session too new to be indexed shows its short id, matching the
 session header.
 
 - **Reorder** by dragging, using native HTML5 drag-and-drop rather than a
