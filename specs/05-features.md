@@ -585,8 +585,12 @@ change set arrives as one array we can index once.
 the background, and then tells you it's ready. Nothing restarts itself. See
 ADR-0010.
 
-**UI.** One control, in `TopBar`, left of the panel toggle. It renders **only**
-in the `ready` state:
+**UI.** One control, in the **sidebar footer** (it moved out of `TopBar` when
+the session tabs took that space, F16). At rest it is a quiet, clickable
+"Check for updates" — a label that checks now rather than waiting for the
+6-hour poll, so the updater is observable instead of merely promised; it reports
+"Checking…", then either the badge below or "Up to date" for a few seconds
+before settling back. Only a staged version earns the accent:
 
 > `⟳ v0.2.0 ready · Restart`
 
@@ -668,6 +672,49 @@ a webview to scale.
 and Tauri offers `zoomHotkeysEnabled` as a one-line config, but the embedded
 terminal has first claim on keystrokes — the same reasoning that keeps `Ctrl+B`
 off the file-tree toggle (Q15). It belongs to the keybinding pass.
+
+---
+
+## F16 — Session tabs
+
+**Behavior.** The top bar carries a tab per **live session**, for switching
+between running agents without going through the sidebar.
+
+**A tab is a running PTY**, not an open document. The strip is driven straight
+off `terminalStore`, so a tab appears when a session spawns and goes when the
+process exits, however it exited. The header stays an honest picture of what is
+running rather than a second list to keep in sync — and it renders nothing at
+all when nothing is live, so the bar looks untouched until the first session.
+
+**UI.** Status dot, session title, and a close button that appears on hover or
+on the active tab; a permanent row of `×` is a row of accidents waiting. The
+project name lives in the tooltip: tabs are usually within one project, and at
+~176px the project prefix truncates away the part that distinguishes a tab from
+its neighbour. A session too new to be indexed shows its short id, matching the
+session header.
+
+- **Reorder** by dragging, using native HTML5 drag-and-drop rather than a
+  library: ~40 lines against a ~30KB dependency for one horizontal strip.
+- **Overflow** scrolls horizontally, with the scrollbar hidden (at 40px it
+  would eat a third of the strip) and a wheel handler mapping vertical scroll
+  onto it — otherwise the wheel does nothing over the header and the tabs read
+  as stuck. Switching session scrolls the new active tab into view.
+- **Order** is in memory and appends at the end. Persisting it would be
+  meaningless: quitting kills every PTY (ADR-0005), so there are no tabs to
+  restore.
+
+**Closing kills the session, so it always asks** — same terms as the quit
+guard: an unattended `claude` is real money, and closing one mid-task loses its
+work. On confirm the tab is dropped immediately rather than waiting for
+`terminal:exit`; we know what we just did, and a tab that waits for an event is
+a tab that lingers forever if the event is missed. A **failed** kill keeps the
+tab, since the PTY may well still be running.
+
+**Edge cases.**
+- Closing the tab you're looking at navigates to its project; closing any other
+  leaves you where you are.
+- A session that exits on its own takes its tab with it, with no dialog — you
+  didn't ask for it to close, so there is nothing to confirm.
 
 ---
 
