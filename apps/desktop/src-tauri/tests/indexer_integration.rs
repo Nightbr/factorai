@@ -241,3 +241,73 @@ fn malformed_jsonl_line_is_skipped_not_fatal() {
 	})
 	.unwrap();
 }
+
+/// Pinning is stored in the projects table, and a later scan must not undo it.
+///
+/// The upsert on re-scan sets `real_path` and `display_name` only — if it ever
+/// grows to rewrite the whole row, every pin in the sidebar silently clears on
+/// the next file change (specs/05-features.md F1).
+#[test]
+fn a_pinned_project_stays_pinned_across_a_rescan() {
+	let tmp = TempDir::new().unwrap();
+	let (claude_dir, encoded, _session_id) =
+		fixture_one_session(tmp.path(), "/Users/alice/code/foo");
+	let db = open_db(tmp.path());
+	let (indexer, _changes) = make_indexer(db.clone(), claude_dir.clone());
+	indexer.full_scan().expect("first scan");
+
+	db.with(|conn| {
+		conn.execute("UPDATE projects SET pinned = 1 WHERE id = ?1", params![&encoded])?;
+		Ok(())
+	})
+	.expect("pin");
+
+	// A second scan re-runs the same upsert against an existing row.
+	indexer.full_scan().expect("second scan");
+
+	db.with(|conn| {
+		let pinned: i64 = conn
+			.query_row("SELECT pinned FROM projects WHERE id = ?1", params![&encoded], |row| {
+				row.get(0)
+			})
+			.expect("project row");
+		assert_eq!(pinned, 1, "re-scanning must not clear a pin");
+		Ok(())
+	})
+	.expect("read back");
+}
+
+/// `list_projects` orders pinned first, and only then by recency — the sidebar
+/// leans on this for its pinned block.
+#[test]
+fn pinned_projects_sort_ahead_of_more_recent_ones() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+
+	db.with(|conn| {
+		conn.execute(
+			"INSERT INTO projects(id, real_path, display_name, last_session_at, session_count, pinned)
+			 VALUES('-old', '/code/old', 'old', 100, 1, 1),
+			       ('-new', '/code/new', 'new', 900, 1, 0)",
+			[],
+		)?;
+		Ok(())
+	})
+	.expect("seed");
+
+	let ordered: Vec<String> = db
+		.with(|conn| {
+			let mut stmt = conn.prepare(
+				"SELECT id FROM projects
+				 ORDER BY pinned DESC, COALESCE(last_session_at, 0) DESC, display_name ASC",
+			)?;
+			let rows = stmt
+				.query_map([], |row| row.get::<_, String>(0))?
+				.collect::<rusqlite::Result<Vec<_>>>()?;
+			Ok(rows)
+		})
+		.expect("query");
+
+	// The stale-but-pinned project wins over the freshly-used one.
+	assert_eq!(ordered, vec!["-old".to_string(), "-new".to_string()]);
+}

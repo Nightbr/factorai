@@ -38,6 +38,25 @@ export function sortProjects(projects: Project[], sort: ProjectSort): Project[] 
 	);
 }
 
+/**
+ * Split into the pinned block and everything else, each in the chosen order.
+ *
+ * The sort applies **inside both groups**, so the control means one thing
+ * wherever you look. `list_projects` already returns `pinned DESC` first, but
+ * the split is done here rather than relied upon: under `name` we re-sort the
+ * whole list anyway, which would otherwise interleave the two.
+ */
+export function groupProjects(
+	projects: Project[],
+	sort: ProjectSort,
+): { pinned: Project[]; rest: Project[] } {
+	const ordered = sortProjects(projects, sort);
+	return {
+		pinned: ordered.filter((p) => p.pinned),
+		rest: ordered.filter((p) => !p.pinned),
+	};
+}
+
 export function Sidebar() {
 	const navigate = useNavigate();
 	const projectsQ = useQuery({
@@ -58,7 +77,11 @@ export function Sidebar() {
 	const expandAll = useSidebarStore((s) => s.expandAll);
 	const collapseAll = useSidebarStore((s) => s.collapseAll);
 
-	const projects = useMemo(() => sortProjects(projectsQ.data ?? [], sort), [projectsQ.data, sort]);
+	const { pinned, rest } = useMemo(
+		() => groupProjects(projectsQ.data ?? [], sort),
+		[projectsQ.data, sort],
+	);
+	const allIds = useMemo(() => [...pinned, ...rest].map((p) => p.id), [pinned, rest]);
 
 	// Debounced search: typing navigates to /search?q=… (the route runs the
 	// query). Empty input doesn't navigate, so clearing the box is harmless.
@@ -87,8 +110,8 @@ export function Sidebar() {
 				</div>
 			</div>
 
-			<nav className="flex-1 overflow-y-auto py-3">
-				<div className="flex items-center gap-1 px-3 pb-2">
+			<nav className="flex-1 overflow-y-auto py-3 pr-2">
+				<div className="flex items-center gap-1 pb-2 pl-3 pr-1">
 					<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
 						Projects
 					</span>
@@ -114,7 +137,7 @@ export function Sidebar() {
 								<DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
 							</DropdownMenuRadioGroup>
 							<DropdownMenuSeparator />
-							<DropdownMenuItem onSelect={() => expandAll(projects.map((p) => p.id))}>
+							<DropdownMenuItem onSelect={() => expandAll(allIds)}>
 								Expand all
 							</DropdownMenuItem>
 							<DropdownMenuItem onSelect={() => collapseAll()}>Collapse all</DropdownMenuItem>
@@ -130,8 +153,25 @@ export function Sidebar() {
 						No projects found in ~/.claude/projects yet.
 					</div>
 				)}
+				{pinned.length > 0 && (
+					<>
+						<ul className="space-y-0.5" data-testid="pinned-projects">
+							{pinned.map((p) => (
+								<SidebarProject
+									key={p.id}
+									project={p}
+									isActive={activeProjectId === p.id}
+									isLive={liveProjectIds.has(p.id)}
+								/>
+							))}
+						</ul>
+						{/* No header, by choice — the divider plus the filled pin on each
+						    row is what says "these are pinned". */}
+						<div className="my-2 border-border border-t" />
+					</>
+				)}
 				<ul className="space-y-0.5">
-					{projects.map((p) => (
+					{rest.map((p) => (
 						<SidebarProject
 							key={p.id}
 							project={p}

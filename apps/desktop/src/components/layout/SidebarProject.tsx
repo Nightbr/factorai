@@ -1,8 +1,8 @@
 import type { Project, SessionSummary } from '@factorai/types';
 import { Button } from '@factorai/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronRight, Plus } from 'lucide-react';
+import { ChevronRight, Pin, Plus } from 'lucide-react';
 import { useMemo } from 'react';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
@@ -47,6 +47,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 	const expanded = useSidebarStore((s) => s.expanded.includes(project.id));
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
 	const startSession = useStartSession();
+	const togglePin = usePinProject(project);
 
 	// No resolved cwd means we never found a `cwd` in this project's sessions, so
 	// there is nowhere to start one: claude would boot in $HOME and file the new
@@ -90,6 +91,28 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					{isLive && <StatusDot status="running" />}
 				</Link>
 
+				<Button
+					variant="ghost"
+					size="icon"
+					// Hollow and hover-only when unpinned; filled and always visible once
+					// pinned. With no group header above the divider, this icon is the
+					// only per-row evidence of why the project sits up there — and it is
+					// what you click to send it back down.
+					className={`size-4 shrink-0 rounded transition-opacity focus-visible:opacity-100 group-hover:opacity-100 ${
+						project.pinned ? 'opacity-100' : 'opacity-0'
+					}`}
+					aria-label={project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`}
+					title={project.pinned ? 'Unpin' : 'Pin to top'}
+					onClick={() => togglePin()}
+				>
+					{/* Same glyph either way, filled when pinned. A slashed PinOff on an
+					    unpinned row reads as "unpin", which is the opposite of what
+					    clicking it does. */}
+					<Pin
+						className={`size-3 ${project.pinned ? 'fill-primary text-primary' : 'text-muted-foreground'}`}
+					/>
+				</Button>
+
 				{/* The title lives on the wrapper: Button sets
 				    disabled:pointer-events-none, which suppresses a native tooltip on
 				    the element itself — exactly when the explanation matters most. */}
@@ -122,6 +145,31 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 			{expanded && <SessionList project={project} />}
 		</li>
 	);
+}
+
+/**
+ * Pin/unpin, applied to the cached list before the write lands.
+ *
+ * The projects query polls every 2s, so without the optimistic write the row
+ * would sit still for up to two seconds after a click — long enough to click
+ * again and toggle it straight back. `list_projects` re-derives the true order
+ * on the next fetch, so a failed write self-corrects rather than needing a
+ * rollback path.
+ */
+function usePinProject(project: Project): () => void {
+	const queryClient = useQueryClient();
+
+	const mutation = useMutation({
+		mutationFn: (pinned: boolean) => cmd.pinProject(project.id, pinned),
+		onMutate: (pinned: boolean) => {
+			queryClient.setQueryData<Project[]>(queryKeys.projects(), (previous) =>
+				previous?.map((p) => (p.id === project.id ? { ...p, pinned } : p)),
+			);
+		},
+		onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects() }),
+	});
+
+	return () => mutation.mutate(!project.pinned);
 }
 
 function SessionList({ project }: { project: Project }) {
