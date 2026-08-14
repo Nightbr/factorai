@@ -12,8 +12,29 @@ from, for cross-checking.
 ordered by `last_session_at DESC`. Pinned projects float to the top.
 
 **UI.** Sidebar section. Each row: a collapse/expand chevron, display name,
-session count, status dot (any live terminal in this project → green). Click →
-navigate to project view. Right-click → Pin / Unpin / Reveal in file manager.
+status dot (any live terminal in this project → green), and — on hover — a pin
+and a `+` for a new session. The session count was dropped from the row: it
+competed with the status dot for the end of the row, and it is not what you
+scan a sidebar for.
+
+**Pinning** is a **hover icon, not a context menu.** An earlier draft specced
+right-click → Pin / Unpin / Reveal in file manager; nothing in the app has ever
+taught anyone to right-click, and building a context-menu system for one action
+would drag "Reveal in file manager" along with it. Pinned projects rise into a
+block at the top of the list, separated by a divider with **no header** — the
+filled pin on each row is what says why they're up there, and it doubles as the
+unpin target. The icon is the same glyph either way, filled when pinned: a
+slashed `PinOff` on an unpinned row reads as "unpin", the opposite of what
+clicking it does.
+
+The flag is the `projects.pinned` column via `pin_project` — **not** a client
+preference, so it is per-machine and survives reindexing (the indexer's upsert
+touches only `real_path` and `display_name`, guarded by a test). The click
+writes optimistically to the cached list, because the projects query polls at
+2s and the row would otherwise sit still long enough to be clicked twice.
+
+The scrolling list reserves a right-hand gutter so those hover buttons never
+sit under the scrollbar.
 
 The section header carries a sort control: **Recent** (the backend's
 `last_session_at DESC` order, left exactly as returned rather than re-derived

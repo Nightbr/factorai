@@ -249,8 +249,15 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;
-		case 'pin_project':
+		case 'pin_project': {
+			// Mutates the fixture so the renderer's next `list_projects` reflects
+			// it — a no-op mock would make the pinned group untestable.
+			const id = String(args?.id ?? '');
+			const pinned = args?.pinned === true;
+			const project = fx?.projects?.find((p) => p.id === id);
+			if (project) project.pinned = pinned;
 			return undefined as unknown as T;
+		}
 		case 'check_claude_cli':
 			return { installed: false, binaryPath: null, version: null } as unknown as T;
 		case 'start_session':

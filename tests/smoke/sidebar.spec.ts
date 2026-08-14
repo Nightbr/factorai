@@ -77,3 +77,44 @@ test.describe('sidebar projects', () => {
 		await expect(page.locator('.xterm')).toBeVisible();
 	});
 });
+
+test.describe('pinned projects', () => {
+	test('@smoke pinning moves a project above the divider and back', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		// Nothing pinned: no pinned block at all.
+		await expect(page.getByTestId('pinned-projects')).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'Pin alpha' }).click();
+
+		const pinnedBlock = page.getByTestId('pinned-projects');
+		await expect(pinnedBlock).toBeVisible();
+		await expect(pinnedBlock.getByRole('link', { name: /alpha/ })).toBeVisible();
+		// And it is no longer in the main list.
+		await expect(page.locator('aside ul:not([data-testid])').getByText('alpha')).toHaveCount(0);
+
+		// The pin is now the unpin target, and visible without hovering.
+		const unpin = page.getByRole('button', { name: 'Unpin alpha' });
+		await expect(unpin).toBeVisible();
+		await unpin.click();
+		await expect(page.getByTestId('pinned-projects')).toHaveCount(0);
+	});
+
+	test('@smoke the chosen sort applies inside the pinned block too', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		await page.getByRole('button', { name: 'Pin alpha' }).click();
+		await page.getByRole('button', { name: 'Pin zulu' }).click();
+
+		const pinnedNames = page.getByTestId('pinned-projects').getByRole('link');
+		// Recency order first: zulu was touched most recently.
+		await expect(pinnedNames.first()).toContainText('zulu');
+
+		await page.getByRole('button', { name: 'Sort and expand projects' }).click();
+		await page.getByRole('menuitemradio', { name: 'Name' }).click();
+		await expect(pinnedNames.first()).toContainText('alpha');
+	});
+
+});
