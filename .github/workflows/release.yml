@@ -1,0 +1,137 @@
+name: Release
+
+# Tag-driven, and the tag is the only source of truth for the version: the
+# three version fields in the repo stay at whatever they say and are rewritten
+# from the tag at build time (see "Set version from tag" below). No bump commit
+# to forget, no chance of a tag disagreeing with a file.
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# The release is created as a DRAFT so a half-finished matrix can never publish
+# a release missing one platform's assets — review, then publish by hand.
+#
+# Note this workflow does NOT run the test gate. Tagging an unverified commit
+# ships an unverified build; CLAUDE.md § 2c is the gate, and it runs locally.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never cancel a release build half-way — a partially uploaded draft is worse
+  # than a slow one.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      # One platform failing must not cancel the other: its assets still join
+      # the draft, and the failed job can be re-run on its own.
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (universal)
+            platform: macos-latest
+            # One dmg that runs natively on both Apple Silicon and Intel,
+            # rather than two assets and a "which one?" question.
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Linux (x86_64)
+            # NOT ubuntu-22.04: it starts deprecation on 2026-09-17 with
+            # brownouts that deliberately fail jobs. The cost of 24.04 is the
+            # glibc floor — these bundles need glibc 2.39+, so Ubuntu 24.04+ /
+            # Debian 13+ / Fedora 40+, and NOT Ubuntu 22.04. Documented in the
+            # README. To widen it again, build inside an ubuntu:22.04 container
+            # on a supported runner rather than pinning a dying image.
+            platform: ubuntu-24.04
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            patchelf \
+            file
+
+      - uses: pnpm/action-setup@v4
+        # Version comes from `packageManager` in package.json.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The Cargo workspace is the repo root; src-tauri is a member.
+          key: ${{ matrix.platform }}
+
+      # Before the version rewrite: --frozen-lockfile should see the tree
+      # exactly as it was committed.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building $VERSION from $GITHUB_REF_NAME"
+          # Node rather than sed: BSD and GNU sed disagree about -i, and this
+          # runs on both macOS and Linux. Nothing is committed back.
+          node -e '
+            const fs = require("fs");
+            const v = process.argv[1];
+            for (const f of ["apps/desktop/package.json", "apps/desktop/src-tauri/tauri.conf.json"]) {
+              const json = JSON.parse(fs.readFileSync(f, "utf8"));
+              json.version = v;
+              fs.writeFileSync(f, `${JSON.stringify(json, null, "\t")}\n`);
+            }
+            const cargo = "apps/desktop/src-tauri/Cargo.toml";
+            const before = fs.readFileSync(cargo, "utf8");
+            const after = before.replace(/^version = ".*"$/m, `version = "${v}"`);
+            if (before === after) throw new Error("Cargo.toml version line not found");
+            fs.writeFileSync(cargo, after);
+          ' "$VERSION"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: factorai ${{ github.ref_name }}
+          releaseDraft: true
+          # Honest while the app is 0.x and the README says there are no
+          # packaged builds yet.
+          prerelease: true
+          generateReleaseNotes: true
+          # We ship no auto-updater (06-milestones.md, deferred #7), so there
+          # are no signatures and no latest.json to publish. Both default to
+          # true, hence set explicitly.
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          args: ${{ matrix.args }}
