@@ -111,9 +111,12 @@ jobs:
             }
             const cargo = "apps/desktop/src-tauri/Cargo.toml";
             const before = fs.readFileSync(cargo, "utf8");
-            const after = before.replace(/^version = ".*"$/m, `version = "${v}"`);
-            if (before === after) throw new Error("Cargo.toml version line not found");
-            fs.writeFileSync(cargo, after);
+            // Test the pattern rather than comparing before/after: when the tag
+            // matches the version already committed, the rewrite is a legitimate
+            // no-op, and an equality check would call that a missing version line.
+            const line = /^version = ".*"$/m;
+            if (!line.test(before)) throw new Error("Cargo.toml has no [package] version line");
+            fs.writeFileSync(cargo, before.replace(line, `version = "${v}"`));
           ' "$VERSION"
 
       - uses: tauri-apps/tauri-action@v0
