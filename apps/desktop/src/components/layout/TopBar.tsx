@@ -1,5 +1,6 @@
 import { Button } from '@factorai/ui';
 import { FolderGit2, PanelRight } from 'lucide-react';
+import { UpdateBadge } from '@components/layout/UpdateBadge';
 import { usePanelStore } from '@store/panelStore';
 
 /**
@@ -20,6 +21,9 @@ export function TopBar() {
 			{/* Reserved: global search lands here, then window controls to the
 			    right of the panel toggle. */}
 			<div className="flex-1" />
+
+			{/* Renders only once an update is staged and waiting for a restart. */}
+			<UpdateBadge />
 
 			<Button
 				variant="ghost"

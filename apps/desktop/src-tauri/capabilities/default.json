@@ -2,13 +2,17 @@
 	"$schema": "https://schema.tauri.app/config/2/capability",
 	"identifier": "default",
 	"description": "Default factorai capability set",
-	"windows": ["main"],
+	"windows": [
+		"main"
+	],
 	"permissions": [
 		"core:default",
 		"shell:allow-open",
 		"dialog:default",
 		"fs:default",
 		"process:default",
-		"store:default"
+		"store:default",
+		"updater:default",
+		"process:allow-restart"
 	]
 }

@@ -55,8 +55,17 @@ has been tested.
 
 ## Install
 
-Tagged releases carry bundles built by CI — a universal `.dmg` for macOS and a
-`.deb` plus `.AppImage` for Linux. Grab one from
+Tagged releases carry bundles built by CI — a universal `.dmg` for macOS and an
+`.AppImage` for Linux. Both **update themselves**: factorai checks for a new
+release on launch and every six hours, installs it in the background, and shows
+`v0.2.0 ready · Restart` in the header when it's staged. Nothing restarts on its
+own — a restart kills running agent sessions, so it stays your call.
+
+(No `.deb`: Tauri's updater can replace an AppImage in place but never a `.deb`,
+since apt owns those files, and a package that silently never self-updates is
+worse than none.)
+
+Grab a build from
 [Releases](https://github.com/Nightbr/factorai/releases), or build from source
 below.
 
@@ -97,7 +106,7 @@ pnpm install
 pnpm dev            # tauri dev — opens the app
 ```
 
-To produce a bundle (`.dmg` / `.AppImage` / `.deb`):
+To produce a bundle (`.dmg` on macOS, `.AppImage` on Linux):
 
 ```bash
 cd apps/desktop && pnpm tauri build

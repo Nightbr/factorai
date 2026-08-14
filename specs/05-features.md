@@ -527,6 +527,59 @@ change set arrives as one array we can index once.
 
 ---
 
+## F14 — Auto-update (OTA)
+
+**Behavior.** The app checks for a new release, downloads and installs it in
+the background, and then tells you it's ready. Nothing restarts itself. See
+ADR-0010.
+
+**UI.** One control, in `TopBar`, left of the panel toggle. It renders **only**
+in the `ready` state:
+
+> `⟳ v0.2.0 ready · Restart`
+
+Checking and downloading are silent by design. An announcement you can't act on
+yet ("downloading 43%…") is noise beside a running agent, and the useful moment
+is the one where a restart would actually gain you something.
+
+**Restarting is a quit.** `relaunch()` tears the process down and takes every
+live PTY with it — but it never fires `CloseRequested`, so the quit guard
+(ADR-0005) never sees it, and a running Claude session would die without a
+word. So the badge runs the same confirmation on the same terms:
+
+> Restart to update? factorai 0.2.0 is ready. Restarting terminates N running
+> Claude session(s). This cannot be undone — the update will also apply on its
+> own the next time you quit and reopen.
+>   [Later]   [Restart & kill sessions]
+
+With no live sessions it restarts immediately, no dialog.
+
+**Cadence.** On launch, then every 6 hours. factorai is meant to sit open for
+days beside running agents, so launch-only would rarely fire. One install per
+run: once a version is staged, further checks would re-download the same
+release.
+
+**Backend.** `tauri-plugin-updater` against
+`https://github.com/Nightbr/factorai/releases/latest/download/latest.json`,
+with signatures verified against the public key in `tauri.conf.json`.
+`tauri-plugin-process` provides `relaunch()`. Both are imported **lazily** and
+behind `isTauri()`, so browser-only dev and Playwright never load them and the
+hook is simply inert there.
+
+**Edge cases.**
+- Offline, or the endpoint is unreachable → stays silent. The app works, it's
+  just not the newest; the error is logged, not surfaced.
+- Already on the latest version → `check()` resolves null, nothing renders.
+- Signature mismatch → the plugin refuses the install and it surfaces as an
+  error state, which renders nothing. That is the failure mode we want: no
+  update beats an unverified one.
+- A `.deb` install has no update path at all — which is why Linux ships
+  AppImage only (ADR-0010).
+- macOS first install is still unsigned and needs the Gatekeeper dance; updates
+  applied in-place afterwards don't re-quarantine.
+
+---
+
 ## Cross-cutting concerns
 
 ### Keyboard shortcuts

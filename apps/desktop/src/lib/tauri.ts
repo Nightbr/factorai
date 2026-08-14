@@ -23,7 +23,11 @@ import type {
 
 /// True when running inside a Tauri webview (window.__TAURI_INTERNALS__ is
 /// injected). False under plain `vite dev` — the mocks below kick in.
-function isTauri(): boolean {
+///
+/// Exported so features that talk to a plugin rather than to our own commands
+/// (the updater, F14) can no-op in browser-only mode instead of importing a
+/// plugin that has nothing to talk to.
+export function isTauri(): boolean {
 	return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
