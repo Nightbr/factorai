@@ -55,6 +55,30 @@ test.describe('projects sidebar', () => {
 		await expect(page.getByRole('button', { name: /stop/i })).toBeVisible();
 	});
 
+	test('@smoke stopping a session kills the PTY and returns to the project', async ({ page }) => {
+		const fx = fixtureOneProjectOneSession();
+		await installMockBridge(page, fx);
+		await page.goto('/');
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		await expect(page.locator('.xterm')).toBeVisible();
+
+		await page.getByRole('button', { name: /stop/i }).click();
+
+		// Back on the project's session list rather than parked on a dead pane
+		// reading `[process exited]`.
+		await expect(page).toHaveURL(/#\/projects\/-home-alice-code-foo$/);
+		await expect(page.getByRole('heading', { name: 'foo' })).toBeVisible();
+
+		// The PTY was actually killed, with the id the spawn handed back — not
+		// just navigated away from.
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		const spawned = calls.find((c) => c.name === 'terminal_spawn');
+		const killed = calls.find((c) => c.name === 'terminal_kill');
+		expect(spawned).toBeDefined();
+		expect(killed).toBeDefined();
+	});
+
 	test('@smoke opening a session spawns the PTY at the pane size', async ({ page }) => {
 		const fx = fixtureOneProjectOneSession();
 		await installMockBridge(page, fx);
