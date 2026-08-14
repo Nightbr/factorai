@@ -13,9 +13,18 @@ export function clampPanelWidth(width: number): number {
 	return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(width)));
 }
 
+/** The panel's two tabs (F13). Hardcoded rather than a registry — see
+ *  07-open-questions.md Q18. */
+export type PanelTab = 'files' | 'changes';
+
 interface PanelState {
 	/** Is the file tree panel showing? Persisted. */
 	open: boolean;
+	/** Which tab is showing. Persisted app-wide rather than per project: a tab
+	 *  choice is a habit, not a fact about a project. Never changed
+	 *  programmatically — a strip that moves under you while you type into the
+	 *  terminal below it is worse than no strip (Q18). */
+	tab: PanelTab;
 	/** Panel width in px. Persisted. */
 	width: number;
 	/** Expanded directory paths, per project. Deliberately NOT persisted: a
@@ -24,9 +33,15 @@ interface PanelState {
 	expandedByProject: Record<string, Set<string>>;
 	/** Selected row, for highlight only. */
 	selectedPath: string | null;
+	/** Diff viewer: inline (unified) rather than side-by-side. Persisted.
+	 *  Parked here until `prefsStore` exists (roadmap item 4); it migrates with
+	 *  `open`/`width` when F11 lands. */
+	diffInline: boolean;
 
 	toggle: () => void;
 	setOpen: (open: boolean) => void;
+	setTab: (tab: PanelTab) => void;
+	setDiffInline: (inline: boolean) => void;
 	setWidth: (width: number) => void;
 	toggleExpanded: (projectId: string, path: string) => void;
 	/** Expand the root once, the first time this project's tree is shown. A
@@ -41,12 +56,16 @@ export const usePanelStore = create<PanelState>()(
 	persist(
 		(set) => ({
 			open: false,
+			tab: 'files',
 			width: DEFAULT_PANEL_WIDTH,
 			expandedByProject: {},
 			selectedPath: null,
+			diffInline: false,
 
 			toggle: () => set((s) => ({ open: !s.open })),
 			setOpen: (open) => set({ open }),
+			setTab: (tab) => set({ tab }),
+			setDiffInline: (diffInline) => set({ diffInline }),
 			setWidth: (width) => set({ width: clampPanelWidth(width) }),
 
 			toggleExpanded: (projectId, path) =>
@@ -78,9 +97,14 @@ export const usePanelStore = create<PanelState>()(
 		{
 			name: 'factorai.panel',
 			version: 1,
-			// Only the two preferences round-trip to storage. Sets aren't
+			// Only the preferences round-trip to storage. Sets aren't
 			// JSON-serialisable anyway, and see `expandedByProject` above.
-			partialize: (s) => ({ open: s.open, width: s.width }),
+			partialize: (s) => ({
+				open: s.open,
+				width: s.width,
+				tab: s.tab,
+				diffInline: s.diffInline,
+			}),
 		},
 	),
 );

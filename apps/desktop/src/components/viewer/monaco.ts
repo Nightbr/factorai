@@ -19,6 +19,15 @@
 // `monaco-editor/editor/editor.api` resolves to esm/vs/editor/editor.api.js.
 import * as monaco from 'monaco-editor/editor/editor.api';
 import 'monaco-editor/basic-languages/monaco.contribution';
+import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+
+// The diff editor (F8/F13) computes its diff in a worker and throws without
+// one — this is the wiring the plain file viewer deliberately shipped without.
+// Vite's `?worker` import bundles it locally: no CDN, which a webview with no
+// network requires. Only `editor.worker` is registered; the TS/JSON/CSS
+// language-service workers stay out, since a read-only viewer has no use for
+// IntelliSense.
+self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 
 export { monaco };
 

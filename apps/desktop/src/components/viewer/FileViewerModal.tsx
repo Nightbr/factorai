@@ -1,6 +1,7 @@
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from '@factorai/ui';
 import { Check, Copy, ExternalLink, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
+import type { DiffMode } from '@hooks/useFileViewer';
 import { openExternally } from '@lib/tauri';
 
 // Monaco is the heaviest thing in the app, and the viewer is the only thing
@@ -8,6 +9,9 @@ import { openExternally } from '@lib/tauri';
 // fetched from local disk the first time a file is opened (ADR-0007).
 const FileView = lazy(() =>
 	import('@components/viewer/FileView').then((m) => ({ default: m.FileView })),
+);
+const DiffView = lazy(() =>
+	import('@components/viewer/DiffView').then((m) => ({ default: m.DiffView })),
 );
 
 function splitPath(path: string): { name: string; parent: string } {
@@ -20,6 +24,8 @@ function splitPath(path: string): { name: string; parent: string } {
 interface FileViewerModalProps {
 	/** Absolute path to show, or null for closed. Driven by `?file=`. */
 	path: string | null;
+	/** Diff mode from `&diff=`, or null to show the file itself (F13). */
+	diff: DiffMode | null;
 	onClose: () => void;
 	/** Swap the viewer to another file — relative markdown links use this. */
 	onOpenPath: (path: string) => void;
@@ -32,7 +38,7 @@ interface FileViewerModalProps {
  * shell gets replaced. Dismissal (Esc, click-outside, the close button) all
  * route through `onClose`, which clears the URL param.
  */
-export function FileViewerModal({ path, onClose, onOpenPath }: FileViewerModalProps) {
+export function FileViewerModal({ path, diff, onClose, onOpenPath }: FileViewerModalProps) {
 	const [copied, setCopied] = useState(false);
 
 	if (!path) return null;
@@ -109,7 +115,11 @@ export function FileViewerModal({ path, onClose, onOpenPath }: FileViewerModalPr
 						</p>
 					}
 				>
-					<FileView path={path} onOpenPath={onOpenPath} />
+					{diff ? (
+						<DiffView path={path} mode={diff} />
+					) : (
+						<FileView path={path} onOpenPath={onOpenPath} />
+					)}
 				</Suspense>
 			</DialogContent>
 		</Dialog>

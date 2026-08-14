@@ -12,6 +12,8 @@ import type {
 	DirEntry,
 	DirListing,
 	FileContents,
+	GitChange,
+	GitStatus,
 	Project,
 	SearchHit,
 	SessionPage,
@@ -31,6 +33,12 @@ export interface TestFixture {
 	/** File contents keyed by absolute path (F7 viewer). An unlisted path makes
 	 *  read_file reject with NotFound, same as a deleted file. */
 	files?: Record<string, FileContents>;
+	/** Repository state keyed by project path (F13 Changes tab). An unlisted
+	 *  project has no repository — the "Not a git repository" state. */
+	gitStatuses?: Record<string, GitStatus>;
+	/** Blobs keyed by `<rev>:<absolute path>`. Absent means the file doesn't
+	 *  exist at that revision, which is an added or deleted file. */
+	gitBlobs?: Record<string, FileContents>;
 }
 
 declare global {
@@ -95,6 +103,7 @@ function entry(path: string, name: string, over: Partial<DirEntry> = {}): DirEnt
 		symlinkOutsideRoot: false,
 		size: 128,
 		modifiedAt: null,
+		ignored: false,
 		...over,
 	};
 }
@@ -199,4 +208,55 @@ export function fixtureWithSearchHits(): TestFixture {
 		},
 	];
 	return { ...base, searchHits };
+}
+
+function change(relPath: string, root: string, over: Partial<GitChange> = {}): GitChange {
+	return {
+		path: `${root}/${relPath}`,
+		relPath,
+		group: 'unstaged',
+		kind: 'modified',
+		oldRelPath: null,
+		additions: 3,
+		deletions: 1,
+		isBinary: false,
+		...over,
+	};
+}
+
+/**
+ * Base shape plus a repository mid-edit (F13): one staged file, the same file
+ * further modified in the worktree (the partly-staged case that is the reason
+ * the index is modelled at all), an untracked addition, a conflicted path, a
+ * binary, and a sibling change above the project root.
+ */
+export function fixtureWithChanges(): TestFixture {
+	const base = fixtureWithFileTree();
+	const root = base.projects?.[0]?.realPath ?? '';
+
+	const changes: GitChange[] = [
+		change('src/auth.ts', root, { group: 'conflicted', kind: 'conflicted', additions: null, deletions: null }),
+		change('src/index.ts', root, { group: 'staged', additions: 4, deletions: 0 }),
+		change('src/index.ts', root, { group: 'unstaged', additions: 2, deletions: 1 }),
+		change('src/new-file.ts', root, { kind: 'untracked', additions: 12, deletions: 0 }),
+		change('logo.png', root, { isBinary: true, additions: null, deletions: null }),
+		change('../packages/types/index.ts', root, { kind: 'modified', additions: 1, deletions: 1 }),
+	];
+
+	return {
+		...base,
+		gitStatuses: {
+			[root]: {
+				repoRoot: root,
+				branch: 'main',
+				changes,
+				total: changes.length,
+				truncated: false,
+			},
+		},
+		gitBlobs: {
+			[`index:${root}/src/index.ts`]: contents(`${root}/src/index.ts`, 'export const a = 1;\n'),
+			[`head:${root}/src/index.ts`]: contents(`${root}/src/index.ts`, 'export const a = 0;\n'),
+		},
+	};
 }

@@ -3,10 +3,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ChevronsDownUp, RefreshCw, X } from 'lucide-react';
 import { useEffect } from 'react';
 import { Button } from '@factorai/ui';
+import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { PanelResizer } from '@components/layout/PanelResizer';
-import { usePanelStore } from '@store/panelStore';
+import { type PanelTab, usePanelStore } from '@store/panelStore';
 
 /**
  * Right-hand file tree for the active project (specs/05-features.md F12).
@@ -40,6 +41,7 @@ export function FileTreePanel() {
 
 function PanelBody() {
 	const { projectId, project, root, isLoading } = useActiveProject();
+	const tab = usePanelStore((s) => s.tab);
 	const setOpen = usePanelStore((s) => s.setOpen);
 	const collapseAll = usePanelStore((s) => s.collapseAll);
 	const seedRoot = usePanelStore((s) => s.seedRoot);
@@ -52,29 +54,36 @@ function PanelBody() {
 	return (
 		<>
 			<header className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
-				{/* A tab strip goes here when "Changes" lands next to "Files". */}
-				<span className="flex-1 px-1 font-medium text-foreground text-xs">Files</span>
-				<Button
-					variant="ghost"
-					size="icon"
-					className="size-6"
-					aria-label="Collapse all"
-					title="Collapse all"
-					disabled={!projectId}
-					onClick={() => projectId && collapseAll(projectId)}
-				>
-					<ChevronsDownUp className="size-3.5 text-muted-foreground" />
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon"
-					className="size-6"
-					aria-label="Refresh tree"
-					title="Refresh tree"
-					onClick={() => queryClient.invalidateQueries({ queryKey: ['dir'] })}
-				>
-					<RefreshCw className="size-3.5 text-muted-foreground" />
-				</Button>
+				{/* Two tabs, hardcoded — not a registry (Q18). */}
+				<div className="flex flex-1 items-center gap-0.5" role="tablist" aria-label="Panel">
+					<TabButton tab="files" label="Files" />
+					<TabButton tab="changes" label="Changes" />
+				</div>
+				{tab === 'files' && (
+					<>
+						<Button
+							variant="ghost"
+							size="icon"
+							className="size-6"
+							aria-label="Collapse all"
+							title="Collapse all"
+							disabled={!projectId}
+							onClick={() => projectId && collapseAll(projectId)}
+						>
+							<ChevronsDownUp className="size-3.5 text-muted-foreground" />
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							className="size-6"
+							aria-label="Refresh tree"
+							title="Refresh tree"
+							onClick={() => queryClient.invalidateQueries({ queryKey: ['dir'] })}
+						>
+							<RefreshCw className="size-3.5 text-muted-foreground" />
+						</Button>
+					</>
+				)}
 				<Button
 					variant="ghost"
 					size="icon"
@@ -88,21 +97,45 @@ function PanelBody() {
 			</header>
 
 			<div className="min-h-0 flex-1 overflow-auto py-1">
-				{!projectId && <Empty>Select a project to browse its files.</Empty>}
-				{projectId && isLoading && <Empty>Loading…</Empty>}
-				{projectId && !isLoading && !root && <Empty>Project folder not found on disk.</Empty>}
-				{projectId && root && (
-					<ul>
-						<FileTreeNode
-							entry={rootEntry(root, project?.displayName ?? root)}
-							root={root}
-							projectId={projectId}
-							depth={0}
-						/>
-					</ul>
+				{tab === 'changes' && <ChangesView />}
+				{tab === 'files' && (
+					<>
+						{!projectId && <Empty>Select a project to browse its files.</Empty>}
+						{projectId && isLoading && <Empty>Loading…</Empty>}
+						{projectId && !isLoading && !root && <Empty>Project folder not found on disk.</Empty>}
+						{projectId && root && (
+							<ul>
+								<FileTreeNode
+									entry={rootEntry(root, project?.displayName ?? root)}
+									root={root}
+									projectId={projectId}
+									depth={0}
+								/>
+							</ul>
+						)}
+					</>
 				)}
 			</div>
 		</>
+	);
+}
+
+function TabButton({ tab, label }: { tab: PanelTab; label: string }) {
+	const active = usePanelStore((s) => s.tab === tab);
+	const setTab = usePanelStore((s) => s.setTab);
+
+	return (
+		<button
+			type="button"
+			role="tab"
+			aria-selected={active}
+			className={`rounded px-1.5 py-0.5 font-medium text-xs transition-colors ${
+				active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+			}`}
+			onClick={() => setTab(tab)}
+		>
+			{label}
+		</button>
 	);
 }
 
