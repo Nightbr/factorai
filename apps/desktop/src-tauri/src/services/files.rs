@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{DirEntry, DirListing, FileContents};
+use crate::services::git::IgnoreChecker;
 
 /// Upper bound on entries returned for a single directory. Generated
 /// directories (build output, caches) can hold tens of thousands of files and
@@ -40,6 +41,10 @@ fn list_dir_capped(path: &str, root: Option<&str>, cap: usize) -> AppResult<DirL
 	}
 
 	let root_canon = root.and_then(|r| fs::canonicalize(r).ok());
+	// Opened once for the whole listing rather than per entry: discovering the
+	// repository and parsing its ignore rules is the expensive half, and every
+	// entry here shares both (F12).
+	let ignores = IgnoreChecker::open(path);
 
 	let reader = fs::read_dir(dir).map_err(|e| match e.kind() {
 		std::io::ErrorKind::PermissionDenied => AppError::Io(format!("permission denied: {path}")),
@@ -57,7 +62,7 @@ fn list_dir_capped(path: &str, root: Option<&str>, cap: usize) -> AppResult<DirL
 		if name == ".git" {
 			continue;
 		}
-		entries.push(describe(&entry, &name, root_canon.as_deref()));
+		entries.push(describe(&entry, &name, root_canon.as_deref(), ignores.as_ref()));
 	}
 
 	// Sort before truncating so the cap keeps a deterministic prefix rather
@@ -78,7 +83,12 @@ fn list_dir_capped(path: &str, root: Option<&str>, cap: usize) -> AppResult<DirL
 	Ok(DirListing { entries, total, truncated })
 }
 
-fn describe(entry: &fs::DirEntry, name: &str, root_canon: Option<&Path>) -> DirEntry {
+fn describe(
+	entry: &fs::DirEntry,
+	name: &str,
+	root_canon: Option<&Path>,
+	ignores: Option<&IgnoreChecker>,
+) -> DirEntry {
 	let path = entry.path();
 	// `file_type()` describes the link itself; `metadata()` follows it. We want
 	// both: the symlink flag from the former, dir-ness from the latter (a link
@@ -100,6 +110,7 @@ fn describe(entry: &fs::DirEntry, name: &str, root_canon: Option<&Path>) -> DirE
 		symlink_outside_root: is_symlink && escapes_root(&path, root_canon),
 		size: if is_dir { 0 } else { target.as_ref().map(|m| m.len()).unwrap_or(0) },
 		modified_at: target.as_ref().and_then(|m| m.modified().ok()).and_then(to_millis),
+		ignored: ignores.is_some_and(|g| g.is_ignored(&path)),
 	}
 }
 
@@ -161,35 +172,51 @@ pub fn read_file(path: &str, max_bytes: Option<usize>) -> AppResult<FileContents
 		.read_to_end(&mut buf)
 		.map_err(|e| AppError::Io(format!("{path}: {e}")))?;
 
-	if buf.iter().take(SNIFF_BYTES).any(|b| *b == 0) {
-		return Ok(FileContents {
+	Ok(contents_from_bytes(path, &buf, size, cap))
+}
+
+/// Turn bytes into what the viewer renders.
+///
+/// Shared with `git_blob` (F13) so a file read from the object database and the
+/// same file read from disk agree on what "binary" and "truncated" mean — two
+/// definitions of binary in one viewer is how you get a file that previews from
+/// the tree and refuses to diff.
+///
+/// `true_size` is the size of the whole thing, which may exceed `bytes.len()`
+/// when the caller already stopped reading at the cap.
+pub(crate) fn contents_from_bytes(
+	path: &str,
+	bytes: &[u8],
+	true_size: u64,
+	cap: usize,
+) -> FileContents {
+	if bytes.iter().take(SNIFF_BYTES).any(|b| *b == 0) {
+		return FileContents {
 			path: path.to_string(),
 			contents: String::new(),
-			size,
+			size: true_size,
 			is_binary: true,
 			truncated: false,
 			line_count: 0,
-		});
+		};
 	}
 
-	let truncated = buf.len() > cap;
-	if truncated {
-		buf.truncate(cap);
-	}
+	let truncated = bytes.len() > cap;
+	let kept = if truncated { &bytes[..cap] } else { bytes };
 
 	// Lossy on purpose: a latin-1 source file or a stray invalid sequence is
 	// still worth reading, and we've already ruled out real binaries.
-	let contents = String::from_utf8_lossy(&buf).into_owned();
+	let contents = String::from_utf8_lossy(kept).into_owned();
 	let line_count = if contents.is_empty() { 0 } else { contents.lines().count() };
 
-	Ok(FileContents {
+	FileContents {
 		path: path.to_string(),
 		contents,
-		size,
+		size: true_size,
 		is_binary: false,
 		truncated,
 		line_count,
-	})
+	}
 }
 
 #[cfg(test)]

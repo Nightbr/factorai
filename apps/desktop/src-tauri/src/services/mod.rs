@@ -1,5 +1,6 @@
 pub mod claude_cli;
 pub mod files;
+pub mod git;
 pub mod indexer;
 pub mod jsonl;
 pub mod path_encoding;

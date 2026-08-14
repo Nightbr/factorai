@@ -117,6 +117,8 @@ function rootEntry(root: string, name: string): DirEntry {
 		symlinkOutsideRoot: false,
 		size: 0,
 		modifiedAt: null,
+		// The project root itself is never dimmed, whatever git thinks of it.
+		ignored: false,
 	};
 }
 
