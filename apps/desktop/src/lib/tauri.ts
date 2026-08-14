@@ -97,6 +97,24 @@ export async function openExternally(path: string): Promise<void> {
 	await open(path);
 }
 
+/**
+ * Browser-only stand-in for the updater's `ready` state (F14).
+ *
+ * Returns the fixture's staged version, or null when there's nothing to
+ * announce. Inside Tauri this is never consulted — the plugin is.
+ */
+export function mockStagedUpdate(): string | null {
+	return testFixture()?.updateReady ?? null;
+}
+
+/** Record a call the mock bridge can't perform, so tests can assert it was
+ *  attempted. `relaunch()` is the only one so far. */
+export function recordMockCall(name: string): void {
+	if (typeof window === 'undefined' || !testFixture()) return;
+	window.__FACTORAI_TEST_CALLS__ ??= [];
+	window.__FACTORAI_TEST_CALLS__.push({ name });
+}
+
 export const events = {
 	onIndexerProgress: (cb: (p: IndexerProgressEvent) => void) =>
 		listen<IndexerProgressEvent>('indexer:progress', cb),
@@ -136,6 +154,10 @@ interface TestFixture {
 	gitStatuses?: Record<string, GitStatus>;
 	/** Blobs keyed by `<rev>:<absolute path>`, for diff fixtures. */
 	gitBlobs?: Record<string, FileContents>;
+	/** Version to report as downloaded and staged, for the F14 update badge.
+	 *  The real updater is a Tauri plugin and inert in the browser, so this is
+	 *  the only way to reach the `ready` state from a test. */
+	updateReady?: string;
 }
 
 /** One mocked command call, recorded in order while a fixture is installed. */

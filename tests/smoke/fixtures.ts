@@ -39,6 +39,8 @@ export interface TestFixture {
 	/** Blobs keyed by `<rev>:<absolute path>`. Absent means the file doesn't
 	 *  exist at that revision, which is an added or deleted file. */
 	gitBlobs?: Record<string, FileContents>;
+	/** Version to report as downloaded and staged, for the F14 update badge. */
+	updateReady?: string;
 }
 
 declare global {
