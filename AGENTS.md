@@ -1,9 +1,6 @@
 # AGENTS.md — factorai
 
-> Single source of truth for any AI agent (Claude Code, Codex, etc.)
-> working in this repo. `CLAUDE.md` is a symlink to this file.
-> Inspired by [the reference app](https://github.com/example/repo),
-> stripped to what's load-bearing for a solo / small-team project.
+`CLAUDE.md` is a symlink to this file.
 
 Quick links: [specs/](specs/) · [specs/roadmap/](specs/roadmap/) · [docs/adr/](docs/adr/)
 
@@ -113,14 +110,10 @@ limitation, see `scripts/qa/README.md`. For deeper interaction tests,
 the planned path is **Playwright against `pnpm vite:dev`** (the
 renderer already has a mock Tauri bridge via `isTauri()` /
 `mockInvoke()` in `lib/tauri.ts`, so browser-only mode boots without
-Rust). Same approach the reference app uses.
+Rust).
 
 Wayland is not supported by these scripts (swap `wmctrl`/`gnome-screenshot`
 for `swaymsg`/`grim` — deferred).
-
-Inspired by the reference app's `~/.local/share/qa-scripts/` (macOS
-osascript wrappers). See `specs/annex-A-cli-agent-patterns.md` for the
-broader pattern.
 
 ---
 
@@ -274,8 +267,8 @@ cargo test
 - `specs/roadmap/TODO.md` — the agreed next steps, in priority order.
   Read it before re-deriving a plan; `specs/roadmap/DONE.md` is the
   dated log of what landed and the gotchas found on the way.
-- `specs/annex-A-cli-agent-patterns.md` — proven patterns lifted from
-  the reference app with file:line references.
+- `specs/annex-A-cli-agent-patterns.md` — proven Tauri + CLI-agent
+  patterns, with file:line references.
 
 ---
 
