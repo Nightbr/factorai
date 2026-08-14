@@ -127,9 +127,15 @@ like a window once the OS frame goes away.
 The last mile before the app is something a teammate installs rather than runs from source.
 
 - [ ] Real icon set (placeholders today).
-- [ ] README with install instructions.
-- [ ] GitHub Action: `tauri build` on tag push, artifacts attached to the release. No signing
-      flow yet — that's what auto-updates would need (deferred #7), and we don't have it.
+- [x] README with install instructions — 2026-08-14.
+- [x] GitHub Action: `tauri build` on tag push, artifacts attached to the release — 2026-08-14.
+      Draft pre-release, universal macOS `.dmg` + Linux `.deb`/`.AppImage`, version taken from
+      the tag. **No signing flow** — that's what auto-updates would need (deferred #7). Two
+      constraints now documented in the README rather than discovered by a user: macOS builds
+      are unsigned so Gatekeeper blocks them until quarantine is cleared, and the Linux bundles
+      carry a **glibc 2.39 floor** because they're built on ubuntu-24.04 (22.04 begins
+      deprecation 2026-09-17). Widening that floor means an `ubuntu:22.04` container on a
+      supported runner, not pinning the dying image.
 - [ ] Manual smoke pass on **macOS arm64** and **Ubuntu 24**. macOS is the untested platform:
       every gotcha in `DONE.md` so far is WebKitGTK-flavoured, and the login-shell PATH fallback
       in the claude probe (Q2) exists specifically for GUI launches on macOS and has never been
