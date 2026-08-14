@@ -393,8 +393,9 @@ project it shows follows the route (`/projects/$id` or
   no hover actions. The only thing git adds to the tree is **paint**:
   - a changed file's name takes a status colour (modified, untracked,
     conflicted), from the same `git_status` query the Changes tab uses;
-  - a collapsed directory containing changes gets a dot, so you can see where
-    to expand without expanding;
+  - a directory containing changes gets a dot — including while expanded, so a
+    deep tree still shows which subtree the change is in, and a collapsed one
+    tells you where to expand without expanding;
   - `ignored` entries (`node_modules`, `target`, `dist`) are dimmed. The flag
     rides on `DirEntry` from `list_dir`, so this costs no extra call.
 
@@ -495,7 +496,10 @@ what polling already does (Q17's reasoning, same conclusion).
 
 **Folder dots are a precomputed lookup, not a scan.** From one status result,
 build a single `Map<dirPath, status>` by walking each changed path's ancestors
-up to the project root, worst-status-wins; a folder row is then an O(1) lookup.
+up to the **repository** root — not the project root, since a project inside a
+monorepo has changes above it — worst-status-wins (conflicted > untracked >
+modified); a folder row is then an O(1) lookup. The builder is a pure function
+(`buildDecorations`), tested without rendering anything.
 The obvious alternative — `changes.some(c => c.path.startsWith(dir))` inside the
 row — is O(rows × changes) on **every render** of a tree that re-renders on every
 poll. VS Code solves the same problem by indexing decorations in a

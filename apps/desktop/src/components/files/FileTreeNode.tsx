@@ -4,6 +4,7 @@ import { ChevronRight, Link2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
 import { useFileViewer } from '@hooks/useFileViewer';
+import { DECORATION_CLASSES, useGitDecorations } from '@hooks/useGitDecorations';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { expandedFor, usePanelStore } from '@store/panelStore';
@@ -37,6 +38,8 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 	const toggleExpanded = usePanelStore((s) => s.toggleExpanded);
 	const select = usePanelStore((s) => s.select);
 	const { open: openViewer } = useFileViewer();
+	const decorations = useGitDecorations();
+	const decoration = decorations.get(entry.path);
 
 	// A symlink pointing out of the project is shown but not walked.
 	const canExpand = entry.isDir && !entry.symlinkOutsideRoot;
@@ -87,8 +90,23 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 				) : (
 					<FileIcon fileName={entry.name} />
 				)}
-				<span className="min-w-0 flex-1 truncate">{entry.name}</span>
+				<span
+					className={`min-w-0 flex-1 truncate ${
+						decoration && !entry.isDir ? DECORATION_CLASSES[decoration] : ''
+					} ${entry.ignored ? 'opacity-45' : ''}`}
+				>
+					{entry.name}
+				</span>
 				{entry.isSymlink && <Link2 className="size-3 shrink-0 text-muted-foreground/60" />}
+				{/* A directory says "there is something in here" with a dot rather than
+				    a colour: at depth, a coloured folder name reads as a changed file. */}
+				{decoration && entry.isDir && (
+					<span
+						aria-hidden="true"
+						data-testid="git-dot"
+						className={`size-1.5 shrink-0 rounded-full bg-current ${DECORATION_CLASSES[decoration]}`}
+					/>
+				)}
 			</button>
 
 			{canExpand && expanded && (
