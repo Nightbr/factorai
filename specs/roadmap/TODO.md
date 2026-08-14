@@ -1,0 +1,336 @@
+# TODO
+
+The agreed next steps, in priority order — the single source of truth for "what should we work
+on next". Consult it before re-deriving a plan from the specs and codebase. See
+[`README.md`](./README.md) for how this folder works (and [`DONE.md`](./DONE.md) for shipped
+work).
+
+Context (2026-08-14): **M0–M3 are shipped** — scaffold, read-only browser, embedded terminal
+with kill-on-quit, FTS5 search. **M4 is half-shipped**: `read_file` + the Monaco file viewer
+landed early alongside the file tree (ADR-0007), but the **diff** half and the **CLAUDE.md /
+plans** half have no code yet. **M5 has not started** — no settings route, no keybinding scheme,
+no titlebar, no release pipeline. Items 1–2 close M4; items 4–8 are M5 in the order it should be
+built; **items 12–14 are high-priority despite their position** — the `Cmd+P` / `Cmd+Shift+F` /
+`Cmd+G` navigation trio, added 2026-08-14, kept at the end only so the earlier numbers stay
+stable.
+
+## 1. Changes tab + git decorations + the diff viewer (F13, F8, ADR-0009)
+
+**In progress — specced 2026-08-14.** This item is the former items 1 (diff viewer) and 11
+(`Changes` tab) merged: the interview established they are one piece of work, because the Changes
+list is the only thing that opens a diff now that the JSONL viewer is gone (F3), and the diff is
+what makes the Changes list more than a filename list.
+
+Design is settled — F13 in [`05-features.md`](../05-features.md), the `git` service in
+[`03-backend-rust.md`](../03-backend-rust.md), decisions in
+[`07-open-questions.md`](../07-open-questions.md) Q18–Q20, dependency in
+[ADR-0009](../../docs/adr/0009-git2-for-repository-state.md). Read those, not this summary.
+
+Four slices, each independently green against lint / typecheck / test / clippy:
+
+- [x] **Specs + ADR.** F13, F8 rewritten off CodeMirror, F12 amended, `git` service section,
+      Q18–Q20, M4 deliverables, `file_diff` dropped. Landed 2026-08-14, then revised the same
+      day against VS Code's actual implementation (its git extension, and the workbench
+      `DecorationsService`): untracked dirs now recurse, stats are computed **after** the cap,
+      folder dots use a precomputed ancestor map, and the cap is 500 rows sized against our
+      renderer rather than their virtualized list.
+- [ ] **Rust.** `services/git.rs` + `commands/git.rs` (git2): `git_status(project_path)` →
+      grouped rows (staged / unstaged / conflicted), `relPath` relative to the project so changes
+      above it read `../…`, line stats from `Patch::line_stats()`, capped like `list_dir`;
+      `git_blob(path, head|index)` → `Option<FileContents>`; `ignored` folded into `list_dir`.
+      Types hand-mirrored into `packages/types`. Tests build real repos in a tempdir — staged,
+      partly-staged, untracked, renamed, deleted, binary, conflicted, empty repo, no repo.
+- [ ] **Changes tab.** `Files | Changes` strip (tab persisted app-wide in `panelStore`, defaults
+      to Files, never auto-switches), the three groups, rows with `+N −M` and status letters,
+      3s poll while the **panel** is open, `?file=…&diff=…` on click. Includes the Monaco diff
+      mode in `FileView` and the `editor.worker` Vite wiring that finally forces.
+- [ ] **Tree decorations.** Status colour on changed names, dot on collapsed dirty folders,
+      dimmed `ignored` entries. No other change to the tree's design — that was explicit.
+
+**Dropped on the way:** `file_diff` + the `similar` crate. Monaco diffs two strings itself, so a
+Rust hunk list has no consumer; the spec entry is gone and ADR-0009 records why.
+
+**Still open inside this item:** the inline/split toggle needs somewhere to persist. `prefsStore`
+doesn't exist yet (item 4), so it parks in `panelStore` beside the tree's width and migrates with
+everything else when F11 lands. Decide it there, not in component state.
+
+## 2. M4 — CLAUDE.md & plans (F9)
+
+The first place the app is not read-only, and the last M4 deliverable.
+
+- [ ] `commands/memory.rs`: `read_claude_md`, `write_claude_md`, `list_plans`, `read_plan`
+      (`03-backend-rust.md`). Writes go through the same path validation as the read commands —
+      ADR-0004 says `~/.claude/` is read-only, and this is a *project* file, so it isn't a
+      violation, but the boundary is worth stating in the ADR trail.
+- [ ] Dirty-state save flow with an explicit Save action, plus the on-disk-changed-while-dirty
+      modal (F9 edge case).
+- [ ] "Create CLAUDE.md" stub button when the project has none.
+
+**Where does it live? — settled by Q18.** F9 says "side panel tab *Memory*", written when the
+side panel was notional. That slot went to `Changes` (item 1): the tab strip is `Files |
+Changes`, hardcoded, not a registry. So Memory takes the cheaper route it should have anyway —
+`CLAUDE.md` is **a file the tree opens**, with editability switched on for that one path, which
+also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
+it still describes the tab.
+
+## 3. `missing` flag on `Project` (F1 + F6)
+
+Two features are each waiting on the same one-field change, and one of them is papering over it
+with a backend guard.
+
+`list_projects` reports the `cwd` recorded in the transcript and never stats it. So: F1's
+"grayed-out (missing) row" is unimplemented, and F6's new-session buttons can't pre-disable for a
+path that resolved once and has since been deleted. Today that case is caught in
+`spawn_with_argv`, which refuses the spawn and prints the error in the terminal pane — correct,
+but the user only learns after clicking.
+
+- [ ] Add `missing: bool` to `Project` in `packages/types` + the Rust struct (hand-mirrored, per
+      `CLAUDE.md` § 4), set by stat-ing `real_path` during the indexer scan — not per
+      `list_projects` call.
+- [ ] Sidebar renders the missing row grayed with the decoded path (F1).
+- [ ] Both `+` entry points disable on `missing`, same tooltip treatment as the null-`realPath`
+      case (F6).
+
+Keep the backend guard regardless. `portable_pty`'s `CommandBuilder::cwd` does not fail on a
+missing directory — it silently starts the child in `$HOME`, which files the session under the
+wrong project. The UI flag is the affordance; the guard is the invariant.
+
+## 4. M5 — Settings route (F11) and a real `prefsStore`
+
+Several items above want somewhere to put a preference, and there is nowhere: `panelStore` is
+zustand-over-localStorage, and `tauri-plugin-store` is installed on both sides (JS + Cargo) but
+unused.
+
+- [ ] `prefsStore` on `tauri-plugin-store`, and migrate `panelStore`'s `open`/`width` onto it
+      (F12 says it migrates "when F11 lands" — this is that). Expanded tree paths stay
+      unpersisted, deliberately.
+- [ ] `/settings` route with the four sections F11 names: Appearance, Editor, Claude, Advanced.
+- [ ] `get_setting` / `set_setting` for the values Rust needs to read back — the claude binary
+      path override (the escape hatch the three-tier probe's failure message already promises)
+      and, if it ships, the projects-dir override. Note Q3 decided *against* a projects-dir
+      setting for MVP; don't quietly add it, supersede Q3 if you want it.
+- [ ] Theme + font size reach xterm through the palette→theme mapper (Q8: two themes, no picker).
+
+## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
+
+`05-features.md` § "Keyboard shortcuts" lists six bindings; **none are wired**. The table is not
+the hard part — the hard part is that this app has a terminal in it, so a global handler that
+swallows a keystroke breaks typing to Claude.
+
+- [ ] `useGlobalShortcuts()` at the shell layer, with an explicit rule for when the embedded
+      terminal has focus (xterm gets first refusal on everything it binds).
+- [ ] `Cmd/Ctrl + N` → new session in the active project. F6 shipped the buttons and explicitly
+      left this unwired; it's the cheapest win in the table.
+- [ ] `Cmd/Ctrl + K` (focus search), `Cmd/Ctrl + W` (kill active terminal),
+      `Cmd/Ctrl + ,` (settings — needs item 4).
+- [ ] A binding for the file-tree toggle. **`Ctrl+B` is unavailable** — readline's back-a-char
+      and tmux's prefix (Q15). Pick something that survives a terminal-focused window, or accept
+      that the toggle stays mouse-only and say so in F12.
+- [ ] Sidebar list navigation (F2: ↑/↓, Enter) belongs to the same pass.
+
+The table is also about to grow: **items 12–14** add `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`, and item
+14 wants the table's current `Cmd/Ctrl+G` (go to line) row *removed* because Monaco provides it
+natively. Land the scheme first if those items get picked up together — three more global bindings
+is exactly the point where one `useEffect` per shortcut stops being survivable.
+
+## 6. M5 — custom window titlebar
+
+`decorations: false` plus minimise / maximise / close reimplemented in `TopBar`, which is already
+full-window width for exactly this reason (Q15 chose that geometry up front so this wouldn't mean
+restructuring the shell).
+
+Needs: a drag region across the middle, per-platform control placement (traffic lights left on
+macOS, buttons right on Linux), and a double-click-to-maximise handler. The shell's rounded
+corners and border are already in place from the August fixes, so the window will actually look
+like a window once the OS frame goes away.
+
+## 7. M5 — error UX: a toast primitive, empty states, indexing feedback
+
+- [ ] **`toast` does not exist in `@factorai/ui`** — the package ships 14 primitives and no
+      toast/sonner. `05-features.md` § "Error UX" assumes one. Add it there (not in app code),
+      following the shadcn-style convention the rest of the package uses.
+- [ ] Route transient `AppError`s to a toast and view-specific failures to inline messages, per
+      the tagged-union contract in `03-backend-rust.md` § "Errors".
+- [ ] Empty states: no `~/.claude/projects/` (F1 — one-line explainer plus a link to install
+      Claude Code), project with no sessions (F6 already offers `New session` here), empty search.
+- [ ] Friendlier indexing UI on top of the `indexer:progress` events the sidebar already
+      consumes.
+
+## 8. M5 — release: icons, README, tagged builds, smoke pass
+
+The last mile before the app is something a teammate installs rather than runs from source.
+
+- [ ] Real icon set (placeholders today).
+- [ ] README with install instructions.
+- [ ] GitHub Action: `tauri build` on tag push, artifacts attached to the release. No signing
+      flow yet — that's what auto-updates would need (deferred #7), and we don't have it.
+- [ ] Manual smoke pass on **macOS arm64** and **Ubuntu 24**. macOS is the untested platform:
+      every gotcha in `DONE.md` so far is WebKitGTK-flavoured, and the login-shell PATH fallback
+      in the claude probe (Q2) exists specifically for GUI launches on macOS and has never been
+      exercised there.
+
+**Exit criterion for M5** (`06-milestones.md`): a teammate installs the `.dmg` / `.deb` and uses
+factorai for an hour without hitting a flow-breaking bug.
+
+## 9. Retire or re-wire the dead session-read commands
+
+`get_session` and `get_session_tail` survive from the JSONL viewer removed in `c6374d6` (F3).
+They are correct, tested, and called by nothing. `05-features.md` keeps them "available for
+future use (e.g. a search-hit context preview)".
+
+Pick one and act, because a command surface with dead entries in it drifts silently:
+
+- **Wire it** — F4 hits currently open a session's terminal with no context beyond the `snippet()`
+  excerpt; a bounded preview around the hit is the obvious use, and the tail-first paging the
+  viewer used is still the right shape for it.
+- **Or delete it** — and say so in F3, so nobody re-adds a viewer by accident.
+
+Note the cost of *not* deciding is nonzero: `pnpm deps:unused` (knip) has to keep being told
+these are intentional.
+
+## 10. Interaction-level QA coverage
+
+`scripts/qa/` reliably catches boot-time regressions and not much else. The path forward is the
+one `CLAUDE.md` § 2d already names: **Playwright against `pnpm vite:dev`**, where the renderer
+runs browser-only through `isTauri()` / `mockInvoke()`.
+
+Correct the docs while you're in there: `scripts/qa/README.md` (and `CLAUDE.md` § 2e, which
+repeats it) says XTest input is filtered by WebKitGTK before it reaches React. That's too strong —
+on this box clicks *do* land in the webview; what gets dropped is `--window`-targeted key events
+(`xdotool key --window <id>`), which need window focus plus an untargeted `xdotool key` instead.
+The real reasons GUI-driven QA is unreliable here are duller and worth writing down instead: the
+sidebar reorders every ~2s (`refetchInterval`), so a coordinate measured from a screenshot points
+at a different project by the time it's clicked; `tauri dev` can leave two `factorai` processes
+running *different builds*, both windows identically titled, so the same click gives contradictory
+answers; and `pnpm dev` doesn't rebuild Rust at all, so a new command needs a full restart.
+
+- [ ] Grow `tests/smoke/` past the current handful, and open the `tests/regression/` lane that
+      the smoke-suite budget ("a few seconds") is already pushing against.
+- [ ] Cover the flows the tests can reach and `scripts/qa` cannot: opening a file from the tree,
+      the viewer's markdown toggle, search-hit navigation, the quit-confirm dialog.
+- [ ] Fixtures stay one-factory-per-shape in `tests/smoke/fixtures.ts`.
+
+Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
+`gnome-screenshot` for `swaymsg` / `grim`). X11-only is fine while the dev box is X11.
+
+## 11. `Changes` tab — merged into item 1 (2026-08-14)
+
+Was a separate item. The design interview established it and the diff viewer are one piece of
+work, so the scope, slices and open points now live in **item 1**. The tab-slot contest it
+flagged is resolved in `07-open-questions.md` Q18: the strip holds `Files | Changes` and is not a
+registry — Memory (item 2) and search results (item 13) get cheaper homes.
+
+## 12. Command palette — `Cmd+P` quick-open by filename
+
+> **Priority: HIGH for items 12–14** (user ask, 2026-08-14) — kept at the end of the file to avoid
+> renumbering items 1–11 and their cross-references. Read them as sitting **right after M4 (items
+> 1–3)**, and land item 5's binding scheme with or before them. They're a coherent trio: don't
+> build the third without the first.
+
+The first of three navigation surfaces (12–14) that the desktop Claude Code app has and factorai
+doesn't. They're specced separately because their **backends** differ wildly — a filename index, a
+content grep, and a symbol index are three different problems — but they should land as **one
+component**: a single palette modal with a mode prefix, VS Code style (bare = files, `#` = symbols,
+`>` = commands later), not three modals that each reinvent the list, the fuzzy match and the
+keyboard handling. Build the palette here; items 13–14 add modes to it.
+
+**Prerequisite: none of the three exists in the specs yet.** `05-features.md` stops at F12, and its
+keyboard table has no `Cmd+P`. Write F13 (this item) before coding, per `CLAUDE.md` § 2a — the
+palette is a new surface with its own state, not a variation on the tree.
+
+- [ ] Palette shell in app code (`Command`-style modal): fuzzy filter, ↑/↓/Enter, Escape, scoped to
+      the route's project. `@factorai/ui` has no combobox/command primitive — decide whether one
+      goes in the package (it's the shadcn-conventional home) or the palette stays app-local.
+- [ ] `list_project_files(project_path)` in `commands/files.rs` — a **recursive** walk, which
+      `list_dir` deliberately is not. This is where the cost lives: it needs ignore rules
+      (`.gitignore` + `.git`, `node_modules`, `target`, `.venv`), an entry cap, and a decision on
+      caching. Use the `ignore` crate (ripgrep's walker) rather than hand-rolling gitignore
+      semantics.
+- [ ] Freshness. F12 chose "no watcher, `staleTime` + focus refetch" (Q17) for the tree and the
+      same reasoning applies here, but a *stale* quick-open is more annoying than a stale tree —
+      you type a filename you just created and it isn't there. Cheapest honest answer: cache per
+      project with a short TTL, refresh on palette open, show the count so staleness is visible.
+- [ ] Selecting a file opens it in the viewer — i.e. sets `?file=`, the mechanism F7 already has.
+
+Scale check before optimising: this is a fuzzy match over a few thousand paths in a webview, which
+is fine in JS. Don't move the matching into Rust until a real project makes it lag.
+
+## 13. Project-wide content search — `Cmd+Shift+F`
+
+Grep across the active project's files. **Not** F4: F4 searches *session transcripts* via SQLite
+FTS5 and answers "which conversation was that", while this searches *the code on disk* and answers
+"where is this string". Same word, different corpus, different backend — say so in the spec so
+nobody merges them into one input.
+
+- [ ] `search_files(project_path, query, opts)` — literal by default, with case-sensitive and
+      regex toggles. Same `ignore`-crate walker as item 12; results streamed or capped (a match
+      list on a large repo is unbounded), with per-file grouping and a line + column per hit.
+- [ ] Results UI. A palette mode is the wrong shape for this — hits need file grouping, context
+      lines and persistence while you click through them. The right-hand panel is a better home
+      (it's where `Changes` is also queued, item 11), which makes the panel's tab strip a decision
+      that three items now depend on. Settle it once.
+- [ ] Clicking a hit must open the file **at that line**. `?file=` carries a path and nothing else
+      today, so this needs `?file=…&line=N` (validated on `__root` beside the existing param) and
+      a `revealLineInCenter` call once Monaco has mounted. Item 12 doesn't need this; this item
+      does.
+- [ ] Debounce and cancel in-flight searches — typing in a grep box fires a walk per keystroke
+      otherwise.
+
+Do **not** shell out to `rg`. It would be a fourth binary-discovery problem next to the one
+`find_claude_binary()` already solves for `claude` (Q2), and `grep`/`ignore` as libraries have no
+PATH story to get wrong.
+
+## 14. Symbol search — `Cmd+G` (needs a symbol index; explore first)
+
+The one the user explicitly wants and the one with real depth behind it: jump to a definition by
+name across the project. Everything above is a filesystem walk; this needs **parsing**, which is a
+new class of dependency for this codebase.
+
+**Exploration first — deliverable is a written design + an ADR**, before any code. The three
+approaches, cheapest to richest:
+
+- **tree-sitter** — per-language grammars, a tag query per grammar, no external binary. Accurate,
+  incremental, and the cost is one grammar crate per language you support. Most likely answer.
+- **ctags/`universal-ctags`** — cheapest to implement, but it's an external binary the user may
+  not have, i.e. Q2's discovery problem again. Weak.
+- **LSP** — the richest (real definitions, references, types) and the heaviest: a server process
+  per language, lifecycle management, and a protocol client. That's a product in itself; it also
+  overlaps with the deferred MCP/IDE-emulator work (`06-milestones.md` deferred #1), so decide
+  whether these are one effort or two before either starts.
+
+Design questions the ADR has to answer: which languages ship first; where the index lives (a new
+SQLite table alongside the session index, or in-memory per project); when it's built (on project
+open? lazily on first `Cmd+G`? in the background like the session indexer, with its own
+`indexer:progress`-style event?); and what invalidates it, given F12's deliberate no-watcher stance
+means nothing currently tells us a project file changed.
+
+**Binding.** The user's preference is `Cmd+G`, and taking it means resolving two collisions
+honestly:
+
+- `05-features.md`'s keyboard table currently assigns `Cmd/Ctrl+G` to **go to line**. That row can
+  simply go: Monaco ships go-to-line natively (`Ctrl+G`) inside the editor, so the app-level
+  binding is redundant.
+- On macOS, `Cmd+G` is the system-wide **find-next**, and it's what Monaco's own find widget uses
+  once `Cmd+F` is open. So a global `Cmd+G` must not fire while the find widget has focus — the
+  same "who owns this keystroke" rule item 5 needs for the terminal.
+
+VS Code's own answers are `Cmd+Shift+O` (symbols in file) and `Cmd+T` (symbols in project), both
+free here. Recommendation: ship `Cmd+G` as asked, keep `Cmd+Shift+O` as an alias, and record the
+choice in `07-open-questions.md` rather than leaving it implicit in a `useGlobalShortcuts` switch.
+
+## 15. Post-MVP / deferred
+
+Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
+list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,
+multi-window, auto-updates, crash reporting, Windows, mobile). Items graduate from there into
+this file when they become the next thing to do, not before.
+
+Two viewer follow-ups sit between "shipped" and "deferred", and belong here rather than there
+because F7 already commits to them:
+
+- **Per-project tab system.** `?file=` is a single path today, validated on the `__root` route
+  precisely so it can grow into a list. The end state is tabs switching between the project page,
+  its sessions, and open files — at which point `FileViewerModal` stops being the host.
+- **Image preview.** The viewer is text-only; images need bytes, so either a base64 mode on
+  `read_file` or the Tauri asset protocol with a path scope. Binary files currently offer
+  open-in-default-app, which is an acceptable holding position.
