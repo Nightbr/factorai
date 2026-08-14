@@ -18,36 +18,48 @@ interface ProjectIconProps {
 export function ProjectIcon({ name, path, size = 24, status }: ProjectIconProps) {
 	const hue = hashHue(path);
 	const initials = pickInitials(name);
-	const icon = (
-		<span
-			className="inline-flex size-full items-center justify-center rounded font-semibold text-white"
-			style={{
-				fontSize: Math.floor(size * 0.45),
-				backgroundColor: `hsl(${hue}, 60%, 35%)`,
-			}}
-			aria-hidden
-		>
-			{initials}
-		</span>
-	);
-
 	return (
+		// `inline-flex`, not `inline-block`, and the tile below is a FLEX child.
+		//
+		// As an inline-block wrapper around an inline-level tile, the tile sat on a
+		// line box inside it and was pushed down by the inherited `line-height` —
+		// so the coloured square rendered a couple of px below the wrapper's own
+		// box while the badge, positioned against that wrapper, stayed at the top.
+		// Avatar and badge were being laid out against two different rectangles.
+		// A flex child is block-level: it fills the wrapper exactly, and there is
+		// no line box left to shift it.
+		//
+		// `align-middle` matters only if this is ever dropped into running text
+		// rather than a flex row, where an inline box would otherwise sit on the
+		// text baseline and hang below it.
 		<span
-			className="relative inline-block shrink-0"
+			className="relative inline-flex shrink-0 align-middle leading-none"
 			style={{ width: size, height: size }}
 			data-testid="project-icon"
 		>
-			{icon}
+			<span
+				className="flex size-full items-center justify-center rounded font-semibold text-white"
+				style={{
+					fontSize: Math.floor(size * 0.45),
+					backgroundColor: `hsl(${hue}, 60%, 35%)`,
+				}}
+				data-testid="project-icon-tile"
+				aria-hidden
+			>
+				{initials}
+			</span>
 			{status && (
-				// Overlapping the corner, with a ring in the panel's own colour so the
-				// badge reads as sitting on top of the avatar rather than inside it.
 				<StatusDot
 					status={status}
-					// Seated INSIDE the corner rather than hung off it: the dot's own box
-					// sits flush with the avatar's top-right, so only the 2px ring laps
-					// over the edge. Most of the badge is on the avatar, which is what
-					// makes it read as belonging to it.
-					className="absolute top-px right-px size-1.5 ring-2 ring-card"
+					// Sat on the avatar's top-right corner: half the badge overflows to
+					// the right, a little under half above. Expressed as translates of
+					// the badge's OWN size, so the proportion holds at any `size` — a
+					// negative pixel offset would drift as the avatar grows.
+					//
+					// Overflowing costs the layout nothing: the badge is absolutely
+					// positioned, so the wrapper's box stays exactly the avatar's box and
+					// the row's baseline never moves.
+					className="-translate-y-[45%] absolute top-0 right-0 size-1.5 translate-x-1/2 ring-2 ring-card"
 				/>
 			)}
 		</span>
