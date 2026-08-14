@@ -126,7 +126,8 @@ like a window once the OS frame goes away.
 
 The last mile before the app is something a teammate installs rather than runs from source.
 
-- [ ] Real icon set (placeholders today).
+- [ ] Real icon set (placeholders today). Now the most visible gap: the app
+      self-updates but still wears a placeholder icon.
 - [x] README with install instructions — 2026-08-14.
 - [x] GitHub Action: `tauri build` on tag push, artifacts attached to the release — 2026-08-14.
       Draft pre-release, universal macOS `.dmg` + Linux `.deb`/`.AppImage`, version taken from

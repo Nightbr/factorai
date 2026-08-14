@@ -3,6 +3,32 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **OTA updates, and the repo went public to make them possible** — 2026-08-14. The header shows
+  `v0.2.0 ready · Restart` once a new release is downloaded and staged; checking and downloading
+  are silent, and nothing ever restarts itself. F14, ADR-0010.
+
+  **The restart needed more care than the update.** `relaunch()` tears the process down and takes
+  every live PTY with it, but it never fires `CloseRequested` — so the quit guard (ADR-0005) never
+  sees it, and a running Claude session would die without a word. The badge runs the same
+  confirmation on the same terms; with nothing live it restarts immediately.
+
+  **Four constraints fell out of the endpoint** (`releases/latest/download/latest.json`), each
+  forcing a decision: release assets on a *private* repo 404 for unauthenticated clients, so the
+  repository is now **public** (history scanned for secrets — clean; screenshots had their project
+  list blurred first). GitHub's `/releases/latest` **skips prereleases**, so releases stopped
+  being marked as such — they stay drafts until published by hand, which is the real gate. Linux
+  **ships AppImage only**, because the updater can replace an AppImage in place but never a `.deb`
+  (apt owns those files). And macOS ships `.app.tar.gz` beside the dmg, reversing the earlier
+  `--bundles dmg` that was right only while there was no updater to feed.
+
+  Signing is a minisign keypair in the `TAURI_SIGNING_PRIVATE_KEY` secret, nowhere in the tree.
+  Losing it means installed copies stop accepting updates — a new key would need a
+  manually-installed build to bridge the gap. Note this is **not** Apple code-signing: a first
+  macOS install still needs the Gatekeeper dance; in-place updates don't re-quarantine.
+
+  Gotcha worth keeping: `gh secret set NAME --body ""` hangs forever waiting on stdin, so the
+  empty passphrase is an empty literal in the workflow rather than a secret.
+
 - **Changes tab, git decorations and the diff viewer** — 2026-08-14. The right panel gained a
   `Files | Changes` strip; the tree gained git paint and nothing else. Four slices: specs +
   ADR-0009, the Rust (`git_status` / `git_blob` / `ignored` on `list_dir`), the tab and the Monaco
