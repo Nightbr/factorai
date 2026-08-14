@@ -16,6 +16,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { SidebarProject } from '@components/layout/SidebarProject';
+import { ZoomControls } from '@components/layout/ZoomControls';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -73,7 +74,7 @@ export function Sidebar() {
 		<>
 			{/* The app's brand row lives in TopBar now — the sidebar starts at
 			    its search box. */}
-			<div className="border-b border-border px-3 py-2">
+			<div className="border-b border-border px-3 py-2.5">
 				<div className="relative">
 					<Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 size-3.5 text-muted-foreground" />
 					<Input
@@ -86,8 +87,8 @@ export function Sidebar() {
 				</div>
 			</div>
 
-			<nav className="flex-1 overflow-y-auto py-2">
-				<div className="flex items-center gap-1 px-3 pb-1">
+			<nav className="flex-1 overflow-y-auto py-3">
+				<div className="flex items-center gap-1 px-3 pb-2">
 					<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
 						Projects
 					</span>
@@ -129,7 +130,7 @@ export function Sidebar() {
 						No projects found in ~/.claude/projects yet.
 					</div>
 				)}
-				<ul>
+				<ul className="space-y-0.5">
 					{projects.map((p) => (
 						<SidebarProject
 							key={p.id}
@@ -141,14 +142,15 @@ export function Sidebar() {
 				</ul>
 			</nav>
 
-			<footer className="border-t border-border px-3 py-2 text-muted-foreground text-xs">
-				{progress && progress.phase !== 'idle' ? (
-					<span>
-						Indexing… {progress.processed}/{progress.total}
-					</span>
-				) : (
-					<span className="text-muted-foreground/60">Idle</span>
-				)}
+			<footer className="flex items-center gap-2 border-t border-border py-1.5 pr-1.5 pl-3 text-muted-foreground text-xs">
+				<span className="min-w-0 flex-1 truncate">
+					{progress && progress.phase !== 'idle' ? (
+						`Indexing… ${progress.processed}/${progress.total}`
+					) : (
+						<span className="text-muted-foreground/60">Idle</span>
+					)}
+				</span>
+				<ZoomControls />
 			</footer>
 		</>
 	);

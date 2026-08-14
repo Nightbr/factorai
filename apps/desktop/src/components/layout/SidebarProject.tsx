@@ -68,7 +68,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					type="button"
 					aria-label={expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`}
 					aria-expanded={expanded}
-					className="flex shrink-0 items-center py-1.5 pr-0.5 pl-1.5"
+					className="flex shrink-0 items-center py-2 pr-0.5 pl-1.5"
 					onClick={() => toggleProject(project.id)}
 				>
 					<ChevronRight
@@ -81,7 +81,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 				<Link
 					to="/projects/$id"
 					params={{ id: project.id }}
-					className={`flex min-w-0 flex-1 items-center gap-2 py-1.5 text-sm ${
+					className={`flex min-w-0 flex-1 items-center gap-2 py-2 text-sm ${
 						isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
 					}`}
 				>
@@ -148,14 +148,14 @@ function SessionList({ project }: { project: Project }) {
 	const hidden = (sessionsQ.data?.length ?? 0) - sessions.length;
 
 	return (
-		<ul data-testid={`sidebar-sessions-${project.id}`}>
+		<ul className="mb-1" data-testid={`sidebar-sessions-${project.id}`}>
 			{sessions.map((session) => (
 				<li key={session.id}>
 					<Link
 						to="/projects/$projectId/sessions/$sessionId"
 						params={{ projectId: project.id, sessionId: session.id }}
 						title={session.title || session.id}
-						className="flex items-center gap-2 py-1 pr-2 pl-8 text-muted-foreground text-xs transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-xs transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						<span className="min-w-0 flex-1 truncate">
@@ -171,7 +171,7 @@ function SessionList({ project }: { project: Project }) {
 					<Link
 						to="/projects/$id"
 						params={{ id: project.id }}
-						className="block py-1 pr-2 pl-8 text-muted-foreground/60 text-xs transition-colors hover:text-foreground"
+						className="block py-1.5 pr-2 pl-8 text-muted-foreground/60 text-xs transition-colors hover:text-foreground"
 					>
 						{hidden} more…
 					</Link>
@@ -183,7 +183,7 @@ function SessionList({ project }: { project: Project }) {
 
 function Row({ children, muted }: { children: string; muted?: boolean }) {
 	return (
-		<p className={`py-1 pl-8 text-xs ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
+		<p className={`py-1.5 pl-8 text-xs ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
 			{children}
 		</p>
 	);
