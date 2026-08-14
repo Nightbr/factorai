@@ -126,8 +126,9 @@ like a window once the OS frame goes away.
 
 The last mile before the app is something a teammate installs rather than runs from source.
 
-- [ ] Real icon set (placeholders today). Now the most visible gap: the app
-      self-updates but still wears a placeholder icon.
+- [ ] Real icon set — see **item 18**, which is the whole branding pass rather
+      than a checkbox. Now the most visible gap: the app self-updates and ships
+      signed bundles while still wearing a placeholder icon.
 - [x] README with install instructions — 2026-08-14.
 - [x] GitHub Action: `tauri build` on tag push, artifacts attached to the release — 2026-08-14.
       Draft pre-release, universal macOS `.dmg` + Linux `.deb`/`.AppImage`, version taken from
@@ -342,7 +343,34 @@ Options, none free:
 Worth doing — the user manages names with `/rename` today and has a hook proposing names from the
 issue/PR — but it wants the ADR-0004 question answered first.
 
-## 18. Post-MVP / deferred
+## 18. UI / branding: app logo, icon and desktop assets
+
+The app ships with Tauri's placeholder icon. It self-updates, publishes signed bundles and has a
+public README — the icon is the last thing that still says "scaffold".
+
+This is a design job with a long tail of mechanical work, which is why it isn't just "draw a
+logo":
+
+- **The mark itself.** A logo that reads at 16px in a dock and at 512px in an about box. The app's
+  existing visual language is a starting point: amber accent on near-black, terminal-adjacent,
+  `FolderGit2` standing in as the brand glyph in `TopBar` today.
+- **Every size and format Tauri wants.** `tauri.conf.json` lists `32x32.png`, `128x128.png`,
+  `128x128@2x.png`, `icon.icns` (macOS, multi-resolution) and `icon.ico` (Windows, which we don't
+  ship but the bundler still wants). `tauri icon` generates the set from one source PNG — feed it
+  a 1024px master.
+- **Desktop integration assets.** The `.deb`/AppImage need a `.desktop` entry with the right
+  categories and a scalable icon; macOS wants the `.icns` to look right on a dark dock and in
+  Spotlight. Neither is exercised by our current builds because nobody has installed one on a
+  fresh machine.
+- **The in-app brand row.** `TopBar` shows `FolderGit2` + "factorai" in text; a real mark replaces
+  the glyph, and the wordmark may or may not survive next to it once session tabs take the row.
+- **README and release presentation.** The screenshots are already there; a logo gives the repo a
+  header image and the releases a recognisable icon.
+
+Sequence that avoids rework: mark → 1024px master → `tauri icon` → desktop entry → in-app brand
+row. Nothing here blocks a release, and every release without it ships the placeholder.
+
+## 19. Post-MVP / deferred
 
 Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
 list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,
