@@ -8,6 +8,29 @@
    Point Tailwind at this package's own sources so their classes emit. */
 @source "../**/*.{ts,tsx}";
 
+/* ── Pointer cursor on anything clickable ─────────────────────────────────── */
+/* Tailwind v4's Preflight sets `cursor: default` on buttons — a deliberate
+   change from v3 — so without this nothing in the app shows a pointer, not the
+   primitives and not hand-rolled controls. One base rule rather than a
+   `cursor-pointer` class per control: the class gets forgotten exactly where a
+   control is hand-rolled, which is where the affordance is least obvious.
+   Disabled controls are excluded — a pointer on something inert is a lie. */
+@layer base {
+	button:not(:disabled),
+	select:not(:disabled),
+	summary,
+	a[href],
+	label[for],
+	[role="button"]:not([aria-disabled="true"]),
+	[role="tab"]:not([aria-disabled="true"]),
+	[role="option"]:not([aria-disabled="true"]),
+	[role="menuitem"]:not([aria-disabled="true"]),
+	[role="menuitemradio"]:not([aria-disabled="true"]),
+	[role="menuitemcheckbox"]:not([aria-disabled="true"]) {
+		cursor: pointer;
+	}
+}
+
 /* ── Design tokens ────────────────────────────────────────────────────────── */
 @theme {
 	--font-family-sans: Inter, system-ui, sans-serif;
