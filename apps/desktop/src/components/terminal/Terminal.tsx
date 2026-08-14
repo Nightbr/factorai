@@ -7,8 +7,32 @@ import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
 import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
-import { cmd, events } from '@lib/tauri';
+import { cmd, events, openExternally } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
+
+/**
+ * What a click on a URL in the terminal does (specs/05-features.md F5).
+ *
+ * `WebLinksAddon`'s default handler is `window.open`, which a Tauri webview has
+ * no use for: nothing happens, or the page navigates away from the app. It has
+ * to go through the shell plugin (`shell:allow-open`, whose scope regex is
+ * guarded by `tests/shell_open_scope.rs`).
+ *
+ * **Modifier-click, not plain click.** That is the terminal convention, and
+ * Claude Code is a TUI: a bare click lands on interactive output often enough
+ * that opening a browser on one would be an ambush.
+ *
+ * Exported so the gate is testable — the addon itself can't be driven from the
+ * browser-only test lane.
+ */
+export function onLinkActivated(
+	event: MouseEvent,
+	uri: string,
+	open: (uri: string) => void = openExternally,
+): void {
+	if (!event.ctrlKey && !event.metaKey) return;
+	open(uri);
+}
 
 // ── Persistent xterm pool ──────────────────────────────────────────────────
 //
@@ -60,7 +84,7 @@ function getOrCreateTerm(sessionId: string): PooledTerm {
 	const fit = new FitAddon();
 	term.loadAddon(fit);
 	term.loadAddon(new SearchAddon());
-	term.loadAddon(new WebLinksAddon());
+	term.loadAddon(new WebLinksAddon(onLinkActivated));
 	term.loadAddon(new UnicodeGraphemesAddon());
 	// WebGL addon is deliberately not loaded: it crashes WebKitGTK on some
 	// Linux setups (the user's Zorin OS being one). DOM rendering is slower
