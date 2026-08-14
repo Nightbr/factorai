@@ -610,6 +610,10 @@ behind `isTauri()`, so browser-only dev and Playwright never load them and the
 hook is simply inert there.
 
 **Edge cases.**
+- **Development builds never check.** `pnpm dev` runs an unpackaged binary
+  whose version trails every release, so without a guard the updater finds an
+  update on every launch, downloads the bundle, and offers to restart the
+  developer into a release build of the code they are currently editing.
 - Offline, or the endpoint is unreachable → stays silent. The app works, it's
   just not the newest; the error is logged, not surfaced.
 - Already on the latest version → `check()` resolves null, nothing renders.
