@@ -319,7 +319,30 @@ What a real pass covers:
 Small, self-contained, and entirely cosmetic — but it touches every scrolling surface, so it wants
 doing in one pass rather than one panel at a time.
 
-## 17. Post-MVP / deferred
+## 17. Rename a session from inside factorai
+
+Reading the name `/rename` set is done (F2). Setting one from the app is not, and it is a bigger
+question than it looks: `custom-title` lines live in the session's own JSONL under
+`~/.claude/`, which **ADR-0004 declares read-only** — the CLI owns that tree. Appending to a file
+Claude Code has open, from a second process, is exactly the kind of thing that ADR exists to
+prevent.
+
+Options, none free:
+
+- **Append a `custom-title` line** to the transcript, as the CLI does. Simple, and the name shows
+  up in Claude Code too. But it writes into a file another process is actively appending to, and
+  it supersedes ADR-0004 — which needs a new ADR, not a shrug.
+- **Keep the name in our own database**, overriding the transcript for display. No writes to
+  `~/.claude` at all, so ADR-0004 stands — but the name exists only in factorai, and `/rename`
+  and the app can then disagree about what a session is called.
+- **Drive the CLI**: send `/rename <name>` to the session's PTY. Uses the owner of the file to do
+  the writing, which is the tidy answer — but only works while a session is live, and typing into
+  someone's terminal to change metadata is a strange mechanism.
+
+Worth doing — the user manages names with `/rename` today and has a hook proposing names from the
+issue/PR — but it wants the ADR-0004 question answered first.
+
+## 18. Post-MVP / deferred
 
 Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
 list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,

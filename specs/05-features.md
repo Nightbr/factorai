@@ -91,9 +91,23 @@ unbounded list in a narrow column.
 
 **Backend.** `list_sessions(project_id)`.
 
+**Title precedence.** A session's name comes from the first of these that
+exists, checked in this order:
+
+1. **`custom-title`** — what Claude Code's `/rename` writes
+   (`{"type":"custom-title","customTitle":"…"}`). A name you chose yourself, so
+   it wins outright; renaming again appends another line and the last one is
+   current.
+2. **`ai-title`** — Claude's own generated name (`aiTitle`), rewritten as the
+   session develops. An `ai-title` written *after* a rename must not displace
+   it, which is why precedence is decided at the end rather than by whichever
+   line comes last.
+3. First 60 characters of the first user message.
+4. The session id's first 8 characters.
+
+An empty or whitespace-only rename falls through rather than blanking the row.
+
 **Edge cases.**
-- Title not yet derived → fall back to first 60 chars of first user message,
-  or the session ID's first 8 chars.
 - Session file is huge (>100MB) → still index, just lazily.
 
 **Switchboard ref.** `sidebar.js`, `session-cache.js`.

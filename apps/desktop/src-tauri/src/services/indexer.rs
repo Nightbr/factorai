@@ -205,7 +205,11 @@ impl Indexer {
 		let mut turn_count: i64 = 0;
 		let mut cwd: Option<String> = None;
 		let mut fts_rows: Vec<(String, String)> = Vec::new(); // (role, body)
-		let mut title_from_event: Option<String> = None;
+		// Two independent title sources, kept apart so precedence is decided once
+		// at the end rather than by whichever line happens to come last in the
+		// file: `/rename` always beats Claude's own auto-title.
+		let mut custom_title: Option<String> = None;
+		let mut ai_title: Option<String> = None;
 
 		for ev in EventIter::open(session_path)? {
 			turn_count += 1;
@@ -220,15 +224,30 @@ impl Indexer {
 					cwd = Some(c.clone());
 				}
 			}
-			// Title hints — modern Claude writes an `ai-title` meta event with
-			// the auto-generated session name, older versions used a top-level
-			// `title` field.
-			if ev.event_type == "ai-title" {
-				if let Some(t) = ev.extra.get("aiTitle").and_then(|v| v.as_str()) {
-					title_from_event = Some(t.to_string());
+			// Title hints, in the order Claude Code writes them:
+			//
+			// - `custom-title` is what `/rename` emits — a name the user chose, so
+			//   it wins outright. Repeated renames each append a line; the last one
+			//   is the current name.
+			// - `ai-title` is Claude's own generated name, rewritten as the session
+			//   develops.
+			// - older versions used a top-level `title` field.
+			match ev.event_type.as_str() {
+				"custom-title" => {
+					if let Some(t) = ev.extra.get("customTitle").and_then(|v| v.as_str()) {
+						custom_title = Some(t.to_string());
+					}
 				}
-			} else if let Some(t) = ev.extra.get("title").and_then(|v| v.as_str()) {
-				title_from_event = Some(t.to_string());
+				"ai-title" => {
+					if let Some(t) = ev.extra.get("aiTitle").and_then(|v| v.as_str()) {
+						ai_title = Some(t.to_string());
+					}
+				}
+				_ => {
+					if let Some(t) = ev.extra.get("title").and_then(|v| v.as_str()) {
+						ai_title = Some(t.to_string());
+					}
+				}
 			}
 			if let Some(msg) = &ev.message {
 				let text = flatten_message_text(&msg.content);
@@ -243,7 +262,12 @@ impl Indexer {
 
 		let created_at = first_ts.unwrap_or(mtime_ms);
 		let updated_at = last_ts.unwrap_or(mtime_ms);
-		let title = title_from_event
+		// A name you set yourself, else Claude's, else the first thing you said,
+		// else the id. An empty `/rename` is treated as no name rather than as a
+		// blank one.
+		let title = custom_title
+			.filter(|t| !t.trim().is_empty())
+			.or(ai_title.filter(|t| !t.trim().is_empty()))
 			.unwrap_or_else(|| derive_title(first_user_text.as_deref(), &session_id));
 
 		self.db.with_mut(|conn| {
