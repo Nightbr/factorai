@@ -43,7 +43,10 @@ export function ProjectIcon({ name, path, size = 24, status }: ProjectIconProps)
 				// badge reads as sitting on top of the avatar rather than inside it.
 				<StatusDot
 					status={status}
-					className="-top-0.5 -right-0.5 absolute ring-2 ring-card"
+					// Smaller than the standalone dot and dropped to the avatar's own top
+					// edge: an 8px dot hanging above a 16px avatar is half its height and
+					// reads as a collision rather than a badge.
+					className="-right-0.5 absolute top-0 size-1.5 ring-2 ring-card"
 				/>
 			)}
 		</span>
