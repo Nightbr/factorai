@@ -311,3 +311,116 @@ fn pinned_projects_sort_ahead_of_more_recent_ones() {
 	// The stale-but-pinned project wins over the freshly-used one.
 	assert_eq!(ordered, vec!["-old".to_string(), "-new".to_string()]);
 }
+
+/// `/rename` writes a `custom-title` line; that name is the user's own choice
+/// and outranks Claude's generated `ai-title`, whatever order they appear in
+/// (specs/05-features.md F2).
+///
+/// Record shapes taken from real session files, not invented:
+///   {"type":"ai-title","aiTitle":"…","sessionId":"…"}
+///   {"type":"custom-title","customTitle":"…","sessionId":"…"}
+#[test]
+fn a_renamed_session_keeps_the_name_the_user_chose() {
+	let tmp = TempDir::new().unwrap();
+	let claude_dir = tmp.path().join(".claude");
+	let project_dir = claude_dir.join("projects").join("-code-foo");
+	std::fs::create_dir_all(&project_dir).unwrap();
+	let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+	write_session(
+		&project_dir,
+		session_id,
+		&[
+			r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/code/foo","message":{"role":"user","content":"first thing I said"}}"#,
+			// Claude names it, then the user renames it, then Claude renames it
+			// again — which happens, and must not win.
+			&format!(r#"{{"type":"ai-title","aiTitle":"Some generated name","sessionId":"{session_id}"}}"#),
+            &format!(r#"{{"type":"custom-title","customTitle":"Deploy storybook in staging","sessionId":"{session_id}"}}"#),
+			&format!(r#"{{"type":"ai-title","aiTitle":"A later generated name","sessionId":"{session_id}"}}"#),
+		],
+	);
+
+	let db = open_db(tmp.path());
+	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let title: String = conn
+			.query_row("SELECT title FROM sessions WHERE id = ?1", params![session_id], |row| {
+				row.get(0)
+			})
+			.expect("session row");
+		assert_eq!(title, "Deploy storybook in staging");
+		Ok(())
+	})
+	.expect("read back");
+}
+
+/// The most recent rename wins — renaming twice leaves the second name.
+#[test]
+fn the_latest_rename_is_the_one_that_shows() {
+	let tmp = TempDir::new().unwrap();
+	let claude_dir = tmp.path().join(".claude");
+	let project_dir = claude_dir.join("projects").join("-code-foo");
+	std::fs::create_dir_all(&project_dir).unwrap();
+	let session_id = "11112222-3333-4444-5555-666677778888";
+
+	write_session(
+		&project_dir,
+		session_id,
+		&[
+			r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/code/foo","message":{"role":"user","content":"hello"}}"#,
+			&format!(r#"{{"type":"custom-title","customTitle":"First name","sessionId":"{session_id}"}}"#),
+			&format!(r#"{{"type":"custom-title","customTitle":"Second name","sessionId":"{session_id}"}}"#),
+		],
+	);
+
+	let db = open_db(tmp.path());
+	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let title: String = conn
+			.query_row("SELECT title FROM sessions WHERE id = ?1", params![session_id], |row| {
+				row.get(0)
+			})
+			.expect("session row");
+		assert_eq!(title, "Second name");
+		Ok(())
+	})
+	.expect("read back");
+}
+
+/// An empty rename is not a name: fall through rather than showing a blank row.
+#[test]
+fn an_empty_custom_title_falls_back_instead_of_blanking_the_row() {
+	let tmp = TempDir::new().unwrap();
+	let claude_dir = tmp.path().join(".claude");
+	let project_dir = claude_dir.join("projects").join("-code-foo");
+	std::fs::create_dir_all(&project_dir).unwrap();
+	let session_id = "99998888-7777-6666-5555-444433332222";
+
+	write_session(
+		&project_dir,
+		session_id,
+		&[
+			r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/code/foo","message":{"role":"user","content":"what I actually asked"}}"#,
+			&format!(r#"{{"type":"custom-title","customTitle":"   ","sessionId":"{session_id}"}}"#),
+		],
+	);
+
+	let db = open_db(tmp.path());
+	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let title: String = conn
+			.query_row("SELECT title FROM sessions WHERE id = ?1", params![session_id], |row| {
+				row.get(0)
+			})
+			.expect("session row");
+		assert_eq!(title, "what I actually asked");
+		Ok(())
+	})
+	.expect("read back");
+}
