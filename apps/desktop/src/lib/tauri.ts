@@ -4,6 +4,8 @@ import type {
 	ClaudeCliStatus,
 	DirListing,
 	FileContents,
+	GitRev,
+	GitStatus,
 	IndexerProgressEvent,
 	Project,
 	QuitRequestedEvent,
@@ -54,6 +56,16 @@ export const cmd = {
 	 *  default; pass null to lift the cap after warning the user. */
 	readFile: (path: string, maxBytes?: number | null) =>
 		invoke<FileContents>('read_file', { path, maxBytes }),
+
+	/** Repository state for the Changes tab and the tree's decorations (F13).
+	 *  A project outside a repository resolves with `repoRoot: null` rather
+	 *  than rejecting. */
+	gitStatus: (projectPath: string) => invoke<GitStatus>('git_status', { projectPath }),
+	/** One file at HEAD or in the index, for the left side of a diff. Resolves
+	 *  null when the path doesn't exist at that revision — an added file has no
+	 *  HEAD side, and that is a row in the list, not an error. */
+	gitBlob: (path: string, rev: GitRev, maxBytes?: number | null) =>
+		invoke<FileContents | null>('git_blob', { path, rev, maxBytes }),
 
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
 	/** The session id to open for a "new session" in this project — a fresh
@@ -116,6 +128,10 @@ interface TestFixture {
 	dirListings?: Record<string, DirListing>;
 	/** File contents keyed by absolute path, for the F7 viewer. */
 	files?: Record<string, FileContents>;
+	/** Repository state keyed by project path, for the F13 Changes tab. */
+	gitStatuses?: Record<string, GitStatus>;
+	/** Blobs keyed by `<rev>:<absolute path>`, for diff fixtures. */
+	gitBlobs?: Record<string, FileContents>;
 }
 
 /** One mocked command call, recorded in order while a fixture is installed. */
@@ -186,6 +202,24 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// fixture declare `truncated: true` and have "Show anyway" resolve it.
 			if (args?.maxBytes === null) return { ...file, truncated: false } as unknown as T;
 			return file as unknown as T;
+		}
+		case 'git_status': {
+			const projectPath = String(args?.projectPath ?? '');
+			// An undeclared project is one without a repository — the panel's
+			// "Not a git repository" state, reachable without a fixture.
+			return (fx?.gitStatuses?.[projectPath] ?? {
+				repoRoot: null,
+				branch: null,
+				changes: [],
+				total: 0,
+				truncated: false,
+			}) as unknown as T;
+		}
+		case 'git_blob': {
+			const key = `${String(args?.rev ?? '')}:${String(args?.path ?? '')}`;
+			// Absent means "the file doesn't exist at that revision", which is an
+			// added or deleted file — null, never a rejection.
+			return (fx?.gitBlobs?.[key] ?? null) as unknown as T;
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;

@@ -125,6 +125,10 @@ pub struct DirEntry {
 	pub size: u64,
 	/// Epoch milliseconds, `None` if the platform or filesystem won't say.
 	pub modified_at: Option<i64>,
+	/// Git would ignore this path. The tree dims it. Always false outside a
+	/// repository, or when the repository can't be opened — an undecorated
+	/// listing is still a correct listing (F12).
+	pub ignored: bool,
 }
 
 /// One directory's worth of entries. `total` counts what we found before the
@@ -157,4 +161,78 @@ pub struct FileContents {
 	pub truncated: bool,
 	/// Lines in `contents` (0 for empty or binary).
 	pub line_count: usize,
+}
+
+/// Which side of git a blob is read from (F13). The worktree isn't here: that
+/// side is `read_file`, which already handles caps, binaries and lossy UTF-8.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitRev {
+	/// The commit HEAD points at.
+	Head,
+	/// The staging area.
+	Index,
+}
+
+/// Which comparison a change row belongs to. A partly-staged file legitimately
+/// produces one row in `Staged` and another in `Unstaged`, each with its own
+/// line counts — that is the only version where the numbers add up (Q19).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitGroup {
+	/// HEAD ↔ index.
+	Staged,
+	/// Index ↔ worktree.
+	Unstaged,
+	/// Unmerged path. Diffs HEAD ↔ worktree, markers and all.
+	Conflicted,
+}
+
+/// What happened to a path, in the group it appears in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitChangeKind {
+	Modified,
+	Added,
+	Deleted,
+	Renamed,
+	Typechange,
+	Untracked,
+	Conflicted,
+}
+
+/// One row in the Changes tab (F13).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitChange {
+	/// Absolute path on disk. What the viewer and `git_blob` take.
+	pub path: String,
+	/// Path relative to the *project* root, so a change above the project reads
+	/// `../packages/types/index.ts` and is visibly not yours.
+	pub rel_path: String,
+	pub group: GitGroup,
+	pub kind: GitChangeKind,
+	/// Previous path for a rename, relative to the project like `rel_path`.
+	pub old_rel_path: Option<String>,
+	/// `None` for binary deltas and for files over the stat cap — the row still
+	/// exists, it just carries no counts.
+	pub additions: Option<usize>,
+	pub deletions: Option<usize>,
+	pub is_binary: bool,
+}
+
+/// The repository's state for one project, or the absence of a repository.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatus {
+	/// Absolute path of the repository's working directory, `None` when the
+	/// project isn't in a repository at all. That is a success, not an error:
+	/// "not versioned" is something the UI renders (F13).
+	pub repo_root: Option<String>,
+	/// Current branch, or `None` on a detached HEAD / an empty repository.
+	pub branch: Option<String>,
+	pub changes: Vec<GitChange>,
+	/// Rows found before the cap, so the UI can say how many it isn't showing.
+	pub total: usize,
+	pub truncated: bool,
 }

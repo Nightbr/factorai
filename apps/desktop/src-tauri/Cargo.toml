@@ -35,6 +35,9 @@ parking_lot = "0.12"
 base64 = "0.22"
 portable-pty = "0.8"
 dashmap = "6"
+# No default features: they pull ssh2 / openssl / http transport in for network
+# operations we never perform — every call reads a local repository (ADR-0009).
+git2 = { version = "0.21", default-features = false }
 
 [dev-dependencies]
 regex = "1.13.1"

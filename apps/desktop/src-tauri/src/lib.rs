@@ -106,6 +106,8 @@ pub fn run() {
 			commands::sessions::search_sessions,
 			commands::files::list_dir,
 			commands::files::read_file,
+			commands::git::git_status,
+			commands::git::git_blob,
 			commands::terminal::check_claude_cli,
 			commands::terminal::start_session,
 			commands::terminal::terminal_spawn,

@@ -128,6 +128,9 @@ export interface DirEntry {
 	size: number;
 	/** Epoch milliseconds, null when the filesystem won't say. */
 	modifiedAt: number | null;
+	/** Git would ignore this path — the tree dims it. Always false outside a
+	 *  repository, or when it can't be opened (F12). */
+	ignored: boolean;
 }
 
 export interface DirListing {
@@ -184,6 +187,61 @@ export interface TerminalStatusEvent {
 export interface TerminalExitEvent {
 	id: TerminalId;
 	code: number | null;
+}
+
+// ── Git (F13) ──────────────────────────────────────────────────────────────
+
+/** Which side of git a blob is read from. The worktree isn't here: that side is
+ *  `readFile`, which already handles caps, binaries and lossy UTF-8. */
+export type GitRev = 'head' | 'index';
+
+/**
+ * Which comparison a change row belongs to.
+ *
+ * A partly-staged file legitimately produces one row in `staged` and another in
+ * `unstaged`, each with its own line counts — the only version where the numbers
+ * add up (07-open-questions.md Q19).
+ */
+export type GitGroup = 'staged' | 'unstaged' | 'conflicted';
+
+export type GitChangeKind =
+	| 'modified'
+	| 'added'
+	| 'deleted'
+	| 'renamed'
+	| 'typechange'
+	| 'untracked'
+	| 'conflicted';
+
+/** One row in the Changes tab. */
+export interface GitChange {
+	/** Absolute path on disk — what the viewer and `gitBlob` take. */
+	path: string;
+	/** Relative to the *project* root, so a change above the project reads
+	 *  `../packages/types/index.ts` and is visibly not yours. */
+	relPath: string;
+	group: GitGroup;
+	kind: GitChangeKind;
+	/** Previous path for a rename, relative to the project like `relPath`. */
+	oldRelPath: string | null;
+	/** Null for binary deltas, for files over the stat cap, and for conflicted
+	 *  rows — the row still exists, it just carries no counts. */
+	additions: number | null;
+	deletions: number | null;
+	isBinary: boolean;
+}
+
+export interface GitStatus {
+	/** Working directory of the repository, null when the project isn't in one.
+	 *  That is a success, not an error: "not versioned" is something the panel
+	 *  renders. */
+	repoRoot: string | null;
+	/** Null on a detached HEAD or an unborn branch. */
+	branch: string | null;
+	changes: GitChange[];
+	/** Rows found before the cap, so the UI can say how many it isn't showing. */
+	total: number;
+	truncated: boolean;
 }
 
 // ── Tauri command error shape ──────────────────────────────────────────────
