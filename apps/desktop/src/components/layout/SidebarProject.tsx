@@ -85,9 +85,13 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 						isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
 					}`}
 				>
-					<ProjectIcon name={project.displayName} path={project.realPath ?? project.id} size={16} />
+					<ProjectIcon
+						name={project.displayName}
+						path={project.realPath ?? project.id}
+						size={16}
+						status={isLive ? 'running' : undefined}
+					/>
 					<span className="min-w-0 flex-1 truncate">{project.displayName}</span>
-					{isLive && <StatusDot status="running" />}
 				</Link>
 
 				<IconButton

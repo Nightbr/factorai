@@ -7,7 +7,7 @@ import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { PanelResizer } from '@components/layout/PanelResizer';
-import { type PanelTab, usePanelStore } from '@store/panelStore';
+import { clampPanelWidth, type PanelTab, usePanelStore } from '@store/panelStore';
 
 /**
  * Right-hand file tree for the active project (specs/05-features.md F12).
@@ -25,7 +25,13 @@ export function FileTreePanel() {
 
 	return (
 		<>
-			<PanelResizer width={width} onWidth={setWidth} />
+			<PanelResizer
+				width={width}
+				onWidth={setWidth}
+				edge="left"
+				label="Resize file tree"
+				clamp={clampPanelWidth}
+			/>
 			<aside
 				data-testid="file-tree-panel"
 				style={{ width }}
@@ -87,7 +93,9 @@ function PanelBody() {
 						</IconButton>
 			</header>
 
-			<div className="min-h-0 flex-1 overflow-auto py-1">
+			{/* `pr-2` is the scrollbar gutter: with a long tree or a big change
+			    set, rows would otherwise run under the scrollbar. */}
+			<div className="min-h-0 flex-1 overflow-auto py-1 pr-2">
 				{tab === 'changes' && <ChangesView />}
 				{tab === 'files' && (
 					<>
