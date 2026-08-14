@@ -40,7 +40,11 @@ jobs:
             platform: macos-latest
             # One dmg that runs natively on both Apple Silicon and Intel,
             # rather than two assets and a "which one?" question.
-            args: --target universal-apple-darwin
+            # --bundles dmg: tauri.conf also lists the "app" target, which
+            # otherwise ships a second, unversioned factorai_universal.app.tar.gz
+            # next to the dmg. That tarball exists to feed an auto-updater we
+            # don't have, so it's a confusing duplicate download.
+            args: --target universal-apple-darwin --bundles dmg
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
           - name: Linux (x86_64)
             # NOT ubuntu-22.04: it starts deprecation on 2026-09-17 with
@@ -50,7 +54,7 @@ jobs:
             # README. To widen it again, build inside an ubuntu:22.04 container
             # on a supported runner rather than pinning a dying image.
             platform: ubuntu-24.04
-            args: ''
+            args: --bundles deb,appimage
             rust-targets: ''
     runs-on: ${{ matrix.platform }}
 
