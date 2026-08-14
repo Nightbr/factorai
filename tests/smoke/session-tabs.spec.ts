@@ -20,6 +20,14 @@ test.describe('session tabs', () => {
 
 		await expect(page.getByTestId('session-tabs')).toHaveCount(0);
 
+		// …and with no tabs the panel toggle still sits at the right end of the
+		// bar. It slid over to the app name when the strip returned null, because
+		// it was the only flexible thing in that row.
+		const bar = await page.locator('header').first().boundingBox();
+		const toggle = await page.getByRole('button', { name: 'Toggle file tree' }).boundingBox();
+		const gapToRight = (bar?.x ?? 0) + (bar?.width ?? 0) - ((toggle?.x ?? 0) + (toggle?.width ?? 0));
+		expect(gapToRight).toBeLessThan(24);
+
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
 		await openSession(page, /Zulu task 11/);
 
@@ -142,5 +150,19 @@ test.describe('session tabs', () => {
 		// Brand on the left and the panel toggle on the right take ~200px between
 		// them; a second flex-1 sibling used to take half of what was left.
 		expect((strip?.width ?? 0) / (bar?.width ?? 1)).toBeGreaterThan(0.7);
+	});
+
+	test('@smoke the panel toggle stays right-aligned with no tabs open', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		// Regression: the strip renders nothing when no session is live, and with
+		// no spacer left in the bar the toggle slid up against the wordmark.
+		await expect(page.getByTestId('session-tabs')).toHaveCount(0);
+
+		const bar = await page.locator('header').first().boundingBox();
+		const toggle = await page.getByRole('button', { name: 'Toggle file tree' }).boundingBox();
+		const rightEdgeGap = (bar?.x ?? 0) + (bar?.width ?? 0) - ((toggle?.x ?? 0) + (toggle?.width ?? 0));
+		expect(rightEdgeGap).toBeLessThan(24);
 	});
 });

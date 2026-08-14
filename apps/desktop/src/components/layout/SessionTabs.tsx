@@ -67,7 +67,14 @@ export function SessionTabs() {
 			?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 	}, [activeId]);
 
-	if (tabs.length === 0) return null;
+	if (tabs.length === 0) {
+		// Nothing live, but the row still needs something between the brand and the
+		// panel toggle: the strip is the only flexible element in that flex line,
+		// so returning null slides the toggle across to sit beside the app name.
+		// A spacer keeps the toggle on the right without a second `flex-1` sibling,
+		// which is what made the strip half-width in the first place.
+		return <div className="flex-1" aria-hidden />;
+	}
 
 	function closeSession(sessionId: string) {
 		const live = bySession[sessionId];

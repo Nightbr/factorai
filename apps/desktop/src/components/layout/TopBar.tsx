@@ -22,9 +22,14 @@ export function TopBar() {
 			    the bar looks exactly as it did before the first one starts. Window
 			    controls land right of the panel toggle when M5 drops the OS
 			    decorations; the drag region will have to share this row with them. */}
-			{/* No spacer beside it: two `flex-1` siblings split the row, so the
-			    strip only ever got half the width it could scroll within. */}
-			<SessionTabs />
+			{/* The middle is always this one flex-1 box, whether or not there are
+			    tabs in it. A bare <SessionTabs /> renders nothing with no session
+			    live, which left the panel toggle sitting against the wordmark; a
+			    sibling spacer instead would split the row with the strip and halve
+			    the width it can scroll within. One element does both jobs. */}
+			<div className="flex min-w-0 flex-1 items-center">
+				<SessionTabs />
+			</div>
 
 			<IconButton
 				size="md"
