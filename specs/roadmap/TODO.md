@@ -6,53 +6,19 @@ on next". Consult it before re-deriving a plan from the specs and codebase. See
 work).
 
 Context (2026-08-14): **M0–M3 are shipped** — scaffold, read-only browser, embedded terminal
-with kill-on-quit, FTS5 search. **M4 is half-shipped**: `read_file` + the Monaco file viewer
-landed early alongside the file tree (ADR-0007), but the **diff** half and the **CLAUDE.md /
-plans** half have no code yet. **M5 has not started** — no settings route, no keybinding scheme,
-no titlebar, no release pipeline. Items 1–2 close M4; items 4–8 are M5 in the order it should be
+with kill-on-quit, FTS5 search. **M4 is nearly done**: `read_file` + the Monaco file viewer
+landed early alongside the file tree (ADR-0007), and the diff half shipped 2026-08-14 with the
+Changes tab (F13). Only the **CLAUDE.md / plans** half is left — item 2. **M5 has not started** — no settings route, no keybinding scheme,
+no titlebar, no release pipeline. Item 2 closes M4; items 4–8 are M5 in the order it should be
 built; **items 12–14 are high-priority despite their position** — the `Cmd+P` / `Cmd+Shift+F` /
 `Cmd+G` navigation trio, added 2026-08-14, kept at the end only so the earlier numbers stay
 stable.
 
-## 1. Changes tab + git decorations + the diff viewer (F13, F8, ADR-0009)
+## 1. Shipped — see [`DONE.md`](./DONE.md) (2026-08-14)
 
-**In progress — specced 2026-08-14.** This item is the former items 1 (diff viewer) and 11
-(`Changes` tab) merged: the interview established they are one piece of work, because the Changes
-list is the only thing that opens a diff now that the JSONL viewer is gone (F3), and the diff is
-what makes the Changes list more than a filename list.
-
-Design is settled — F13 in [`05-features.md`](../05-features.md), the `git` service in
-[`03-backend-rust.md`](../03-backend-rust.md), decisions in
-[`07-open-questions.md`](../07-open-questions.md) Q18–Q20, dependency in
-[ADR-0009](../../docs/adr/0009-git2-for-repository-state.md). Read those, not this summary.
-
-Four slices, each independently green against lint / typecheck / test / clippy:
-
-- [x] **Specs + ADR.** F13, F8 rewritten off CodeMirror, F12 amended, `git` service section,
-      Q18–Q20, M4 deliverables, `file_diff` dropped. Landed 2026-08-14, then revised the same
-      day against VS Code's actual implementation (its git extension, and the workbench
-      `DecorationsService`): untracked dirs now recurse, stats are computed **after** the cap,
-      folder dots use a precomputed ancestor map, and the cap is 500 rows sized against our
-      renderer rather than their virtualized list.
-- [ ] **Rust.** `services/git.rs` + `commands/git.rs` (git2): `git_status(project_path)` →
-      grouped rows (staged / unstaged / conflicted), `relPath` relative to the project so changes
-      above it read `../…`, line stats from `Patch::line_stats()`, capped like `list_dir`;
-      `git_blob(path, head|index)` → `Option<FileContents>`; `ignored` folded into `list_dir`.
-      Types hand-mirrored into `packages/types`. Tests build real repos in a tempdir — staged,
-      partly-staged, untracked, renamed, deleted, binary, conflicted, empty repo, no repo.
-- [ ] **Changes tab.** `Files | Changes` strip (tab persisted app-wide in `panelStore`, defaults
-      to Files, never auto-switches), the three groups, rows with `+N −M` and status letters,
-      3s poll while the **panel** is open, `?file=…&diff=…` on click. Includes the Monaco diff
-      mode in `FileView` and the `editor.worker` Vite wiring that finally forces.
-- [ ] **Tree decorations.** Status colour on changed names, dot on collapsed dirty folders,
-      dimmed `ignored` entries. No other change to the tree's design — that was explicit.
-
-**Dropped on the way:** `file_diff` + the `similar` crate. Monaco diffs two strings itself, so a
-Rust hunk list has no consumer; the spec entry is gone and ADR-0009 records why.
-
-**Still open inside this item:** the inline/split toggle needs somewhere to persist. `prefsStore`
-doesn't exist yet (item 4), so it parks in `panelStore` beside the tree's width and migrates with
-everything else when F11 lands. Decide it there, not in component state.
+The Changes tab, git decorations and the diff viewer landed in four slices. This slot is kept
+rather than renumbered so items 2–14 and the cross-references pointing at them stay put; the next
+item added takes it.
 
 ## 2. M4 — CLAUDE.md & plans (F9)
 
@@ -213,12 +179,12 @@ answers; and `pnpm dev` doesn't rebuild Rust at all, so a new command needs a fu
 Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 `gnome-screenshot` for `swaymsg` / `grim`). X11-only is fine while the dev box is X11.
 
-## 11. `Changes` tab — merged into item 1 (2026-08-14)
+## 11. `Changes` tab — shipped 2026-08-14 (see [`DONE.md`](./DONE.md))
 
-Was a separate item. The design interview established it and the diff viewer are one piece of
-work, so the scope, slices and open points now live in **item 1**. The tab-slot contest it
-flagged is resolved in `07-open-questions.md` Q18: the strip holds `Files | Changes` and is not a
-registry — Memory (item 2) and search results (item 13) get cheaper homes.
+Was a separate item, merged into item 1 during the design interview and shipped with it. The
+tab-slot contest it flagged is resolved in `07-open-questions.md` Q18: the strip holds
+`Files | Changes` and is not a registry — Memory (item 2) and search results (item 13) get
+cheaper homes.
 
 ## 12. Command palette — `Cmd+P` quick-open by filename
 

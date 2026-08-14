@@ -3,6 +3,50 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Changes tab, git decorations and the diff viewer** — 2026-08-14. The right panel gained a
+  `Files | Changes` strip; the tree gained git paint and nothing else. Four slices: specs +
+  ADR-0009, the Rust (`git_status` / `git_blob` / `ignored` on `list_dir`), the tab and the Monaco
+  diff mode, then the tree decorations. Closes TODO items 1 and 11, which turned out to be one
+  piece of work — the Changes list is the only thing that opens a diff now that the JSONL viewer
+  is gone (F3), and the diff is what makes the list more than filenames.
+
+  **Decisions worth not relitigating** (Q18–Q20): the index is modelled, so a partly-staged file
+  shows in both Staged Changes and Changes with its own counts and the `+N −M` badges add up;
+  changes are repo-wide with paths relative to the project, so a monorepo sibling reads
+  `../packages/types/index.ts`; freshness is a 3s poll while the **panel** is open, either tab,
+  because the tree's dots read the same query; the tab strip is two hardcoded tabs, not a
+  registry, which sent F9's Memory tab to the cheaper "it's just a file the tree opens" route.
+
+  **libgit2, not `git` on PATH** (ADR-0009). Shelling out would mean owning a second copy of the
+  discovery problem `find_claude_binary()` exists to solve, for a read that runs every 3s. VS Code
+  shells out because it also *writes* and already ships a `git.path` setting; we write nothing.
+  The payoff is testing: 18 Rust tests build real repositories in tempdirs — staged, partly
+  staged, untracked, renamed, deleted, binary, a real merge conflict, an empty repo, no repo — with
+  no `git` binary and no network.
+
+  **Shaped by reading VS Code's implementation** rather than guessing: untracked directories
+  recurse (`-uall`), so three new files in a new folder are three rows; rows are capped *before*
+  line stats are computed, because `Patch::line_stats()` reads both sides of every changed file
+  and pricing rows you're about to discard is the one way to make the poll hurt; folder dots come
+  from an ancestor map built once per status result instead of a per-row `startsWith` scan (their
+  `TernarySearchTree` + `findSuperstr`, minus the tree we don't need). The cap is **500 rows**,
+  not their 10 000 — they virtualize, we would mount 10 000 buttons into WebKitGTK, which is
+  exactly how the JSONL viewer froze the session view.
+
+  **Three gotchas.** (1) `file_diff` and the `similar` crate were dropped: Monaco's
+  `createDiffEditor` diffs two strings itself (ADR-0007), so a Rust hunk list had no consumer.
+  (2) libgit2 decides binary-ness *lazily, while producing the patch* — the delta from
+  `diff.deltas()` is still unflagged, so the check has to ask `patch.delta()`, or a binary file
+  reports a misleading `+0 −0`. Found by probing, not by reading docs. (3) Wiring Monaco's
+  `editor.worker` with `monaco-editor/esm/vs/editor/editor.worker?worker` double-resolves against
+  the package's `"./*": "./esm/vs/*.js"` exports map and takes the whole lazy viewer chunk down —
+  all nine existing file-viewer e2e tests went red. The correct specifier drops the `esm/vs/`.
+
+  Verified in the real window against this repo mid-edit: 16 rows matching `git` exactly, counts
+  equal to `git diff --numstat`, `mcp-session-view.png` showing `bin` and no counts, staging two
+  files moving them into Staged Changes within one poll, and the tree dotting `apps` while dimming
+  `node_modules` / `target`. 80 Rust tests, 61 TS, 26 e2e, clippy clean.
+
 - **Shell chrome: the project page scrolls, and the window's rounded corners are real** —
   2026-08-13. Three small fixes found by using the app rather than by type checking. A project
   with many sessions overflowed instead of scrolling; the shell's bottom corners were square
