@@ -45,12 +45,37 @@ the terminal, not in place of it.
 M0–M3 are done (browser, terminal + session lifecycle, search) and M4 is nearly
 there — files, the viewer and the git panel have landed; an in-app `CLAUDE.md`
 editor is the piece still missing. M5 — settings, keyboard shortcuts, a custom
-titlebar, real icons and a tagged release pipeline — has not started, so
-**there are no downloadable builds yet**. Build from source, below.
+titlebar and real icons — has not started, so expect rough edges: the icon is a
+placeholder, there are no keyboard shortcuts, and the window still wears its OS
+decorations.
 
 macOS and Linux only. Windows is explicitly out of scope for v1: `portable-pty`
 would probably cope, but nothing about the path encoding or the signing story
 has been tested.
+
+## Install
+
+Tagged releases carry bundles built by CI — a universal `.dmg` for macOS and a
+`.deb` plus `.AppImage` for Linux. Grab one from
+[Releases](https://github.com/Nightbr/factorai/releases), or build from source
+below.
+
+Two things to know before you download, because both will otherwise look like
+the app is broken:
+
+**macOS builds are unsigned.** There's no Apple Developer certificate behind
+them, so Gatekeeper refuses the app on first launch with "damaged and can't be
+opened". Right-click the app → **Open** → **Open**, or clear the quarantine
+attribute yourself:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/factorai.app
+```
+
+**Linux bundles need glibc 2.39 or newer** — Ubuntu 24.04+, Debian 13+,
+Fedora 40+. They're built on Ubuntu 24.04, and a glibc-linked binary doesn't run
+on an older release than the one that built it. On Ubuntu 22.04 you'll see
+`GLIBC_2.38 not found`; build from source there instead.
 
 ## Requirements
 
