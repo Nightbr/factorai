@@ -160,3 +160,31 @@ test.describe('sidebar resizing', () => {
 		await expect(badgedIcon).toHaveCount(1);
 	});
 });
+
+test.describe('sidebar header', () => {
+	test('@smoke PROJECTS and the sort control stay put while the list scrolls', async ({
+		page,
+	}) => {
+		// Short window plus every project expanded, so the list must overflow —
+		// at the default viewport it simply fits, and the test would pass without
+		// ever scrolling anything.
+		await page.setViewportSize({ width: 1280, height: 400 });
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Sort and expand projects' }).click();
+		await page.getByRole('menuitem', { name: 'Expand all' }).click();
+
+		const header = page.locator('aside').getByText('Projects', { exact: true });
+		const before = await header.boundingBox();
+
+		const scroller = page.locator('aside nav');
+		await scroller.evaluate((el) => el.scrollBy(0, 400));
+		await expect
+			.poll(async () => (await scroller.evaluate((el) => el.scrollTop)) > 0)
+			.toBe(true);
+
+		// The header is a sibling above the scroller, so scrolling cannot move it.
+		expect(await header.boundingBox()).toEqual(before);
+		await expect(page.getByRole('button', { name: 'Sort and expand projects' })).toBeVisible();
+	});
+});
