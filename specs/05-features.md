@@ -281,21 +281,37 @@ the same place — `?file=` becomes a list of open paths. See
 
 ## F8 — Diff viewer
 
-**Behavior.** Given a file path and two snapshots, render a diff in either
-inline (unified) or side-by-side mode. Read-only in MVP.
+**Behavior.** Given a file path and two revisions, render a diff in either
+inline (unified) or side-by-side mode. Read-only.
 
-**UI.** Side panel, replacing the file preview when a diff is active.
-Toolbar toggle: Inline ↔ Split. The choice persists via `prefsStore`.
+**UI.** A third mode of `FileView`, inside the existing viewer modal — not a
+separate surface (F7 keeps `FileView` self-contained and host-agnostic for
+exactly this). Footer toggle: Inline ↔ Split, persisted.
 
-**Backend.** `file_diff(path, original, modified)` — Rust returns a
-pre-computed hunk list (we use `similar = "2"` for ranges so the renderer
-doesn't have to). The renderer hands the two strings to `@codemirror/merge`.
+**How it is opened.** `?file=<path>&diff=staged|unstaged|head`. The only thing
+producing those URLs today is the Changes tab (F13) — the earlier plan was a
+right-click on an event in the JSONL viewer, and that viewer is gone (F3). Do
+not build a diff surface with nothing to open it.
+
+**Backend.** `git_blob(path, head|index)` for the git sides and `read_file` for
+the worktree side. Monaco's `createDiffEditor` (ADR-0007) computes the diff from
+the two strings.
+
+> **`file_diff` was dropped.** The original spec had Rust precompute a hunk list
+> with the `similar` crate, for a renderer that would draw hunks itself. ADR-0007
+> replaced that renderer with Monaco, which diffs two strings natively — so the
+> command had no consumer and was never built. Removed in ADR-0009.
 
 **Edge cases.**
-- Both strings empty → "No changes".
-- One string very large → ship anyway; CodeMirror handles 5–10MB OK.
+- Both sides identical → "No changes" rather than an empty editor.
+- A side that doesn't exist at its revision (added / deleted file) → rendered as
+  empty. `git_blob` returns `None`, which is an answer, not an error.
+- Binary on either side → the "cannot preview binary" card, not a diff.
+- Very large file → both sides obey `read_file`'s 5MB cap and its `truncated`
+  flag; a truncated diff says so rather than lying by omission.
 
-**The prior app ref.** `viewer-panel.js`, `codemirror-setup.js`.
+**The prior app ref.** `viewer-panel.js` (its `codemirror-setup.js` no longer
+applies — ADR-0007).
 
 ---
 
@@ -371,8 +387,19 @@ project it shows follows the route (`/projects/$id` or
   Open state and width persist (see below). No keyboard shortcut yet:
   `Ctrl+B` is readline's back-a-char and tmux's prefix, so binding it would
   break typing in the embedded claude terminal.
-- Panel header: `Files`, collapse-all, refresh, close. The header is where
-  a `Changes` tab (git status) goes when that ships.
+- Panel header: a `Files | Changes` tab strip (F13), then collapse-all,
+  refresh, close. The tree keeps its layout, spacing, icons and indentation
+  exactly as they are — no indent guides, no folder icons, no compact folders,
+  no hover actions. The only thing git adds to the tree is **paint**:
+  - a changed file's name takes a status colour (modified, untracked,
+    conflicted), from the same `git_status` query the Changes tab uses;
+  - a collapsed directory containing changes gets a dot, so you can see where
+    to expand without expanding;
+  - `ignored` entries (`node_modules`, `target`, `dist`) are dimmed. The flag
+    rides on `DirEntry` from `list_dir`, so this costs no extra call.
+
+  Outside a git repository none of the above renders and the tree looks exactly
+  as it does today.
 - Row: chevron for directories, language icon for files (ADR-0006), name,
   and a link glyph on symlinks. Single click selects; a directory also
   toggles. Double-click or `Enter` on a file opens it in the OS default
@@ -407,6 +434,92 @@ limits — its own feature, not a side effect of this one.
   is visible rather than silent.
 - Symlink out of the project → shown with a dimmed chevron, never expanded.
 - Empty directory → `empty` row, so an expanded node never looks stuck.
+
+---
+
+## F13 — Changes tab (git status)
+
+**Behavior.** The right-hand panel's second tab lists what has changed in the
+active project's repository, and clicking a row opens the diff. Read-only:
+factorai shows you what the agent did, it does not stage, discard or commit —
+the terminal beside it already does that better. See ADR-0009.
+
+**UI.** A `Files | Changes` tab strip in the panel header (the slot F12 left for
+it). Files is the default; the last tab chosen persists app-wide in
+`panelStore`, alongside `open` and `width`. The strip **never** switches itself
+because a file changed — the panel sits next to a terminal you are typing into.
+
+Three groups, in order, each with a count and hidden when empty:
+
+- **Merge Changes** — conflicted paths. First, because during a rebase they are
+  the only thing that matters.
+- **Staged Changes** — HEAD ↔ index.
+- **Changes** — index ↔ worktree.
+
+A row is: file-type icon (the F12 icon set), basename, dimmed parent path,
+`+N −M`, and a status letter. A partly-staged file appears in **both** groups
+with its own counts in each — one row per (path, group), which is the only
+version where the numbers are true.
+
+Status letters follow git and take their colour from the theme, not from new
+hex values: `M` modified, `A` added, `D` deleted, `R` renamed (row shows
+`new ← old`), `U` untracked, `C` conflicted.
+
+**Scope.** The whole repository, found by walking up from the project root — so
+a project inside a monorepo shows changes above itself, displayed relative to
+the project as `../packages/types/index.ts`. This matches what an agent actually
+does: run in `apps/desktop`, edit `packages/types`.
+
+**Opening a diff.** A row sets `?file=<path>&diff=staged|unstaged|head` on the
+URL — the same `__root`-validated param F7 already uses, so reload and HMR
+reopen the diff and browser-back closes it. `FileViewerModal` stays the only
+host; `FileView` gains a diff mode using Monaco's `createDiffEditor`, with the
+inline/split toggle in the footer. The pair depends on the row's group:
+`staged` = HEAD ↔ index, `unstaged` = index ↔ worktree, `head` = HEAD ↔ worktree
+for conflicted rows (markers and all — there is no 3-way merge editor and no
+resolve action).
+
+Left and right sides come from `git_blob(path, head|index)` and `read_file`.
+**This is the feature that wires Monaco's `editor.worker` through Vite's
+`?worker` import** — the file viewer deliberately ships worker-less, and a diff
+editor without a worker computes its diff on the main thread.
+
+**Freshness.** One shared `git_status` query per project, polled every **3s
+while the panel is open** — either tab, because the tree's decorations read the
+same data — and nothing at all when the panel is closed. TanStack pauses
+intervals when the window is hidden, so a backgrounded app is silent. No
+watcher: `.git/index` churns mid-operation and would need debouncing back into
+what polling already does (Q17's reasoning, same conclusion).
+
+**Backend.** `git_status`, `git_blob` — see `03-backend-rust.md` § `git`.
+
+**Folder dots are a precomputed lookup, not a scan.** From one status result,
+build a single `Map<dirPath, status>` by walking each changed path's ancestors
+up to the project root, worst-status-wins; a folder row is then an O(1) lookup.
+The obvious alternative — `changes.some(c => c.path.startsWith(dir))` inside the
+row — is O(rows × changes) on **every render** of a tree that re-renders on every
+poll. VS Code solves the same problem by indexing decorations in a
+`TernarySearchTree` and deriving a folder's badge from `findSuperstr(uri)` (a
+subtree query) over entries flagged `propagate`; we don't need a trie because our
+change set arrives as one array we can index once.
+
+**Edge cases.**
+- Not a git repository → the tab stays present and says so. The strip must not
+  reflow as you move between projects.
+- Clean repo → "No changes" rather than three empty headings.
+- Huge change set → capped at 500 rows, with a trailing "… N more changes" row,
+  mirroring the file tree's truncation row rather than silently showing a
+  prefix. (VS Code says "Too many changes were detected. Only the first N
+  changes will be shown" at 10 000; the shape of the message is right, the
+  number is ours — see `03-backend-rust.md` § `git`.)
+- New directory of untracked files → one row per file, not one row for the
+  directory. That is the common agent action and it should be legible.
+- Binary file → no line counts, and the diff opens the existing "cannot preview
+  binary" card rather than a diff of nothing.
+- File deleted from disk between the poll and the click → the diff shows an
+  empty right side, which is what deleted means; it is not an error.
+- Detached HEAD / mid-rebase / empty repo with no commits → all report normally;
+  an empty repo simply has no HEAD side, so everything is an addition.
 
 ---
 

@@ -214,3 +214,64 @@ feature, not a flag: it needs ignore rules so `node_modules` / `.venv`
 churn doesn't flood the channel, per-project watcher lifecycle, and inotify
 watch-limit handling on Linux. The existing watcher is scoped to
 `~/.claude/projects` and stays that way.
+
+---
+
+## Q18 — Who owns the panel's tab strip? → **`Files | Changes`, hardcoded**
+
+**Decision.** The strip ships with exactly two tabs (F13). It is *not* a
+registry or a plugin point.
+
+Three features had claimed that slot: F9's "Memory" tab (CLAUDE.md + plans),
+project-wide search results, and git status. Git status won it because it is the
+one that must sit beside a running terminal, and because the other two have
+cheaper homes — CLAUDE.md is just a file the tree can open, and search results
+want more width than 288px.
+
+Selection persists **app-wide** in `panelStore` (next to `open` and `width`),
+defaults to Files, and never switches itself. A tab strip that moves under you
+while you type into the terminal below it is worse than no tab strip.
+
+---
+
+## Q19 — Does a read-only Changes view model git's index? → **yes, three groups**
+
+**Decision.** Staged Changes / Changes / Merge Changes, with the diff pair
+following the group (HEAD↔index, index↔worktree, HEAD↔worktree).
+
+The cheaper design — one flat list of "what differs from HEAD", ignoring the
+index entirely — was considered and rejected. It is simpler and it is honest,
+but it makes a partly-staged file unrepresentable: you cannot show both halves
+of the change, and the `+N −M` badges stop adding up. Modelling the index costs
+one enum on the row type and a second diff pair; getting the numbers wrong costs
+trust in the panel.
+
+Consequence: the diff viewer can't be fed from disk alone, which is why
+`git_blob(path, head|index)` exists (ADR-0009).
+
+---
+
+## Q20 — How fresh is git status? → **poll while the panel is open**
+
+**Decision.** One shared `git_status` query per project, `refetchInterval` 3s
+whenever the file panel is open — on **either** tab, because the tree's
+decorations read the same data — and no polling when it's closed.
+
+Note this is deliberately wider than "poll while the Changes tab is visible":
+once the tree paints status dots, tab visibility stops being the right trigger.
+`Sidebar` already polls at 2s, so neither the pattern nor its cost is new, and
+TanStack pauses intervals while the window is hidden.
+
+A `.git` watcher was rejected for the same reason Q17 rejected a project-tree
+watcher, plus one more: `.git/index` churns *during* an operation, so a watcher
+would need debouncing back into exactly the behaviour polling already has.
+
+**Evidence, from reading VS Code (2026-08-14).** It is watcher-driven, not
+polled: a `**` watcher over the working tree plus a `DotGitWatcher`, and its
+event filter explicitly drops `.git/index.lock` (worktree variants included) and
+watchman fsmonitor cookie files, with `@throttle` on `status()` to coalesce
+concurrent runs. That exclusion list is the cost of the watcher route stated
+plainly — and the working-tree half is exactly the recursive watcher Q17 already
+refused for the file tree (ignore rules, per-project lifecycle, inotify limits).
+Polling stands. Their `@throttle` we get for free: TanStack Query dedupes
+in-flight fetches per query key.

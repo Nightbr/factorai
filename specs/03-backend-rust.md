@@ -10,7 +10,8 @@ commands/
   projects.rs         # list_projects, resolve_project_path, pin_project
   sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
-  files.rs            # read_file, list_dir, file_diff
+  files.rs            # read_file, list_dir
+  git.rs              # git_status, git_blob
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
   settings.rs         # get_setting, set_setting
 services/
@@ -21,6 +22,7 @@ services/
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
   files.rs            # list_dir — one level of a project directory
+  git.rs              # repository status + blob reads (ADR-0009)
 db/
   mod.rs              # open(), migrate(), Pool wrapper
   migrations/
@@ -67,8 +69,15 @@ terminal_list() -> Vec<TerminalStatusDto>
 
 // files
 read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated flags
-list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped
-file_diff(path: String, original: String, modified: String) -> DiffPayload
+list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped, git-ignored flagged
+// NOTE: file_diff(path, original, modified) -> DiffPayload was specced and
+// never built. Monaco's createDiffEditor (ADR-0007) diffs two strings itself,
+// so a Rust hunk list has no consumer. Dropped in ADR-0009; the diff viewer is
+// fed by git_blob + read_file.
+
+// git (ADR-0009)
+git_status(project_path: String) -> GitStatus                         // whole repo, grouped, capped
+git_blob(path: String, rev: GitRev) -> Option<FileContents>           // rev = head | index
 
 // memory / plans
 read_claude_md(project_path: String) -> Option<String>
@@ -261,6 +270,11 @@ Rules, all enforced in Rust so the renderer stays dumb:
 
 - `.git` is skipped. Every other dotfile and cache directory is listed —
   `.claude/` is one of the more interesting directories in this app.
+- `ignored` is set on entries git would ignore, so the tree can dim
+  `node_modules` / `target` / `dist` without a second round trip. The repo is
+  discovered and opened **once per call** and reused for every entry; outside a
+  repo the flag is simply `false` everywhere. A failure to open the repo is not
+  an error — the listing is still a valid listing, just undecorated.
 - Sort is directories first, then case-insensitive by name (ties broken
   case-sensitively so the order is total).
 - Capped at `MAX_ENTRIES` (2000) **after** sorting, so the prefix is
@@ -294,6 +308,67 @@ Rules, all enforced in Rust so the renderer stays dumb:
   second and worse source of the same answer.
 
 Read-only, like the rest of our disk access (ADR-0004).
+
+### `git`
+
+Backs the Changes tab and the tree's status decorations (F13). All of it is
+**read**: nothing here stages, discards, checks out or commits. See ADR-0009 for
+why this is libgit2 and not `git` on PATH.
+
+`git_status(project_path) -> GitStatus`:
+
+- The repository is found with `Repository::discover()` **from the project
+  root**, so a project that is a subdirectory of a monorepo reports that repo's
+  changes — including changes above itself. Not a repo → `GitStatus { repo:
+  None, .. }`, which is a success, not an error: "this project isn't versioned"
+  is an answer the UI renders, not a failure it toasts.
+- Each changed path produces one **row per group**: `staged` (HEAD ↔ index),
+  `unstaged` (index ↔ worktree), `conflicted`. A partly-staged file legitimately
+  appears twice, once in each group, with its own line counts — that is the only
+  version in which the numbers add up.
+- `status` per row is one of `modified | added | deleted | renamed | typechange
+  | untracked | conflicted`. Renames carry `oldRelPath`.
+- `relPath` is relative **to the project root**, not the repo root, so a change
+  one directory up reads `../packages/types/index.ts` and is visibly not yours.
+  `path` is absolute, and is what the viewer and `git_blob` take.
+- Untracked files are included **and recursed into**
+  (`recurse_untracked_dirs(true)`, VS Code's `-uall`), so three new files in a
+  new directory are three rows. An earlier draft collapsed a new directory to a
+  single row; that hides the most common thing an agent does. The cap below is
+  the guard against a stray `npm install` in an unignored tree — not the
+  recursion setting.
+- **Cap first, compute stats second.** Rows are truncated to `MAX_CHANGES`
+  before any patch is generated. This ordering is the whole performance story:
+  a status walk is cheap, but `Patch::line_stats()` reads *both sides of every
+  changed file*, so generating patches for a change set you're about to throw
+  away is the one way to make a 3s poll hurt. VS Code splits this differently —
+  its `git status` never computes line counts at all, and `--numstat` is a
+  separate command — which is the same insight expressed as two calls instead
+  of one ordering rule. We keep one call (one IPC beat per poll) and pay for it
+  with the ordering.
+- `additions` / `deletions` then come from `Patch::line_stats()` on the
+  surviving rows, with `context_lines(0)` since we want counts and not context.
+  Binary deltas set `isBinary` and report no counts; deltas over
+  `MAX_STAT_BYTES` report none either.
+- `MAX_CHANGES` is **500**, with `total` and `truncated` reported exactly like
+  `list_dir`. VS Code's equivalent limit is 10 000 — it renders a virtualized
+  list and can afford them. We would mount 10 000 buttons into WebKitGTK, which
+  is how the JSONL viewer froze the session view (F3, `c6374d6`). 500 is chosen
+  against *our* renderer, not against git.
+
+`git_blob(path, rev) -> Option<FileContents>` reads one file at `head` (the
+commit's tree) or `index` (the staging area), reusing `FileContents` so the
+viewer treats it exactly like a `read_file` result — same binary and truncation
+semantics, same caps.
+
+**`None` is a real answer, not an error.** A file that was added has no HEAD
+side; a deleted file has no worktree side. The diff viewer renders the missing
+side as empty, which is what "added" and "deleted" look like. Returning
+`NotFound` here would turn the two most ordinary rows in the list into error
+toasts.
+
+The worktree side of a diff is not served here — it's `read_file`, which already
+exists and already handles binaries, caps and lossy UTF-8.
 
 ## State management
 
