@@ -110,38 +110,42 @@ export function Sidebar() {
 				</div>
 			</div>
 
-			<nav className="flex-1 overflow-y-auto py-3 pr-2">
-				<div className="flex items-center gap-1 pb-2 pl-3 pr-1">
-					<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
-						Projects
-					</span>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<IconButton
-								aria-label="Sort and expand projects"
-								title="Sort and expand projects"
-							>
-								<ArrowUpDown />
-							</IconButton>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-40">
-							<DropdownMenuLabel>Sort</DropdownMenuLabel>
-							<DropdownMenuRadioGroup
-								value={sort}
-								onValueChange={(value) => setSort(value as ProjectSort)}
-							>
-								<DropdownMenuRadioItem value="recent">Recent</DropdownMenuRadioItem>
-								<DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
-							</DropdownMenuRadioGroup>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onSelect={() => expandAll(allIds)}>
-								Expand all
-							</DropdownMenuItem>
-							<DropdownMenuItem onSelect={() => collapseAll()}>Collapse all</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
+			{/* Outside the scroll container, not `position: sticky` inside it: the
+			    header then needs an opaque background and a z-index to stop rows
+			    showing through as they pass under, and it still scrolls a pixel
+			    before it sticks. A sibling above the scroller simply never moves. */}
+			<div className="flex shrink-0 items-center gap-1 pt-3 pr-1 pb-2 pl-3">
+				<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
+					Projects
+				</span>
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<IconButton
+							aria-label="Sort and expand projects"
+							title="Sort and expand projects"
+						>
+							<ArrowUpDown />
+						</IconButton>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-40">
+						<DropdownMenuLabel>Sort</DropdownMenuLabel>
+						<DropdownMenuRadioGroup
+							value={sort}
+							onValueChange={(value) => setSort(value as ProjectSort)}
+						>
+							<DropdownMenuRadioItem value="recent">Recent</DropdownMenuRadioItem>
+							<DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
+						</DropdownMenuRadioGroup>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem onSelect={() => expandAll(allIds)}>
+							Expand all
+						</DropdownMenuItem>
+						<DropdownMenuItem onSelect={() => collapseAll()}>Collapse all</DropdownMenuItem>
+				</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
 
+			<nav className="min-h-0 flex-1 overflow-y-auto pr-2 pb-3">
 				{projectsQ.isLoading && (
 					<div className="px-4 py-2 text-muted-foreground text-xs">Loading…</div>
 				)}
