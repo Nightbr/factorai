@@ -291,7 +291,35 @@ VS Code's own answers are `Cmd+Shift+O` (symbols in file) and `Cmd+T` (symbols i
 free here. Recommendation: ship `Cmd+G` as asked, keep `Cmd+Shift+O` as an alias, and record the
 choice in `07-open-questions.md` rather than leaving it implicit in a `useGlobalShortcuts` switch.
 
-## 15. Post-MVP / deferred
+## 16. App-wide scrollbar styling
+
+Scrollbars are currently whatever WebKitGTK draws: a chunky native bar that eats width in the
+288px file panel, overlaps content in dense lists, and looks nothing like the rest of the app. The
+tab strip needed one hidden outright (F16), and two `@utility` classes now exist in
+`packages/ui/src/styles/globals.css` — `scrollbar-none` and `scrollbar-hairline` — as the minimum
+to get that shipped. That is not a design.
+
+Worth noting how this was found: `scrollbar-none` was used in the tab strip **before it existed**.
+Tailwind ships no scrollbar utilities, so the class was inert and the bar showed anyway — a
+silently-missing class is the failure mode of styling by convention rather than by primitive.
+
+What a real pass covers:
+
+- **One treatment everywhere** — sidebar, file tree, Changes list, viewer, tab strip — thin,
+  low-contrast, ideally only visible while scrolling. The gutters those panels reserve today
+  (`pr-2`) exist to dodge the native bar and could shrink or go.
+- **Overlay vs in-flow.** An overlay bar reclaims the gutter but sits on top of content, which is
+  why the `+` button and the scrollbar collided in the first place. Decide once, apply once.
+- **`scrollbar-gutter: stable`** was rejected earlier for the release workflow's glibc reasons —
+  no, for support reasons: it is recent in WebKit and this ships on WebKitGTK. Re-check before
+  relying on it.
+- **The two existing utilities collapse into whatever this becomes**, rather than accumulating a
+  third.
+
+Small, self-contained, and entirely cosmetic — but it touches every scrolling surface, so it wants
+doing in one pass rather than one panel at a time.
+
+## 17. Post-MVP / deferred
 
 Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
 list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,

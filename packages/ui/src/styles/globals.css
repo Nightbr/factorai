@@ -31,6 +31,37 @@
 	}
 }
 
+/* ── Scrollbars ───────────────────────────────────────────────────────────── */
+/* Tailwind ships no scrollbar utilities, so `scrollbar-none` was silently
+   doing nothing. Defined here as a real one.
+   NOTE: this is the minimum for the tab strip. App-wide scrollbar styling —
+   thin, overlay-ish, consistent between the sidebar, the file panel and the
+   viewer — is its own piece of work (roadmap item). */
+@utility scrollbar-none {
+	scrollbar-width: none;
+	&::-webkit-scrollbar {
+		display: none;
+	}
+}
+
+/* A hairline that only appears while scrolling is possible: for strips too
+   short to give a real scrollbar room. */
+@utility scrollbar-hairline {
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border) transparent;
+	&::-webkit-scrollbar {
+		height: 2px;
+		width: 2px;
+	}
+	&::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	&::-webkit-scrollbar-thumb {
+		background: var(--color-border);
+		border-radius: 9999px;
+	}
+}
+
 /* ── Design tokens ────────────────────────────────────────────────────────── */
 @theme {
 	--font-family-sans: Inter, system-ui, sans-serif;
