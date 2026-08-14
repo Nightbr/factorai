@@ -1,8 +1,7 @@
 import type { Project, SessionSummary } from '@factorai/types';
-import { Button } from '@factorai/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronRight, Pin, Plus } from 'lucide-react';
+import { ChevronRight, Pin, PinOff, Plus } from 'lucide-react';
 import { useMemo } from 'react';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
@@ -91,34 +90,36 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					{isLive && <StatusDot status="running" />}
 				</Link>
 
-				<Button
-					variant="ghost"
-					size="icon"
-					// Hollow and hover-only when unpinned; filled and always visible once
-					// pinned. With no group header above the divider, this icon is the
-					// only per-row evidence of why the project sits up there — and it is
-					// what you click to send it back down.
-					className={`size-4 shrink-0 rounded transition-opacity focus-visible:opacity-100 group-hover:opacity-100 ${
-						project.pinned ? 'opacity-100' : 'opacity-0'
+				<button
+					type="button"
+					// No button chrome: a filled hover background on a 14px glyph in a
+					// dense row reads as a widget, when all these are is an affordance.
+					// Dim at rest, full colour under the cursor.
+					// `group/pin` scopes the glyph swap below to THIS icon's hover, not
+					// the row's — the row already owns the bare `group`.
+					className={`group/pin flex shrink-0 items-center rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 ${
+						project.pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
 					}`}
 					aria-label={project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`}
 					title={project.pinned ? 'Unpin' : 'Pin to top'}
 					onClick={() => togglePin()}
 				>
-					{/* Same glyph either way, filled when pinned. A slashed PinOff on an
-					    unpinned row reads as "unpin", which is the opposite of what
-					    clicking it does. */}
-					<Pin
-						className={`size-3 ${project.pinned ? 'fill-primary text-primary' : 'text-muted-foreground'}`}
-					/>
-				</Button>
+					{project.pinned ? (
+						<>
+							{/* Filled at rest says "pinned"; slashed under the cursor says
+							    what the click will do. */}
+							<Pin className="size-3.5 fill-current group-hover/pin:hidden" />
+							<PinOff className="hidden size-3.5 group-hover/pin:block" />
+						</>
+					) : (
+						<Pin className="size-3.5" />
+					)}
+				</button>
 
-				{/* The title lives on the wrapper: Button sets
-				    disabled:pointer-events-none, which suppresses a native tooltip on
-				    the element itself — exactly when the explanation matters most. */}
+				{/* The title lives on the wrapper: a disabled button sets
+				    pointer-events-none, which suppresses a native tooltip on the
+				    element itself — exactly when the explanation matters most. */}
 				<span
-					// `flex` matters: as a plain inline span this wrapper placed the
-					// button on its own line box, floating the + above the session count.
 					className="flex items-center"
 					title={
 						canStart
@@ -126,19 +127,19 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 							: 'No project folder on disk — cannot start a session here'
 					}
 				>
-					<Button
-						variant="ghost"
-						size="icon"
-						// Deliberately smaller than the standard size-6 icon button: at the
-						// end of a dense row its hover box otherwise runs into the count.
-						// Hidden until hover to keep the list quiet, but always focusable.
-						className="ml-1 size-4 shrink-0 rounded opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+					<button
+						type="button"
+						// Always there on a pinned project: those are the ones you start
+						// work in, so the affordance shouldn't need hunting for.
+						className={`flex shrink-0 items-center rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-30 ${
+							project.pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+						}`}
 						aria-label={`New session in ${project.displayName}`}
 						disabled={!canStart}
 						onClick={() => void startSession(project.id)}
 					>
-						<Plus className="size-3 text-muted-foreground" />
-					</Button>
+						<Plus className="size-3.5" />
+					</button>
 				</span>
 			</div>
 
