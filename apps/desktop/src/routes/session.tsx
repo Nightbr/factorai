@@ -2,9 +2,10 @@ import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { Play, Square } from 'lucide-react';
+import { BookOpen, Play, Square } from 'lucide-react';
 import { useState } from 'react';
 import { StatusDot } from '@components/layout/StatusDot';
+import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, Terminal } from '@components/terminal/Terminal';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -43,6 +44,13 @@ function SessionView() {
 		queryKey: queryKeys.sessions(projectId),
 		queryFn: () => cmd.listSessions(projectId),
 	});
+
+	// A sub-agent's transcript can be read but never resumed: `claude --resume`
+	// probes for a top-level `<id>.jsonl` and an agent id has none, so opening
+	// one as a terminal would spawn a fresh claude under the agent's id. The
+	// index row is the authority — it says where the transcript actually lives.
+	const session = sessionsQ.data?.find((s) => s.id === sessionId);
+	const isSubAgent = session?.subagentOf != null;
 
 	const live = useTerminalStore((s) => s.bySession[sessionId]);
 	// Remounting the Terminal (new key) tears down the dead xterm and triggers
@@ -83,17 +91,26 @@ function SessionView() {
 		<main className="flex h-full flex-col bg-[#0c0e12]">
 			<header className="flex items-center gap-3 border-b border-border bg-card px-4 py-2">
 				{/* The only animated dot in the app: one per screen, describing the
-				    session you are actually looking at (see StatusDot). */}
-				<StatusDot status={live?.status ?? 'stopped'} pulse />
+				    session you are actually looking at (see StatusDot). A sub-agent
+				    has no process to describe, so it gets the marker instead. */}
+				{isSubAgent ? (
+					<BookOpen className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+				) : (
+					<StatusDot status={live?.status ?? 'stopped'} pulse />
+				)}
 				<span className="truncate text-foreground text-sm">
 					{project?.displayName ?? projectId}
 				</span>
 				{/* The full id is one hover away rather than spending header width on
 				    36 characters nobody reads. */}
 				<span className="min-w-0 flex-1 truncate text-muted-foreground text-xs" title={sessionId}>
-					{sessionLabel(sessionId, sessionsQ.data)}
+					{isSubAgent ? 'sub-agent' : sessionLabel(sessionId, sessionsQ.data)}
 				</span>
-				{live ? (
+				{isSubAgent ? (
+					// No Stop/Restart: there is no process to stop, and restarting
+					// is the resume that cannot work (see isSubAgent above).
+					<span className="text-muted-foreground text-xs">read-only</span>
+				) : live ? (
 					<Button
 						size="sm"
 						variant="outline"
@@ -117,14 +134,18 @@ function SessionView() {
 					</Button>
 				)}
 			</header>
-			<div className="min-h-0 flex-1">
-				<Terminal
-					key={restartNonce}
-					sessionId={sessionId}
-					projectId={projectId}
-					projectCwd={projectCwd}
-				/>
-			</div>
+			{isSubAgent ? (
+				<SubAgentTranscript sessionId={sessionId} />
+			) : (
+				<div className="min-h-0 flex-1">
+					<Terminal
+						key={restartNonce}
+						sessionId={sessionId}
+						projectId={projectId}
+						projectCwd={projectCwd}
+					/>
+				</div>
+			)}
 		</main>
 	);
 }

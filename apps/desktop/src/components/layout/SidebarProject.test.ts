@@ -4,7 +4,7 @@ import type { Project, SessionSummary } from '@factorai/types';
 import type { LiveTerminal } from '@store/terminalStore';
 import { describe, expect, it } from 'vitest';
 
-function session(id: string, updatedAt: number): SessionSummary {
+function session(id: string, updatedAt: number, subagentOf: string | null = null): SessionSummary {
 	return {
 		id,
 		projectId: 'p',
@@ -13,6 +13,7 @@ function session(id: string, updatedAt: number): SessionSummary {
 		updatedAt,
 		turnCount: 1,
 		cwd: '/p',
+		subagentOf,
 	};
 }
 
@@ -85,6 +86,32 @@ describe('orderSessions', () => {
 		orderSessions(input, {});
 
 		expect(input.map((s) => s.id)).toEqual(['a', 'b']);
+	});
+
+	it('leaves sub-agents out — they are part of the session that spawned them', () => {
+		// The sidebar's slots are for sessions you can go back into; an agent
+		// transcript is readable but not resumable, and the project page nests
+		// it under its parent.
+		const ordered = orderSessions(
+			[session('parent', 100), session('agent-1', 900, 'parent'), session('top', 50)],
+			{},
+		);
+
+		expect(ordered.map((s) => s.id)).toEqual(['parent', 'top']);
+	});
+
+	it('does not let sub-agents crowd the cap either', () => {
+		// Nine real sessions plus twenty agents: the ten slots stay real
+		// sessions, not a wall of agent rows.
+		const many = [
+			...Array.from({ length: 9 }, (_, i) => session(`s${i}`, i)),
+			...Array.from({ length: 20 }, (_, i) => session(`agent-${i}`, 900 + i, 's8')),
+		];
+
+		const ordered = orderSessions(many, {});
+
+		expect(ordered).toHaveLength(9);
+		expect(ordered.every((s) => s.subagentOf === null)).toBe(true);
 	});
 });
 
