@@ -108,6 +108,45 @@ export async function openExternally(path: string): Promise<void> {
 }
 
 /**
+ * Put an image on the system clipboard (F7).
+ *
+ * **Not `navigator.clipboard.write`.** WebKitGTK implements `writeText` — the
+ * viewer's copy-path button proves it — but not `ClipboardItem`, so the web
+ * API rejects and nothing reaches the clipboard. Verified on this machine:
+ * after a web-API copy, `xclip -t TARGETS` still offered text only.
+ *
+ * Raw RGBA rather than the PNG bytes we already hold, because `Image.new` is
+ * the one constructor that needs no decoding: `fromBytes`/`fromPath` would
+ * make Tauri decode, which needs its `image-png` feature and still wouldn't
+ * cover jpeg or webp. The caller has a decoded canvas anyway.
+ *
+ * Throws on failure, so the button can say so instead of showing a tick for
+ * something that didn't happen.
+ */
+export async function copyImageToClipboard(
+	rgba: Uint8Array,
+	width: number,
+	height: number,
+): Promise<void> {
+	if (!isTauri()) {
+		// Browser-only dev and Playwright: the web API is all there is, and in a
+		// Chromium test lane it works.
+		const canvas = new OffscreenCanvas(width, height);
+		const ctx = canvas.getContext('2d');
+		if (!ctx) throw new Error('no 2d context');
+		ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
+		const blob = await canvas.convertToBlob({ type: 'image/png' });
+		await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+		return;
+	}
+	const [{ writeImage }, { Image }] = await Promise.all([
+		import('@tauri-apps/plugin-clipboard-manager'),
+		import('@tauri-apps/api/image'),
+	]);
+	await writeImage(await Image.new(rgba, width, height));
+}
+
+/**
  * Ask the OS for a folder, for "Add project" (F1). Resolves null when the
  * picker is cancelled — which is a normal outcome, not an error.
  *

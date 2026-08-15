@@ -1,4 +1,6 @@
+import { ImageView } from '@components/viewer/ImageView';
 import { MarkdownView } from '@components/viewer/MarkdownView';
+import { BinaryCard, Centered, errorText } from '@components/viewer/chrome';
 import {
 	FACTORAI_DARK,
 	ensureTheme,
@@ -10,9 +12,9 @@ import { Button } from '@factorai/ui';
 import { iconKeyFor } from '@lib/fileIcon';
 import { formatBytes } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
-import { cmd, openExternally } from '@lib/tauri';
+import { cmd } from '@lib/tauri';
 import { useQuery } from '@tanstack/react-query';
-import { Code2, Eye, FileWarning } from 'lucide-react';
+import { Code2, Eye } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 /**
@@ -185,121 +187,4 @@ function Editor({ contents, language }: EditorProps) {
 	}, [contents, language]);
 
 	return <div ref={hostRef} className="h-full w-full" data-testid="file-view-editor" />;
-}
-
-/**
- * One image, rendered (F7).
- *
- * The bytes arrive base64 through `read_image` rather than over the asset
- * protocol, because that protocol wants a static path scope and the paths here
- * are "whatever project you opened". `read_file`'s validation already covers
- * this ground, so reusing the command boundary costs a 33% encoding overhead
- * and buys not having a second way into the filesystem.
- *
- * Anything the backend won't call an image — wrong magic bytes, over the size
- * limit — falls through to the same card a binary file gets, which already
- * offers the only useful action left.
- */
-function ImageView({ path }: { path: string }) {
-	// Read off the decoded element rather than the file: it costs nothing and
-	// avoids parsing headers for six formats in Rust to learn what the browser
-	// is about to work out anyway.
-	const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
-
-	const imageQ = useQuery({
-		queryKey: queryKeys.image(path),
-		queryFn: () => cmd.readImage(path),
-		staleTime: Number.POSITIVE_INFINITY,
-		retry: false,
-	});
-
-	if (imageQ.isPending) return <Centered>Loading…</Centered>;
-	if (imageQ.isError || !imageQ.data) {
-		return <BinaryCard path={path} reason={errorText(imageQ.error)} />;
-	}
-
-	const image = imageQ.data;
-	return (
-		<div className="flex h-full min-h-0 flex-col">
-			<div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-4">
-				{/* `contain` inside a scroll container: a large image shrinks to fit
-				    rather than forcing a scrollbar, and a tiny one is left at its own
-				    size instead of being blown up into mush. */}
-				<img
-					src={`data:${image.mime};base64,${image.base64}`}
-					alt={basename(path)}
-					data-testid="image-view"
-					className="max-h-full max-w-full object-contain"
-					onLoad={(e) =>
-						setDims({
-							w: e.currentTarget.naturalWidth,
-							h: e.currentTarget.naturalHeight,
-						})
-					}
-				/>
-			</div>
-			<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
-				<span>{image.mime}</span>
-				{dims && (
-					<>
-						<span aria-hidden="true">·</span>
-						<span>
-							{dims.w} × {dims.h}
-						</span>
-					</>
-				)}
-				<span aria-hidden="true">·</span>
-				<span>{formatBytes(image.size)}</span>
-				<span aria-hidden="true">·</span>
-				<span>read-only</span>
-			</footer>
-		</div>
-	);
-}
-
-/**
- * The dead end for a file we can't render: a binary, or an image that turned
- * out not to be one. `reason` says which, because "cannot preview" alone
- * invites the user to wonder whether the app is broken.
- */
-function BinaryCard({ path, size, reason }: { path: string; size?: number; reason?: string }) {
-	return (
-		<div
-			data-testid="binary-card"
-			className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
-		>
-			<FileWarning className="size-8 text-muted-foreground/60" />
-			<p className="text-muted-foreground text-sm">
-				{reason ?? `Cannot preview binary file (${formatBytes(size ?? 0)}).`}
-			</p>
-			<Button variant="outline" size="sm" onClick={() => void openExternally(path)}>
-				Open in default app
-			</Button>
-		</div>
-	);
-}
-
-function Centered({ children, tone = 'muted' }: { children: string; tone?: 'muted' | 'error' }) {
-	return (
-		<p
-			className={`flex h-full items-center justify-center px-6 text-center text-sm ${
-				tone === 'error' ? 'text-destructive' : 'text-muted-foreground'
-			}`}
-		>
-			{children}
-		</p>
-	);
-}
-
-function errorText(e: unknown): string {
-	if (e && typeof e === 'object' && 'message' in e) {
-		const message = String((e as { message: unknown }).message);
-		// `read_file` returns NotFound for a path the tree listed a moment ago —
-		// worth saying why rather than echoing the raw error.
-		if ('kind' in e && (e as { kind: unknown }).kind === 'NotFound') {
-			return 'File not found. The tree may be out of date — try refreshing it.';
-		}
-		return message;
-	}
-	return String(e);
 }
