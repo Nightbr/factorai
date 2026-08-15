@@ -77,7 +77,7 @@ route content, and the right-hand panel.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ ◱ factorai        (reserved: search, window controls)          [▣]   │  TopBar, 40px
+│ ◱ factorai [DEV]  (reserved: search, window controls)          [▣]   │  TopBar, 40px
 ├───────────────┬──────────────────────────────────┬───────────────────┤
 │ [search]      │  Route content                   │ Files       ⇕ ⟳ ✕ │
 │               │                                  │ ▾ factorai        │
@@ -119,6 +119,18 @@ The top bar spans the **full window width** deliberately: that's the shape
 the custom titlebar needs when we drop the OS decorations (M5), so that
 step adds buttons instead of restructuring the shell. The app's brand row
 lives there rather than at the top of the sidebar.
+
+Next to the wordmark, a **`DEV` badge** on development builds only —
+`DevBadge` renders `null` unless `import.meta.env.DEV`, which a
+`pnpm tauri build` bundle never is (it goes through `vite:build`). The
+window title gains the same marker, in `setup()` under
+`#[cfg(debug_assertions)]`: `factorai DEV`. Both exist because a release
+factorai runs beside the dev one all day with live Claude sessions in it,
+and the pair must be told apart from the window switcher as readily as from
+the screen. The badge is violet — a hue reserved for exactly this, so it
+can't be read as session status or as the amber brand. `scripts/qa/`
+matches on both markers to make sure an agent's screenshots and kills land
+on the dev build; see `scripts/qa/README.md`.
 
 The right panel holds the **project file tree** (F12) and lives in the
 shell, not a route, so it survives navigating from a project into one of

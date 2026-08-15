@@ -23,7 +23,9 @@ OUT=$1
 if command -v gnome-screenshot >/dev/null 2>&1; then
 	gnome-screenshot -w -f "$OUT"
 elif command -v import >/dev/null 2>&1; then
-	WID=$(wmctrl -l | awk 'tolower($0) ~ /factorai/ {print $1; exit}')
+	# Via the resolver, not a bare wmctrl grep: it is the one place that
+	# knows to match "factorai DEV" and skip the phantom X windows.
+	read -r WID _ _ _ _ _ < <("$(dirname "$0")/_resolve_wid.sh")
 	import -window "$WID" "$OUT"
 elif command -v scrot >/dev/null 2>&1; then
 	scrot -u "$OUT"

@@ -4,8 +4,10 @@
 # Usage:  scripts/qa/launch.sh [logfile]
 # Default logfile: /tmp/factorai-qa.log
 #
-# The script returns once the window manager reports a "factorai" window
-# (so callers can immediately focus/screenshot/kill). If the window never
+# The script returns once the window manager reports a "factorai DEV"
+# window (so callers can immediately focus/screenshot/kill). A debug build
+# titles itself that; a release factorai open on the same desktop is titled
+# plain "factorai" and must never be mistaken for ours. If the window never
 # appears within $LAUNCH_TIMEOUT_S seconds, exits non-zero.
 #
 # Designed to be called by an AI agent in a verification loop. See AGENTS.md
@@ -35,7 +37,7 @@ echo "[qa] launch pid: $(cat "$PID_FILE")" >&2
 # Poll for the window.
 deadline=$((SECONDS + LAUNCH_TIMEOUT_S))
 while (( SECONDS < deadline )); do
-	if wmctrl -l 2>/dev/null | grep -qi 'factorai'; then
+	if wmctrl -l 2>/dev/null | grep -qi 'factorai dev'; then
 		echo "[qa] window detected after ${SECONDS}s" >&2
 		exit 0
 	fi
