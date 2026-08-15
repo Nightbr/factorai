@@ -8,9 +8,22 @@ Quick links: [specs/](specs/) · [specs/roadmap/](specs/roadmap/) · [docs/adr/]
 
 ## 1. What this project is
 
-factorai is a desktop command center for **Claude Code CLI sessions**.
-Browse `~/.claude/projects/`, search session content, launch / resume /
-fork sessions in an embedded terminal, preview files Claude touched.
+factorai is an **ADE — an Agentic Development Environment**: one place to
+build software with agents, rather than an editor with an agent bolted
+into a pane. The unit of work is a **session**, not a file.
+
+**Agents are at the centre; the human supervises, decides, reviews, and
+sets the rules agents run under.** Those four verbs are the product, and
+they are a usable test when you're weighing a change: which one does this
+serve, and does it take any of them away from the human? An ADE where the
+agent is central is *not* one where the human is absent — every
+irreversible action keeps its confirmation, and "the agent already did
+it" is never a reason to skip asking. See `specs/00-overview.md` §
+"The operating model".
+
+Concretely today: browse `~/.claude/projects/`, search session content,
+launch / resume sessions in an embedded terminal, review what the agent
+changed in git, preview files it touched.
 
 Tauri 2 (Rust) + React 19 + TypeScript, pnpm monorepo, Biome, Turborepo.
 macOS + Linux only for v1. See `specs/00-overview.md` for the

@@ -2,14 +2,54 @@
 
 ## What we're building
 
-A desktop command center for Claude Code CLI sessions, modeled on
-[the prior app](https://github.com/example/repo) but rebuilt on a
-modern Rust + TypeScript stack (Tauri 2, React 19, Biome, Turborepo, pnpm).
+**An ADE — an Agentic Development Environment.** One place to build software
+with agents, rather than an editor with an agent bolted into a pane.
 
-The product is a unified GUI for everything that lives in
-`~/.claude/projects/`: browsing past sessions, searching their content,
-resuming them, launching new ones into an embedded terminal, and
-previewing files Claude touched.
+An IDE is arranged around a cursor: it opens files one at a time, and the
+process running your agent is a rectangle at the bottom of the screen. That
+arrangement assumes the human is the one typing. When the agent writes most of
+the code, the assumption is wrong and everything built on top of it is subtly
+in the way.
+
+So the unit of work here is a **session**, not a file. Agents are long-lived
+processes you launch, watch, resume and kill. Reading code is something you do
+to *check on* the work, which is why it sits beside the terminal instead of in
+place of it.
+
+## The operating model
+
+**Agents are at the centre. The human supervises, decides, reviews, and sets
+the rules agents run under.** That sentence is the product, and it is meant to
+be load-bearing rather than a slogan — each of those four verbs is a surface,
+and how well each is served is a fair way to judge any proposed feature.
+
+| The human… | Served today by |
+| ---------- | --------------- |
+| **Supervises** | Per-session status — running / idle / waiting-for-input / stopped — surfaced in the sidebar, tabs and project rows (F16, F5). Nothing important happens off-screen. |
+| **Decides** | The app refuses to make irreversible calls on your behalf: closing a tab kills a session and asks first, quitting with live sessions asks (ADR-0005), restarting to update asks (F14). |
+| **Reviews** | The `Changes` panel, diff viewer and tree decorations (F13, F12). Read-only **on purpose** — ADR-0009 — because the agent writes and the human checks. |
+| **Sets the rules** | `CLAUDE.md` and `.claude/plans/` per project (F9). |
+
+The fourth row is the thin one, and saying so is the point of the table: **F9
+is the only place the human edits the rules an agent runs under, and it is the
+one thing in this list that isn't built yet** (roadmap item 2). Under the old
+"session browser" framing it read as a nice-to-have file editor. Under this
+one it is the human's only lever on agent behaviour, which is a different
+priority argument entirely.
+
+**A tension worth naming rather than resolving here.** "A unified platform to
+build software with agents" and "specifically the official `claude` CLI's
+session files" (see Non-goals) are not obviously the same product. Everything
+built so far reads `~/.claude/`, and nothing about the ADE framing on its own
+justifies widening that — but the two will have to be reconciled eventually,
+and pretending they already agree would hide the decision.
+
+## Where this started
+
+Modeled originally on [the prior app](https://github.com/example/repo),
+rebuilt on a modern Rust + TypeScript stack (Tauri 2, React 19, Biome,
+Turborepo, pnpm). That lineage explains the shape of the session browser and
+little else; the comparison table below is kept as history, not as a target.
 
 ## Identity
 
@@ -78,4 +118,10 @@ These are the "trickiest" pieces from the prior app. Each gets a stub in
   releases. Where the prior app made a UX choice we'd undo, we undo it.
 - We are **not** building a Claude alternative or a multi-provider session
   manager. This is specifically for the official `claude` CLI session files.
+  (See the tension named under "The operating model" — this holds until it is
+  deliberately revisited, not by drift.)
 - We are **not** shipping cloud sync or accounts. Everything is local.
+- We are **not** taking decisions away from the human to look autonomous. An
+  ADE where the agent is central is not one where the human is absent: every
+  irreversible action keeps its confirmation, and "the agent already did it"
+  is never a reason to skip asking.
