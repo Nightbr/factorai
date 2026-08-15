@@ -5,9 +5,9 @@ import { isTauri, mockStagedUpdate, recordMockCall } from '@lib/tauri';
  *
  *  factorai is meant to sit open for days beside running agents, so a
  *  launch-only check would rarely fire. One request for a static JSON. */
-export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-export type UpdateState =
+type UpdateState =
 	| { phase: 'idle' }
 	| { phase: 'checking' }
 	| { phase: 'upToDate' }

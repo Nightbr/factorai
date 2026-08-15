@@ -56,12 +56,19 @@ jobs:
       # Renderer-only build. NOT `pnpm build` — that is `tauri build`, a full
       # bundle with a Rust release compile behind it, which is a release job's
       # work and not a pull request's.
+      # `run` is not optional here: without it knip reads `vite:build` as a
+      # binary it can't find rather than a package script, and reports it.
       - name: Build the renderer
-        run: pnpm --filter @factorai/desktop vite:build
+        run: pnpm --filter @factorai/desktop run vite:build
 
       # This repo pins exact versions; a caret slipping in is drift that costs a
       # day to notice by hand, and did once (`plugin-updater`, F14).
       - run: pnpm deps:check
+
+      # Dead code and unused dependencies. Every ignore in `knip.jsonc` carries
+      # the reason it exists, because the last version of that config rotted
+      # into eight stale entries nobody could account for.
+      - run: pnpm deps:unused
 
   rust:
     name: Rust — clippy, cargo test
