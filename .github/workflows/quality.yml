@@ -1,0 +1,107 @@
+name: Quality
+
+# The gate from AGENTS.md § 2c, minus `pnpm e2e`, run on every PR and on main.
+#
+# Local runs are still the real gate — this is the net under them, for the day
+# there are PRs and for the case where someone pushes to main without running
+# anything. It deliberately does NOT gate the release: `release.yml` is
+# tag-driven and says in its own header that tagging an unverified commit ships
+# an unverified build. Tag a commit this workflow has passed.
+#
+# **No e2e here on purpose.** Playwright needs a browser download and a dev
+# server, and the suite is ~70s and growing; it belongs in a lane that can be
+# slow (`tests/regression/`, roadmap item 10) rather than in front of every
+# push. What that costs is the one thing e2e checked incidentally — that the
+# renderer still bundles — so `vite:build` is run here in its place. It is 2
+# seconds and it catches what `tsc` cannot: a bundler-visible break in an import
+# that typechecks fine.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Opposite of the release workflow, and for the opposite reason: superseding a
+  # PR's checks with its own newer commit is exactly what you want, whereas a
+  # half-uploaded release draft is worse than a slow one.
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js:
+    name: JS — lint, types, unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # Version comes from `packageManager` in package.json.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # Renderer-only build. NOT `pnpm build` — that is `tauri build`, a full
+      # bundle with a Rust release compile behind it, which is a release job's
+      # work and not a pull request's.
+      - name: Build the renderer
+        run: pnpm --filter @factorai/desktop vite:build
+
+      # This repo pins exact versions; a caret slipping in is drift that costs a
+      # day to notice by hand, and did once (`plugin-updater`, F14).
+      - run: pnpm deps:check
+
+  rust:
+    name: Rust — clippy, cargo test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Identical list to release.yml on purpose. Some of these are only needed
+      # by the bundler, so a leaner set would compile — but keeping one list
+      # means there is no such thing as "passes CI, fails the release build".
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            patchelf \
+            file
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The Cargo workspace is the repo root; src-tauri is a member.
+          workspaces: . -> target
+
+      # No `pnpm install` and no frontend build: `tauri_build::build()` does not
+      # need `frontendDist` to exist for a non-bundling compile, so the Rust job
+      # stays independent of the JS one and the two run in parallel.
+      - name: Clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        working-directory: apps/desktop/src-tauri
+        run: cargo test
