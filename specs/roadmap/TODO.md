@@ -122,6 +122,12 @@ they block each other:
 
 The first place the app is not read-only, and the last M4 deliverable.
 
+**Re-read its importance (2026-08-15).** `00-overview.md` § "The operating model" makes the human
+four things — supervisor, decider, reviewer, and the one who sets the rules agents run under.
+Three of those have surfaces already; **this item is the whole of the fourth**. As a "browse and
+edit some markdown" feature it looked optional. As the human's only lever on how agents behave,
+it is the load-bearing one, and its position in this list understates it.
+
 - [ ] `commands/memory.rs`: `read_claude_md`, `write_claude_md`, `list_plans`, `read_plan`
       (`03-backend-rust.md`). Writes go through the same path validation as the read commands —
       ADR-0004 says `~/.claude/` is read-only, and this is a *project* file, so it isn't a
