@@ -107,6 +107,8 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
+	--color-dev: var(--dev);
+	--color-dev-foreground: var(--dev-foreground);
 	--radius-lg: var(--radius);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-sm: calc(var(--radius) - 4px);
@@ -133,6 +135,12 @@
 	--input: oklch(22% 0.008 250);
 	--ring: oklch(78% 0.17 75);
 	--radius: 0.5rem;
+
+	/* Development-build marker. Violet on purpose: it is the one hue the rest
+	   of the palette never uses, so a dev window is told apart from the
+	   release one at a glance rather than read. */
+	--dev: oklch(68% 0.19 300);
+	--dev-foreground: oklch(16% 0.008 250);
 }
 
 /* Light theme — applied via [data-theme="light"] on <html> */
@@ -155,6 +163,8 @@
 	--border: oklch(88% 0.006 250);
 	--input: oklch(94% 0.006 250);
 	--ring: oklch(58% 0.17 75);
+	--dev: oklch(52% 0.21 300);
+	--dev-foreground: oklch(98% 0.004 250);
 }
 
 @layer base {

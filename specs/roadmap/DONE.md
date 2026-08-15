@@ -3,6 +3,21 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A dev build says so** — 2026-08-15. A violet `DEV` pill next to the wordmark
+  (`import.meta.env.DEV`, so a `vite:build` bundle never has it) and `factorai DEV` as the window
+  title (`#[cfg(debug_assertions)]` in `setup()`). Both because the release factorai runs beside the
+  dev one all day with live Claude sessions in it, and the two were indistinguishable in the window
+  switcher.
+
+  **The real hazard was `scripts/qa/kill.sh`.** It swept `pgrep -x factorai` and every
+  `claude --resume` by name — and the release build shares that process name, its PTYs that argv.
+  Verified on this machine: the agent's own session runs under the release AppImage, so the QA
+  teardown could kill the app hosting the agent running it. Both sweeps are now qualified by
+  ownership — a factorai counts only if its executable is under this repo's `target/` (`/proc/PID/exe`,
+  macOS `ps -o comm=`), and a claude only through such a parent's subtree. `_resolve_wid.sh` and
+  `launch.sh` match `factorai DEV` rather than `factorai`, which also fixes screenshots landing on
+  the wrong window.
+
 - **Sidebar rebuilt around projects you actually use** — 2026-08-14, shipped in v0.3.0. Sort by
   Recent or Name with Expand/Collapse all; projects expand to their 10 most relevant sessions
   (running first, then most-recently-active); pinning lifts a project into a block above a divider,

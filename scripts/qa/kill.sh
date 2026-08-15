@@ -12,11 +12,20 @@
 # would match this very script (its argv contains the string), causing
 # a self-suicide. We descend the process tree from the recorded
 # launcher pid and kill children explicitly.
+#
+# Nor do we kill by process name alone. A *release* factorai is normally
+# open on the same desktop — it is the app the user works in, and the
+# `claude --resume` PTYs under it are live agent sessions, quite possibly
+# the one running this script. It shares our process name and its children
+# share their argv, so every sweep below is qualified by ownership: a
+# factorai only counts if its executable lives in this repo's target/, and
+# a claude only counts if such a factorai is its ancestor.
 
 set -uo pipefail
 
 PID_FILE=/tmp/factorai-qa.pid
 SELF=$$
+REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 # Defensive: ignore any SIGTERM we might receive as collateral from a
 # process group blast, so we exit 0 on clean cleanup.
@@ -74,37 +83,40 @@ if [[ -f $PID_FILE ]]; then
 	rm -f "$PID_FILE"
 fi
 
-# Belt-and-braces: kill any stray factorai debug binaries by exact name.
-# `pgrep -x` matches the program name (max 15 chars), avoiding the
-# self-match risk of `pgrep -f`.
-for p in $(pgrep -x factorai 2>/dev/null); do
-	[[ $p == "$SELF" ]] && continue
-	kill -TERM "$p" 2>/dev/null || true
-done
-sleep 0.2
-for p in $(pgrep -x factorai 2>/dev/null); do
-	[[ $p == "$SELF" ]] && continue
-	kill -KILL "$p" 2>/dev/null || true
+# The dev factorai processes, and only those. `pgrep -x` matches the
+# program name (max 15 chars), avoiding the self-match risk of `pgrep -f`
+# — but the name is `factorai` for the release build too, so each hit is
+# then checked against its executable path. A debug build always runs out
+# of this repo's target/ dir; an installed one never does.
+#
+# /proc/PID/exe is the authority on Linux; `ps -o comm=` prints the full
+# executable path on macOS, which covers the other supported platform.
+dev_factorai_pids() {
+	local p exe
+	for p in $(pgrep -x factorai 2>/dev/null); do
+		[[ $p == "$SELF" ]] && continue
+		exe=$(readlink -f "/proc/$p/exe" 2>/dev/null || true)
+		[[ -z $exe ]] && exe=$(ps -p "$p" -o comm= 2>/dev/null || true)
+		case "$exe" in
+			"$REPO"/target/*) echo "$p" ;;
+		esac
+	done
+}
+
+# Belt-and-braces, for a stale pid file: whatever dev factorai is still
+# standing, taken down with its subtree. That subtree is where its
+# `claude --resume` PTYs are, so they go with it — and a claude owned by
+# the release app, having no dev factorai for an ancestor, is never
+# reached. A fully orphaned dev PTY (its factorai already gone, so the
+# ownership trail with it) is left alive on purpose: there is no way left
+# to tell it apart from the user's own session, and killing that is the
+# far worse error.
+for p in $(dev_factorai_pids); do
+	echo "[qa] killing stray dev factorai pid=$p" >&2
+	kill_tree "$p"
 done
 
-# Hand-rolled check for stale claude PTYs without using pkill -f (to
-# avoid self-match). Pattern: exact name "claude", argv contains
-# "--resume".
-for p in $(pgrep -x claude 2>/dev/null); do
-	args=$(ps -p "$p" -o args= 2>/dev/null || true)
-	case "$args" in
-		*"--resume"*) kill -TERM "$p" 2>/dev/null || true ;;
-	esac
-done
-sleep 0.2
-for p in $(pgrep -x claude 2>/dev/null); do
-	args=$(ps -p "$p" -o args= 2>/dev/null || true)
-	case "$args" in
-		*"--resume"*) kill -KILL "$p" 2>/dev/null || true ;;
-	esac
-done
-
-remaining=$(pgrep -x factorai 2>/dev/null | wc -l)
+remaining=$(dev_factorai_pids | wc -l)
 if (( remaining > 0 )); then
 	echo "[qa] WARNING: $remaining factorai process(es) still alive" >&2
 	exit 1

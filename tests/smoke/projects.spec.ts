@@ -9,6 +9,19 @@ test.describe('projects sidebar', () => {
 		await expect(page.getByText(/No projects found/i)).toBeVisible();
 	});
 
+	// This suite runs against `vite:dev`, so the badge's condition
+	// (`import.meta.env.DEV`) is true here and only the visible branch is
+	// reachable. That still guards the half that matters: an agent looking at
+	// a screenshot uses the badge to know it is looking at the dev window, and
+	// a badge that quietly stopped rendering would make every screenshot
+	// ambiguous. The absent-in-a-release-bundle half is enforced by the
+	// bundler, not by a test.
+	test('@smoke a dev build marks itself in the header', async ({ page }) => {
+		await installMockBridge(page, { projects: [] });
+		await page.goto('/');
+		await expect(page.getByTestId('dev-badge')).toHaveText('dev');
+	});
+
 	test('@smoke lists projects from the bridge fixture', async ({ page }) => {
 		const fx = fixtureOneProjectOneSession();
 		await installMockBridge(page, fx);

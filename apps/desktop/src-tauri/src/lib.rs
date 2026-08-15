@@ -67,6 +67,16 @@ pub fn run() {
 			spawn_initial_scan(indexer.clone());
 			watcher::spawn(indexer);
 
+			// A dev build says so in its title, because that is the only part of
+			// it the window switcher, the dock and `wmctrl -l` can see — and the
+			// release factorai runs beside it all day with live Claude sessions
+			// in it. The header shows the same marker (components/layout/
+			// DevBadge.tsx) for when the window itself is in front of you.
+			#[cfg(debug_assertions)]
+			if let Some(window) = app.get_webview_window("main") {
+				let _ = window.set_title("factorai DEV");
+			}
+
 			// Devtools is opt-in via FACTORAI_DEVTOOLS=1 so screenshot-driven
 			// QA captures aren't cluttered by the inspector pane.
 			#[cfg(debug_assertions)]

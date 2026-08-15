@@ -11,8 +11,17 @@ osascript wrappers), ported to Linux/X11 + GNOME.
 | `focus.sh` | Brings factorai to the front via `wmctrl -a` | ✓ |
 | `screenshot.sh OUT.png` | Captures the active window via `gnome-screenshot` (fallback: `import`, `scrot`) | ✓ |
 | `geometry.sh` | Prints `WIDTH HEIGHT X Y` of the content window | ✓ |
-| `kill.sh` | Descends pgrep tree from launcher pid, kills children deepest-first; sweeps orphan `claude --resume` PTYs | ✓ exit 0, no survivors |
+| `kill.sh` | Descends pgrep tree from launcher pid, kills children deepest-first; sweeps stray dev factorai subtrees | ✓ exit 0, no survivors |
 | `_resolve_wid.sh` | Internal helper: picks the right factorai window from `wmctrl -lG` (skips the 10×10 phantom + outer frame) | — |
+
+## Never the release app
+
+Every script here targets the **dev** build specifically, never "a thing called factorai". A release factorai is usually open on the same desktop — it is where the user actually works, and the `claude --resume` PTYs under it are live agent sessions, quite possibly the one driving this loop. It has the same process name and its children have the same argv, so name matching alone would put the wrong window under the cursor and the wrong process under `kill -9`.
+
+Two markers keep them apart, and both are set by the build itself rather than configured here:
+
+- **Window title.** A debug build titles itself `factorai DEV` in `setup()` (`src-tauri/src/lib.rs`, `#[cfg(debug_assertions)]`). `launch.sh`, `_resolve_wid.sh` and everything downstream of it match that, not a bare `factorai`. The header carries the same marker visually (`components/layout/DevBadge.tsx`) — a screenshot without the violet `DEV` pill is a screenshot of the wrong app.
+- **Executable path.** A debug binary runs out of this repo's `target/`; an installed one never does. `kill.sh` resolves `/proc/PID/exe` (macOS: `ps -o comm=`) before signalling anything, and reaches `claude` PTYs only through such a parent's subtree.
 
 This is enough to verify the **boot phase** — does the app start, does the first paint look right, do the projects appear in the sidebar. Catches `WebKitGTK / WebGL / PTY-flood` regressions in the boot path.
 
