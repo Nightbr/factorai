@@ -3,6 +3,26 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Sub-agent sessions are real, marked, and read-only** — 2026-08-15. Claude Code writes each
+  agent a session spawns to `<session>/subagents/agent-*.jsonl`. The watcher was treating that
+  file's direct parent as a project directory, which manufactured a project literally named
+  `subagents` (its `real_path` even resolved to factorai, via the agent's own `cwd` — a second
+  "factorai" in the sidebar) and indexed the agent transcripts as ordinary sessions. Opening one
+  probed for a top-level transcript that doesn't exist and spawned a fresh `claude` under the
+  agent's id.
+
+  The fix, per the rule the user set: they *are* explorable, so keep them — marked and read-only.
+  The watcher now maps a changed `.jsonl` up to the directory that is actually a direct child of
+  `~/.claude/projects/` (anything else is logged and ignored — no more manufactured projects from
+  stray files). The indexer indexes `agent-*.jsonl` under the real project with `sessions.subagent_of`
+  set (migration `0004` also deletes the bogus rows). `list_sessions` nests sub-agent rows directly
+  under their parent, and the project page renders them indented with a `sub-agent` badge;
+  `session_count` excludes them, and the sidebar's inline ten-session list leaves them out. The
+  session view swaps the terminal for a paged read-only transcript (`get_session_tail`, widened by
+  "show earlier") — no Stop/Restart, since `claude --resume` can never open one. Verified against a
+  copy of the real DB: bogus rows gone, every agent transcript across all projects re-indexed
+  marked under its true parent.
+
 - **A quality gate that runs, and a dead-code gate that works** — 2026-08-15, shipped in v0.6.0.
   `.github/workflows/quality.yml` runs § 2c minus `e2e` on every PR and every push to main, in two
   parallel jobs. No Playwright: it wants a browser download and a dev server for a ~70s suite, so

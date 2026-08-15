@@ -55,6 +55,11 @@ resolve_project_path(id: String) -> Option<String>
 pin_project(id: String, pinned: bool) -> ()
 
 // sessions
+// SessionSummary carries `subagentOf` — set for a sub-agent transcript
+// (`<session>/subagents/agent-*.jsonl`, see 02-data-model.md). list_sessions
+// nests those rows directly under their parent (groups ordered by the
+// parent's recency); get_session/get_session_tail resolve a sub-agent's
+// transcript through its parent's directory.
 list_sessions(project_id: String) -> Vec<SessionSummary>
 get_session(session_id: String, offset: usize, limit: usize) -> SessionPage
 get_session_tail(session_id: String, limit: usize) -> SessionPage
