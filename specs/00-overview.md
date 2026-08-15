@@ -57,12 +57,19 @@ little else; the comparison table below is kept as history, not as a target.
 | -------------- | ------------------------------ |
 | Product name   | `factorai`                     |
 | App identifier | `dev.factorai`                 |
-| Window title   | `factorai`                     |
+| Window title   | `factorai` (`factorai DEV` in a debug build) |
 | pnpm scope     | `@factorai/*`                  |
 | Rust crate     | `factorai` (lib `factorai_lib`)|
 
 We deliberately **do not** brand this as "switchboard" — it is its own product
 that happens to start from the same problem space.
+
+**The version fields in the repo all say `0.1.0` and that is not drift.** The
+git tag is the single source of truth: `release.yml` rewrites
+`apps/desktop/package.json`, `tauri.conf.json` and `src-tauri/Cargo.toml` from
+`$GITHUB_REF_NAME` at build time and commits nothing back. There is no bump
+commit to forget and no way for a tag to disagree with a file. Read the version
+off the tags — `git tag --sort=-v:refname | head -1` — not off the tree.
 
 ## MVP scope (in)
 
@@ -72,12 +79,12 @@ that happens to start from the same problem space.
 | Session browser         | List sessions per project; metadata (title, last activity, turn count) |
 | Full-text search        | Search across all sessions by message content                   |
 | Embedded terminal       | xterm.js in webview, PTY in Rust, one tab per session           |
-| Launch / resume         | Start `claude` or `claude --resume <id>` in the terminal        |
-| File preview side panel | Open a file in CodeMirror with syntax highlighting              |
+| Launch / resume         | `claude --session-id <id>` for a new session, `--resume <id>` for an existing one (ADR-0008) |
+| File preview side panel | Open a file in Monaco with syntax highlighting (ADR-0007)        |
 | Diff viewer             | Inline + side-by-side diff for a file change (read-only initially) |
 | Plans / CLAUDE.md       | Browse and edit `CLAUDE.md` and `.claude/plans/*.md` per project|
 | SQLite cache            | Session index, search index (FTS5), settings                    |
-| Status indicators       | running / stopped / busy per session terminal                   |
+| Status indicators       | running / idle / waiting-for-input / stopped per session terminal |
 | Auto-naming             | Pick up session names produced by Claude's `/rename` command    |
 
 ## Explicitly dropped from MVP
@@ -91,7 +98,7 @@ These are the "trickiest" pieces from switchboard. Each gets a stub in
 | Scheduler (`schedule-runner`)    | Cron-style session runs add a lot of surface; not core to the browse/manage loop. |
 | Grid overview (live multi-PTY)   | Single-session focus is enough for v1. Multi-PTY rendering is expensive in the webview. |
 | Activity heatmap                 | Nice-to-have. Easy to add later from the cached session index. |
-| Auto-updates (electron-updater)  | Replace later with `tauri-plugin-updater` once we publish releases. |
+| ~~Auto-updates~~ **shipped**     | Was deferred; landed 2026-08-14 on `tauri-plugin-updater` (F14, ADR-0010). |
 | Claude OAuth helper              | Use the user's existing `claude` login. We don't reimplement `claude-auth.js`. |
 | Launch-in-external-terminal      | Embedded xterm is the only path for MVP. External terminal action is a deferred feature. |
 | Windows support                  | macOS and Linux only for v1. Drops a class of PTY/path-encoding edge cases from the critical path. |
@@ -107,7 +114,7 @@ These are the "trickiest" pieces from switchboard. Each gets a stub in
 | Lang         | JavaScript             | TypeScript strict, Biome (lint + format)                   |
 | DB           | better-sqlite3         | rusqlite (bundled, with FTS5)                              |
 | PTY          | node-pty               | `portable-pty` (Rust) — works on macOS/Linux/Windows       |
-| Editor       | CodeMirror 6 (bundled) | CodeMirror 6 via npm in renderer                           |
+| Editor       | CodeMirror 6 (bundled) | Monaco via npm in renderer (ADR-0007)                      |
 | IPC          | Electron preload bridge| Tauri commands + events                                    |
 | Build        | electron-builder       | `tauri build` via `pnpm` + Turborepo                       |
 | Tooling      | npm + esbuild          | pnpm 10 + Turbo 2 + Biome 1.9 + syncpack + knip + mise     |

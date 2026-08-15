@@ -10,7 +10,7 @@ commands/
   projects.rs         # list_projects, add_project, resolve_project_path, pin_project
   sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
-  files.rs            # read_file, list_dir
+  files.rs            # read_file, read_image, list_dir
   git.rs              # git_status, git_blob
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
   settings.rs         # get_setting, set_setting
@@ -21,13 +21,16 @@ services/
   terminal.rs         # TerminalManager — owns PTYs
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
-  files.rs            # list_dir — one level of a project directory
+  files.rs            # list_dir, read_file, read_image
+  child_env.rs        # strip the AppImage runtime out of a child's env
+  path_encoding.rs    # Claude's ~/.claude/projects/ directory encoding
   git.rs              # repository status + blob reads (ADR-0009)
 db/
   mod.rs              # open(), migrate(), Pool wrapper
   migrations/
     0001_init.sql
     0002_fts.sql
+    0003_project_missing.sql
 models/
   mod.rs
   project.rs
@@ -68,15 +71,21 @@ terminal_write(id: TerminalId, data: String) -> ()
 terminal_resize(id: TerminalId, cols: u16, rows: u16) -> ()
 terminal_kill(id: TerminalId) -> ()
 terminal_list() -> Vec<TerminalStatusDto>
+// Probes for the claude binary so the UI can explain a missing CLI rather than
+// failing at spawn time.
+check_claude_cli() -> ClaudeCliStatus
+// The renderer's answer to `app:quit-requested`: kill every PTY, then let the
+// window close (ADR-0005).
+app_quit_confirmed() -> ()
 // TerminalStatusDto = { id, sessionId, projectId, status, lastActivity }.
 // sessionId is never null: every PTY runs a named session (ADR-0008).
 
 // files
-read_file(path: String, max_bytes: Option<usize>) -> FileContents
+read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated flags
 // Images for the viewer (F7): base64 + a mime sniffed from the magic bytes,
 // never from the extension. Refuses a non-image or an oversized file rather
 // than truncating — half a PNG is a decode error, not a smaller PNG.
-read_image(path: String, max_bytes: Option<usize>) -> ImageContents     // size, binary + truncated flags
+read_image(path: String, max_bytes: Option<usize>) -> ImageContents
 list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped, git-ignored flagged
 // NOTE: file_diff(path, original, modified) -> DiffPayload was specced and
 // never built. Monaco's createDiffEditor (ADR-0007) diffs two strings itself,
@@ -87,13 +96,13 @@ list_dir(path: String, root: Option<String>) -> DirListing            // one lev
 git_status(project_path: String) -> GitStatus                         // whole repo, grouped, capped
 git_blob(path: String, rev: GitRev) -> Option<FileContents>           // rev = head | index
 
-// memory / plans
+// memory / plans — PLANNED. None of these are registered yet (roadmap item 2).
 read_claude_md(project_path: String) -> Option<String>
 write_claude_md(project_path: String, contents: String) -> ()
 list_plans(project_path: String) -> Vec<PlanRef>
 read_plan(path: String) -> String
 
-// settings
+// settings — PLANNED, not registered yet (roadmap item 4).
 get_setting(key: String) -> Option<JsonValue>
 set_setting(key: String, value: JsonValue) -> ()
 ```

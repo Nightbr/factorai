@@ -499,7 +499,10 @@ applies — ADR-0007).
 CLAUDE.md is editable in-app; plans are read-only (they're working
 documents Claude writes).
 
-**UI.** Side panel tab "Memory". A small file tree: `CLAUDE.md` + plans.
+**UI.** **Not a side panel tab** — Q18 settled the strip as `Files | Changes`
+and it is not a registry. `CLAUDE.md` is a file the tree opens, with editing
+switched on for that one path, which makes plans free (they are `.md` under
+`.claude/plans/`). Roadmap item 2 builds it that way.
 Edits to CLAUDE.md trigger an explicit Save action with a dirty indicator.
 
 **Backend.** `read_claude_md`, `write_claude_md`, `list_plans`, `read_plan`.
