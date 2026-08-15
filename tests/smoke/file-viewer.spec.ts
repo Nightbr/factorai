@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { type Page, expect, test } from '@playwright/test';
 import { fixtureWithFileTree, installMockBridge } from './fixtures';
 
 const ROOT = '/home/alice/code/foo';
@@ -83,13 +83,58 @@ test.describe('file viewer', () => {
 		await page.goto('/');
 		const panel = await openTree(page);
 
-		await panel.getByRole('button', { name: 'logo.png' }).click();
+		await panel.getByRole('button', { name: 'data.bin' }).click();
 
 		const viewer = page.getByTestId('file-viewer');
 		const card = viewer.getByTestId('binary-card');
 		await expect(card.getByText(/Cannot preview binary file \(20 KB\)/)).toBeVisible();
 		await expect(card.getByRole('button', { name: 'Open in default app' })).toBeVisible();
 		await expect(viewer.getByTestId('file-view-editor')).toHaveCount(0);
+	});
+
+	test('@smoke an image renders, with its type and pixel dimensions', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'logo.png' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const img = viewer.getByTestId('image-view');
+		await expect(img).toBeVisible();
+		// Actually decoded, not merely present: a broken data URL still renders
+		// an <img> element, so assert the browser got pixels out of it.
+		await expect
+			.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth))
+			.toBeGreaterThan(0);
+		await expect(viewer.getByText('image/png')).toBeVisible();
+		await expect(viewer.getByText('1 × 1')).toBeVisible();
+		// No Monaco, and none of the text footer's line count.
+		await expect(viewer.getByTestId('file-view-editor')).toHaveCount(0);
+
+		// read_file is never called for an image — it would read the bytes only
+		// to report isBinary and discard them.
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'read_image')).toBe(true);
+		expect(
+			calls.some((c) => c.name === 'read_file' && String(c.args?.path).endsWith('logo.png')),
+		).toBe(false);
+	});
+
+	test('@smoke a file that only looks like an image falls back to the card', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'broken.png' }).click();
+
+		// Routing is by extension, the verdict is the backend's — so a .png that
+		// isn't one lands here rather than drawing a broken-image icon.
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('image-view')).toHaveCount(0);
+		await expect(
+			viewer.getByTestId('binary-card').getByRole('button', { name: 'Open in default app' }),
+		).toBeVisible();
 	});
 
 	test('@smoke a truncated file offers Show anyway, which re-reads uncapped', async ({ page }) => {

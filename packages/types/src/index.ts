@@ -160,6 +160,25 @@ export interface FileContents {
 	lineCount: number;
 }
 
+/**
+ * One image, ready for an `<img src>` (F7).
+ *
+ * Separate from `FileContents` rather than a field on it: that type is shared
+ * with `git_blob` and its `contents` is text bound for Monaco. This one carries
+ * a `mime` for the opposite reason `FileContents` doesn't — a data URL needs
+ * the type, and it is read from the file's magic bytes rather than guessed
+ * from its extension.
+ */
+export interface ImageContents {
+	path: string;
+	/** Sniffed from the bytes, e.g. `image/png`. Never the extension. */
+	mime: string;
+	/** Standard base64 of the whole file. */
+	base64: string;
+	/** Size on disk, in bytes. */
+	size: number;
+}
+
 // ── IPC events (Rust → JS) ──────────────────────────────────────────────────
 
 export interface IndexerProgressEvent {

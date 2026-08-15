@@ -4,6 +4,7 @@ import type {
 	FileContents,
 	GitRev,
 	GitStatus,
+	ImageContents,
 	IndexerProgressEvent,
 	Project,
 	QuitRequestedEvent,
@@ -64,6 +65,11 @@ export const cmd = {
 	 *  default; pass null to lift the cap after warning the user. */
 	readFile: (path: string, maxBytes?: number | null) =>
 		invoke<FileContents>('read_file', { path, maxBytes }),
+	/** Read an image for the viewer (F7). Rejects a file whose magic bytes
+	 *  aren't a displayable format, which is the caller's cue to fall back to
+	 *  the binary card. */
+	readImage: (path: string, maxBytes?: number | null) =>
+		invoke<ImageContents>('read_image', { path, maxBytes }),
 
 	/** Repository state for the Changes tab and the tree's decorations (F13).
 	 *  A project outside a repository resolves with `repoRoot: null` rather
@@ -176,6 +182,9 @@ interface TestFixture {
 	dirListings?: Record<string, DirListing>;
 	/** File contents keyed by absolute path, for the F7 viewer. */
 	files?: Record<string, FileContents>;
+	/** Images keyed by absolute path, for the F7 viewer. An image-looking path
+	 *  that isn't listed here rejects, which is the binary-card fallback. */
+	images?: Record<string, ImageContents>;
 	/** Repository state keyed by project path, for the F13 Changes tab. */
 	gitStatuses?: Record<string, GitStatus>;
 	/** Blobs keyed by `<rev>:<absolute path>`, for diff fixtures. */
@@ -278,6 +287,14 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// fixture declare `truncated: true` and have "Show anyway" resolve it.
 			if (args?.maxBytes === null) return { ...file, truncated: false } as unknown as T;
 			return file as unknown as T;
+		}
+		case 'read_image': {
+			const path = String(args?.path ?? '');
+			const image = fx?.images?.[path];
+			// Undeclared means "not a displayable image", which is how a fixture
+			// reaches the fall-back-to-binary-card path without inventing bytes.
+			if (!image) throw { kind: 'InvalidInput', message: `not a displayable image: ${path}` };
+			return image as unknown as T;
 		}
 		case 'git_status': {
 			const projectPath = String(args?.projectPath ?? '');

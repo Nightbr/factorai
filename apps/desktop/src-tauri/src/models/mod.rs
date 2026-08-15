@@ -163,6 +163,28 @@ pub struct FileContents {
 	pub line_count: usize,
 }
 
+/// One image, ready for an `<img src>` (F7).
+///
+/// Separate from [`FileContents`] rather than a field on it. `FileContents` is
+/// shared with `git_blob`, and its `contents` is text the viewer puts into
+/// Monaco; base64 image bytes are neither. Keeping them apart also keeps the
+/// cost apart — nothing pays for an image encode unless it asked for an image.
+///
+/// This one *does* carry a `mime`, unlike `FileContents`, and for the opposite
+/// reason: there is no language registry to defer to, `<img>` needs the type in
+/// the data URI, and we know it exactly because we read the magic bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageContents {
+	pub path: String,
+	/// Sniffed from the file's own bytes, never from its extension.
+	pub mime: String,
+	/// Standard base64 of the whole file, for a `data:` URL.
+	pub base64: String,
+	/// True size on disk, in bytes.
+	pub size: u64,
+}
+
 /// Which side of git a blob is read from (F13). The worktree isn't here: that
 /// side is `read_file`, which already handles caps, binaries and lossy UTF-8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

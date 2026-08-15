@@ -10,8 +10,11 @@ use std::io::Read;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine;
+
 use crate::error::{AppError, AppResult};
-use crate::models::{DirEntry, DirListing, FileContents};
+use crate::models::{DirEntry, DirListing, FileContents, ImageContents};
 use crate::services::git::IgnoreChecker;
 
 /// Upper bound on entries returned for a single directory. Generated
@@ -175,6 +178,87 @@ pub fn read_file(path: &str, max_bytes: Option<usize>) -> AppResult<FileContents
 	Ok(contents_from_bytes(path, &buf, size, cap))
 }
 
+/// Images we will hand to an `<img>`, keyed by their magic bytes.
+///
+/// **Sniffed, never taken from the extension.** The viewer routes here *by*
+/// extension — that is how it avoids reading a 200MB video to discover it isn't
+/// a picture — but a `.png` that is really a PDF must not come back claiming to
+/// be one, or the renderer draws a broken-image icon and blames itself. The
+/// extension picks the door; the bytes decide what is behind it.
+const IMAGE_MAGIC: &[(&[u8], &str)] = &[
+	(b"\x89PNG\r\n\x1a\n", "image/png"),
+	(b"\xff\xd8\xff", "image/jpeg"),
+	(b"GIF87a", "image/gif"),
+	(b"GIF89a", "image/gif"),
+	(b"BM", "image/bmp"),
+	(b"\x00\x00\x01\x00", "image/x-icon"),
+];
+
+/// Cap for images, distinct from `DEFAULT_MAX_BYTES`.
+///
+/// Bigger than the text cap because a photo is legitimately larger than a
+/// source file, and still a cap because the bytes cross the IPC bridge as
+/// base64 — a third larger again — and land in a string the renderer holds
+/// whole. 16MB in is ~21MB of JSON, which is already more than a preview is
+/// worth.
+pub const DEFAULT_MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Read one image as base64, for `<img src="data:…">` (F7).
+///
+/// Refuses anything whose magic bytes aren't a format we can display, so the
+/// caller can fall back to the binary card rather than rendering a broken
+/// image. Refuses oversized files outright instead of truncating: half a PNG is
+/// not a smaller PNG, it is a decode error, and the "show anyway" affordance
+/// that makes sense for text makes none here.
+pub fn read_image(path: &str, max_bytes: Option<usize>) -> AppResult<ImageContents> {
+	let cap = max_bytes.unwrap_or(DEFAULT_MAX_IMAGE_BYTES);
+	let p = Path::new(path);
+
+	let meta = fs::metadata(p).map_err(|e| match e.kind() {
+		std::io::ErrorKind::NotFound => AppError::NotFound(format!("path {path}")),
+		std::io::ErrorKind::PermissionDenied => AppError::Io(format!("permission denied: {path}")),
+		_ => AppError::Io(format!("{path}: {e}")),
+	})?;
+	if meta.is_dir() {
+		return Err(AppError::InvalidInput(format!("is a directory: {path}")));
+	}
+	let size = meta.len();
+	if size as usize > cap {
+		return Err(AppError::InvalidInput(format!(
+			"image is {size} bytes, larger than the {cap}-byte limit"
+		)));
+	}
+
+	let bytes = fs::read(p).map_err(|e| match e.kind() {
+		std::io::ErrorKind::PermissionDenied => AppError::Io(format!("permission denied: {path}")),
+		_ => AppError::Io(format!("{path}: {e}")),
+	})?;
+
+	let mime = sniff_image_mime(&bytes)
+		.ok_or_else(|| AppError::InvalidInput(format!("not a displayable image: {path}")))?;
+
+	Ok(ImageContents {
+		path: path.to_string(),
+		mime: mime.to_string(),
+		base64: B64.encode(&bytes),
+		size,
+	})
+}
+
+/// The MIME for these bytes, or `None` if they aren't an image we display.
+///
+/// WebP earns its own arm because RIFF is a container: the first four bytes say
+/// `RIFF` for `.wav` and `.avi` too, and only bytes 8..12 say which.
+pub(crate) fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+	if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+		return Some("image/webp");
+	}
+	IMAGE_MAGIC
+		.iter()
+		.find(|(magic, _)| bytes.starts_with(magic))
+		.map(|(_, mime)| *mime)
+}
+
 /// Turn bytes into what the viewer renders.
 ///
 /// Shared with `git_blob` (F13) so a file read from the object database and the
@@ -227,6 +311,86 @@ mod tests {
 
 	fn names(listing: &DirListing) -> Vec<&str> {
 		listing.entries.iter().map(|e| e.name.as_str()).collect()
+	}
+
+	/// A one-pixel PNG, header and all — enough for the sniffer and short
+	/// enough to keep inline.
+	const TINY_PNG: &[u8] = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01";
+
+	fn write_bytes(dir: &Path, name: &str, bytes: &[u8]) -> String {
+		let p = dir.join(name);
+		fs::write(&p, bytes).unwrap();
+		p.to_string_lossy().to_string()
+	}
+
+	#[test]
+	fn reads_an_image_as_base64_with_a_sniffed_mime() {
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "pixel.png", TINY_PNG);
+
+		let img = read_image(&path, None).expect("read");
+
+		assert_eq!(img.mime, "image/png");
+		assert_eq!(img.size, TINY_PNG.len() as u64);
+		assert_eq!(B64.decode(img.base64).unwrap(), TINY_PNG);
+	}
+
+	#[test]
+	fn the_extension_does_not_decide_the_mime() {
+		// The viewer routes here because the name ends in .png. If we echoed the
+		// extension back, the renderer would get `image/png` for a PDF and draw
+		// a broken image with no way to know why.
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "liar.png", b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n");
+
+		let err = read_image(&path, None).unwrap_err();
+		assert!(
+			format!("{err}").contains("not a displayable image"),
+			"expected a refusal, got {err}"
+		);
+	}
+
+	#[test]
+	fn a_jpeg_named_png_reports_what_it_actually_is() {
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "actually.png", b"\xff\xd8\xff\xe0\x00\x10JFIF");
+		assert_eq!(read_image(&path, None).unwrap().mime, "image/jpeg");
+	}
+
+	#[test]
+	fn riff_is_a_container_so_only_webp_counts() {
+		// `RIFF` alone is also wav and avi. Only bytes 8..12 separate them, and
+		// getting this wrong would hand an `<img>` a sound file.
+		let mut wav = b"RIFF\x24\x08\x00\x00WAVEfmt ".to_vec();
+		wav.resize(32, 0);
+		assert_eq!(sniff_image_mime(&wav), None);
+
+		let mut webp = b"RIFF\x24\x08\x00\x00WEBPVP8 ".to_vec();
+		webp.resize(32, 0);
+		assert_eq!(sniff_image_mime(&webp), Some("image/webp"));
+
+		// Too short to reach byte 12 at all — must not panic on the slice.
+		assert_eq!(sniff_image_mime(b"RIFF"), None);
+	}
+
+	#[test]
+	fn an_oversized_image_is_refused_rather_than_truncated() {
+		// Half a PNG is not a smaller PNG, it's a decode error — so unlike text
+		// there is no "show anyway" path worth offering.
+		let dir = tempdir().unwrap();
+		let mut big = TINY_PNG.to_vec();
+		big.resize(4096, 0);
+		let path = write_bytes(dir.path(), "big.png", &big);
+
+		let err = read_image(&path, Some(1024)).unwrap_err();
+		assert!(format!("{err}").contains("larger than"), "got {err}");
+	}
+
+	#[test]
+	fn a_missing_image_is_not_found_rather_than_io() {
+		let dir = tempdir().unwrap();
+		let path = dir.path().join("gone.png").to_string_lossy().to_string();
+		assert!(matches!(read_image(&path, None), Err(AppError::NotFound(_))));
 	}
 
 	#[test]

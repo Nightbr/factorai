@@ -615,6 +615,7 @@ because F7 already commits to them:
 - **Per-project tab system.** `?file=` is a single path today, validated on the `__root` route
   precisely so it can grow into a list. The end state is tabs switching between the project page,
   its sessions, and open files — at which point `FileViewerModal` stops being the host.
-- **Image preview.** The viewer is text-only; images need bytes, so either a base64 mode on
-  `read_file` or the Tauri asset protocol with a path scope. Binary files currently offer
-  open-in-default-app, which is an acceptable holding position.
+- ~~**Image preview.**~~ **Shipped 2026-08-15** — `read_image` returns base64 plus a mime
+  sniffed from the magic bytes, and the viewer renders it in an `<img>`. The asset protocol lost
+  because its path scope is static and ours is "whatever project you opened". SVG is still
+  source-only, deliberately.

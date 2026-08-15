@@ -347,14 +347,38 @@ HMR reopen the file, browser-back closes it, and the tab system grows out of
 the same place — `?file=` becomes a list of open paths. See
 `hooks/useFileViewer.ts`.
 
-**Backend.** `read_file(path, max_bytes?)` — see specs/03-backend-rust.md
-§ `files`.
+**Backend.** `read_file(path, max_bytes?)` and `read_image(path, max_bytes?)`
+— see specs/03-backend-rust.md § `files`.
+
+**Images are rendered**, in an `<img>` fed a `data:` URL from `read_image`.
+Three decisions behind that:
+
+- **Base64 through a command, not the asset protocol.** The protocol wants a
+  static path scope and the paths here are "whatever project you opened".
+  `read_file` already validates this ground, so reusing the command boundary
+  costs a 33% encoding overhead and buys not having a second route into the
+  filesystem.
+- **Routed by extension, decided by magic bytes.** The viewer sends a path to
+  `read_image` when `iconKeyFor()` calls it an image — reusing the file tree's
+  own classifier so the icon and the viewer can never disagree, and avoiding
+  reading a 200MB video to discover it isn't a picture. The *verdict* is the
+  backend's, from the file's first bytes: a `.png` that is really a PDF is
+  refused and falls back to the binary card, rather than handing the renderer
+  a broken image with no explanation. (`RIFF` needs bytes 8..12 too — it is
+  also `.wav` and `.avi`.)
+- **Oversized images are refused, not truncated**, at a 16MB cap of their own
+  — larger than the text cap because a photo legitimately is, and still a cap
+  because base64 inflates it again on the way across. Half a PNG is not a
+  smaller PNG, it is a decode error, so the "Show anyway" affordance that
+  makes sense for text is deliberately absent here.
+
+`svg` is **not** in that set: it maps to its own icon key, has no magic bytes,
+and is already legible as source. Rendering it is a separate decision.
 
 **Edge cases.**
 - Binary (null byte in the first 8KB) → "Cannot preview binary file (N
-  bytes)" plus an open-in-default-app button. Images are **not** rendered
-  yet; that needs bytes rather than text (a base64 mode or the Tauri asset
-  protocol with a path scope).
+  bytes)" plus an open-in-default-app button. The same card, with the reason
+  swapped, is where a failed image read lands.
 - Over the 5MB cap → footer says `truncated` and offers "Show anyway", which
   refetches uncapped. Capped and uncapped reads are separate query keys, so
   the second read actually happens.

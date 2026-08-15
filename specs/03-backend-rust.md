@@ -72,7 +72,11 @@ terminal_list() -> Vec<TerminalStatusDto>
 // sessionId is never null: every PTY runs a named session (ADR-0008).
 
 // files
-read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated flags
+read_file(path: String, max_bytes: Option<usize>) -> FileContents
+// Images for the viewer (F7): base64 + a mime sniffed from the magic bytes,
+// never from the extension. Refuses a non-image or an oversized file rather
+// than truncating — half a PNG is a decode error, not a smaller PNG.
+read_image(path: String, max_bytes: Option<usize>) -> ImageContents     // size, binary + truncated flags
 list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped, git-ignored flagged
 // NOTE: file_diff(path, original, modified) -> DiffPayload was specced and
 // never built. Monaco's createDiffEditor (ADR-0007) diffs two strings itself,

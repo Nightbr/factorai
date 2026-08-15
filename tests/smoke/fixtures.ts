@@ -13,6 +13,7 @@ import type {
 	FileContents,
 	GitChange,
 	GitStatus,
+	ImageContents,
 	Project,
 	SearchHit,
 	SessionPage,
@@ -33,6 +34,9 @@ export interface TestFixture {
 	/** File contents keyed by absolute path (F7 viewer). An unlisted path makes
 	 *  read_file reject with NotFound, same as a deleted file. */
 	files?: Record<string, FileContents>;
+	/** Images keyed by absolute path (F7 viewer). An image-looking path that
+	 *  isn't listed rejects, which is how the binary-card fallback is reached. */
+	images?: Record<string, ImageContents>;
 	/** Repository state keyed by project path (F13 Changes tab). An unlisted
 	 *  project has no repository — the "Not a git repository" state. */
 	gitStatuses?: Record<string, GitStatus>;
@@ -118,6 +122,16 @@ function listing(entries: DirEntry[], over: Partial<DirListing> = {}): DirListin
 	return { entries, total: entries.length, truncated: false, ...over };
 }
 
+/** A real 1×1 transparent PNG — actual bytes, so the `<img>` genuinely decodes
+ *  and `naturalWidth` reports something rather than the load handler never
+ *  firing. */
+const ONE_PIXEL_PNG =
+	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+function image(path: string, over: Partial<ImageContents> = {}): ImageContents {
+	return { path, mime: 'image/png', base64: ONE_PIXEL_PNG, size: 70, ...over };
+}
+
 function contents(path: string, text: string, over: Partial<FileContents> = {}): FileContents {
 	return {
 		path,
@@ -140,6 +154,11 @@ function contents(path: string, text: string, over: Partial<FileContents> = {}):
  * Also carries `files` for the F7 viewer: a readable source file, a binary, an
  * oversized one, and `main.py`, which is deliberately **absent** from `files`
  * so read_file rejects it the way a deleted file would.
+ *
+ * And `images`: `logo.png` is a real PNG, while `broken.png` looks like one by
+ * name and is absent here — which is how the viewer's "the extension lied"
+ * fallback is reached, since routing is by extension but the verdict is the
+ * backend's.
  */
 export function fixtureWithFileTree(): TestFixture {
 	const base = fixtureOneProjectOneSession();
@@ -155,6 +174,8 @@ export function fixtureWithFileTree(): TestFixture {
 				entry(root, 'Cargo.toml'),
 				entry(root, 'README.md'),
 				entry(root, 'logo.png'),
+				entry(root, 'broken.png'),
+				entry(root, 'data.bin'),
 				entry(root, 'huge.log'),
 				entry(root, 'main.py'),
 			]),
@@ -184,7 +205,9 @@ export function fixtureWithFileTree(): TestFixture {
 				].join('\n'),
 			),
 			[`${root}/docs/guide.md`]: contents(`${root}/docs/guide.md`, '# Guide\n\nDeeper docs.\n'),
-			[`${root}/logo.png`]: contents(`${root}/logo.png`, '', {
+			// Not an image by name, so it goes through read_file and is the case
+			// the binary card was built for.
+			[`${root}/data.bin`]: contents(`${root}/data.bin`, '', {
 				isBinary: true,
 				size: 20_480,
 				lineCount: 0,
@@ -196,6 +219,9 @@ export function fixtureWithFileTree(): TestFixture {
 				truncated: true,
 			}),
 		},
+		// `broken.png` is deliberately missing: the mock rejects an unlisted
+		// image path exactly as the backend rejects wrong magic bytes.
+		images: { [`${root}/logo.png`]: image(`${root}/logo.png`) },
 	};
 }
 
