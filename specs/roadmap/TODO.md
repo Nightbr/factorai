@@ -22,10 +22,10 @@ it is ready to build. Re-order it once that interview has happened and its size 
 ## 1. Git graph — the commit tree, branches and tags
 
 **Not started, and not to be started from this entry.** The next step is a **clarify-needs
-interview**, then a spec; only then code (`CLAUDE.md` § 2a). What follows is the shape of the
-problem and the questions the interview has to settle — deliberately not answers, because the
-roadmap is sequencing and never the place a feature gets specified (see
-[`README.md`](./README.md)).
+interview**, then a spec; only then code (`CLAUDE.md` § 2a). Placement and scope are settled
+below and the rest is a list of what the interview has to answer — nothing here is a design, and
+none of it belongs in a spec until it has been through one, because the roadmap is sequencing and
+never the place a feature gets specified (see [`README.md`](./README.md)).
 
 **Why it's worth building.** GitKraken is currently open alongside factorai for exactly one
 purpose: *seeing* where the repository is — which branches exist, what's on them, how they
@@ -35,9 +35,36 @@ its weight is the half factorai doesn't have, and the half that doesn't is the h
 build. That asymmetry is what makes this a viewer rather than a git client, and it is the whole
 reason it's tractable.
 
-**Scope, as agreed.** Read-only visualization: the commit graph with its lanes, local and remote
-branch refs, tags, and where `HEAD` is. **Worktrees are a later phase** — they change what "the
-repository" means on screen and shouldn't complicate the first cut.
+**Scope, as agreed 2026-08-15.** Read-only visualization: the commit graph with its lanes, local
+and remote branch refs, tags, and where `HEAD` is. Four things are settled and no longer open:
+
+- **It lives in the right panel**, beside `Files` and `Changes`.
+- **It is bound to the project folder**, and to that alone — `Repository::discover()` from the
+  project root, exactly as F13 already does.
+- **A project with no repository shows an empty state**, not an error. `git_status` already
+  resolves `repoRoot: null` rather than rejecting, and `ChangesView` already renders
+  `Not a git repository.` from it; the graph does the same thing.
+- **No session linking in the first cut.** Relating a commit to the session that produced it is
+  the interesting question and is explicitly deferred, not dropped.
+
+**Worktrees are a later phase** — they change what "the repository" means on screen and
+shouldn't complicate the first cut.
+
+**Two spec consequences to settle before code, both cheap but neither silent.**
+
+1. **This amends Q18.** `07-open-questions.md` decided the strip ships *"exactly two tabs"* and
+   is *"not a registry or a plugin point"*, after three features contested the slot. A third tab
+   is a change to that decision and the question text has to be rewritten to say so — per
+   `CLAUDE.md` § 2a the spec gets fixed first. Note Q18's other half still holds and is worth
+   keeping: selection persists app-wide in `panelStore` and **never switches itself**, because a
+   strip that moves while you type into the terminal below is worse than no strip.
+2. **Width is the real design constraint, and Q18 set the precedent.** The panel is 200–600px
+   (`MIN_PANEL_WIDTH`/`MAX_PANEL_WIDTH`), and Q18 disqualified project-wide search from this
+   strip *specifically because* it "wants more width than 288px". A commit graph is at least as
+   width-hungry — lanes plus subject plus author plus date is a GitKraken-width layout. So the
+   first cut has to be designed for a narrow rail from the start (graph + subject, everything
+   else on selection or hover), rather than designed wide and then squeezed. This is the thing
+   most likely to make the feature land badly.
 
 **Non-goals, and they're load-bearing.** No commit, stage, rebase, merge, cherry-pick, push or
 fetch. ADR-0009 already binds every repository read to `git2` and says the app writes nothing;
@@ -56,25 +83,25 @@ both take that stance and a graph has no reason to break it.
 layout that turns a DAG into legible rails is the feature, and a bad one is worse than no graph;
 (b) **scale** — a large repo has hundreds of thousands of commits and neither the walk nor the
 renderer can be eager, so paging/virtualisation is a design input, not an optimisation to add
-later; (c) **where it lives** — the right panel's tab strip is deliberately not a registry
-(Q18), so a graph is not simply a third tab.
+later; (c) **fitting it into 200–600px**, per the width note above.
 
-**For the clarify-needs pass.** Roughly in the order they block each other:
+**For the clarify-needs pass.** What placement settled, and what it didn't. Roughly in the order
+they block each other:
 
 - What is the unit of "enough"? Which GitKraken behaviours are load-bearing for the actual daily
-  use, and which are noise that happens to be on screen?
-- Scope of the walk: all refs, or current branch and its neighbours? How far back by default?
-- Does it need remotes at all, given nothing fetches — i.e. are remote-tracking refs read from
-  what's already in `.git`, and is a stale `origin/main` useful or misleading?
-- Where does it live: a route, a panel, a modal, its own window?
-- **The factorai-specific question, and the one worth the most:** should the graph know about
-  *sessions*? It is the one thing GitKraken structurally cannot do — relate a commit to the
-  Claude session that produced it. Whether that's the point of the feature or a distraction from
-  it is a decision, not a detail.
+  use, and which are noise that happens to be on screen? This is the question the whole feature
+  hangs on, and the narrow panel forces it to be answered honestly.
+- Scope of the walk: all refs, or the current branch and its neighbours? How far back by default,
+  and what does "load more" look like in a rail?
+- Does it need remotes at all, given nothing fetches — i.e. remote-tracking refs read from what
+  is already in `.git`, and is a stale `origin/main` useful or misleading?
 - Interaction floor: what happens on click? Selecting a commit implies showing it, which implies
-  a diff surface — and one already exists (F13, ADR-0007's Monaco). Reuse or not?
-- Does anything about this change the `missing`/`realPath` assumptions for projects that aren't
-  repositories at all?
+  a diff surface — and one already exists (F13, ADR-0007's Monaco). Reuse it, or is selection
+  purely a highlight in the first cut?
+- Refresh: F13 polls while the panel is open. A graph changes far less often than a working
+  tree — does it poll at all, or refresh on tab focus and after a session exits?
+- Deferred but worth not painting into a corner: when sessions do get linked, what does the
+  graph need to have kept around for that to be additive rather than a rewrite?
 
 ## 2. M4 — CLAUDE.md & plans (F9)
 
