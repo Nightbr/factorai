@@ -133,6 +133,62 @@ fn a_path_through_a_symlink_resolves_to_the_folder_it_points_at() {
 	assert_eq!(project_count(&db), 1);
 }
 
+/// F1 + F6: a project whose folder has gone is flagged by the scan, so the UI
+/// can gray the row and disable its `+` before the click rather than letting
+/// the spawn guard explain it afterwards.
+#[test]
+fn a_scan_flags_a_project_whose_folder_has_gone() {
+	let tmp = TempDir::new().unwrap();
+	let dir = tmp.path().join("code").join("foo");
+	std::fs::create_dir_all(&dir).unwrap();
+	let real = dir.canonicalize().unwrap();
+	let claude_dir = tmp.path().join(".claude");
+	let db = open_db(tmp.path());
+	write_claude_session(&claude_dir, &real);
+
+	let missing = |db: &Db| -> i64 {
+		db.with(|conn| {
+			Ok(conn.query_row("SELECT missing FROM projects LIMIT 1", [], |r| r.get(0))?)
+		})
+		.expect("read missing")
+	};
+
+	make_indexer(db.clone(), claude_dir.clone()).full_scan().expect("scan");
+	assert_eq!(missing(&db), 0, "the folder is right there");
+
+	// Now it isn't. The transcripts under ~/.claude survive — that is exactly
+	// the case: the sessions are still browsable, only starting a new one is not.
+	std::fs::remove_dir_all(&real).unwrap();
+	make_indexer(db.clone(), claude_dir.clone()).full_scan().expect("rescan");
+	assert_eq!(missing(&db), 1);
+
+	// And it clears again rather than sticking, so restoring a folder doesn't
+	// need a wiped database to be usable.
+	std::fs::create_dir_all(&real).unwrap();
+	make_indexer(db.clone(), claude_dir).full_scan().expect("third scan");
+	assert_eq!(missing(&db), 0);
+}
+
+#[test]
+fn adding_a_folder_clears_a_stale_missing_flag() {
+	// The folder came back and the user re-added it by hand rather than waiting
+	// for a scan. `add_project` has just canonicalized it, so it knows better
+	// than the flag does.
+	let tmp = TempDir::new().unwrap();
+	let dir = tmp.path().join("code").join("foo");
+	std::fs::create_dir_all(&dir).unwrap();
+	let db = open_db(tmp.path());
+
+	let added = add_project_in(&db, dir.to_str().unwrap()).expect("add");
+	db.with_mut(|conn| {
+		conn.execute("UPDATE projects SET missing = 1 WHERE id = ?1", params![added.id])?;
+		Ok(())
+	})
+	.expect("mark missing");
+
+	assert!(!add_project_in(&db, dir.to_str().unwrap()).expect("re-add").missing);
+}
+
 #[test]
 fn rejects_what_cannot_be_a_project() {
 	let tmp = TempDir::new().unwrap();

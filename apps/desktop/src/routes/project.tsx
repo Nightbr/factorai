@@ -1,14 +1,14 @@
-import { Button } from '@factorai/ui';
-import { useQuery } from '@tanstack/react-query';
-import { createRoute, Link } from '@tanstack/react-router';
-import { ChevronRight, Plus } from 'lucide-react';
-import { useMemo } from 'react';
 import { StatusDot } from '@components/layout/StatusDot';
+import { Button } from '@factorai/ui';
 import { useStartSession } from '@hooks/useStartSession';
 import { formatRelative } from '@lib/format';
-import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
+import { cmd } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
+import { useQuery } from '@tanstack/react-query';
+import { Link, createRoute } from '@tanstack/react-router';
+import { ChevronRight, Plus } from 'lucide-react';
+import { useMemo } from 'react';
 import { rootRoute } from './__root';
 
 function ProjectView() {
@@ -25,9 +25,10 @@ function ProjectView() {
 	const startSession = useStartSession();
 
 	const project = projectsQ.data?.find((p) => p.id === id);
-	// Same rule as the sidebar's +: without a resolved cwd, claude would boot in
-	// $HOME and file the session under another project.
-	const canStart = project ? project.realPath !== null : false;
+	// Same rule as the sidebar's +: without a resolved cwd — or with one that no
+	// longer exists — claude would boot in $HOME and file the session under
+	// another project.
+	const canStart = project ? project.realPath !== null && !project.missing : false;
 
 	// Live sessions this project has that the index hasn't seen. A session gets
 	// no `sessions` row until claude writes its transcript and the watcher
@@ -58,7 +59,14 @@ function ProjectView() {
 				<div className="min-w-0 flex-1">
 					<h2 className="text-lg font-semibold">{project?.displayName ?? id}</h2>
 					{project?.realPath && (
-						<p className="font-mono text-muted-foreground text-xs">{project.realPath}</p>
+						<p
+							className={`font-mono text-xs ${
+								project.missing ? 'text-destructive' : 'text-muted-foreground'
+							}`}
+						>
+							{project.realPath}
+							{project.missing && ' — folder not found'}
+						</p>
 					)}
 				</div>
 				{/* See Sidebar for why the title sits on a wrapper rather than the

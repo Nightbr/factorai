@@ -11,6 +11,10 @@ use crate::error::{AppError, AppResult};
 const MIGRATIONS: &[(&str, &str)] = &[
 	("0001_init", include_str!("migrations/0001_init.sql")),
 	("0002_fts", include_str!("migrations/0002_fts.sql")),
+	(
+		"0003_project_missing",
+		include_str!("migrations/0003_project_missing.sql"),
+	),
 ];
 
 /// Thread-safe handle to the SQLite connection.

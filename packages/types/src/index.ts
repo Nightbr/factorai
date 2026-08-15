@@ -7,6 +7,11 @@ export interface Project {
 	lastSessionAt: number | null;
 	sessionCount: number;
 	pinned: boolean;
+	/** `realPath` is known and isn't on disk any more. Distinct from
+	 *  `realPath: null`, which means we never learned where the project is —
+	 *  unknown is not the same as gone. Set by the indexer's scan, not per
+	 *  `list_projects` call. */
+	missing: boolean;
 }
 
 export interface SessionSummary {

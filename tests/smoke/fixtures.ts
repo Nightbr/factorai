@@ -79,6 +79,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		lastSessionAt: Date.now() - 60_000,
 		sessionCount: 1,
 		pinned: false,
+		missing: false,
 	};
 	const session: SessionSummary = {
 		id: 'session-uuid-001',
@@ -233,6 +234,20 @@ export function fixtureWithFileTree(): TestFixture {
 	};
 }
 
+/**
+ * A project whose folder has been deleted since it was indexed (F1 + F6).
+ *
+ * Note `realPath` is still set — that is the whole distinction. `null` means we
+ * never learned where the project is; `missing` means we know exactly where it
+ * was and it isn't there. Only the second one can be reported usefully.
+ */
+export function fixtureMissingProject(): TestFixture {
+	const base = fixtureOneProjectOneSession();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	return { ...base, projects: [{ ...project, missing: true }] };
+}
+
 /** Same base shape plus a couple of search hits for the /search route. */
 export function fixtureWithSearchHits(): TestFixture {
 	const base = fixtureOneProjectOneSession();
@@ -321,6 +336,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		lastSessionAt: Date.now() - 1_000,
 		sessionCount: 12,
 		pinned: false,
+		missing: false,
 	};
 	const alpha: Project = {
 		id: '-home-alice-code-alpha',
@@ -329,6 +345,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		lastSessionAt: Date.now() - 90_000,
 		sessionCount: 1,
 		pinned: false,
+		missing: false,
 	};
 
 	// 12 sessions, oldest first on purpose: the sidebar has to reorder them.

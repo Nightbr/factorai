@@ -3,6 +3,16 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A project whose folder is gone says so before you click** — 2026-08-15. Closes TODO item 3.
+  `list_projects` reported the `cwd` recorded in a transcript and never stat'd it, so F1's dimmed
+  row was unimplemented and F6's `+` couldn't pre-disable. A `missing` column on `projects`, set
+  by the indexer's scan rather than per `list_projects` call — that query polls every 2s and
+  stat-ing every project on every poll would put the filesystem in a hot path to answer a question
+  that changes when someone deletes a directory. Deliberately distinct from `real_path: null`:
+  unknown and gone are different states and only one is worth reporting. It clears on a later
+  scan and on `add_project`, so a restored folder needs no wiped database. The spawn guard stays —
+  the flag is the affordance, the guard is the invariant.
+
 - **The AppImage env scrub actually applies now** — 2026-08-15. The v0.5.0 fix below computed the
   right environment and then changed nothing, because `CommandBuilder::new()` pre-seeds the child
   from `std::env::vars_os()`: `env()` overrides a key, and the variables we wanted gone were

@@ -11,6 +11,10 @@ pub struct Project {
 	pub last_session_at: Option<i64>,
 	pub session_count: i64,
 	pub pinned: bool,
+	/// `real_path` is known and isn't on disk any more. Distinct from
+	/// `real_path: None`, which means we never learned where the project is —
+	/// unknown is not the same as gone, and only one of them is worth saying.
+	pub missing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

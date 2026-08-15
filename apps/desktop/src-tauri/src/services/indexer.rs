@@ -122,14 +122,21 @@ impl Indexer {
 			.find_map(|p| first_cwd_from_session(p));
 
 		let display_name = display_name_for(&encoded, real_path.as_deref());
+		// Stat here, once per scan, rather than per `list_projects` — that query
+		// is polled every 2s and this answer changes about as often as someone
+		// deletes a directory. A path we never learned is *not* missing: unknown
+		// and gone are different states and only one of them is worth saying.
+		let missing = real_path.as_deref().is_some_and(|p| !Path::new(p).exists());
 
 		self.db.with_mut(|conn| {
 			conn.execute(
-				"INSERT INTO projects(id, real_path, display_name, session_count) VALUES(?1, ?2, ?3, 0)
+				"INSERT INTO projects(id, real_path, display_name, session_count, missing)
+				 VALUES(?1, ?2, ?3, 0, ?4)
 				 ON CONFLICT(id) DO UPDATE SET
 				   real_path = COALESCE(excluded.real_path, projects.real_path),
-				   display_name = excluded.display_name",
-				params![encoded, real_path, display_name],
+				   display_name = excluded.display_name,
+				   missing = excluded.missing",
+				params![encoded, real_path, display_name, missing as i64],
 			)?;
 			Ok(())
 		})?;

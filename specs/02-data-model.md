@@ -181,6 +181,7 @@ Tables created on first launch and migrated forward by ordered SQL files in
 | last_session_at  | INTEGER | unix ms                                            |
 | session_count    | INTEGER |                                                    |
 | pinned           | INTEGER | 0/1                                                |
+| missing          | INTEGER | 0/1 — `real_path` is known and gone from disk       |
 
 ### `sessions`
 
