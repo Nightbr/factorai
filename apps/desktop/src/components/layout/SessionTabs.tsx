@@ -1,3 +1,5 @@
+import { ProjectIcon } from '@components/layout/ProjectIcon';
+import { disposeTerminal } from '@components/terminal/Terminal';
 import type { SessionSummary } from '@factorai/types';
 import {
 	Button,
@@ -8,15 +10,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@factorai/ui';
+import { queryKeys } from '@lib/queryKeys';
+import { cmd } from '@lib/tauri';
+import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { AlertTriangle, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ProjectIcon } from '@components/layout/ProjectIcon';
-import { disposeTerminal } from '@components/terminal/Terminal';
-import { cmd } from '@lib/tauri';
-import { queryKeys } from '@lib/queryKeys';
-import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 
 /**
  * Tabs for the live sessions, in the top bar (specs/05-features.md F16).
@@ -138,6 +138,9 @@ export function SessionTabs() {
 								// drop target ever fires. This is why reordering did nothing.
 								e.dataTransfer.setData('text/plain', id);
 								e.dataTransfer.effectAllowed = 'move';
+								// Before setDragging, while the element on screen is still the
+								// tab you grabbed rather than the dimmed one.
+								setTabDragImage(e);
 								setDragging(id);
 							}}
 							onDragEnd={() => setDragging(null)}
@@ -146,18 +149,29 @@ export function SessionTabs() {
 								// the drop is refused.
 								e.preventDefault();
 								e.dataTransfer.dropEffect = 'move';
+								// Reorder as you go, so the strip shows the arrangement you
+								// would get rather than making you drop to find out.
+								if (!dragging || dragging === id) return;
+								const from = tabs.findIndex((t) => t.id === dragging);
+								if (from < 0) return;
+								const box = e.currentTarget.getBoundingClientRect();
+								const to = dropIndex(from, index, e.clientX > box.left + box.width / 2);
+								if (to !== from) reorder(dragging, to);
 							}}
 							onDrop={(e) => {
+								// Nothing left to move: dragover already put the tab where it
+								// looks like it is. Dropping just ends the gesture.
 								e.preventDefault();
-								const dragged = dragging ?? e.dataTransfer.getData('text/plain');
-								if (dragged && dragged !== id) reorder(dragged, index);
 								setDragging(null);
 							}}
 							className={`group flex h-7 max-w-44 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-xs transition-colors ${
 								isActive
 									? 'bg-secondary text-foreground'
 									: 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
-							} ${dragging === id ? 'opacity-40' : ''}`}
+								// Dimmed rather than hidden: it is the tab's own slot sliding
+								// along the strip that shows where the drop will land, so it
+								// has to stay legible while the ghost follows the cursor.
+							} ${dragging === id ? 'opacity-50' : ''}`}
 							onClick={() =>
 								void navigate({
 									to: '/projects/$projectId/sessions/$sessionId',
@@ -212,9 +226,9 @@ export function SessionTabs() {
 							Close this session?
 						</DialogTitle>
 						<DialogDescription>
-							{closing ? (titles.get(closing) ?? shortId(closing)) : ''} is running. Closing the
-							tab terminates its Claude session — the transcript is kept, but any work in
-							progress is lost. This cannot be undone.
+							{closing ? (titles.get(closing) ?? shortId(closing)) : ''} is running. Closing the tab
+							terminates its Claude session — the transcript is kept, but any work in progress is
+							lost. This cannot be undone.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -237,6 +251,54 @@ export function SessionTabs() {
 
 function shortId(sessionId: string): string {
 	return sessionId.slice(0, 8);
+}
+
+/**
+ * The image that follows the cursor during a tab drag.
+ *
+ * Left to itself the browser snapshots the source element — but it does that
+ * *after* `dragstart` returns, by which point the tab has been dimmed to mark
+ * it as in flight, so what you drag is a near-invisible sliver of the thing
+ * you grabbed. An inactive tab paints no background either, so the snapshot is
+ * bare text on nothing.
+ *
+ * A clone sidesteps both: solid, full opacity, and taken while the original is
+ * still untouched. It lives off-screen for the one frame the snapshot needs —
+ * off-screen rather than `display: none`, because an element with no layout box
+ * snapshots blank.
+ */
+function setTabDragImage(e: React.DragEvent<HTMLElement>) {
+	const box = e.currentTarget.getBoundingClientRect();
+	const ghost = e.currentTarget.cloneNode(true) as HTMLElement;
+	ghost.classList.add('bg-secondary', 'text-foreground', 'shadow-lg');
+	ghost.style.width = `${box.width}px`;
+	ghost.style.height = `${box.height}px`;
+	ghost.style.position = 'fixed';
+	ghost.style.top = '-9999px';
+	ghost.style.left = '-9999px';
+	ghost.style.pointerEvents = 'none';
+	document.body.appendChild(ghost);
+	// Grab it where the pointer actually is, so the tab doesn't jump under the
+	// cursor the moment the drag starts.
+	e.dataTransfer.setDragImage(ghost, e.clientX - box.left, e.clientY - box.top);
+	requestAnimationFrame(() => ghost.remove());
+}
+
+/**
+ * Where a tab currently at `from` belongs while the pointer is over the tab at
+ * `overIndex`. The result indexes the strip *after* the dragged tab is lifted
+ * out, which is what `reorder` takes.
+ *
+ * The midpoint is what keeps it still. Swapping the moment two tabs touch puts
+ * the other tab under the cursor, which swaps them straight back, and the pair
+ * flickers for as long as you hold the pointer there. Crossing the centre line
+ * is a commitment you have to travel back across to undo.
+ */
+export function dropIndex(from: number, overIndex: number, pastMidpoint: boolean): number {
+	// Moving right, the hovered tab slides one place left once ours is lifted
+	// out; moving left, it stays put. Hence the asymmetry.
+	if (from < overIndex) return pastMidpoint ? overIndex : overIndex - 1;
+	return pastMidpoint ? overIndex + 1 : overIndex;
 }
 
 /**
