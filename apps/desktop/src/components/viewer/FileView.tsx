@@ -56,7 +56,7 @@ export function FileView({ path, onOpenPath }: FileViewProps) {
 function TextFileView({ path, onOpenPath }: FileViewProps) {
 	// The user asked to see an oversized file anyway → read with no cap.
 	const [uncapped, setUncapped] = useState(false);
-	// Markdown opens rendered; `preview` is ignored for everything else.
+	// Markdown and SVG open rendered; `preview` is ignored for everything else.
 	const [preview, setPreview] = useState(true);
 
 	const fileQ = useQuery({
@@ -71,7 +71,13 @@ function TextFileView({ path, onOpenPath }: FileViewProps) {
 	const file = fileQ.data;
 	const language = file && !file.isBinary ? languageForFile(basename(path)) : 'plaintext';
 	const isMarkdown = language === 'markdown';
-	const showPreview = isMarkdown && preview;
+	// SVG is the one image that is also text, so it gets the same deal markdown
+	// does — rendered by default, source a click away — rather than being
+	// routed to `ImageView`, where it would arrive with no source view and no
+	// magic bytes for the backend to sniff.
+	const isSvg = iconKeyFor(basename(path)) === 'svg';
+	const previewable = isMarkdown || isSvg;
+	const showPreview = previewable && preview;
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -85,18 +91,21 @@ function TextFileView({ path, onOpenPath }: FileViewProps) {
 				{file && !file.isBinary && file.contents.length > 0 && !showPreview && (
 					<Editor contents={file.contents} language={language} />
 				)}
-				{file && !file.isBinary && file.contents.length > 0 && showPreview && (
+				{file && !file.isBinary && file.contents.length > 0 && showPreview && isMarkdown && (
 					<MarkdownView
 						source={file.contents}
 						path={path}
 						onOpenPath={onOpenPath ?? (() => undefined)}
 					/>
 				)}
+				{file && !file.isBinary && file.contents.length > 0 && showPreview && isSvg && (
+					<SvgPreview source={file.contents} name={basename(path)} />
+				)}
 			</div>
 
 			{file && !file.isBinary && (
 				<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
-					{isMarkdown && (
+					{previewable && (
 						<Button
 							variant="ghost"
 							size="sm"
@@ -135,6 +144,32 @@ function TextFileView({ path, onOpenPath }: FileViewProps) {
 					)}
 				</footer>
 			)}
+		</div>
+	);
+}
+
+/**
+ * An SVG, drawn.
+ *
+ * Through an `<img>` and a data URL rather than dropping the markup into the
+ * DOM. That is the security property, not a stylistic choice: SVG loaded as an
+ * image runs in a restricted mode with no script execution and no external
+ * references, whereas inlining the same file into the document would let a
+ * `<script>` inside it run with our origin. These files come out of whatever
+ * repository the user opened.
+ *
+ * `encodeURIComponent`, not base64: `btoa` throws on any character outside
+ * Latin-1, and an SVG with a `é` or an emoji in a label is ordinary.
+ */
+function SvgPreview({ source, name }: { source: string; name: string }) {
+	return (
+		<div className="flex h-full items-center justify-center overflow-auto bg-muted/30 p-4">
+			<img
+				src={`data:image/svg+xml,${encodeURIComponent(source)}`}
+				alt={name}
+				data-testid="svg-view"
+				className="max-h-full max-w-full object-contain"
+			/>
 		</div>
 	);
 }

@@ -174,6 +174,7 @@ export function fixtureWithFileTree(): TestFixture {
 				entry(root, 'Cargo.toml'),
 				entry(root, 'README.md'),
 				entry(root, 'logo.png'),
+				entry(root, 'mark.svg'),
 				entry(root, 'broken.png'),
 				entry(root, 'data.bin'),
 				entry(root, 'huge.log'),
@@ -205,6 +206,13 @@ export function fixtureWithFileTree(): TestFixture {
 				].join('\n'),
 			),
 			[`${root}/docs/guide.md`]: contents(`${root}/docs/guide.md`, '# Guide\n\nDeeper docs.\n'),
+			// Text, not bytes — so it reaches the viewer through read_file like any
+			// source file, and gets markdown's rendered/source treatment. The
+			// non-ASCII label is deliberate: it is what rules out `btoa`.
+			[`${root}/mark.svg`]: contents(
+				`${root}/mark.svg`,
+				'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">\n<title>café</title>\n<circle cx="10" cy="10" r="9" fill="currentColor"/>\n</svg>\n',
+			),
 			// Not an image by name, so it goes through read_file and is the case
 			// the binary card was built for.
 			[`${root}/data.bin`]: contents(`${root}/data.bin`, '', {

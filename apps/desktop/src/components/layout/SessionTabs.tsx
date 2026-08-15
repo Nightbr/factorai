@@ -178,6 +178,14 @@ export function SessionTabs() {
 									params: { projectId: live.projectId, sessionId: id },
 								})
 							}
+							// Middle-click closes, the way every tab strip does. It opens the
+							// same confirm as the × — this is a shortcut to the action, not
+							// a way around the question, and closing kills a live session.
+							onAuxClick={(e) => {
+								if (e.button !== 1) return;
+								e.preventDefault();
+								setClosing(id);
+							}}
 							onKeyDown={(e) => {
 								if (e.key === 'Enter' || e.key === ' ') {
 									e.preventDefault();

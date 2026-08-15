@@ -194,6 +194,30 @@ test.describe('file viewer', () => {
 			.toEqual(['image/png']);
 	});
 
+	test('@smoke an svg opens rendered and can be switched to source', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'mark.svg' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const svg = viewer.getByTestId('svg-view');
+		await expect(svg).toBeVisible();
+		// Decoded, not just present — and via a data URL, which is what keeps a
+		// <script> inside someone's svg from running with our origin.
+		await expect
+			.poll(() => svg.evaluate((el: HTMLImageElement) => el.naturalWidth))
+			.toBeGreaterThan(0);
+		await expect(svg).toHaveAttribute('src', /^data:image\/svg\+xml,/);
+		await expect(viewer.getByTestId('file-view-editor')).toHaveCount(0);
+
+		// Same toggle markdown gets, because it's the same question.
+		await viewer.getByRole('button', { name: 'View source' }).click();
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+		await expect(viewer.getByTestId('svg-view')).toHaveCount(0);
+	});
+
 	test('@smoke a file that only looks like an image falls back to the card', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
