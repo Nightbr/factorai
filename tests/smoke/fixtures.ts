@@ -80,6 +80,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		sessionCount: 1,
 		pinned: false,
 		missing: false,
+		hidden: false,
 	};
 	const session: SessionSummary = {
 		id: 'session-uuid-001',
@@ -337,6 +338,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		sessionCount: 12,
 		pinned: false,
 		missing: false,
+		hidden: false,
 	};
 	const alpha: Project = {
 		id: '-home-alice-code-alpha',
@@ -346,6 +348,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		sessionCount: 1,
 		pinned: false,
 		missing: false,
+		hidden: false,
 	};
 
 	// 12 sessions, oldest first on purpose: the sidebar has to reorder them.

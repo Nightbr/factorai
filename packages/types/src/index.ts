@@ -12,6 +12,11 @@ export interface Project {
 	 *  unknown is not the same as gone. Set by the indexer's scan, not per
 	 *  `list_projects` call. */
 	missing: boolean;
+	/** The user asked not to see this project in the sidebar. `list_projects`
+	 *  still returns it — the project route, tabs and search resolve from that
+	 *  list — and the sidebar filters its own view. Cleared by re-adding the
+	 *  folder, which is the un-hide gesture. */
+	hidden: boolean;
 }
 
 export interface SessionSummary {

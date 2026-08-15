@@ -50,6 +50,9 @@ export const cmd = {
 	 *  known folder returns the existing row rather than making a second one. */
 	addProject: (path: string) => invoke<Project>('add_project', { path }),
 	pinProject: (id: string, pinned: boolean) => invoke<void>('pin_project', { id, pinned }),
+	/** Hide (or show) a project in the sidebar. The inverse gesture is
+	 *  `addProject` — re-adding the folder clears the flag. */
+	hideProject: (id: string, hidden: boolean) => invoke<void>('hide_project', { id, hidden }),
 	listSessions: (projectId: string) => invoke<SessionSummary[]>('list_sessions', { projectId }),
 	getSession: (sessionId: string, offset?: number, limit?: number) =>
 		invoke<SessionPage>('get_session', { sessionId, offset, limit }),
@@ -279,13 +282,17 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				pinned: false,
 				// The picker only returns a folder that exists.
 				missing: false,
+				hidden: false,
 			};
 			// Write it back into the fixture so the next `list_projects` returns it,
-			// as the real command's row would. Idempotent for the same reason the
-			// real one is.
+			// as the real command's row would. The conflict path mirrors the real
+			// command's ON CONFLICT too: an existing row keeps its identity but
+			// has `realPath`/`missing`/`hidden` refreshed — a re-add is the
+			// un-hide gesture, not a no-op.
 			if (fx) {
 				const existing = fx.projects ?? [];
-				fx.projects = existing.some((p) => p.id === project.id) ? existing : [...existing, project];
+				const prior = existing.find((p) => p.id === project.id);
+				fx.projects = prior ? existing.map((p) => (p.id === project.id ? { ...p, ...project } : p)) : [...existing, project];
 			}
 			return project as unknown as T;
 		}
@@ -364,6 +371,15 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			const pinned = args?.pinned === true;
 			const project = fx?.projects?.find((p) => p.id === id);
 			if (project) project.pinned = pinned;
+			return undefined as unknown as T;
+		}
+		case 'hide_project': {
+			// Same fixture mutation as pin: the sidebar's optimistic write hides
+			// the row at once, and the next poll reads it back from here.
+			const id = String(args?.id ?? '');
+			const hidden = args?.hidden === true;
+			const project = fx?.projects?.find((p) => p.id === id);
+			if (project) project.hidden = hidden;
 			return undefined as unknown as T;
 		}
 		case 'check_claude_cli':
