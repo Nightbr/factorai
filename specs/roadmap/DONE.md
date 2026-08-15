@@ -3,9 +3,9 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
-- **A session no longer inherits the AppImage's private environment** — 2026-08-15.
-  `spawn_with_argv` copied `std::env::vars_os()` wholesale into every PTY, so a release build
-  handed `linuxdeploy`'s runtime to every Claude session and everything it ran: `PYTHONHOME`
+- **A session no longer inherits the AppImage's private environment** — 2026-08-15, shipped in
+  v0.5.0. `spawn_with_argv` copied `std::env::vars_os()` wholesale into every PTY, so a release
+  build handed `linuxdeploy`'s runtime to every Claude session and everything it ran: `PYTHONHOME`
   pointing into the squashfs mount killed any `python3` with `No module named 'encodings'`, and
   `LD_LIBRARY_PATH` made other GTK binaries load *our* WebKitGTK. `services/child_env` strips
   it — drop path-list entries under `$APPDIR`, unset what that empties, pass anything with no
@@ -15,11 +15,11 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   `XDG_DATA_DIRS` restored to the user's own values (which is separately the `xdg-open`
   default-browser fix).
 
-- **Add a project by picking its folder** — 2026-08-15. `add_project(path)` plus a `FolderPlus`
-  in the sidebar header. Until now a project could only arrive by the indexer finding it under
-  `~/.claude/projects/`, so the folder you had never run Claude in — the one you most want to
-  start in — was unreachable from the app. Picking one adds the row and opens it; the existing
-  `+` starts the first session.
+- **Add a project by picking its folder** — 2026-08-15, shipped in v0.5.0. `add_project(path)`
+  plus a `FolderPlus` in the sidebar header. Until now a project could only arrive by the indexer
+  finding it under `~/.claude/projects/`, so the folder you had never run Claude in — the one you
+  most want to start in — was unreachable from the app. Picking one adds the row and opens it;
+  the existing `+` starts the first session.
 
   The row is keyed by **Claude Code's own directory encoding of the path**, which is the whole
   design: when a session eventually runs there, the indexer's upsert lands on this row instead of
@@ -27,19 +27,20 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   would encode to an id the indexer never produces), re-adding is a no-op that keeps the pin, and
   an integration test runs a real scan over a synthetic `~/.claude` to prove the two meet.
 
-- **A dragged tab travels to where it will land** — 2026-08-15. Reordering happened on drop, so
-  the gesture was blind. The strip now reorders on `dragover`. Two things had to be right: the
-  ghost was a near-invisible sliver, because the browser snapshots the source *after* `dragstart`
-  returns and so caught the dimming meant to mark the tab as in flight (fixed with a solid clone
+- **A dragged tab travels to where it will land** — 2026-08-15, shipped in v0.5.0. Reordering
+  happened on drop, so the gesture was blind. The strip now reorders on `dragover`. Two things had
+  to be right: the ghost was a near-invisible sliver, because the browser snapshots the source
+  *after* `dragstart` returns and so caught the dimming meant to mark the tab as in flight
+  (fixed with a solid clone
   passed to `setDragImage`, parked off-screen — not `display: none`, which snapshots blank); and
   the swap has to wait for the midpoint, or the tab you swapped with lands under the cursor and
   the pair flickers forever. `dropIndex` is that arithmetic, unit-tested in both directions.
 
-- **A dev build says so** — 2026-08-15. A violet `DEV` pill next to the wordmark
-  (`import.meta.env.DEV`, so a `vite:build` bundle never has it) and `factorai DEV` as the window
-  title (`#[cfg(debug_assertions)]` in `setup()`). Both because the release factorai runs beside the
-  dev one all day with live Claude sessions in it, and the two were indistinguishable in the window
-  switcher.
+- **A dev build says so** — 2026-08-15, shipped in v0.5.0. A violet `DEV` pill next to the
+  wordmark (`import.meta.env.DEV`, so a `vite:build` bundle never has it) and `factorai DEV` as
+  the window title (`#[cfg(debug_assertions)]` in `setup()`). Both because the release factorai
+  runs beside the dev one all day with live Claude sessions in it, and the two were
+  indistinguishable in the window switcher.
 
   **The real hazard was `scripts/qa/kill.sh`.** It swept `pgrep -x factorai` and every
   `claude --resume` by name — and the release build shares that process name, its PTYs that argv.
