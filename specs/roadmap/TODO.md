@@ -181,6 +181,10 @@ unused.
       setting for MVP; don't quietly add it, supersede Q3 if you want it.
 - [ ] Theme + font size reach xterm through the palette→theme mapper (Q8: two themes, no picker).
 
+**Two items now wait on this one**, which is an argument for pulling it forward: item 20's
+keep-awake toggle needs both the route and a Rust-readable setting, and the preferences other
+items keep wanting have still got nowhere to live.
+
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 
 `05-features.md` § "Keyboard shortcuts" lists six bindings; **none are wired**. The table is not
@@ -555,7 +559,50 @@ developer tool into a local RCE, so it is the first thing to design and the firs
   at once; a server that can't attribute a request to a session can't put the diff in the right
   tab.
 
-## 20. Post-MVP / deferred
+## 20. Keep the machine awake while a session is working (macOS + Linux)
+
+An agent working for twenty minutes shouldn't be suspended halfway through because nobody
+touched the keyboard. Hold a sleep inhibitor while work is in flight, release it when there
+isn't any, and let the user turn the whole thing off.
+
+**The settings half already exists as item 4 — don't build a second one.** F11 names four
+sections (Appearance, Editor, Claude, Advanced) and item 4 brings the `/settings` route,
+`prefsStore` on `tauri-plugin-store`, and `get_setting`/`set_setting` for values Rust reads back.
+This toggle is one preference in that surface and one of those reads. **That makes item 4 a
+prerequisite**, and it is a second item now pulling on it — worth weighing when ordering.
+
+**"Active" is the design decision, and `live_count()` is the wrong answer.** It counts terminals,
+not work: a session sitting at a prompt would pin the machine awake forever, which is a worse bug
+than the one being fixed. The status heuristic already distinguishes
+`running | idle | waiting_input | stopped` on its 200ms tick, so the signal is there. `running`
+clearly holds the inhibitor and `idle`/`stopped` clearly don't. **`waiting_input` is the real
+question**: the agent is blocked on a human who is, by hypothesis, not at the machine. Letting it
+sleep is defensible (nothing is progressing); holding it awake is too (you want to come back to a
+live session, not a resumed one). Decide it deliberately — it is the case that will actually
+happen overnight.
+
+**Releasing it is the dangerous half, and this repo already has the pattern.** A leaked inhibitor
+is invisible: no window, no indicator, a laptop that quietly never sleeps and is flat by morning.
+That is ADR-0005's orphan-PTY problem wearing a different hat, and it wants the same answer —
+release on the *last* qualifying session ending, plus an explicit release on quit, plus `Drop` as
+the backstop. Not just "release on quit": a session finishing at 02:00 must not hold the machine
+until you close the app the next day.
+
+**Mechanisms, and the platform risk is Linux.** macOS is settled — IOKit
+`IOPMAssertionCreateWithName`, and the distinction that matters is
+`PreventUserIdleSystemSleep` (what we want) versus keeping the *display* lit (what we don't;
+burning a backlight for a headless agent is not the feature). Linux has no single answer:
+systemd-logind's `Inhibit` over D-Bus covers most desktops, with `org.freedesktop.portal.Inhibit`
+and the older ScreenSaver interface as the Wayland/portal variants. Worth pricing a crate that
+already spans both against hand-rolling; either way a new dependency here is load-bearing and
+takes an ADR (`CLAUDE.md` § 5).
+
+**A toggle that lies is worse than no toggle.** If inhibition can't be established — no logind,
+an unusual compositor, a denied portal — the app has to say so rather than show an enabled switch
+that does nothing. Whatever the settings row is, it needs a state for "on, but not currently in
+effect", which also means the command returns whether the assertion actually took.
+
+## 21. Post-MVP / deferred
 
 Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
 list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,
