@@ -87,7 +87,7 @@ These are the "trickiest" pieces from switchboard. Each gets a stub in
 
 | Dropped                          | Why                                                          |
 | -------------------------------- | ------------------------------------------------------------ |
-| MCP / IDE emulator               | Implementing a WebSocket-based MCP server that impersonates an editor for Claude CLI is a project on its own. Defer until v2. |
+| MCP / IDE emulator               | Implementing a WebSocket-based MCP server that impersonates an editor for Claude CLI is a project on its own. Dropped from the MVP, but **no longer deferred** — it graduated into `roadmap/TODO.md` item 19 on 2026-08-15, because the operating model above makes it the *push* half of review. |
 | Scheduler (`schedule-runner`)    | Cron-style session runs add a lot of surface; not core to the browse/manage loop. |
 | Grid overview (live multi-PTY)   | Single-session focus is enough for v1. Multi-PTY rendering is expensive in the webview. |
 | Activity heatmap                 | Nice-to-have. Easy to add later from the cached session index. |

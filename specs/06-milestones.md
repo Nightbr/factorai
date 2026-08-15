@@ -156,10 +156,13 @@ toolchain wired up.
 
 ## Deferred (post-MVP, in priority order)
 
-1. **MCP/IDE emulator.** Re-implement switchboard's WebSocket MCP server
-   so Claude routes file opens and diff approvals through factorai instead
-   of an external editor. Includes the "accept / reject hunk" UI we
-   skipped.
+1. ~~**MCP/IDE emulator.**~~ **Graduated 2026-08-15** into `roadmap/TODO.md`
+   item 19 — re-implement switchboard's WebSocket MCP server so Claude routes
+   file opens and diff approvals through factorai instead of an external
+   editor, including the "accept / reject hunk" UI we skipped. It moved
+   because the ADE operating model (`00-overview.md`) makes it the *push* half
+   of review — the agent asks and the human decides in place — rather than a
+   post-MVP nicety.
 2. **Scheduler.** A small cron-like runner that can launch a session with
    a prompt at a given time / interval.
 3. **Grid overview.** Multi-session live xterm rendering with focused-on-
