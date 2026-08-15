@@ -7,7 +7,7 @@ lib.rs                # tauri::Builder, plugins, command registry, state init
 main.rs               # calls lib::run()
 commands/
   mod.rs
-  projects.rs         # list_projects, add_project, resolve_project_path, pin_project
+  projects.rs         # list_projects, add_project, resolve_project_path, pin_project, hide_project
   sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, list_dir
@@ -31,6 +31,7 @@ db/
     0001_init.sql
     0002_fts.sql
     0003_project_missing.sql
+    0004_project_hidden.sql
 models/
   mod.rs
   project.rs
@@ -53,6 +54,11 @@ list_projects() -> Vec<Project>
 add_project(path: String) -> Project
 resolve_project_path(id: String) -> Option<String>
 pin_project(id: String, pinned: bool) -> ()
+// Hides a project from the sidebar. list_projects still returns hidden rows —
+// the sidebar filters its own view, so the project route, tabs and search keep
+// resolving a hidden project. The inverse is add_project: re-adding the folder
+// clears the flag, which is why there is no unhide command.
+hide_project(id: String, hidden: bool) -> ()
 
 // sessions
 list_sessions(project_id: String) -> Vec<SessionSummary>

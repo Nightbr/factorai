@@ -15,6 +15,12 @@ pub struct Project {
 	/// `real_path: None`, which means we never learned where the project is —
 	/// unknown is not the same as gone, and only one of them is worth saying.
 	pub missing: bool,
+	/// The user asked not to see this project in the sidebar. Still returned
+	/// by `list_projects` — the project route, session tabs and search resolve
+	/// from that list, and hiding the project you are looking at must not yank
+	/// the page. Cleared by `add_project`: re-adding a folder is the explicit
+	/// "show me this again".
+	pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

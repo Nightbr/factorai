@@ -1,0 +1,12 @@
+-- The user asked not to see this project in the sidebar (F1).
+--
+-- A user choice, not an observed fact: set only by `hide_project`, cleared by
+-- `add_project` (re-adding a folder is the explicit "show me this again"),
+-- and deliberately never touched by the indexer — like `pinned`, a rescan
+-- must not undo it.
+--
+-- Hidden rows are still returned by `list_projects`. The sidebar filters
+-- client-side, so the project route, session tabs and search keep resolving
+-- a hidden project — hiding the one you are looking at must not yank the
+-- page. Filtering here instead would break that.
+ALTER TABLE projects ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1));

@@ -277,6 +277,38 @@ fn a_pinned_project_stays_pinned_across_a_rescan() {
 	.expect("read back");
 }
 
+/// Hiding, like pinning, is stored on the row and must survive a rescan. The
+/// user hid the project; a background scan noticing its files still exist is
+/// not a reason to overrule that (specs/05-features.md F1).
+#[test]
+fn a_hidden_project_stays_hidden_across_a_rescan() {
+	let tmp = TempDir::new().unwrap();
+	let (claude_dir, encoded, _session_id) =
+		fixture_one_session(tmp.path(), "/Users/alice/code/foo");
+	let db = open_db(tmp.path());
+	let (indexer, _changes) = make_indexer(db.clone(), claude_dir.clone());
+	indexer.full_scan().expect("first scan");
+
+	db.with(|conn| {
+		conn.execute("UPDATE projects SET hidden = 1 WHERE id = ?1", params![&encoded])?;
+		Ok(())
+	})
+	.expect("hide");
+
+	indexer.full_scan().expect("second scan");
+
+	db.with(|conn| {
+		let hidden: i64 = conn
+			.query_row("SELECT hidden FROM projects WHERE id = ?1", params![&encoded], |row| {
+				row.get(0)
+			})
+			.expect("project row");
+		assert_eq!(hidden, 1, "re-scanning must not clear a hidden flag");
+		Ok(())
+	})
+	.expect("read back");
+}
+
 /// `list_projects` orders pinned first, and only then by recency — the sidebar
 /// leans on this for its pinned block.
 #[test]
