@@ -105,6 +105,24 @@ test.describe('session tabs', () => {
 		expect(calls.some((c) => c.name === 'terminal_kill')).toBe(false);
 	});
 
+	test('@smoke middle-clicking a tab asks before closing it', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand zulu' }).click();
+		await openSession(page, /Zulu task 11/);
+
+		await page.getByRole('tab', { name: /Zulu task 11/ }).click({ button: 'middle' });
+
+		// The shortcut reaches the same guard as the × — closing kills a live
+		// Claude session, and a stray middle-click must not be able to do that.
+		await expect(page.getByText('Close this session?')).toBeVisible();
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'terminal_kill')).toBe(false);
+
+		await page.getByRole('button', { name: /Close & kill session/ }).click();
+		await expect(page.getByTestId('session-tabs')).toHaveCount(0);
+	});
+
 	test('@smoke tabs can be dragged into a different order', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
