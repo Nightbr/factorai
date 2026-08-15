@@ -1,8 +1,8 @@
-import type { Project, SessionSummary } from '@factorai/types';
-import { describe, expect, it } from 'vitest';
-import { orderSessions, SIDEBAR_SESSION_LIMIT } from '@components/layout/SidebarProject';
 import { sortProjects } from '@components/layout/Sidebar';
+import { SIDEBAR_SESSION_LIMIT, orderSessions } from '@components/layout/SidebarProject';
+import type { Project, SessionSummary } from '@factorai/types';
 import type { LiveTerminal } from '@store/terminalStore';
+import { describe, expect, it } from 'vitest';
 
 function session(id: string, updatedAt: number): SessionSummary {
 	return {
@@ -28,6 +28,7 @@ function project(id: string, displayName: string): Project {
 		realPath: `/code/${displayName}`,
 		displayName,
 		lastSessionAt: 0,
+		missing: false,
 		sessionCount: 1,
 		pinned: false,
 	};

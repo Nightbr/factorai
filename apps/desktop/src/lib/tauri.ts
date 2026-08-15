@@ -277,6 +277,8 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				lastSessionAt: null,
 				sessionCount: 0,
 				pinned: false,
+				// The picker only returns a folder that exists.
+				missing: false,
 			};
 			// Write it back into the fixture so the next `list_projects` returns it,
 			// as the real command's row would. Idempotent for the same reason the

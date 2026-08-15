@@ -143,27 +143,11 @@ Changes`, hardcoded, not a registry. So Memory takes the cheaper route it should
 also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
 it still describes the tab.
 
-## 3. `missing` flag on `Project` (F1 + F6)
+## 3. Shipped — see [`DONE.md`](./DONE.md) (2026-08-15)
 
-Two features are each waiting on the same one-field change, and one of them is papering over it
-with a backend guard.
-
-`list_projects` reports the `cwd` recorded in the transcript and never stats it. So: F1's
-"grayed-out (missing) row" is unimplemented, and F6's new-session buttons can't pre-disable for a
-path that resolved once and has since been deleted. Today that case is caught in
-`spawn_with_argv`, which refuses the spawn and prints the error in the terminal pane — correct,
-but the user only learns after clicking.
-
-- [ ] Add `missing: bool` to `Project` in `packages/types` + the Rust struct (hand-mirrored, per
-      `CLAUDE.md` § 4), set by stat-ing `real_path` during the indexer scan — not per
-      `list_projects` call.
-- [ ] Sidebar renders the missing row grayed with the decoded path (F1).
-- [ ] Both `+` entry points disable on `missing`, same tooltip treatment as the null-`realPath`
-      case (F6).
-
-Keep the backend guard regardless. `portable_pty`'s `CommandBuilder::cwd` does not fail on a
-missing directory — it silently starts the child in `$HOME`, which files the session under the
-wrong project. The UI flag is the affordance; the guard is the invariant.
+The `missing` flag on `Project` landed with F1's dimmed row and F6's disabled `+`. Slot kept
+rather than renumbered, so items 4–21 and the cross-references pointing at them stay put; the
+next item added takes it.
 
 ## 4. M5 — Settings route (F11) and a real `prefsStore`
 

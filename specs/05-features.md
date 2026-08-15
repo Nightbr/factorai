@@ -87,8 +87,31 @@ the button that caused it, and clears the next time that button is pressed.
 the indexer keeps it up to date.
 
 **Edge cases.**
-- Encoded names that resolve to a path that no longer exists → show the
-  decoded name as "(missing) /Users/.../foo" and gray out the row.
+- **A project whose folder is gone** → the row dims to half opacity, gains a
+  quiet `missing` label, and carries the full path in its tooltip (the next
+  question is always "moved from where?", which a display name can't answer).
+  Both `+` entry points disable, and the project page's `New session` disables
+  with the path shown in `destructive` under the title.
+
+  It is a `missing` column on `projects`, **set by the indexer's scan** — not
+  computed per `list_projects` call, which is polled every 2s and would put a
+  stat on every project in a hot path to answer a question that changes when
+  someone deletes a directory. It is deliberately **distinct from
+  `real_path: null`**: unknown and gone are different states, and only the
+  second one can be reported usefully. The flag clears on a later scan, so a
+  restored folder needs no wiped database, and `add_project` clears it too —
+  that command has just canonicalized the directory, so it knows better than a
+  stale flag does.
+
+  Dimmed rather than struck through or badged in red: the row is still worth
+  opening, since every transcript under `~/.claude/` is still there. Only
+  *starting* is impossible. And the `+` is **disabled rather than removed** —
+  a control that vanishes leaves nowhere to hang the explanation.
+
+  The backend guard stays regardless: `portable_pty`'s `CommandBuilder::cwd`
+  does not fail on a missing directory, it silently starts the child in
+  `$HOME`, which files the session under the wrong project. The flag is the
+  affordance; the guard is the invariant.
 - New project folders appearing → watcher triggers a project refresh.
 - `~/.claude/projects/` doesn't exist → empty state with a one-line
   explainer and a link to install Claude Code. The empty state also points

@@ -1,16 +1,16 @@
+import { ProjectIcon } from '@components/layout/ProjectIcon';
+import { StatusDot } from '@components/layout/StatusDot';
 import type { Project, SessionSummary } from '@factorai/types';
 import { IconButton } from '@factorai/ui';
+import { useStartSession } from '@hooks/useStartSession';
+import { queryKeys } from '@lib/queryKeys';
+import { cmd } from '@lib/tauri';
+import { useSidebarStore } from '@store/sidebarStore';
+import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, Pin, PinOff, Plus } from 'lucide-react';
 import { useMemo } from 'react';
-import { ProjectIcon } from '@components/layout/ProjectIcon';
-import { StatusDot } from '@components/layout/StatusDot';
-import { useStartSession } from '@hooks/useStartSession';
-import { cmd } from '@lib/tauri';
-import { queryKeys } from '@lib/queryKeys';
-import { useSidebarStore } from '@store/sidebarStore';
-import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 
 /** How many sessions an expanded project shows. Enough to cover "the one I was
  *  just in", short enough that expanding two projects doesn't bury the list. */
@@ -51,8 +51,11 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 
 	// No resolved cwd means we never found a `cwd` in this project's sessions, so
 	// there is nowhere to start one: claude would boot in $HOME and file the new
-	// session under a *different* project than the row that was clicked.
-	const canStart = project.realPath !== null;
+	// session under a *different* project than the row that was clicked. A
+	// `missing` folder fails the same way for a different reason — the path is
+	// known and gone — so it takes the same gate, and now says so before the
+	// click rather than after it.
+	const canStart = project.realPath !== null && !project.missing;
 	// Pinned and selected projects keep their controls on show: both are rows you
 	// act on repeatedly, so the affordance shouldn't need hunting for. Everything
 	// else stays quiet until hovered.
@@ -70,7 +73,9 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 				}`}
 			>
 				<IconButton
-					aria-label={expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`}
+					aria-label={
+						expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`
+					}
 					aria-expanded={expanded}
 					className="my-1 mr-1 ml-1"
 					onClick={() => toggleProject(project.id)}
@@ -81,9 +86,17 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 				<Link
 					to="/projects/$id"
 					params={{ id: project.id }}
+					data-missing={project.missing || undefined}
+					// Dimmed rather than struck through or badged: the row is still
+					// worth opening — its transcripts are all still there — it just
+					// can't start anything. Half-opacity says "less" without saying
+					// "broken".
 					className={`flex min-w-0 flex-1 items-center gap-2 py-2 text-sm ${
 						isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
-					}`}
+					} ${project.missing ? 'opacity-50' : ''}`}
+					// The decoded path, because when a folder has moved the question
+					// is always "moved from where?" and the name alone can't answer it.
+					title={project.missing ? `Folder not found: ${project.realPath}` : undefined}
 				>
 					<ProjectIcon
 						name={project.displayName}
@@ -92,6 +105,9 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 						status={isLive ? 'running' : undefined}
 					/>
 					<span className="min-w-0 flex-1 truncate">{project.displayName}</span>
+					{project.missing && (
+						<span className="shrink-0 text-muted-foreground/70 text-xs">missing</span>
+					)}
 				</Link>
 
 				<IconButton
@@ -100,7 +116,9 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					className={`group/pin transition-all focus-visible:opacity-100 ${
 						alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
 					}`}
-					aria-label={project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`}
+					aria-label={
+						project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`
+					}
 					title={project.pinned ? 'Unpin' : 'Pin to top'}
 					onClick={() => togglePin()}
 				>
@@ -234,7 +252,9 @@ function SessionList({ project }: { project: Project }) {
 
 function Row({ children, muted }: { children: string; muted?: boolean }) {
 	return (
-		<p className={`py-1.5 pl-8 text-xs ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
+		<p
+			className={`py-1.5 pl-8 text-xs ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
+		>
 			{children}
 		</p>
 	);
