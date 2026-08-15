@@ -167,6 +167,20 @@ can't touch a `GTK_THEME=Adwaita:dark` or an `LS_COLORS`. `APPDIR` / `APPIMAGE`
 / `ARGV0` / `OWD` go too — leaving one behind while the paths it names are gone
 is worse than either.
 
+**It is expressed as a diff, and that is load-bearing.**
+`CommandBuilder::new()` seeds itself from `std::env::vars_os()`, so the child
+already holds everything we have and `env()` only ever *overrides* a key.
+Handing it a freshly-computed clean environment therefore changes nothing about
+the variables that matter, because the ones to drop are exactly the ones such a
+list omits — and an omitted key keeps its inherited value. `EnvChanges` splits
+`remove` from `set` and `apply_to` issues `env_remove` for the former; removals
+have to be spoken aloud.
+
+v0.5.0 shipped that bug: the rule was right, unit-tested nine ways, and applied
+nothing. The regression test drives a real `CommandBuilder` and asserts
+`get_env("APPDIR")` is `None` — reintroduce the fault and it is the only test
+that fails, which is precisely why the others weren't enough.
+
 Outside an AppImage (dev build, `.deb`, `.app`) `APPDIR` is unset and this is a
 no-op. Note this is a *second*, independent source of the `XDG_DATA_DIRS`
 breakage described in `AGENTS.md § Tauri gotchas` — that one is Turborepo

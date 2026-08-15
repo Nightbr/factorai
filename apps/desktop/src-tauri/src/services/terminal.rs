@@ -260,13 +260,13 @@ impl TerminalManager {
 			)));
 		}
 		cmd.cwd(&cwd_path);
-		// Inherit the parent env so PATH / TERM / HOME etc. are present — minus
+		// `CommandBuilder::new` already seeded the child with our environment, so
+		// PATH / HOME / SSH_AUTH_SOCK are present. What is left is to take back
 		// whatever the AppImage runtime pushed in front of it, which belongs to
-		// this process and not to a shell in the user's project. See
-		// `services::child_env`; outside an AppImage it changes nothing.
-		for (k, v) in crate::services::child_env::child_env() {
-			cmd.env(k, v);
-		}
+		// this process and not to a shell in the user's project — as removals,
+		// because an omitted key keeps its inherited value. See
+		// `services::child_env`; outside an AppImage this is empty.
+		crate::services::child_env::changes_for_current_env().apply_to(&mut cmd);
 		// xterm.js renders best as xterm-256color.
 		cmd.env("TERM", "xterm-256color");
 
