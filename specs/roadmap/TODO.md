@@ -61,10 +61,24 @@ shouldn't complicate the first cut.
 2. **Width is the real design constraint, and Q18 set the precedent.** The panel is 200–600px
    (`MIN_PANEL_WIDTH`/`MAX_PANEL_WIDTH`), and Q18 disqualified project-wide search from this
    strip *specifically because* it "wants more width than 288px". A commit graph is at least as
-   width-hungry — lanes plus subject plus author plus date is a GitKraken-width layout. So the
-   first cut has to be designed for a narrow rail from the start (graph + subject, everything
-   else on selection or hover), rather than designed wide and then squeezed. This is the thing
-   most likely to make the feature land badly.
+   width-hungry. So the first cut has to be designed for a narrow rail from the start (graph +
+   subject, everything else on selection or hover), rather than designed wide and then squeezed.
+   This is the thing most likely to make the feature land badly.
+
+**The reference is GitLens / VS Code's Git Graph, not GitKraken** (agreed 2026-08-15) — a
+denser, more restrained take on the same picture. It also sharpens the width question rather
+than answering it, and that tension is the first thing the interview should resolve: in those
+tools the lane graph gets a **wide** surface — an editor tab, or an area spanning the window —
+while what lives in a narrow sidebar is a **tree** of branches, tags and commits, with at most a
+hint of a rail. Our right panel is 200–600px, narrower than either. So one of two things is
+true, and they build differently:
+
+- the picture wanted is the **rail** — lanes and subjects in a column, GitLens's sidebar
+  density — which fits the panel as decided and is the smaller build; or
+- the picture wanted is the **graph** as Git Graph draws it, which wants a wide surface and
+  therefore a home other than the right panel, whatever that turns out to be.
+
+Nothing else in the item depends on which; everything about the layout does.
 
 **Non-goals, and they're load-bearing.** No commit, stage, rebase, merge, cherry-pick, push or
 fetch. ADR-0009 already binds every repository read to `git2` and says the app writes nothing;
@@ -88,9 +102,10 @@ later; (c) **fitting it into 200–600px**, per the width note above.
 **For the clarify-needs pass.** What placement settled, and what it didn't. Roughly in the order
 they block each other:
 
-- What is the unit of "enough"? Which GitKraken behaviours are load-bearing for the actual daily
-  use, and which are noise that happens to be on screen? This is the question the whole feature
-  hangs on, and the narrow panel forces it to be answered honestly.
+- **Rail or wide graph?** The fork above. It decides the layout, and layout decides the rest.
+- What is the unit of "enough"? Which behaviours from those tools are load-bearing for the actual
+  daily use, and which are noise that happens to be on screen? This is the question the whole
+  feature hangs on, and a narrow panel forces it to be answered honestly.
 - Scope of the walk: all refs, or the current branch and its neighbours? How far back by default,
   and what does "load more" look like in a rail?
 - Does it need remotes at all, given nothing fetches — i.e. remote-tracking refs read from what
