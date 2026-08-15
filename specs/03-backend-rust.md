@@ -7,7 +7,7 @@ lib.rs                # tauri::Builder, plugins, command registry, state init
 main.rs               # calls lib::run()
 commands/
   mod.rs
-  projects.rs         # list_projects, resolve_project_path, pin_project
+  projects.rs         # list_projects, add_project, resolve_project_path, pin_project
   sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, list_dir
@@ -44,6 +44,10 @@ with `serde::Serialize` so it crosses the bridge cleanly.
 ```rust
 // projects
 list_projects() -> Vec<Project>
+// Adds a folder Claude may never have run in (F1). Canonicalizes, then keys the
+// row by Claude's own directory encoding, so a later scan of the sessions that
+// appear there upserts onto this row instead of making a second one. Idempotent.
+add_project(path: String) -> Project
 resolve_project_path(id: String) -> Option<String>
 pin_project(id: String, pinned: bool) -> ()
 

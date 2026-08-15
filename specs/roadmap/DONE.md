@@ -3,6 +3,26 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Add a project by picking its folder** — 2026-08-15. `add_project(path)` plus a `FolderPlus`
+  in the sidebar header. Until now a project could only arrive by the indexer finding it under
+  `~/.claude/projects/`, so the folder you had never run Claude in — the one you most want to
+  start in — was unreachable from the app. Picking one adds the row and opens it; the existing
+  `+` starts the first session.
+
+  The row is keyed by **Claude Code's own directory encoding of the path**, which is the whole
+  design: when a session eventually runs there, the indexer's upsert lands on this row instead of
+  making a second one for the same folder. So the path is canonicalized first (a symlink or a `..`
+  would encode to an id the indexer never produces), re-adding is a no-op that keeps the pin, and
+  an integration test runs a real scan over a synthetic `~/.claude` to prove the two meet.
+
+- **A dragged tab travels to where it will land** — 2026-08-15. Reordering happened on drop, so
+  the gesture was blind. The strip now reorders on `dragover`. Two things had to be right: the
+  ghost was a near-invisible sliver, because the browser snapshots the source *after* `dragstart`
+  returns and so caught the dimming meant to mark the tab as in flight (fixed with a solid clone
+  passed to `setDragImage`, parked off-screen — not `display: none`, which snapshots blank); and
+  the swap has to wait for the midpoint, or the tab you swapped with lands under the cursor and
+  the pair flickers forever. `dropIndex` is that arithmetic, unit-tested in both directions.
+
 - **A dev build says so** — 2026-08-15. A violet `DEV` pill next to the wordmark
   (`import.meta.env.DEV`, so a `vite:build` bundle never has it) and `factorai DEV` as the window
   title (`#[cfg(debug_assertions)]` in `setup()`). Both because the release factorai runs beside the

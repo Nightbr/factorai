@@ -1,5 +1,3 @@
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
 	ClaudeCliStatus,
 	DirListing,
@@ -20,6 +18,8 @@ import type {
 	TerminalStatusDto,
 	TerminalStatusEvent,
 } from '@factorai/types';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { type UnlistenFn, listen as tauriListen } from '@tauri-apps/api/event';
 
 /// True when running inside a Tauri webview (window.__TAURI_INTERNALS__ is
 /// injected). False under plain `vite dev` — the mocks below kick in.
@@ -44,6 +44,10 @@ async function listen<T>(name: string, handler: (payload: T) => void): Promise<U
 export const cmd = {
 	listProjects: () => invoke<Project[]>('list_projects'),
 	resolveProjectPath: (id: string) => invoke<string | null>('resolve_project_path', { id }),
+	/** Add a folder as a project, whether or not Claude has ever run in it.
+	 *  Idempotent: the id is Claude's own directory encoding, so re-adding a
+	 *  known folder returns the existing row rather than making a second one. */
+	addProject: (path: string) => invoke<Project>('add_project', { path }),
 	pinProject: (id: string, pinned: boolean) => invoke<void>('pin_project', { id, pinned }),
 	listSessions: (projectId: string) => invoke<SessionSummary[]>('list_sessions', { projectId }),
 	getSession: (sessionId: string, offset?: number, limit?: number) =>
@@ -95,6 +99,28 @@ export async function openExternally(path: string): Promise<void> {
 	// `shell:allow-open` in capabilities/default.json.
 	const { open } = await import('@tauri-apps/plugin-shell');
 	await open(path);
+}
+
+/**
+ * Ask the OS for a folder, for "Add project" (F1). Resolves null when the
+ * picker is cancelled — which is a normal outcome, not an error.
+ *
+ * Lazily imported for the same reason as `openExternally`: browser-only dev and
+ * Playwright have no plugin host, so a top-level import would reject rather
+ * than no-op. There the fixture's `folderPick` stands in, since a native dialog
+ * is otherwise unreachable from a test.
+ */
+export async function pickFolder(): Promise<string | null> {
+	if (!isTauri()) {
+		recordMockCall('dialog.open');
+		return testFixture()?.folderPick ?? null;
+	}
+	// plugin-dialog 2.7.x; the capability grant is `dialog:default`.
+	const { open } = await import('@tauri-apps/plugin-dialog');
+	const picked = await open({ directory: true, multiple: false, title: 'Add project folder' });
+	// `multiple: false` narrows it to one path, but the union still admits an
+	// array — cancelling gives null either way.
+	return typeof picked === 'string' ? picked : null;
 }
 
 /**
@@ -158,6 +184,9 @@ interface TestFixture {
 	 *  The real updater is a Tauri plugin and inert in the browser, so this is
 	 *  the only way to reach the `ready` state from a test. */
 	updateReady?: string;
+	/** Path the folder picker returns for "Add project" (F1). Absent means the
+	 *  picker was cancelled — a native dialog can't be driven from a test. */
+	folderPick?: string;
 }
 
 /** One mocked command call, recorded in order while a fixture is installed. */
@@ -189,6 +218,27 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 	switch (name) {
 		case 'list_projects':
 			return (fx?.projects ?? []) as unknown as T;
+		case 'add_project': {
+			const path = String(args?.path ?? '');
+			const project: Project = {
+				// Claude's encoding, mirrored from the Rust side so a test asserting
+				// on the id is asserting the same thing the app would show.
+				id: `-${path.replace(/^\/+/, '').replace(/\//g, '-')}`,
+				realPath: path,
+				displayName: path.split('/').filter(Boolean).pop() ?? path,
+				lastSessionAt: null,
+				sessionCount: 0,
+				pinned: false,
+			};
+			// Write it back into the fixture so the next `list_projects` returns it,
+			// as the real command's row would. Idempotent for the same reason the
+			// real one is.
+			if (fx) {
+				const existing = fx.projects ?? [];
+				fx.projects = existing.some((p) => p.id === project.id) ? existing : [...existing, project];
+			}
+			return project as unknown as T;
+		}
 		case 'list_sessions': {
 			const projectId = String(args?.projectId ?? '');
 			return (fx?.sessionsByProject?.[projectId] ?? []) as unknown as T;
