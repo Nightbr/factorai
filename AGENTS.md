@@ -65,8 +65,14 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm e2e
+pnpm deps:check
 cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
 ```
+
+`deps:check` is in that list because it wasn't: a `@tauri-apps/plugin-updater`
+caret drifted in with F14 and sat there failing for a day, in a repo that
+otherwise pins exact versions. A check nobody runs is a check that doesn't
+exist. `pnpm deps:fix` resolves the usual case.
 
 For UI / behaviour work, also: launch the app (`pnpm dev`) and **use
 the feature** in the actual window. Type checking does not validate

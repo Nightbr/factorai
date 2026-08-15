@@ -39,3 +39,6 @@ coverage/
 /test-results/
 /playwright-report/
 /playwright/.cache/
+# Scratch output from the `playwright` MCP server (.mcp.json), which writes
+# here when an agent drives a browser from a conversation.
+/.playwright-mcp/

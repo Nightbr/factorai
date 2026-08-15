@@ -441,6 +441,14 @@ should say so rather than opening an empty editor.
 
 ## 16. App-wide scrollbar styling
 
+**Parked deliberately (2026-08-15) — do this one together, not solo.** It came up as a candidate
+for a batch of unambiguous quick wins and was pulled back out, with one constraint stated:
+**the bar has to stay visible enough to be usable.** That rules out the tempting version of this
+task — hiding scrollbars, or fading them to near-invisible until scroll — which is exactly what
+an unsupervised pass would have reached for, and would have traded a chunky bar for one you
+cannot find. Everything below still stands; the bullet on "ideally only visible while scrolling"
+is the part now in question.
+
 Scrollbars are currently whatever WebKitGTK draws: a chunky native bar that eats width in the
 288px file panel, overlaps content in dense lists, and looks nothing like the rest of the app. The
 tab strip needed one hidden outright (F16), and two `@utility` classes now exist in
