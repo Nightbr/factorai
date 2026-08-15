@@ -248,10 +248,17 @@ ADRs are immutable. To revise a decision, write a new ADR that
 
 ## 6. Specs (`specs/`)
 
-The `specs/` directory is the design source of truth. Eight files
-today; add new ones rather than overflowing existing ones. If the spec
-and the code disagree, **fix whichever is wrong** — usually the spec,
-since code is exact and prose is loose.
+The `specs/` directory is the design source of truth. Nine numbered
+files plus two annexes today; add new ones rather than overflowing
+existing ones. If the spec and the code disagree, **fix whichever is
+wrong** — usually the spec, since code is exact and prose is loose.
+
+`08-inconsistencies.md` is where a contradiction goes when you find one
+and can't fix it on the spot — doc against code, doc against doc, or a
+process note that isn't true when you run it. Add to it rather than
+leaving the disagreement in place, and delete the entry when it's
+resolved. It is *not* a decision record; `07-open-questions.md` holds
+things already settled.
 
 If you change the contract (new command, new event, renamed field),
 update the relevant spec **in the same commit** as the code.
