@@ -717,6 +717,26 @@ session header.
 
 - **Reorder** by dragging, using native HTML5 drag-and-drop rather than a
   library: ~40 lines against a ~30KB dependency for one horizontal strip.
+  The strip reorders **live, on `dragover`** — the tab travels to where it
+  will land while you are still holding it, rather than making you drop to
+  find out. Two things that took getting right:
+  - **The ghost is a clone, not the element.** The browser snapshots the
+    source *after* `dragstart` returns, so the dimming that marks a tab as in
+    flight lands on the drag image too and you drag a near-invisible sliver;
+    an inactive tab paints no background, so the snapshot is bare text on
+    nothing. `setDragImage` takes a solid clone parked off-screen for the one
+    frame the snapshot needs — off-screen rather than `display: none`, since
+    an element with no layout box snapshots blank.
+  - **The swap waits for the midpoint.** Swapping the moment two tabs touch
+    puts the other tab under the cursor, which swaps them back, and the pair
+    flickers as long as you hover there. Crossing the centre line is a
+    commitment you have to travel back across to undo. `dropIndex` is that
+    arithmetic, unit-tested, and its "stay put" cases are the guard —
+    `to === from` is what stops the reorder firing.
+
+  Releasing outside the strip keeps the last previewed order rather than
+  snapping back: the strip has been showing that arrangement the whole way, so
+  reverting on release would undo something you had already watched happen.
 - **Overflow** scrolls horizontally, with the scrollbar hidden (at 40px it
   would eat a third of the strip) and a wheel handler mapping vertical scroll
   onto it — otherwise the wheel does nothing over the header and the tabs read

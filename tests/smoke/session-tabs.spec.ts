@@ -25,7 +25,8 @@ test.describe('session tabs', () => {
 		// it was the only flexible thing in that row.
 		const bar = await page.locator('header').first().boundingBox();
 		const toggle = await page.getByRole('button', { name: 'Toggle file tree' }).boundingBox();
-		const gapToRight = (bar?.x ?? 0) + (bar?.width ?? 0) - ((toggle?.x ?? 0) + (toggle?.width ?? 0));
+		const gapToRight =
+			(bar?.x ?? 0) + (bar?.width ?? 0) - ((toggle?.x ?? 0) + (toggle?.width ?? 0));
 		expect(gapToRight).toBeLessThan(24);
 
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
@@ -119,11 +120,7 @@ test.describe('session tabs', () => {
 				.getByTestId('session-tabs')
 				.getByRole('tab')
 				.evaluateAll((tabs) => tabs.map((t) => t.getAttribute('data-session-id')));
-		expect(await order()).toEqual([
-			'zulu-session-11',
-			'zulu-session-10',
-			'zulu-session-09',
-		]);
+		expect(await order()).toEqual(['zulu-session-11', 'zulu-session-10', 'zulu-session-09']);
 
 		// Drag the last tab onto the first. Native HTML5 drag needs dataTransfer
 		// to be set in dragstart or the gesture never becomes a drag at all —
@@ -132,11 +129,44 @@ test.describe('session tabs', () => {
 			.getByRole('tab', { name: /Zulu task 9/ })
 			.dragTo(page.getByRole('tab', { name: /Zulu task 11/ }));
 
-		expect(await order()).toEqual([
-			'zulu-session-09',
-			'zulu-session-11',
-			'zulu-session-10',
-		]);
+		expect(await order()).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
+	});
+
+	test('@smoke a dragged tab moves into place before it is dropped', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand zulu' }).click();
+		await openSession(page, /Zulu task 11/);
+		await openSession(page, /Zulu task 10/);
+		await openSession(page, /Zulu task 9/);
+
+		const order = () =>
+			page
+				.getByTestId('session-tabs')
+				.getByRole('tab')
+				.evaluateAll((tabs) => tabs.map((t) => t.getAttribute('data-session-id')));
+
+		// Hand-driven rather than `dragTo`, because the point of the test is the
+		// state *mid-gesture*: dragover reorders as you travel, so the strip shows
+		// the arrangement you'd get instead of making you drop to find out.
+		const source = page.getByRole('tab', { name: /Zulu task 9/ });
+		const target = page.getByRole('tab', { name: /Zulu task 11/ });
+		const from = await source.boundingBox();
+		const to = await target.boundingBox();
+		if (!from || !to) throw new Error('tabs not laid out');
+
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await page.mouse.down();
+		// Two moves: the first is what the browser promotes into a drag, the
+		// second is the one that lands on the target.
+		await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+		await page.mouse.move(to.x + 2, to.y + to.height / 2, { steps: 4 });
+
+		// Still holding the button, and the tab has already moved.
+		await expect.poll(order).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
+
+		await page.mouse.up();
+		expect(await order()).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
 	});
 
 	test('@smoke the strip spans the bar rather than half of it', async ({ page }) => {
@@ -162,7 +192,8 @@ test.describe('session tabs', () => {
 
 		const bar = await page.locator('header').first().boundingBox();
 		const toggle = await page.getByRole('button', { name: 'Toggle file tree' }).boundingBox();
-		const rightEdgeGap = (bar?.x ?? 0) + (bar?.width ?? 0) - ((toggle?.x ?? 0) + (toggle?.width ?? 0));
+		const rightEdgeGap =
+			(bar?.x ?? 0) + (bar?.width ?? 0) - ((toggle?.x ?? 0) + (toggle?.width ?? 0));
 		expect(rightEdgeGap).toBeLessThan(24);
 	});
 });
