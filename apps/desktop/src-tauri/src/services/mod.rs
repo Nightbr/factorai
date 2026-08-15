@@ -1,3 +1,4 @@
+pub mod child_env;
 pub mod claude_cli;
 pub mod files;
 pub mod git;

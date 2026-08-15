@@ -297,6 +297,18 @@ cargo test
   when I run the binary directly, not under `pnpm dev`") are almost
   always a stripped env — compare `/proc/<pid>/environ` against your
   shell before blaming the app.
+- **The AppImage is the mirror image of that bug.** `linuxdeploy`'s
+  `AppRun` prepends `$APPDIR/…` to `PATH`, `LD_LIBRARY_PATH`,
+  `XDG_DATA_DIRS`, `PYTHONPATH`, `PERLLIB`, `QT_PLUGIN_PATH` and the
+  `GST_*` pair, and *replaces* `PYTHONHOME` and the `GTK_*` / `GIO_*` /
+  `GDK_*` set outright. Every process the app spawns used to inherit
+  that, so a `claude` session started from a release build could not run
+  `python3` (`No module named 'encodings'`) or any other GTK binary.
+  `services/child_env` now strips it on the way into a PTY — see
+  `specs/03-backend-rust.md` § `TerminalManager`. **This also applies to
+  you**: an agent session running inside the release app has that env,
+  so `pnpm dev` dies with a `WebKitNetworkProcess` spawn error until you
+  clear it. `env | grep .mount_` is the tell.
 
 ### Helpful files when picking up work
 
