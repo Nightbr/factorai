@@ -22,7 +22,7 @@ function live(...ids: string[]): Record<string, LiveTerminal> {
 	);
 }
 
-function project(id: string, displayName: string): Project {
+function project(id: string, displayName: string, hidden = false): Project {
 	return {
 		id,
 		realPath: `/code/${displayName}`,
@@ -31,6 +31,7 @@ function project(id: string, displayName: string): Project {
 		missing: false,
 		sessionCount: 1,
 		pinned: false,
+		hidden,
 	};
 }
 
