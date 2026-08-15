@@ -18,7 +18,7 @@ apps/desktop/src/
 │   ├── layout/
 │   │   ├── AppShell.tsx     # top bar + sidebar | content | panel
 │   │   ├── TopBar.tsx       # brand, reserved space, panel toggle
-│   │   ├── Sidebar.tsx      # projects, search input, status dots, new-session +
+│   │   ├── Sidebar.tsx      # projects, search input, status dots, pin/hide, new-session +
 │   │   ├── PanelResizer.tsx # drag handle for the right panel
 │   │   └── StatusBar.tsx
 │   ├── sessions/

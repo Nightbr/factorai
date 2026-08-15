@@ -9,7 +9,7 @@ import { useSidebarStore } from '@store/sidebarStore';
 import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronRight, Pin, PinOff, Plus } from 'lucide-react';
+import { ChevronRight, EyeOff, Pin, PinOff, Plus } from 'lucide-react';
 import { useMemo } from 'react';
 
 /** How many sessions an expanded project shows. Enough to cover "the one I was
@@ -48,6 +48,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
 	const startSession = useStartSession();
 	const togglePin = usePinProject(project);
+	const hideProject = useHideProject(project);
 
 	// No resolved cwd means we never found a `cwd` in this project's sessions, so
 	// there is nowhere to start one: claude would boot in $HOME and file the new
@@ -134,6 +135,21 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 					)}
 				</IconButton>
 
+				{/* The same visibility contract as the pin: quiet until hovered,
+				    except on rows you act on repeatedly. No glyph swap — the row is
+				    about to disappear, so there is no "hidden at rest" state to
+				    show, and the way back is re-adding the folder, not this button. */}
+				<IconButton
+					className={`transition-all focus-visible:opacity-100 ${
+						alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+					}`}
+					aria-label={`Hide ${project.displayName} from sidebar`}
+					title="Hide from sidebar"
+					onClick={() => hideProject(true)}
+				>
+					<EyeOff />
+				</IconButton>
+
 				{/* The title lives on the wrapper: a disabled button sets
 				    pointer-events-none, which suppresses a native tooltip on the
 				    element itself — exactly when the explanation matters most. */}
@@ -188,6 +204,30 @@ function usePinProject(project: Project): () => void {
 	});
 
 	return () => mutation.mutate(!project.pinned);
+}
+
+/**
+ * Hide from the sidebar, applied to the cached list before the write lands —
+ * same reason as pin: the projects query polls every 2s, and without the
+ * optimistic write the row would sit in place long enough to click again. The
+ * row vanishes rather than dimming because the sidebar filters `hidden`
+ * straight out of its view. No rollback path for the same reason as pin
+ * either: the next refetch re-derives the truth.
+ */
+function useHideProject(project: Project): (hidden: boolean) => void {
+	const queryClient = useQueryClient();
+
+	const mutation = useMutation({
+		mutationFn: (hidden: boolean) => cmd.hideProject(project.id, hidden),
+		onMutate: (hidden: boolean) => {
+			queryClient.setQueryData<Project[]>(queryKeys.projects(), (previous) =>
+				previous?.map((p) => (p.id === project.id ? { ...p, hidden } : p)),
+			);
+		},
+		onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects() }),
+	});
+
+	return (hidden: boolean) => mutation.mutate(hidden);
 }
 
 function SessionList({ project }: { project: Project }) {

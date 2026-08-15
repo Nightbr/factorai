@@ -41,6 +41,18 @@ export function sortProjects(projects: Project[], sort: ProjectSort): Project[] 
 }
 
 /**
+ * Drop hidden projects from the list the sidebar renders.
+ *
+ * Pure and exported so the rule is testable without a render. Hidden rows
+ * stay in the `projects` cache on purpose — the project route, session tabs
+ * and search resolve from it — so this list is a *view*, not the source of
+ * truth: hiding the project you are looking at must not yank the page.
+ */
+export function visibleProjects(projects: Project[]): Project[] {
+	return projects.filter((p) => !p.hidden);
+}
+
+/**
  * Split into the pinned block and everything else, each in the chosen order.
  *
  * The sort applies **inside both groups**, so the control means one thing
@@ -80,7 +92,7 @@ export function Sidebar() {
 	const collapseAll = useSidebarStore((s) => s.collapseAll);
 
 	const { pinned, rest } = useMemo(
-		() => groupProjects(projectsQ.data ?? [], sort),
+		() => groupProjects(visibleProjects(projectsQ.data ?? []), sort),
 		[projectsQ.data, sort],
 	);
 	const allIds = useMemo(() => [...pinned, ...rest].map((p) => p.id), [pinned, rest]);
@@ -200,6 +212,16 @@ export function Sidebar() {
 						No projects found in ~/.claude/projects yet. Add a folder with the{' '}
 						<FolderPlus className="inline size-3 align-text-bottom" aria-hidden /> above to start
 						one anywhere.
+					</div>
+				)}
+				{/* A separate branch, not a length check on the above: every project
+				    hidden leaves `data.length > 0` while the list itself renders
+				    nothing, and a blank pane with no explanation reads as a bug. */}
+				{projectsQ.data && projectsQ.data.length > 0 && pinned.length + rest.length === 0 && (
+					<div className="px-4 py-2 text-muted-foreground text-xs">
+						Every project is hidden. Re-add a folder with the{' '}
+						<FolderPlus className="inline size-3 align-text-bottom" aria-hidden /> above to
+						bring one back.
 					</div>
 				)}
 				{pinned.length > 0 && (

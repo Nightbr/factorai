@@ -1,4 +1,4 @@
-import { sortProjects } from '@components/layout/Sidebar';
+import { sortProjects, visibleProjects } from '@components/layout/Sidebar';
 import { SIDEBAR_SESSION_LIMIT, orderSessions } from '@components/layout/SidebarProject';
 import type { Project, SessionSummary } from '@factorai/types';
 import type { LiveTerminal } from '@store/terminalStore';
@@ -114,5 +114,29 @@ describe('sortProjects', () => {
 		sortProjects(projects, 'name');
 
 		expect(projects.map((p) => p.displayName)).toEqual(['zulu', 'alpha']);
+	});
+});
+
+describe('visibleProjects', () => {
+	it('drops hidden projects and keeps the rest in order', () => {
+		const projects = [project('1', 'zulu'), project('2', 'alpha', true), project('3', 'mike')];
+
+		expect(visibleProjects(projects).map((p) => p.displayName)).toEqual(['zulu', 'mike']);
+	});
+
+	it('returns an empty list when everything is hidden', () => {
+		// The sidebar renders its "every project is hidden" copy off exactly
+		// this case — a blank pane with no explanation would read as a bug.
+		const projects = [project('1', 'zulu', true), project('2', 'alpha', true)];
+
+		expect(visibleProjects(projects)).toEqual([]);
+	});
+
+	it('does not mutate the array it was given', () => {
+		const projects = [project('1', 'zulu'), project('2', 'alpha', true)];
+
+		visibleProjects(projects);
+
+		expect(projects.map((p) => p.hidden)).toEqual([false, true]);
 	});
 });

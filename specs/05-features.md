@@ -9,7 +9,9 @@ from, for cross-checking.
 ## F1 — Project list
 
 **Behavior.** On launch, show every project under `~/.claude/projects/`,
-ordered by `last_session_at DESC`. Pinned projects float to the top.
+ordered by `last_session_at DESC`. Pinned projects float to the top. Hidden
+projects are absent from the list — they stay in the index and come back by
+re-adding their folder.
 
 **UI.** Sidebar section. Each row: a collapse/expand chevron, the project
 avatar **badged with the status dot** when any terminal in it is live, the
@@ -49,6 +51,21 @@ touches only `real_path` and `display_name`, guarded by a test). The click
 writes optimistically to the cached list, because the projects query polls at
 2s and the row would otherwise sit still long enough to be clicked twice.
 
+**Hiding** is the same shape as pinning: a hover `EyeOff` beside the pin —
+not a context menu, for the same reason pin isn't one. The flag is the
+`projects.hidden` column via `hide_project` — not a client preference, so it
+is per-machine and survives reindexing (the indexer's upsert never touches
+`hidden`, guarded by a test alongside the pin guard). Hidden rows are still
+returned by `list_projects`; the sidebar filters its own view, so the project
+route, session tabs and search keep resolving a hidden project — hiding the
+one you are looking at does not yank the page. The click writes optimistically
+for the same 2s-poll reason as pin. Reversible, so it asks nothing: the way
+back is re-adding the folder with the same `FolderPlus` that added it. A
+management list of hidden projects is a v2 concern, deliberately not built
+(v1's single un-hide path is enough, and it is already a gesture the user
+knows); likewise search still returns hits from hidden projects — search is
+content, the sidebar is clutter.
+
 The scrolling list reserves a right-hand gutter so those hover buttons never
 sit under the scrollbar.
 
@@ -75,7 +92,9 @@ returning the existing row (so the button cannot make duplicates), and the path
 is **canonicalized first** — a symlink or a `..` would otherwise encode to an
 id the indexer will never produce, leaving a dead empty row beside the live
 one. `display_name` and `pinned` are left alone on conflict; re-adding a
-project must not silently unpin it.
+project must not silently unpin it. `hidden` is deliberately *cleared* on
+conflict — re-adding is an explicit "show me this again", and it is the only
+un-hide path.
 
 Cancelling the picker is an answer, not a failure — nothing happens and nothing
 is said. A folder that can't be a project (not absolute, gone, not a directory)
@@ -83,8 +102,8 @@ reports in a line under the section header rather than a toast: it belongs to
 the button that caused it, and clears the next time that button is pressed.
 
 **Backend.** `list_projects()`, `add_project()`, `pin_project()`,
-`resolve_project_path()`. The list comes from the cached `projects` table;
-the indexer keeps it up to date.
+`hide_project()`, `resolve_project_path()`. The list comes from the cached
+`projects` table; the indexer keeps it up to date.
 
 **Edge cases.**
 - **A project whose folder is gone** → the row dims to half opacity, gains a
@@ -112,6 +131,12 @@ the indexer keeps it up to date.
   does not fail on a missing directory, it silently starts the child in
   `$HOME`, which files the session under the wrong project. The flag is the
   affordance; the guard is the invariant.
+- **Hiding a project** → the row leaves the list; its transcripts, the
+  project route, session tabs and search results all keep working off the
+  same cached row. The flag survives a rescan (Rust-tested, like the pin
+  guard), and re-adding the folder clears it. Hiding the *active* project
+  leaves the page mounted. If every project is hidden, the sidebar shows a
+  pointer at the `FolderPlus` rather than a blank pane.
 - New project folders appearing → watcher triggers a project refresh.
 - `~/.claude/projects/` doesn't exist → empty state with a one-line
   explainer and a link to install Claude Code. The empty state also points
