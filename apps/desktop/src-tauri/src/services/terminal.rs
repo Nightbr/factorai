@@ -260,8 +260,11 @@ impl TerminalManager {
 			)));
 		}
 		cmd.cwd(&cwd_path);
-		// Inherit the parent env so PATH / TERM / HOME etc. are present.
-		for (k, v) in std::env::vars_os() {
+		// Inherit the parent env so PATH / TERM / HOME etc. are present — minus
+		// whatever the AppImage runtime pushed in front of it, which belongs to
+		// this process and not to a shell in the user's project. See
+		// `services::child_env`; outside an AppImage it changes nothing.
+		for (k, v) in crate::services::child_env::child_env() {
 			cmd.env(k, v);
 		}
 		// xterm.js renders best as xterm-256color.

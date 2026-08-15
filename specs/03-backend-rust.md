@@ -146,6 +146,32 @@ Owns the `DashMap<TerminalId, Terminal>`. On `terminal_spawn`:
    tokio mpsc, fan out as `terminal:data` events.
 5. Status heuristics run on a separate tokio task (200ms tick).
 
+**The child's environment is ours minus the AppImage's** (`services/child_env`).
+A session inherits our env, because `PATH`, `HOME` and `SSH_AUTH_SOCK` are what
+a shell in a project needs — but under an AppImage "ours" is the user's
+environment with `linuxdeploy`'s private runtime pushed in front of it, and
+handing that on means every session, and everything it runs, resolves libraries
+and data files out of a squashfs mount belonging to a different program.
+Observed: `PYTHONHOME=$APPDIR/usr/` kills any `python3` with
+`ModuleNotFoundError: No module named 'encodings'`, and
+`LD_LIBRARY_PATH=$APPDIR/usr/lib/…` makes another GTK binary load *our*
+WebKitGTK, which then can't find its own helper processes.
+
+The rule is one sentence — **drop the path-list entries that live inside
+`$APPDIR`**, and unset anything left empty — because AppRun builds each of them
+as `$APPDIR/…:$ORIGINAL`, so removing our entries leaves exactly what the user
+had. No list of variable names is hardcoded: AppRun's set has grown before, and
+a name list would silently stop covering it. A value with no `$APPDIR` entry is
+passed through byte for byte rather than split and rejoined, so the rewrite
+can't touch a `GTK_THEME=Adwaita:dark` or an `LS_COLORS`. `APPDIR` / `APPIMAGE`
+/ `ARGV0` / `OWD` go too — leaving one behind while the paths it names are gone
+is worse than either.
+
+Outside an AppImage (dev build, `.deb`, `.app`) `APPDIR` is unset and this is a
+no-op. Note this is a *second*, independent source of the `XDG_DATA_DIRS`
+breakage described in `AGENTS.md § Tauri gotchas` — that one is Turborepo
+stripping the variable, this one is the AppImage prepending to it.
+
 On `terminal_kill`: signal child (`child.kill()`), drop the PTY pair.
 
 On window close (`tauri::WindowEvent::CloseRequested`):

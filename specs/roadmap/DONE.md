@@ -3,6 +3,18 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A session no longer inherits the AppImage's private environment** — 2026-08-15.
+  `spawn_with_argv` copied `std::env::vars_os()` wholesale into every PTY, so a release build
+  handed `linuxdeploy`'s runtime to every Claude session and everything it ran: `PYTHONHOME`
+  pointing into the squashfs mount killed any `python3` with `No module named 'encodings'`, and
+  `LD_LIBRARY_PATH` made other GTK binaries load *our* WebKitGTK. `services/child_env` strips
+  it — drop path-list entries under `$APPDIR`, unset what that empties, pass anything with no
+  `$APPDIR` entry through byte for byte so a `GTK_THEME=Adwaita:dark` isn't rewritten. Matched
+  on path rather than on a list of names, since AppRun's set has grown before. No-op outside an
+  AppImage. Verified against this machine's real environment: 17 poisoned vars → 0, `PATH` and
+  `XDG_DATA_DIRS` restored to the user's own values (which is separately the `xdg-open`
+  default-browser fix).
+
 - **Add a project by picking its folder** — 2026-08-15. `add_project(path)` plus a `FolderPlus`
   in the sidebar header. Until now a project could only arrive by the indexer finding it under
   `~/.claude/projects/`, so the folder you had never run Claude in — the one you most want to
