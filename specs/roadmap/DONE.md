@@ -3,21 +3,67 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
-- **A project whose folder is gone says so before you click** — 2026-08-15. Closes TODO item 3.
-  `list_projects` reported the `cwd` recorded in a transcript and never stat'd it, so F1's dimmed
-  row was unimplemented and F6's `+` couldn't pre-disable. A `missing` column on `projects`, set
-  by the indexer's scan rather than per `list_projects` call — that query polls every 2s and
-  stat-ing every project on every poll would put the filesystem in a hot path to answer a question
-  that changes when someone deletes a directory. Deliberately distinct from `real_path: null`:
-  unknown and gone are different states and only one is worth reporting. It clears on a later
-  scan and on `add_project`, so a restored folder needs no wiped database. The spawn guard stays —
-  the flag is the affordance, the guard is the invariant.
+- **A quality gate that runs, and a dead-code gate that works** — 2026-08-15, shipped in v0.6.0.
+  `.github/workflows/quality.yml` runs § 2c minus `e2e` on every PR and every push to main, in two
+  parallel jobs. No Playwright: it wants a browser download and a dev server for a ~70s suite, so
+  `vite:build` stands in for the one thing e2e checked incidentally — that the renderer still
+  bundles, which `tsc` doesn't prove.
 
-- **The AppImage env scrub actually applies now** — 2026-08-15. The v0.5.0 fix below computed the
-  right environment and then changed nothing, because `CommandBuilder::new()` pre-seeds the child
-  from `std::env::vars_os()`: `env()` overrides a key, and the variables we wanted gone were
-  exactly the ones our clean list *omitted*, so they stayed inherited. Caught by starting `pnpm
-  dev` from a session under the freshly-updated release and hitting the identical
+  `pnpm deps:unused` joined it only after being made honest. It was reporting 76 findings, **68 of
+  them false**, from a config whose ignores had outlived their reasons — which is why nobody ran
+  it. `knip.jsonc` now states the why beside every ignore; colocated tests became entry points
+  (with tests invisible, anything exported solely for a test reads as dead, and taking that advice
+  breaks the test); `unresolved` is off because `tsc` and `vite:build` already resolve imports for
+  real and knip is the only one blind to Vite's virtual modules. The eight real findings were
+  fixed, and the gate was checked by planting an unused export, an orphan file and an unused
+  dependency to confirm it still catches all three.
+
+- **18 of the 22 logged inconsistencies resolved** — 2026-08-15, shipped in v0.6.0. Seventeen were
+  stale prose against correct code; one was false. Two of them read as instructions and so were
+  worse than stale: a roadmap entry describing the release action as a *prerelease* — which
+  `/releases/latest` skips, and the updater resolves through it — and a QA note asserting that
+  WebKitGTK filters synthetic input, which had been steering QA away from an approach that works.
+  The accurate version of that second one had been sitting in TODO item 10 the whole time, where
+  nobody reads. Four remain, each needing a decision rather than an edit.
+
+- **The file viewer renders images, with zoom, pan and copy** — 2026-08-15, shipped in v0.6.0.
+  `read_image` returns base64 plus a mime **sniffed from the magic bytes**, so a `.png` that is
+  really a PDF is refused and falls back to the binary card rather than drawing a broken image.
+  Routing is by extension (reusing the file tree's own classifier, so icon and viewer cannot
+  disagree); the verdict is the backend's. Oversized images are refused rather than truncated —
+  half a PNG is a decode error, not a smaller PNG.
+
+  Zoom steps multiplicatively (×1.25, 0.25–8), because an additive step is a quarter of the image
+  at 1× and three percent of it at 8×. Pan is a pointer drag above fit, on a transform rather than
+  a scroll container so native scrollbars can't fight the gesture.
+
+  **Copy needed two attempts and the first one is the finding.** `navigator.clipboard.writeText`
+  works in this webview, so `clipboard.write()` with a `ClipboardItem` looks obvious — WebKitGTK
+  doesn't implement it, the promise rejects, and nothing reaches the clipboard. Caught by clicking
+  copy in the running app and seeing `xclip -t TARGETS` still offer text only. It now goes through
+  `tauri-plugin-clipboard-manager` as raw RGBA via `Image.new`, which needs no decoding and so
+  works for every format. Verified pixel-identical against the file on disk.
+
+- **Middle-click closes a tab, and SVGs render** — 2026-08-15, shipped in v0.6.0. The close still
+  asks first: a shortcut to the action, not a way around the question. SVG gets markdown's
+  Preview / View source toggle, rendered through an `<img>` and a data URL rather than inlined —
+  SVG loaded as an image runs no scripts, and these files come from whatever repository is open.
+
+- **A project whose folder is gone says so before you click** — 2026-08-15, shipped in v0.6.0.
+  Closes TODO item 3. `list_projects` reported the `cwd` recorded in a transcript and never stat'd
+  it, so F1's dimmed row was unimplemented and F6's `+` couldn't pre-disable. A `missing` column
+  on `projects`, set by the indexer's scan rather than per `list_projects` call — that query polls
+  every 2s and stat-ing every project on every poll would put the filesystem in a hot path to
+  answer a question that changes when someone deletes a directory. Deliberately distinct from
+  `real_path: null`: unknown and gone are different states and only one is worth reporting. It
+  clears on a later scan and on `add_project`, so a restored folder needs no wiped database. The
+  spawn guard stays — the flag is the affordance, the guard is the invariant.
+
+- **The AppImage env scrub actually applies now** — 2026-08-15, shipped in v0.6.0. The v0.5.0 fix
+  below computed the right environment and then changed nothing, because `CommandBuilder::new()`
+  pre-seeds the child from `std::env::vars_os()`: `env()` overrides a key, and the variables we
+  wanted gone were exactly the ones our clean list *omitted*, so they stayed inherited. Caught by
+  starting `pnpm dev` from a session under the freshly-updated release and hitting the identical
   `WebKitNetworkProcess` error. The scrub is now an `EnvChanges { remove, set }` diff applied via
   `env_remove`. The regression test drives a real `CommandBuilder`; with the fault reintroduced it
   is the only one of the ten that fails, which is the whole lesson — nine tests of a rule proved
