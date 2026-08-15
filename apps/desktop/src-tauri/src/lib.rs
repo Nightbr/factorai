@@ -109,6 +109,7 @@ pub fn run() {
 		})
 		.invoke_handler(tauri::generate_handler![
 			commands::projects::list_projects,
+			commands::projects::add_project,
 			commands::projects::resolve_project_path,
 			commands::projects::pin_project,
 			commands::sessions::list_sessions,

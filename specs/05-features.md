@@ -58,7 +58,31 @@ client-side) or **Name**, plus **Expand all** / **Collapse all**. Sort and
 expansion persist in `sidebarStore` — unlike the file tree's expanded *paths*,
 which go stale when a directory is deleted, a project id stays valid.
 
-**Backend.** `list_projects()`, `pin_project()`,
+**Adding a folder.** Projects otherwise arrive only by the indexer noticing
+them under `~/.claude/projects/`, which means the folder you have *never* run
+Claude in — the one you most want to start in — cannot be reached from the app
+at all. A `FolderPlus` in the section header opens the native directory picker;
+the chosen folder becomes a project row and the app navigates to it, where the
+existing `+` starts the first session. Adding and starting stay separate
+actions: adding is cheap and reversible, starting a session is neither.
+
+The row's id is **Claude Code's own directory encoding of the path**, and that
+is the whole design. When a session is finally run there, Claude writes
+`~/.claude/projects/<same encoding>/`, the indexer upserts, and it lands on
+this row rather than creating a second one for the same folder. Two
+consequences fall out of that and are tested: adding a folder twice is a no-op
+returning the existing row (so the button cannot make duplicates), and the path
+is **canonicalized first** — a symlink or a `..` would otherwise encode to an
+id the indexer will never produce, leaving a dead empty row beside the live
+one. `display_name` and `pinned` are left alone on conflict; re-adding a
+project must not silently unpin it.
+
+Cancelling the picker is an answer, not a failure — nothing happens and nothing
+is said. A folder that can't be a project (not absolute, gone, not a directory)
+reports in a line under the section header rather than a toast: it belongs to
+the button that caused it, and clears the next time that button is pressed.
+
+**Backend.** `list_projects()`, `add_project()`, `pin_project()`,
 `resolve_project_path()`. The list comes from the cached `projects` table;
 the indexer keeps it up to date.
 
@@ -67,7 +91,8 @@ the indexer keeps it up to date.
   decoded name as "(missing) /Users/.../foo" and gray out the row.
 - New project folders appearing → watcher triggers a project refresh.
 - `~/.claude/projects/` doesn't exist → empty state with a one-line
-  explainer and a link to install Claude Code.
+  explainer and a link to install Claude Code. The empty state also points
+  at "Add project", since that is the way out of it.
 
 **Switchboard ref.** `sidebar.js`, `derive-project-path.js`,
 `folder-index-state.js`.

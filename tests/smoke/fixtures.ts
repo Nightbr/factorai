@@ -7,7 +7,6 @@
  * mockInvoke() reads from `window.__FACTORAI_TEST__`.
  */
 
-import type { Page } from '@playwright/test';
 import type {
 	DirEntry,
 	DirListing,
@@ -20,6 +19,7 @@ import type {
 	SessionSummary,
 	TerminalId,
 } from '@factorai/types';
+import type { Page } from '@playwright/test';
 
 export interface TestFixture {
 	projects?: Project[];
@@ -41,6 +41,10 @@ export interface TestFixture {
 	gitBlobs?: Record<string, FileContents>;
 	/** Version to report as downloaded and staged, for the F14 update badge. */
 	updateReady?: string;
+	/** Path the folder picker returns for "Add project" (F1). Omit to have the
+	 *  picker behave as if it were cancelled — a native dialog can't be driven
+	 *  from a test, so this is the only way through that flow. */
+	folderPick?: string;
 }
 
 declare global {
@@ -237,7 +241,12 @@ export function fixtureWithChanges(): TestFixture {
 	const root = base.projects?.[0]?.realPath ?? '';
 
 	const changes: GitChange[] = [
-		change('src/auth.ts', root, { group: 'conflicted', kind: 'conflicted', additions: null, deletions: null }),
+		change('src/auth.ts', root, {
+			group: 'conflicted',
+			kind: 'conflicted',
+			additions: null,
+			deletions: null,
+		}),
 		change('src/index.ts', root, { group: 'staged', additions: 4, deletions: 0 }),
 		change('src/index.ts', root, { group: 'unstaged', additions: 2, deletions: 1 }),
 		change('src/new-file.ts', root, { kind: 'untracked', additions: 12, deletions: 0 }),

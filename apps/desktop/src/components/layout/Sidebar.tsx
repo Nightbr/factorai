@@ -1,3 +1,6 @@
+import { SidebarProject } from '@components/layout/SidebarProject';
+import { UpdateBadge } from '@components/layout/UpdateBadge';
+import { ZoomControls } from '@components/layout/ZoomControls';
 import type { Project } from '@factorai/types';
 import {
 	DropdownMenu,
@@ -11,19 +14,17 @@ import {
 	IconButton,
 	Input,
 } from '@factorai/ui';
-import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { SidebarProject } from '@components/layout/SidebarProject';
-import { UpdateBadge } from '@components/layout/UpdateBadge';
-import { ZoomControls } from '@components/layout/ZoomControls';
 import { useActiveProject } from '@hooks/useActiveProject';
-import { cmd } from '@lib/tauri';
+import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
+import { cmd, pickFolder } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
 import { useTerminalStore } from '@store/terminalStore';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+import { ArrowUpDown, FolderPlus, Search } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 /**
  * Order projects for display (specs/05-features.md F1).
@@ -84,6 +85,34 @@ export function Sidebar() {
 	);
 	const allIds = useMemo(() => [...pinned, ...rest].map((p) => p.id), [pinned, rest]);
 
+	// Adding a folder as a project (F1). A project normally arrives by the
+	// indexer noticing it under ~/.claude/projects, which means a folder you
+	// have never run Claude in is invisible here — exactly the folder you want
+	// to start in.
+	const queryClient = useQueryClient();
+	const [adding, setAdding] = useState(false);
+	const [addError, setAddError] = useState<string | null>(null);
+
+	async function addProject() {
+		setAddError(null);
+		setAdding(true);
+		try {
+			const path = await pickFolder();
+			// Cancelling the picker is an answer, not a failure.
+			if (!path) return;
+			const project = await cmd.addProject(path);
+			// Await the refetch before navigating: the project route reads the same
+			// cache, and landing there before the row exists renders "not found"
+			// for a beat.
+			await queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+			await navigate({ to: '/projects/$id', params: { id: project.id } });
+		} catch (e) {
+			setAddError(formatError(e));
+		} finally {
+			setAdding(false);
+		}
+	}
+
 	// Debounced search: typing navigates to /search?q=… (the route runs the
 	// query). Empty input doesn't navigate, so clearing the box is harmless.
 	const [term, setTerm] = useState('');
@@ -119,12 +148,18 @@ export function Sidebar() {
 				<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
 					Projects
 				</span>
+				<IconButton
+					aria-label="Add project"
+					title="Add a project folder"
+					data-testid="add-project"
+					disabled={adding}
+					onClick={() => void addProject()}
+				>
+					<FolderPlus />
+				</IconButton>
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
-						<IconButton
-							aria-label="Sort and expand projects"
-							title="Sort and expand projects"
-						>
+						<IconButton aria-label="Sort and expand projects" title="Sort and expand projects">
 							<ArrowUpDown />
 						</IconButton>
 					</DropdownMenuTrigger>
@@ -138,13 +173,23 @@ export function Sidebar() {
 							<DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
 						</DropdownMenuRadioGroup>
 						<DropdownMenuSeparator />
-						<DropdownMenuItem onSelect={() => expandAll(allIds)}>
-							Expand all
-						</DropdownMenuItem>
+						<DropdownMenuItem onSelect={() => expandAll(allIds)}>Expand all</DropdownMenuItem>
 						<DropdownMenuItem onSelect={() => collapseAll()}>Collapse all</DropdownMenuItem>
-				</DropdownMenuContent>
+					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
+
+			{/* In the header rather than a toast: it belongs to the button that
+			    caused it, and it clears the next time you press that button. */}
+			{addError && (
+				<div
+					role="alert"
+					data-testid="add-project-error"
+					className="shrink-0 px-3 pb-2 text-destructive text-xs"
+				>
+					{addError}
+				</div>
+			)}
 
 			<nav className="min-h-0 flex-1 overflow-y-auto pr-2 pb-3">
 				{projectsQ.isLoading && (
@@ -152,7 +197,9 @@ export function Sidebar() {
 				)}
 				{projectsQ.data && projectsQ.data.length === 0 && (
 					<div className="px-4 py-2 text-muted-foreground text-xs">
-						No projects found in ~/.claude/projects yet.
+						No projects found in ~/.claude/projects yet. Add a folder with the{' '}
+						<FolderPlus className="inline size-3 align-text-bottom" aria-hidden /> above to start
+						one anywhere.
 					</div>
 				)}
 				{pinned.length > 0 && (
