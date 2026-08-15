@@ -66,6 +66,7 @@ pnpm typecheck
 pnpm test
 pnpm e2e
 pnpm deps:check
+pnpm deps:unused
 cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
@@ -81,9 +82,12 @@ tag a commit this workflow has passed. In place of e2e's incidental coverage it
 builds the renderer (`vite:build`), which catches a bundler-visible break that
 `tsc` doesn't. If you add a check here, add it there.
 
-`pnpm deps:unused` (knip) is **not** in either list: it currently reports
-findings, so gating on it would paint every PR red on day one. Worth a cleanup
-pass — `06-milestones.md` M0 still claims it produces none.
+`deps:unused` (knip) is in the list too, as of 2026-08-15. It had drifted to 76
+findings — 68 of them false, from a config whose ignores had outlived their
+reasons — which is how a gate becomes decoration. `knip.jsonc` now states the
+why beside every ignore, and colocated tests are **entry points rather than
+ignored**: with tests invisible, anything exported solely so a test can reach it
+reads as dead, and following that advice deletes the export and breaks the test.
 
 For UI / behaviour work, also: launch the app (`pnpm dev`) and **use
 the feature** in the actual window. Type checking does not validate

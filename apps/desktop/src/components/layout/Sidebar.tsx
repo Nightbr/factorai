@@ -48,7 +48,7 @@ export function sortProjects(projects: Project[], sort: ProjectSort): Project[] 
  * the split is done here rather than relied upon: under `name` we re-sort the
  * whole list anyway, which would otherwise interleave the two.
  */
-export function groupProjects(
+function groupProjects(
 	projects: Project[],
 	sort: ProjectSort,
 ): { pinned: Project[]; rest: Project[] } {

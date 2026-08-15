@@ -4,7 +4,7 @@ import { useGitStatus } from '@hooks/useGitStatus';
 
 /** What a row's decoration says. Ordered by precedence — a directory takes the
  *  most severe status among its descendants. */
-export type Decoration = 'conflicted' | 'untracked' | 'modified';
+type Decoration = 'conflicted' | 'untracked' | 'modified';
 
 const PRECEDENCE: Record<Decoration, number> = { conflicted: 0, untracked: 1, modified: 2 };
 
@@ -22,7 +22,7 @@ function decorationFor(kind: GitChangeKind): Decoration {
 	return 'modified';
 }
 
-export interface GitDecorations {
+interface GitDecorations {
 	/** Decoration for an exact path, file or directory. */
 	get: (path: string) => Decoration | undefined;
 }

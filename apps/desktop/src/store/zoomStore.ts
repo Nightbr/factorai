@@ -5,7 +5,7 @@ import { persist } from 'zustand/middleware';
  *  nothing. Matches the range browsers offer for the same reason. */
 export const MIN_ZOOM = 0.5;
 export const MAX_ZOOM = 2;
-export const ZOOM_STEP = 0.1;
+const ZOOM_STEP = 0.1;
 export const DEFAULT_ZOOM = 1;
 
 /** Clamp and round to one decimal.

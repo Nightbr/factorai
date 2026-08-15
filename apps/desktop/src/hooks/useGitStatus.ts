@@ -7,7 +7,7 @@ import { usePanelStore } from '@store/panelStore';
 
 /** How often the repository is re-read while the panel is open (Q20).
  *  `Sidebar` already polls at 2s, so neither the pattern nor its cost is new. */
-export const GIT_POLL_MS = 3000;
+const GIT_POLL_MS = 3000;
 
 /**
  * The active project's repository state (specs/05-features.md F13).
