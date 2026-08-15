@@ -121,7 +121,7 @@ binary on `src-tauri/**` changes.
 | Platform     | Target                                |
 | ------------ | ------------------------------------- |
 | macOS        | `.dmg` and `.app` (arm64 + x64)       |
-| Linux        | `.deb` + `.AppImage` (x64 + arm64)    |
+| Linux        | `.AppImage` (x86_64 only)             |
 
 Windows is **out of scope** for MVP. The codebase shouldn't actively
 break on Windows (we still use `portable-pty`, `dirs`, etc.), but we

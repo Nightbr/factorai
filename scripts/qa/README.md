@@ -27,20 +27,26 @@ This is enough to verify the **boot phase** — does the app start, does the fir
 
 Use `FACTORAI_DEVTOOLS=1` before `launch.sh` to keep DevTools auto-open — handy when you want the DOM inspector available in the same session. Without the env var, devtools stay closed (cleaner screenshots).
 
-## What does NOT work
+## Synthetic input: it works here (corrected 2026-08-15)
 
-| Script | What it claims | Reality |
-| --- | --- | --- |
-| `click.sh X Y` | Click inside the factorai window | **The cursor moves to the right pixel and X11 receives the event, but WebKitGTK drops synthetic XTest input before React sees it.** Works for X11 surfaces (the window decoration buttons), does NOT work for WebView content. |
-| `key.sh KEYS` | Send keystrokes | Same story — X11 sees them, WebKit's content area doesn't. |
-| `type.sh "text"` | Type text | Same story. |
+**This section used to say the opposite.** It claimed WebKitGTK drops synthetic XTest input before React sees it, called that a deliberate anti-clickjacking feature, and built a two-option "what to do instead" on top. That is **wrong on this machine**, and it was wrong for long enough to steer QA strategy away from an approach that works.
 
-This is a deliberate WebKitGTK security feature (anti-clickjacking from other X11 apps). `xdotool` uses XTest events, and WebKit filters them.
+What was actually done with plain `xdotool`, in one session: clicked the sidebar's *Add project* button, drove the GTK folder chooser it opened, clicked a file in the tree to open the viewer, clicked the viewer's zoom-in twice and read the readout change, and clicked *Copy image* and then confirmed `image/png` on the X clipboard. None of that is a window-decoration click; all of it is WebView content.
 
-### To actually drive the React UI from a script you have two options
+| Script | Status |
+| --- | --- |
+| `click.sh X Y` | ✓ reaches React |
+| `key.sh KEYS` | ✓ — but focus the window first (`wmctrl -ia`) and send **without** `--window`. `xdotool key --window <id>` uses XSendEvent, which *is* filtered; plain `xdotool key` uses XTest, which isn't. That distinction is probably what the original claim was really about. |
+| `type.sh "text"` | ✓ same rule as `key.sh` |
 
-1. **Playwright against `pnpm vite:dev`** (the planned path — same as the reference app). The renderer already has a mock Tauri bridge in `apps/desktop/src/lib/tauri.ts` via `isTauri()` + `mockInvoke()`, so vite-only mode boots cleanly with no Rust. Smoke tests can use Playwright's real DOM events which the browser engine accepts. **Deferred — write when needed.**
-2. **`ydotool`** — uses Linux `uinput` (kernel device), which WebKit doesn't filter. Requires `sudo` to install + a setuid daemon. Useful for native-app verification specifically.
+**Do not read this as "synthetic input is fine".** It is sharp in a way that has already cost something real: a stale window origin once sent a click into the user's Slack and opened an emoji picker on a live conversation. Before every click, in the same shell invocation:
+
+1. re-resolve geometry with `xwininfo -id <wid>` — never reuse coordinates across tool calls, the window moves;
+2. assert the target owns the focus. Compare **PIDs**, not window titles: `xdotool getactivewindow getwindowpid` against the dev binary's pid. A GTK dialog's autocomplete popup is a different window id with no name, so a title check fails there while a pid check holds.
+
+When GUI verification isn't essential, prefer **Playwright against `pnpm vite:dev`** — it cannot touch anything outside its own browser. That lane is no longer "deferred, write when needed": it exists, with 75 smoke tests. `ydotool` (Linux `uinput`, needs sudo and a setuid daemon) remains unnecessary.
+
+**A screenshot can lie about all of this.** With the screen locked, `gnome-screenshot` returns an all-black PNG and reports success. The tell is `xdotool getactivewindow` failing with `XGetWindowProperty[_NET_ACTIVE_WINDOW] failed`; check `Image.getextrema()` before trusting a capture.
 
 ## Typical loop
 

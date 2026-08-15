@@ -149,7 +149,7 @@ toolchain wired up.
   of scope for v1.)
 
 **Exit criteria.**
-- A teammate can install the .dmg / .deb / .msi and use factorai for an
+- A teammate can install the .dmg or the .AppImage and use factorai for an
   hour without hitting a bug that breaks their flow.
 
 ---

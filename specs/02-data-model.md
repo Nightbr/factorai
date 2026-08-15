@@ -212,6 +212,17 @@ CREATE VIRTUAL TABLE messages_fts USING fts5(
 
 Populated by the indexer; not the source of truth (rebuildable).
 
+### `_meta`
+
+Migration bookkeeping: one row per applied migration, keyed `migration:<name>`
+with the applied-at timestamp as the value. Written by `db::open`, read by
+nothing else — it exists so a migration runs once.
+
+| Column | Type    | Notes                    |
+| ------ | ------- | ------------------------ |
+| key    | TEXT PK | e.g. `migration:0003_project_missing` |
+| value  | TEXT    | RFC3339 applied-at       |
+
 ### `settings`
 
 | col   | type    | notes                       |

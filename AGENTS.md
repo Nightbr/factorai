@@ -122,14 +122,22 @@ does the first paint render, do projects appear in the sidebar, did
 the indexer scan complete. That's enough to catch the
 WebKitGTK / WebGL / PTY-flood class of crashes.
 
-**What this does NOT catch.** Anything past the first paint that
-requires clicking or typing into the WebView. `xdotool`'s synthetic
-input is filtered by WebKitGTK before it reaches React — known
-limitation, see `scripts/qa/README.md`. For deeper interaction tests,
-the planned path is **Playwright against `pnpm vite:dev`** (the
-renderer already has a mock Tauri bridge via `isTauri()` /
-`mockInvoke()` in `lib/tauri.ts`, so browser-only mode boots without
-Rust).
+**Clicking and typing into the WebView does work** — corrected
+2026-08-15. This used to say `xdotool`'s synthetic input was filtered by
+WebKitGTK. It isn't: buttons, the file tree, the viewer's controls and a
+GTK file chooser have all been driven that way. The real rule is
+narrower — `xdotool key --window <id>` uses XSendEvent and *is* ignored,
+plain `xdotool key` after focusing uses XTest and isn't. See
+`scripts/qa/README.md`.
+
+**Prefer Playwright anyway when you have the choice.** Not because
+synthetic input fails, but because it can't miss: a stale window origin
+once put a click into the user's Slack. `pnpm e2e` runs against
+`pnpm vite:dev`, where the renderer boots browser-only through
+`isTauri()` / `mockInvoke()`, and it cannot touch anything outside its
+own browser. Reach for `xdotool` when the thing under test is native —
+a real PTY, a file dialog, the clipboard — and follow the safety rules
+in `scripts/qa/README.md` when you do.
 
 Wayland is not supported by these scripts (swap `wmctrl`/`gnome-screenshot`
 for `swaymsg`/`grim` — deferred).
@@ -293,7 +301,7 @@ pnpm deps:unused          # knip — dead code / deps
 
 # Inside apps/desktop:
 pnpm vite:dev             # renderer only, no Tauri (mock the bridge)
-pnpm tauri build          # production build (.app/.dmg/.AppImage/.deb)
+pnpm tauri build          # production build (.app/.dmg/.AppImage)
 
 # Inside apps/desktop/src-tauri:
 cargo check

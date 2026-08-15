@@ -223,7 +223,8 @@ The last mile before the app is something a teammate installs rather than runs f
       signed bundles while still wearing a placeholder icon.
 - [x] README with install instructions — 2026-08-14.
 - [x] GitHub Action: `tauri build` on tag push, artifacts attached to the release — 2026-08-14.
-      Draft pre-release, universal macOS `.dmg` + Linux `.deb`/`.AppImage`, version taken from
+      Draft release (**not** a prerelease — `/releases/latest` skips those and the updater
+      resolves through it), universal macOS `.dmg` + Linux `.AppImage`, version taken from
       the tag. **No signing flow** — that's what auto-updates would need (deferred #7). Two
       constraints now documented in the README rather than discovered by a user: macOS builds
       are unsigned so Gatekeeper blocks them until quarantine is cleared, and the Linux bundles
@@ -235,7 +236,7 @@ The last mile before the app is something a teammate installs rather than runs f
       in the claude probe (Q2) exists specifically for GUI launches on macOS and has never been
       exercised there.
 
-**Exit criterion for M5** (`06-milestones.md`): a teammate installs the `.dmg` / `.deb` and uses
+**Exit criterion for M5** (`06-milestones.md`): a teammate installs the `.dmg` or `.AppImage` and uses
 factorai for an hour without hitting a flow-breaking bug.
 
 ## 9. Retire or re-wire the dead session-read commands
@@ -256,24 +257,27 @@ these are intentional.
 
 ## 10. Interaction-level QA coverage
 
-`scripts/qa/` reliably catches boot-time regressions and not much else. The path forward is the
-one `CLAUDE.md` § 2d already names: **Playwright against `pnpm vite:dev`**, where the renderer
-runs browser-only through `isTauri()` / `mockInvoke()`.
+**Partly done — narrow this rather than reading it as unstarted.** The Playwright lane it called
+"the path forward" exists: 75 `@smoke` tests across 14 files, covering the tree, the viewer, the
+tab strip, search, zoom, the update badge, add-project and the missing-project state. What is
+left is the *regression* lane and the depth, not the approach.
 
-Correct the docs while you're in there: `scripts/qa/README.md` (and `CLAUDE.md` § 2e, which
-repeats it) says XTest input is filtered by WebKitGTK before it reaches React. That's too strong —
-on this box clicks *do* land in the webview; what gets dropped is `--window`-targeted key events
-(`xdotool key --window <id>`), which need window focus plus an untargeted `xdotool key` instead.
-The real reasons GUI-driven QA is unreliable here are duller and worth writing down instead: the
-sidebar reorders every ~2s (`refetchInterval`), so a coordinate measured from a screenshot points
-at a different project by the time it's clicked; `tauri dev` can leave two `factorai` processes
-running *different builds*, both windows identically titled, so the same click gives contradictory
-answers; and `pnpm dev` doesn't rebuild Rust at all, so a new command needs a full restart.
+The doc correction it asked for is **done (2026-08-15)**. Worth noting how that went, because it
+is the argument for this item: the accurate version was written *here*, in this entry, while
+`scripts/qa/README.md` and `AGENTS.md § 2e` went on asserting the wrong one for days. A
+correction recorded in a roadmap item is not a correction. It has to land where the reader looks.
 
-- [ ] Grow `tests/smoke/` past the current handful, and open the `tests/regression/` lane that
-      the smoke-suite budget ("a few seconds") is already pushing against.
-- [ ] Cover the flows the tests can reach and `scripts/qa` cannot: opening a file from the tree,
-      the viewer's markdown toggle, search-hit navigation, the quit-confirm dialog.
+The real reasons GUI-driven QA stays awkward here are duller than "WebKit filters input", and
+they still stand: the sidebar reorders every ~2s (`refetchInterval`), so a coordinate measured
+from a screenshot points at a different project by the time it's clicked; `tauri dev` can leave
+two `factorai` processes running *different builds* — now distinguishable, since a debug build
+titles itself `factorai DEV`; and `pnpm dev` doesn't rebuild Rust at all, so a new command needs
+a full restart.
+
+- [x] Cover the flows `scripts/qa` cannot reach — opening a file from the tree, the viewer's
+      markdown toggle, search-hit navigation, the quit-confirm dialog — 2026-08-15.
+- [ ] Open the `tests/regression/` lane. The smoke suite is at ~70s against a stated budget of
+      "a few seconds"; one of the two has to give, and that is inconsistency **E1**.
 - [ ] Fixtures stay one-factory-per-shape in `tests/smoke/fixtures.ts`.
 
 Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
