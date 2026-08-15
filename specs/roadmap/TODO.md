@@ -14,11 +14,67 @@ built; **items 12–14 are high-priority despite their position** — the `Cmd+P
 `Cmd+G` navigation trio, added 2026-08-14, kept at the end only so the earlier numbers stay
 stable.
 
-## 1. Shipped — see [`DONE.md`](./DONE.md) (2026-08-14)
+Added 2026-08-15: **item 1 is the git graph**, taking the slot the Changes tab freed. It sits at
+the top of the list because that is where the freed slot was, **not** as a claim that it outranks
+M4's remainder — it is gated on a clarify-needs interview and has no spec yet, so nothing about
+it is ready to build. Re-order it once that interview has happened and its size is known.
 
-The Changes tab, git decorations and the diff viewer landed in four slices. This slot is kept
-rather than renumbered so items 2–14 and the cross-references pointing at them stay put; the next
-item added takes it.
+## 1. Git graph — the commit tree, branches and tags
+
+**Not started, and not to be started from this entry.** The next step is a **clarify-needs
+interview**, then a spec; only then code (`CLAUDE.md` § 2a). What follows is the shape of the
+problem and the questions the interview has to settle — deliberately not answers, because the
+roadmap is sequencing and never the place a feature gets specified (see
+[`README.md`](./README.md)).
+
+**Why it's worth building.** GitKraken is currently open alongside factorai for exactly one
+purpose: *seeing* where the repository is — which branches exist, what's on them, how they
+diverged. Everything a git GUI is usually for — committing, rebasing, merging, resolving — is
+already done by agents in the terminal factorai embeds. So the half of GitKraken that justifies
+its weight is the half factorai doesn't have, and the half that doesn't is the half we'd never
+build. That asymmetry is what makes this a viewer rather than a git client, and it is the whole
+reason it's tractable.
+
+**Scope, as agreed.** Read-only visualization: the commit graph with its lanes, local and remote
+branch refs, tags, and where `HEAD` is. **Worktrees are a later phase** — they change what "the
+repository" means on screen and shouldn't complicate the first cut.
+
+**Non-goals, and they're load-bearing.** No commit, stage, rebase, merge, cherry-pick, push or
+fetch. ADR-0009 already binds every repository read to `git2` and says the app writes nothing;
+beyond that, `git2` is compiled `default-features = false`, so network transport isn't merely
+unimplemented, it isn't linked in. Adding an operation later means revisiting that ADR, not
+adding a button.
+
+**What already exists to build on.** `services/git.rs` owns `Repository::discover()` from the
+project root, the status walk, blob reads at `head`/`index`, and the `git_err` mapping;
+`commands/git.rs` is the boundary; the renderer has never learned libgit2 exists and shouldn't
+start now. Freshness today is polling while a panel is open, not a watcher (Q17) — F13 and F12
+both take that stance and a graph has no reason to break it.
+
+**Where the difficulty actually is.** Not the data — a `revwalk` with `TOPOLOGICAL | TIME` and
+`repo.references()` gets the raw material in a few dozen lines. It's (a) **lane assignment**: the
+layout that turns a DAG into legible rails is the feature, and a bad one is worse than no graph;
+(b) **scale** — a large repo has hundreds of thousands of commits and neither the walk nor the
+renderer can be eager, so paging/virtualisation is a design input, not an optimisation to add
+later; (c) **where it lives** — the right panel's tab strip is deliberately not a registry
+(Q18), so a graph is not simply a third tab.
+
+**For the clarify-needs pass.** Roughly in the order they block each other:
+
+- What is the unit of "enough"? Which GitKraken behaviours are load-bearing for the actual daily
+  use, and which are noise that happens to be on screen?
+- Scope of the walk: all refs, or current branch and its neighbours? How far back by default?
+- Does it need remotes at all, given nothing fetches — i.e. are remote-tracking refs read from
+  what's already in `.git`, and is a stale `origin/main` useful or misleading?
+- Where does it live: a route, a panel, a modal, its own window?
+- **The factorai-specific question, and the one worth the most:** should the graph know about
+  *sessions*? It is the one thing GitKraken structurally cannot do — relate a commit to the
+  Claude session that produced it. Whether that's the point of the feature or a distraction from
+  it is a decision, not a detail.
+- Interaction floor: what happens on click? Selecting a commit implies showing it, which implies
+  a diff surface — and one already exists (F13, ADR-0007's Monaco). Reuse or not?
+- Does anything about this change the `missing`/`realPath` assumptions for projects that aren't
+  repositories at all?
 
 ## 2. M4 — CLAUDE.md & plans (F9)
 
