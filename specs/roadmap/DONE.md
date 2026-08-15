@@ -3,8 +3,19 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The AppImage env scrub actually applies now** — 2026-08-15. The v0.5.0 fix below computed the
+  right environment and then changed nothing, because `CommandBuilder::new()` pre-seeds the child
+  from `std::env::vars_os()`: `env()` overrides a key, and the variables we wanted gone were
+  exactly the ones our clean list *omitted*, so they stayed inherited. Caught by starting `pnpm
+  dev` from a session under the freshly-updated release and hitting the identical
+  `WebKitNetworkProcess` error. The scrub is now an `EnvChanges { remove, set }` diff applied via
+  `env_remove`. The regression test drives a real `CommandBuilder`; with the fault reintroduced it
+  is the only one of the ten that fails, which is the whole lesson — nine tests of a rule proved
+  nothing about whether the rule was ever applied.
+
 - **A session no longer inherits the AppImage's private environment** — 2026-08-15, shipped in
-  v0.5.0. `spawn_with_argv` copied `std::env::vars_os()` wholesale into every PTY, so a release
+  v0.5.0 (and **broken there** — see above). `spawn_with_argv` copied `std::env::vars_os()`
+  wholesale into every PTY, so a release
   build handed `linuxdeploy`'s runtime to every Claude session and everything it ran: `PYTHONHOME`
   pointing into the squashfs mount killed any `python3` with `No module named 'encodings'`, and
   `LD_LIBRARY_PATH` made other GTK binaries load *our* WebKitGTK. `services/child_env` strips
