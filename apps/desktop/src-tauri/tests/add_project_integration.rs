@@ -189,6 +189,32 @@ fn adding_a_folder_clears_a_stale_missing_flag() {
 	assert!(!add_project_in(&db, dir.to_str().unwrap()).expect("re-add").missing);
 }
 
+/// Re-adding a hidden folder is the un-hide gesture — the conflict clause
+/// clears `hidden` while still leaving `pinned` alone, and the two behaviours
+/// differ on purpose: a re-add is an explicit "show me this again", not an
+/// implicit unpin (specs/05-features.md F1).
+#[test]
+fn re_adding_a_hidden_project_unhides_it() {
+	let tmp = TempDir::new().unwrap();
+	let dir = tmp.path().join("code").join("foo");
+	std::fs::create_dir_all(&dir).unwrap();
+	let db = open_db(tmp.path());
+
+	let added = add_project_in(&db, dir.to_str().unwrap()).expect("add");
+	db.with_mut(|conn| {
+		conn.execute(
+			"UPDATE projects SET hidden = 1, pinned = 1 WHERE id = ?1",
+			params![added.id],
+		)?;
+		Ok(())
+	})
+	.expect("hide and pin");
+
+	let re_added = add_project_in(&db, dir.to_str().unwrap()).expect("re-add");
+	assert!(!re_added.hidden, "re-adding is the un-hide gesture");
+	assert!(re_added.pinned, "but re-adding must not silently unpin");
+}
+
 #[test]
 fn rejects_what_cannot_be_a_project() {
 	let tmp = TempDir::new().unwrap();

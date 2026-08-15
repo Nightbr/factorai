@@ -182,6 +182,7 @@ Tables created on first launch and migrated forward by ordered SQL files in
 | session_count    | INTEGER |                                                    |
 | pinned           | INTEGER | 0/1                                                |
 | missing          | INTEGER | 0/1 — `real_path` is known and gone from disk       |
+| hidden           | INTEGER | 0/1 — user asked not to see it in the sidebar      |
 
 ### `sessions`
 

@@ -116,6 +116,7 @@ pub fn run() {
 			commands::projects::add_project,
 			commands::projects::resolve_project_path,
 			commands::projects::pin_project,
+			commands::projects::hide_project,
 			commands::sessions::list_sessions,
 			commands::sessions::get_session,
 			commands::sessions::get_session_tail,

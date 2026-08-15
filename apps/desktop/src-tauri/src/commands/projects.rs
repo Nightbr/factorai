@@ -13,7 +13,12 @@ use crate::state::AppState;
 pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
 	state.db.with(|conn| {
 		let mut stmt = conn.prepare(
-			"SELECT id, real_path, display_name, last_session_at, session_count, pinned, missing
+			// Hidden rows are deliberately returned, not filtered here: the
+			// sidebar filters its own view, and the project route, session tabs
+			// and search resolve hidden projects from this same list — a
+			// `WHERE NOT hidden` would unmount the page of the project you are
+			// looking at the moment you hide it.
+			"SELECT id, real_path, display_name, last_session_at, session_count, pinned, missing, hidden
 			 FROM projects
 			 ORDER BY pinned DESC, COALESCE(last_session_at, 0) DESC, display_name ASC",
 		)?;
@@ -27,6 +32,7 @@ pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
 					session_count: row.get(4)?,
 					pinned: row.get::<_, i64>(5)? != 0,
 					missing: row.get::<_, i64>(6)? != 0,
+					hidden: row.get::<_, i64>(7)? != 0,
 				})
 			})?
 			.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -44,7 +50,9 @@ pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
 ///
 /// `display_name` and `pinned` are deliberately left alone on conflict — the
 /// former is the indexer's to derive, and clobbering the latter would silently
-/// unpin a project by re-adding it.
+/// unpin a project by re-adding it. `hidden` is deliberately *cleared*: unlike
+/// unpinning, re-adding a hidden folder is exactly the "show me this again"
+/// gesture, and it is the only un-hide path.
 #[tauri::command]
 pub fn add_project(state: State<'_, AppState>, path: String) -> AppResult<Project> {
 	add_project_in(&state.db, &path)
@@ -74,7 +82,7 @@ pub fn add_project_in(db: &Db, path: &str) -> AppResult<Project> {
 	db.with_mut(|conn| {
 		conn.execute(
 			"INSERT INTO projects(id, real_path, display_name, session_count) VALUES(?1, ?2, ?3, 0)
-			 ON CONFLICT(id) DO UPDATE SET real_path = excluded.real_path, missing = 0",
+			 ON CONFLICT(id) DO UPDATE SET real_path = excluded.real_path, missing = 0, hidden = 0",
 			params![id, real_path, display_name],
 		)?;
 		Ok(())
@@ -82,7 +90,7 @@ pub fn add_project_in(db: &Db, path: &str) -> AppResult<Project> {
 
 	db.with(|conn| {
 		let project = conn.query_row(
-			"SELECT id, real_path, display_name, last_session_at, session_count, pinned, missing
+			"SELECT id, real_path, display_name, last_session_at, session_count, pinned, missing, hidden
 			 FROM projects WHERE id = ?1",
 			params![id],
 			|row| {
@@ -94,6 +102,7 @@ pub fn add_project_in(db: &Db, path: &str) -> AppResult<Project> {
 					session_count: row.get(4)?,
 					pinned: row.get::<_, i64>(5)? != 0,
 					missing: row.get::<_, i64>(6)? != 0,
+					hidden: row.get::<_, i64>(7)? != 0,
 				})
 			},
 		)?;
@@ -118,6 +127,21 @@ pub fn pin_project(state: State<'_, AppState>, id: String, pinned: bool) -> AppR
 		conn.execute(
 			"UPDATE projects SET pinned = ?2 WHERE id = ?1",
 			params![id, pinned as i64],
+		)?;
+		Ok(())
+	})
+}
+
+/// Hide (or show) a project in the sidebar. The inverse operation is
+/// `add_project` — re-adding the folder clears the flag — which is why this
+/// takes the flag rather than being a bare `hide`: same shape as `pin_project`,
+/// so the one-line UPDATE stays symmetric with it.
+#[tauri::command]
+pub fn hide_project(state: State<'_, AppState>, id: String, hidden: bool) -> AppResult<()> {
+	state.db.with(|conn| {
+		conn.execute(
+			"UPDATE projects SET hidden = ?2 WHERE id = ?1",
+			params![id, hidden as i64],
 		)?;
 		Ok(())
 	})
