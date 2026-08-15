@@ -10,10 +10,21 @@ directory as the ground truth and cache derived data in our own SQLite.
 ├── projects/
 │   └── <encoded-project-path>/
 │       ├── <session-id>.jsonl       # one event per line
+│       ├── <session-id>/            # created lazily, per session that spawned agents
+│       │   └── subagents/
+│       │       ├── agent-<id>.jsonl # one sub-agent's transcript, same event shape
+│       │       └── agent-<id>.meta.json
 │       └── ...
 ├── settings.json                    # global settings
 └── ...
 ```
+
+Sub-agent transcripts carry `isSidechain: true` and an `agentId` on their
+events. They are **sessions of a kind** — same JSONL event format, indexed
+into `sessions` with `subagent_of` set — but they are never resumable:
+`claude --resume` looks for a top-level `<id>.jsonl` under the project, and
+an agent id has none. They surface nested under their parent in the session
+list (F2), open read-only (F3), and don't count toward `session_count`.
 
 ### Project-path encoding
 
@@ -196,6 +207,7 @@ Tables created on first launch and migrated forward by ordered SQL files in
 | file_mtime     | INTEGER | filesystem mtime when last indexed (for change detection)        |
 | file_size      | INTEGER | bytes at last index (cheap "did this change?" probe)             |
 | cwd            | TEXT    | last observed `cwd` from events                                  |
+| subagent_of    | TEXT    | parent session id for a sub-agent transcript; NULL for a real one. No FK: read_dir order can index an agent before its parent, and an enforced reference would turn that into an error. |
 | status         | TEXT    | `idle` (default). Live status is in-memory only.                 |
 
 ### `messages_fts` (FTS5 virtual table)
