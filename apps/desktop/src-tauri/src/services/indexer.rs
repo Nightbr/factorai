@@ -143,18 +143,36 @@ impl Indexer {
 
 		let mut changed_ids: Vec<String> = Vec::new();
 		for session_path in &session_files {
-			match self.index_session_if_changed(&encoded, session_path) {
+			match self.index_session_if_changed(&encoded, session_path, None) {
 				Ok(Some(session_id)) => changed_ids.push(session_id),
 				Ok(None) => {}
 				Err(e) => warn!(path = ?session_path, error = %e, "session index failed"),
 			}
 		}
 
-		// Refresh aggregates on `projects`.
+		// Sub-agent transcripts: Claude Code writes each agent a session spawns
+		// to <session-id>/subagents/agent-*.jsonl. Same JSONL shape, same
+		// parsing — but marked `subagent_of` so the UI can nest them under
+		// their parent and never try to resume one.
+		for session_path in &session_files {
+			if let Some(session_id) = session_path.file_stem().and_then(|s| s.to_str()) {
+				for agent_path in subagent_files(session_path) {
+					match self.index_session_if_changed(&encoded, &agent_path, Some(session_id)) {
+						Ok(Some(agent_id)) => changed_ids.push(agent_id),
+						Ok(None) => {}
+						Err(e) => warn!(path = ?agent_path, error = %e, "sub-agent index failed"),
+					}
+				}
+			}
+		}
+
+		// Refresh aggregates on `projects`. Sub-agents don't count: the count
+		// answers "how many sessions does this project have", and an agent run
+		// on a session's behalf is part of that session, not another one.
 		self.db.with(|conn| {
 			conn.execute(
 				"UPDATE projects SET
-				   session_count = (SELECT COUNT(*) FROM sessions WHERE project_id = ?1),
+				   session_count = (SELECT COUNT(*) FROM sessions WHERE project_id = ?1 AND subagent_of IS NULL),
 				   last_session_at = (SELECT MAX(updated_at) FROM sessions WHERE project_id = ?1)
 				 WHERE id = ?1",
 				params![encoded],
@@ -174,10 +192,13 @@ impl Indexer {
 
 	/// Index one .jsonl. Returns the session id if it was reindexed (or
 	/// newly indexed), `None` if the cached `(mtime, size)` already matched.
+	/// `subagent_of` marks the file as a sub-agent transcript belonging to
+	/// that parent session.
 	pub fn index_session_if_changed(
 		&self,
 		project_id: &str,
 		session_path: &Path,
+		subagent_of: Option<&str>,
 	) -> AppResult<Option<String>> {
 		let session_id = match session_path.file_stem().and_then(|s| s.to_str()) {
 			Some(name) => name.to_string(),
@@ -280,15 +301,16 @@ impl Indexer {
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			tx.execute(
-				"INSERT INTO sessions(id, project_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd)
-				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+				"INSERT INTO sessions(id, project_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of)
+				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
 				 ON CONFLICT(id) DO UPDATE SET
 				   title = excluded.title,
 				   updated_at = excluded.updated_at,
 				   turn_count = excluded.turn_count,
 				   file_mtime = excluded.file_mtime,
 				   file_size = excluded.file_size,
-				   cwd = COALESCE(excluded.cwd, sessions.cwd)",
+				   cwd = COALESCE(excluded.cwd, sessions.cwd),
+				   subagent_of = excluded.subagent_of",
 				params![
 					session_id,
 					project_id,
@@ -299,6 +321,7 @@ impl Indexer {
 					mtime_ms,
 					size,
 					cwd,
+					subagent_of,
 				],
 			)?;
 			tx.execute("DELETE FROM messages_fts WHERE session_id = ?1", params![session_id])?;
@@ -328,6 +351,59 @@ fn first_cwd_from_session(path: &Path) -> Option<String> {
 	EventIter::open(path).ok()?.find_map(|ev| ev.cwd)
 }
 
+/// The `agent-*.jsonl` transcripts under `<session>.jsonl`'s sibling
+/// `subagents/` directory, if there is one. Claude Code creates it lazily —
+/// most sessions never spawn an agent, so the directory usually doesn't
+/// exist. Read errors are swallowed: a sub-agent row we miss this scan shows
+/// up on the next one.
+fn subagent_files(session_path: &Path) -> Vec<PathBuf> {
+	let Some(dir) = session_path.parent() else { return Vec::new() };
+	let sub_dir = dir.join(session_id_of(session_path)).join("subagents");
+	match std::fs::read_dir(&sub_dir) {
+		Ok(rd) => rd
+			.filter_map(Result::ok)
+			.map(|e| e.path())
+			.filter(|p| {
+				p.extension().is_some_and(|e| e == "jsonl")
+					&& p.file_name()
+						.and_then(|n| n.to_str())
+						.is_some_and(|n| n.starts_with("agent-"))
+			})
+			.collect(),
+		Err(_) => Vec::new(),
+	}
+}
+
+fn session_id_of(session_path: &Path) -> &str {
+	session_path.file_stem().and_then(|s| s.to_str()).unwrap_or_default()
+}
+
+/// The project directory a changed `.jsonl` belongs to, given the file's
+/// path. Top-level transcripts map to their parent; a sub-agent transcript
+/// at `<project>/<session>/subagents/agent-*.jsonl` maps to `<project>`.
+/// `None` — watch and ignore — when the result isn't a direct child of
+/// `projects_dir`, which is the only shape a project directory has. That
+/// guard is what stops a stray `.jsonl` anywhere else in the tree from
+/// manufacturing a project row named after its containing folder.
+pub fn project_dir_for_event(path: &Path, projects_dir: &Path) -> Option<PathBuf> {
+	let parent = path.parent()?;
+
+	let project_dir = if parent.file_name().and_then(|n| n.to_str()) == Some("subagents") {
+		// `subagents/` sits inside the session's own directory; the project
+		// is two levels up from the file.
+		parent.parent()?.parent()?
+	} else {
+		parent
+	};
+
+	if project_dir.parent() == Some(projects_dir) {
+		Some(project_dir.to_path_buf())
+	} else {
+		None
+	}
+}
+
+
 fn parse_iso(s: &str) -> Option<i64> {
 	chrono::DateTime::parse_from_rfc3339(s)
 		.ok()
@@ -344,4 +420,75 @@ pub fn spawn_initial_scan(indexer: Arc<Indexer>) {
 			}
 		})
 		.expect("failed to spawn indexer thread");
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn project_dir_for_event_maps_a_top_level_transcript() {
+		let projects = Path::new("/home/a/.claude/projects");
+		let p = Path::new("/home/a/.claude/projects/-code-foo/abc.jsonl");
+		assert_eq!(
+			project_dir_for_event(p, projects).as_deref(),
+			Some(Path::new("/home/a/.claude/projects/-code-foo"))
+		);
+	}
+
+	#[test]
+	fn project_dir_for_event_walks_a_subagent_transcript_up_to_the_project() {
+		let projects = Path::new("/home/a/.claude/projects");
+		let p = Path::new("/home/a/.claude/projects/-code-foo/1111-2222/subagents/agent-3333.jsonl");
+		assert_eq!(
+			project_dir_for_event(p, projects).as_deref(),
+			Some(Path::new("/home/a/.claude/projects/-code-foo"))
+		);
+	}
+
+	#[test]
+	fn project_dir_for_event_ignores_a_jsonl_outside_any_project_dir() {
+		let projects = Path::new("/home/a/.claude/projects");
+		// Deeper than any layout Claude writes: the session dir itself.
+		let p = Path::new("/home/a/.claude/projects/-code-foo/1111-2222/stray.jsonl");
+		assert_eq!(project_dir_for_event(p, projects), None);
+
+		// And directly under projects_dir's parent would be `projects/`'s own
+		// children only — a file one level too high has no project either.
+		let too_high = Path::new("/home/a/.claude/projects/loose.jsonl");
+		assert_eq!(project_dir_for_event(too_high, projects), None);
+	}
+
+	#[test]
+	fn subagent_files_lists_agent_transcripts_for_a_session() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let project = tmp.path().join("-code-foo");
+		std::fs::create_dir_all(&project).unwrap();
+		let sid = "1111-2222";
+		std::fs::write(project.join(format!("{sid}.jsonl")), "{}\n").unwrap();
+		let subs = project.join(sid).join("subagents");
+		std::fs::create_dir_all(&subs).unwrap();
+		std::fs::write(subs.join("agent-aaa.jsonl"), "{}\n").unwrap();
+		std::fs::write(subs.join("agent-bbb.jsonl"), "{}\n").unwrap();
+		// Not agent-prefixed, and not .jsonl: neither is a sub-agent transcript.
+		std::fs::write(subs.join("notes.txt"), "").unwrap();
+		std::fs::write(subs.join("other.jsonl"), "{}\n").unwrap();
+
+		let mut got: Vec<String> = subagent_files(&project.join(format!("{sid}.jsonl")))
+			.iter()
+			.filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+			.collect();
+		got.sort();
+		assert_eq!(got, vec!["agent-aaa.jsonl".to_string(), "agent-bbb.jsonl".to_string()]);
+	}
+
+	#[test]
+	fn subagent_files_is_empty_when_the_dir_does_not_exist() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let project = tmp.path().join("-code-foo");
+		std::fs::create_dir_all(&project).unwrap();
+		let sid = "1111-2222";
+		std::fs::write(project.join(format!("{sid}.jsonl")), "{}\n").unwrap();
+		assert!(subagent_files(&project.join(format!("{sid}.jsonl"))).is_empty());
+	}
 }

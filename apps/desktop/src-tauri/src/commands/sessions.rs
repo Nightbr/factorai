@@ -13,10 +13,21 @@ use crate::state::AppState;
 pub fn list_sessions(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<SessionSummary>> {
 	state.db.with(|conn| {
 		let mut stmt = conn.prepare(
-			"SELECT id, project_id, COALESCE(title, ''), created_at, updated_at, turn_count, cwd
-			 FROM sessions
-			 WHERE project_id = ?1
-			 ORDER BY updated_at DESC",
+			// Sub-agent rows sort directly under their parent: groups are
+			// ordered by the *parent's* recency (a sub-agent is part of the
+			// work its parent session was), the parent leads its group, and
+			// siblings order among themselves by recency. An orphaned
+			// sub-agent (parent transcript deleted) keeps its marking but
+			// sorts as its own group — the LEFT JOIN leaves `p` NULL and
+			// COALESCE falls back to its own updated_at.
+			"SELECT s.id, s.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
+			        s.turn_count, s.cwd, s.subagent_of
+			 FROM sessions s
+			 LEFT JOIN sessions p ON p.id = s.subagent_of
+			 WHERE s.project_id = ?1
+			 ORDER BY COALESCE(p.updated_at, s.updated_at) DESC,
+			          (s.subagent_of IS NULL) DESC,
+			          s.updated_at DESC",
 		)?;
 		let rows = stmt
 			.query_map(params![project_id], |row| {
@@ -28,6 +39,7 @@ pub fn list_sessions(state: State<'_, AppState>, project_id: String) -> AppResul
 					updated_at: row.get(4)?,
 					turn_count: row.get(5)?,
 					cwd: row.get(6)?,
+					subagent_of: row.get(7)?,
 				})
 			})?
 			.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -45,9 +57,9 @@ pub fn get_session(
 	let offset = offset.unwrap_or(0);
 	let limit = limit.unwrap_or(100);
 
-	let (project_id, total) = lookup_project_and_total(&state, &session_id)?;
+	let (project_id, parent_id, total) = lookup_project_and_total(&state, &session_id)?;
 
-	let path = jsonl_path_for(&state.claude_dir, &project_id, &session_id);
+	let path = jsonl_path_for(&state.claude_dir, &project_id, parent_id.as_deref(), &session_id);
 	let events: Vec<SessionEvent> = EventIter::open(&path)?
 		.skip(offset)
 		.take(limit)
@@ -67,10 +79,10 @@ pub fn get_session_tail(
 ) -> AppResult<SessionPage> {
 	let limit = limit.unwrap_or(100);
 
-	let (project_id, total) = lookup_project_and_total(&state, &session_id)?;
+	let (project_id, parent_id, total) = lookup_project_and_total(&state, &session_id)?;
 	let offset = total.saturating_sub(limit);
 
-	let path = jsonl_path_for(&state.claude_dir, &project_id, &session_id);
+	let path = jsonl_path_for(&state.claude_dir, &project_id, parent_id.as_deref(), &session_id);
 	let events: Vec<SessionEvent> = EventIter::open(&path)?
 		.skip(offset)
 		.take(limit)
@@ -98,17 +110,34 @@ pub fn search_sessions(
 fn lookup_project_and_total(
 	state: &State<'_, AppState>,
 	session_id: &str,
-) -> AppResult<(String, usize)> {
+) -> AppResult<(String, Option<String>, usize)> {
 	state.db.with(|conn| {
 		conn.query_row(
-			"SELECT project_id, turn_count FROM sessions WHERE id = ?1",
+			"SELECT project_id, subagent_of, turn_count FROM sessions WHERE id = ?1",
 			params![session_id],
-			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize)),
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, Option<String>>(1)?,
+					row.get::<_, i64>(2)? as usize,
+				))
+			},
 		)
 		.map_err(|_| AppError::NotFound(format!("session {session_id}")))
 	})
 }
 
-fn jsonl_path_for(claude_dir: &std::path::Path, project_id: &str, session_id: &str) -> PathBuf {
-	claude_dir.join("projects").join(project_id).join(format!("{session_id}.jsonl"))
+/// Where a session's transcript lives. A sub-agent's is nested under its
+/// parent's id: `<project>/<parent>/subagents/agent-*.jsonl`.
+fn jsonl_path_for(
+	claude_dir: &std::path::Path,
+	project_id: &str,
+	subagent_of: Option<&str>,
+	session_id: &str,
+) -> PathBuf {
+	let project = claude_dir.join("projects").join(project_id);
+	match subagent_of {
+		Some(parent) => project.join(parent).join("subagents").join(format!("{session_id}.jsonl")),
+		None => project.join(format!("{session_id}.jsonl")),
+	}
 }

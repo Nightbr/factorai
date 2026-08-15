@@ -155,6 +155,15 @@ exists, checked in this order:
 
 An empty or whitespace-only rename falls through rather than blanking the row.
 
+**Sub-agent rows.** A sub-agent transcript (`<session>/subagents/agent-*.jsonl`,
+`subagent_of` set — see `specs/02-data-model.md`) appears on the project page
+**nested directly under its parent session**, indented, with a `sub-agent`
+badge and a `read-only` affordance instead of the chevron. Groups order by the
+parent's recency; an orphaned sub-agent (parent transcript deleted) keeps its
+marking and sorts as its own group. The sidebar's inline ten-session list
+**excludes** sub-agents — its slots are for sessions you can go back into,
+and the project page is where the nested rows live.
+
 **Edge cases.**
 - Session file is huge (>100MB) → still index, just lazily.
 
@@ -162,23 +171,34 @@ An empty or whitespace-only rename falls through rather than blanking the row.
 
 ---
 
-## F3 — Session view (terminal-only)
+## F3 — Session view (terminal-first)
 
 **Behavior.** Opening a session shows the embedded terminal (F5) filling
 the pane, with a thin header for the project name + session id. There is
-**no** chronological JSONL event viewer.
+**no** chronological JSONL event viewer for ordinary sessions.
+
+**Sub-agent sessions are the exception, and read-only.** A sub-agent
+transcript can never be resumed — `claude --resume` probes for a top-level
+`<id>.jsonl` and an agent id has none, so "opening" one as a terminal would
+spawn a fresh `claude` under the agent's id. Instead the session view swaps
+the terminal for a paged transcript rendering: `get_session_tail` (last 100
+events, widened by "show earlier"), meta events skipped, message bodies
+flattened the way the indexer flattens for FTS. No Stop/Restart buttons —
+there is no process. Plain stateless rows honour the freeze that killed the
+v1 event viewer:
 
 > **History note.** M1 shipped a full JSONL event viewer (`EventLog` /
 > `EventCard`). It was removed in `c6374d6`: mounting 100+ stateful React
 > components in a single paint froze the WebKitGTK webview on Linux even
 > with tail-pagination. The session view is now terminal-first
-> (switchboard-style). The only surface that renders session content is
-> search results (F4), which show short `snippet()` excerpts — cheap to
-> render and bounded in count.
+> (switchboard-style). The only surfaces that render session content are
+> search results (F4), which show short `snippet()` excerpts, and the
+> sub-agent transcript view — both cheap to render and bounded.
 
 **Backend.** `get_session(session_id, offset, limit)` and
-`get_session_tail` remain available for future use (e.g. a search-hit
-context preview) but are not wired into the session view.
+`get_session_tail` — the latter is what the sub-agent transcript view
+reads. Both resolve a sub-agent's transcript path through its
+`subagent_of` parent.
 
 **Edge cases.**
 - Malformed line in JSONL → skip and log during indexing; never fatal.
