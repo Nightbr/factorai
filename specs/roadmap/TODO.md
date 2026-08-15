@@ -396,6 +396,45 @@ VS Code's own answers are `Cmd+Shift+O` (symbols in file) and `Cmd+T` (symbols i
 free here. Recommendation: ship `Cmd+G` as asked, keep `Cmd+Shift+O` as an alias, and record the
 choice in `07-open-questions.md` rather than leaving it implicit in a `useGlobalShortcuts` switch.
 
+## 15. Clickable file links in terminal output (OSC 8)
+
+A path in the agent's output should take you to the file. Fourth member of the navigation family
+above — items 12–14 are "I know roughly what I want, find it"; this is "the thing on screen
+right now, open it", which is the cheaper and more frequent case.
+
+**Most of the machinery is already here, and one decision has to change.** `Terminal.tsx` loads
+`WebLinksAddon` with `onLinkActivated`, and the shell scope in `tauri.conf.json` already permits
+absolute paths (`/[\w.][^\n]*`, guarded by `tests/shell_open_scope.rs`). So a file path is
+*already* openable — but it opens **externally**, in whatever the OS says owns that extension.
+That was right when the only links were `https://`. It is wrong for a file: `00-overview.md` §
+"The operating model" puts review inside the app, and F7's Monaco viewer is where a file the
+agent touched belongs. **A file link should open the viewer; a URL should keep going to the
+browser.** Same addon, two destinations, chosen by scheme.
+
+**Keep the modifier-click rule.** `onLinkActivated` ignores a bare click on purpose, and the
+reason is in its doc comment: Claude Code is a TUI, a plain click lands on interactive output
+often enough that acting on one would be an ambush. That reasoning is unchanged by the
+destination, and this item must not quietly relax it.
+
+**The fork to settle first — and it is cheap to settle.** Two ways for a path to become a link:
+
+- **True OSC 8.** The CLI emits `ESC ] 8 ; ; file:///path ESC \` and xterm renders it; we do
+  almost nothing. Depends entirely on Claude Code emitting them, which we don't control and
+  haven't verified. **Check before designing anything**: PTY output already arrives as raw bytes
+  (base64, `terminal:data`), so a one-off grep for `\x1b]8;` in a live session answers it.
+- **A link provider.** `registerLinkProvider` over the buffer, matching path-like text — works no
+  matter what the CLI emits, and covers `src/foo.ts:42` line references, which OSC 8 alone
+  wouldn't give us. Cost is false positives, and a regex over every frame of a busy TUI needs a
+  look at cost.
+
+They aren't exclusive; OSC 8 when offered, provider as the floor, is a plausible answer. But
+which one is load-bearing changes the size of this item by a lot.
+
+**Open beyond that.** Relative paths need a base — the session's cwd is known, the agent's
+working directory may not be. Does a `:line:col` suffix drive the viewer's scroll position (F7
+takes a path today)? And a path that doesn't exist — stale output, a file the agent deleted —
+should say so rather than opening an empty editor.
+
 ## 16. App-wide scrollbar styling
 
 Scrollbars are currently whatever WebKitGTK draws: a chunky native bar that eats width in the
@@ -474,7 +513,49 @@ logo":
 Sequence that avoids rework: mark → 1024px master → `tauri icon` → desktop entry → in-app brand
 row. Nothing here blocks a release, and every release without it ships the placeholder.
 
-## 19. Post-MVP / deferred
+## 19. IDE emulation — the MCP server Claude opens files and diffs through
+
+**Graduated from `06-milestones.md` § Deferred (was #1) on 2026-08-15.** Re-implement
+the prior app's WebSocket MCP server so the `claude` CLI treats factorai as its editor: file opens
+land in our viewer, and diff approvals happen in our UI — including the **accept / reject hunk**
+surface the MVP skipped.
+
+**Why it graduated.** Under `00-overview.md` § "The operating model" this stops being a nicety
+and becomes the mechanism for two of the four verbs. Everything the app does today is
+*pull* — the human goes and looks at the Changes tab, the tree, the diff. IDE emulation is the
+**push** half: the agent asks, and the human decides in place. That is the difference between an
+app you check and an app you work in, and nothing else on this list closes it.
+
+**It is the first time factorai writes code, and that needs an ADR.** Accept/reject hunk means
+writing to the working tree. Every existing decision points the other way — ADR-0004 makes
+`~/.claude/` read-only, ADR-0009 says every repository read goes through `git2` and *"everything
+is read-only. No staging, no discard, no commit"*. Applying a hunk is none of those things and
+supersedes part of ADR-0009. Write that ADR before the code, not after; it also has to say what
+happens when the working tree moved under a pending approval, which is the failure case that
+matters and the one a demo never hits.
+
+**A local WebSocket server is a security boundary, and this repo has never had one.** Any process
+on the machine can connect to a localhost port. What authenticates a client, what a connected
+client is allowed to ask for (read any path? write any path?), and whether the port is
+per-session or per-app are load-bearing questions, not configuration. Getting this wrong turns a
+developer tool into a local RCE, so it is the first thing to design and the first thing to test.
+
+**Open questions, roughly in blocking order.**
+
+- What does the current `claude` CLI actually speak? The prior app's implementation is the
+  reference, but the protocol has moved; the emulator has to match today's CLI, and that is a
+  research task before it is a build task.
+- Scope of the emulation: file open only (small, immediately useful, no writes) versus the full
+  diff-approval loop (the valuable half, and the one that writes). These are separable and the
+  first is a genuine milestone on its own.
+- How does it interact with item 15? Both make the agent's output actionable — one by protocol,
+  one by parsing what it printed. If the CLI drives opens over MCP, item 15's link provider
+  becomes a fallback for everything *not* routed that way rather than the main path.
+- Does an emulated editor have to be told which session it belongs to? factorai runs many PTYs
+  at once; a server that can't attribute a request to a session can't put the diff in the right
+  tab.
+
+## 20. Post-MVP / deferred
 
 Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
 list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,
