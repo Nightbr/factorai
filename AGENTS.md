@@ -74,6 +74,17 @@ caret drifted in with F14 and sat there failing for a day, in a repo that
 otherwise pins exact versions. A check nobody runs is a check that doesn't
 exist. `pnpm deps:fix` resolves the usual case.
 
+**CI runs all of this except `e2e`** — `.github/workflows/quality.yml`, on every
+PR and every push to `main`. It is the net under the local gate, not a
+replacement for it: `release.yml` is tag-driven and runs no tests at all, so
+tag a commit this workflow has passed. In place of e2e's incidental coverage it
+builds the renderer (`vite:build`), which catches a bundler-visible break that
+`tsc` doesn't. If you add a check here, add it there.
+
+`pnpm deps:unused` (knip) is **not** in either list: it currently reports
+findings, so gating on it would paint every PR red on day one. Worth a cleanup
+pass — `06-milestones.md` M0 still claims it produces none.
+
 For UI / behaviour work, also: launch the app (`pnpm dev`) and **use
 the feature** in the actual window. Type checking does not validate
 UX. Screenshots in a commit are great.
