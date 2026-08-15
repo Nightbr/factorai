@@ -121,6 +121,79 @@ test.describe('file viewer', () => {
 		).toBe(false);
 	});
 
+	test('@smoke an image zooms, pans while zoomed, and resets', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'logo.png' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const img = viewer.getByTestId('image-view');
+		const stage = viewer.getByTestId('image-stage');
+		const readout = viewer.getByTestId('image-zoom-readout');
+		const transform = () => img.evaluate((el) => getComputedStyle(el).transform);
+
+		await expect(readout).toHaveText('100%');
+		// Fit is the resting state, so there is nothing to drag yet.
+		await expect(stage).toHaveCSS('cursor', 'default');
+
+		await viewer.getByRole('button', { name: 'Zoom in' }).click();
+		await expect(readout).toHaveText('125%');
+		// A matrix, not the string we wrote — proof it actually applied. Polled
+		// because the transform is animated: read too early and you catch it
+		// mid-transition at some value on the way to 1.25.
+		await expect.poll(async () => (await transform()).startsWith('matrix(1.25')).toBe(true);
+		await expect(stage).toHaveCSS('cursor', 'grab');
+
+		// Drag to pan. The matrix's last two entries are the translation.
+		const box = await stage.boundingBox();
+		if (!box) throw new Error('no stage');
+		const cx = box.x + box.width / 2;
+		const cy = box.y + box.height / 2;
+		await page.mouse.move(cx, cy);
+		await page.mouse.down();
+		await page.mouse.move(cx + 60, cy + 40, { steps: 5 });
+		await page.mouse.up();
+		await expect.poll(async () => (await transform()).endsWith('60, 40)')).toBe(true);
+
+		// The readout resets zoom *and* the pan — a reset that left the image in
+		// a corner wouldn't look like one.
+		await readout.click();
+		await expect(readout).toHaveText('100%');
+		await expect.poll(async () => (await transform()).endsWith('0, 0)')).toBe(true);
+	});
+
+	test('@smoke copying an image puts a PNG on the clipboard', async ({ page }) => {
+		// Stub the clipboard rather than granting permission and reading it back:
+		// what this test owns is *what we hand over*, and the platform's own
+		// clipboard is neither ours nor reliably readable in a headless run.
+		await page.addInitScript(() => {
+			(window as unknown as { __COPIED__: string[] }).__COPIED__ = [];
+			Object.defineProperty(navigator, 'clipboard', {
+				configurable: true,
+				value: {
+					write: async (items: ClipboardItem[]) => {
+						(window as unknown as { __COPIED__: string[] }).__COPIED__.push(...items[0].types);
+					},
+					writeText: async () => undefined,
+				},
+			});
+		});
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'logo.png' }).click();
+		await expect(page.getByTestId('image-view')).toBeVisible();
+
+		await page.getByRole('button', { name: 'Copy image' }).click();
+
+		// PNG regardless of the source format: clipboards want it, and encoding
+		// through a canvas is what makes a jpeg or webp behave the same.
+		await expect
+			.poll(() => page.evaluate(() => (window as unknown as { __COPIED__: string[] }).__COPIED__))
+			.toEqual(['image/png']);
+	});
+
 	test('@smoke a file that only looks like an image falls back to the card', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

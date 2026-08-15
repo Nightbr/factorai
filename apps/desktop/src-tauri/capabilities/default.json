@@ -8,6 +8,7 @@
 	"permissions": [
 		"core:default",
 		"shell:allow-open",
+		"clipboard-manager:allow-write-image",
 		"dialog:default",
 		"fs:default",
 		"process:default",

@@ -375,6 +375,48 @@ Three decisions behind that:
 `svg` is **not** in that set: it maps to its own icon key, has no magic bytes,
 and is already legible as source. Rendering it is a separate decision.
 
+**Image controls** live in the view's own footer, not the modal header — the
+header's actions are generic (copy path, open externally, close) and belong to
+whatever hosts `FileView`.
+
+- **Zoom** steps *multiplicatively* (×1.25), between 0.25 and 8. Additive
+  steps would be a quarter of the image at 1× and three percent of it at 8×;
+  a constant ratio is a constant apparent step. Deliberately wider than the
+  webview zoom in F15 (0.5–2), which rescales the whole UI — this one exists
+  to look at a screenshot's pixels. The wheel zooms without a modifier, since
+  the pane has nothing else to scroll. **Scale 1 is *fit*, not natural size**:
+  the `<img>` keeps `object-contain`, so a huge screenshot starts scaled down
+  and a favicon starts alone.
+- **Pan** is a pointer drag, enabled only above fit, with `setPointerCapture`
+  so a fast drag that leaves the pane keeps panning. The stage is
+  `overflow-hidden` with a transform rather than a scroll container — native
+  scrollbars would fight the drag for the same gesture. Double-click resets;
+  so does clicking the readout, which resets **zoom and pan together**, since
+  a reset that left the image in a corner wouldn't look like one.
+- **Copy** puts a PNG on the system clipboard.
+
+**The clipboard needs Tauri, and finding that out cost a round trip.**
+`navigator.clipboard.writeText` works in this webview — the header's copy-path
+button is proof — so the obvious implementation is `clipboard.write()` with a
+`ClipboardItem`. It does not work: **WebKitGTK doesn't implement
+`ClipboardItem`**, the promise rejects, and nothing reaches the clipboard.
+Verified rather than assumed — after a web-API copy, `xclip -t TARGETS` still
+offered text targets only.
+
+So copy goes through `tauri-plugin-clipboard-manager`, handed **raw RGBA** via
+`Image.new`. Not the PNG bytes we already hold: `Image.fromBytes`/`fromPath`
+make Tauri decode, which needs its `image-png` feature and *still* wouldn't
+cover jpeg or webp. A canvas has already decoded the image for us, so RGBA is
+free and format-agnostic — every format copies the same way. The web API is
+kept for the browser-only lane, where Chromium does implement it.
+
+No ADR for the new plugin: it is the same class of decision as the shell,
+dialog, fs, process and store plugins, none of which took one. The failure
+mode is what earns the write-up here, not the dependency.
+
+A refused clipboard write says **"Copy failed"** rather than showing a tick.
+A silent failure means pasting stale content somewhere else and not knowing.
+
 **Edge cases.**
 - Binary (null byte in the first 8KB) → "Cannot preview binary file (N
   bytes)" plus an open-in-default-app button. The same card, with the reason
