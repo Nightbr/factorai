@@ -236,9 +236,10 @@ unused.
       setting for MVP; don't quietly add it, supersede Q3 if you want it.
 - [ ] Theme + font size reach xterm through the palette→theme mapper (Q8: two themes, no picker).
 
-**Two items now wait on this one**, which is an argument for pulling it forward: item 20's
-keep-awake toggle needs both the route and a Rust-readable setting, and the preferences other
-items keep wanting have still got nowhere to live.
+**Three items now wait on this one**, which is an argument for pulling it forward: item 20's
+keep-awake toggle needs both the route and a Rust-readable setting, item 22's
+confirm-before-killing-a-session toggle needs the route (renderer-only — no Rust read-back), and
+the preferences other items keep wanting have still got nowhere to live.
 
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 
@@ -728,6 +729,31 @@ the app where a single click ends a running agent with no undo and no question.
 - [ ] Smoke coverage: `session-tabs.spec.ts` already exercises the tab `×`; add the header path —
       `X` opens the dialog, `Keep it running` leaves the terminal live, confirming lands on
       `/projects/$id`.
+
+**A preference to turn the confirm off — decided 2026-08-16, and it needs item 4 first.** Whether
+killing a session asks becomes the user's call, **on by default**. Surface TBD along with the rest
+of the settings shape (F11 names Appearance / Editor / Claude / Advanced; this is a session
+behaviour, so Claude or Advanced, not Appearance). Unlike item 20's keep-awake, this one is
+**renderer-only** — no `get_setting`/`set_setting`, just `prefsStore` — which makes item 4 the
+route dependency and nothing more.
+
+Four things to get right when it lands:
+
+- **It does not contradict § 1**, and the entry should say why rather than leave the next reader
+  to wonder. "Every irreversible action keeps its confirmation" binds *the app* — it forbids
+  factorai deciding on its own that an ask isn't worth it. A human turning it off is the fourth
+  verb in `00-overview.md` § "The operating model": setting the rules agents run under. The rule
+  stands; the human is allowed to set it.
+- **The quit dialog is not covered by it.** F5 calls the window-close confirm **mandatory** and
+  ADR-0005 makes kill-on-quit non-optional; that dialog is about losing *every* live session at
+  once and stays regardless of this toggle. Wire the preference to the per-session path only.
+- **Middle-click is the accident case.** The tab strip routes middle-click through the same
+  confirm deliberately — *"a shortcut to the action, not a way around the question"*. With the
+  confirm off, a stray middle-click on a tab kills a running agent instantly. That is the user's
+  choice to make, but it is the argument for the default being on and for saying what the toggle
+  costs in its own description line.
+- **One preference, both call sites.** Same reason the dialog gets lifted into a shared component
+  above: a toggle that silences the header but not the tab strip is worse than no toggle.
 
 ## 23. `Button`'s size scale is a web scale, not a desktop one
 
