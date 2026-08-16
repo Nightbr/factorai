@@ -3,8 +3,53 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
-- **The file tree's rows have a right-click menu** — 2026-08-16, TODO item 3. Open · Open in
-  default app · Copy contents · Copy absolute path · Copy relative path, on
+- **Sub-agents fold under the session that spawned them** — 2026-08-16, user ask, shipped in
+  v0.8.0. A session that ran six agents put seven rows on the project page, so its real sessions
+  were buried under runs you open once, if ever. Groups collapse by default behind a disclosure
+  chevron, with a count badge that carries the number — while the group is shut that badge is the
+  only thing saying the agents are there.
+
+  Three details that are the difference between nesting and the look of nesting:
+
+  - The gutter is **reserved on rows with nothing to disclose**, so titles line up in one column
+    whether or not a session spawned agents.
+  - An expanded agent indents **past** the parent's title, not level with it. The first attempt
+    indented to exactly where the parent's title starts and rendered as no nesting at all — caught
+    in the running app, not in a test.
+  - The `sub-agent` badge and `read-only` are **right-aligned**. They sat inline after the title,
+    which truncates, so the badge landed at a different x on every row.
+
+  `groupSessions` does the fold and is unit-tested apart from the rendering. Two passes rather than
+  one deliberately: `list_sessions` returns a parent before its children *today*, and a single-pass
+  version silently drops an agent the day that stops being true. An orphan — parent transcript
+  deleted — leads its own group rather than vanishing under a parent that isn't in the list.
+
+  The toggle is a **sibling** of the row's `Link`, never a child: a button inside an anchor is
+  invalid and the two fight over the click, the same constraint `SidebarProject` already carries.
+
+- **Formatting is clean repo-wide, and gated** — 2026-08-16, user ask, shipped in v0.8.0. The repo
+  was not format-clean in **32 JS/TS/CSS files and 16 Rust ones**, and nothing said so.
+  `pnpm format:check` and `cargo fmt --check` are in the § 2c gate and in CI now.
+
+  `pnpm format` ran `biome format --write src` in each of three packages, so `tests/`, `knip.js`
+  and every root config file were never formatted at all — while running it rewrote all of
+  `packages/ui` and buried whatever you were actually changing. It is one root command over the
+  whole tree now, and the vendored shadcn files are in house style once and for all, which retires
+  the "don't reformat `button.tsx`" caution in item 23.
+
+  **Rust's config was written to match the code, not to change it.** `hard_tabs` and
+  `max_width = 100` are the repo's own conventions; `use_small_heuristics = "Max"` is the
+  load-bearing one — on the default setting rustfmt breaks a struct literal past 18 columns and a
+  call past 60, which accounted for 111 of the 235 diffs on its own and would have exploded a few
+  hundred hand-written one-liners into five-line blocks.
+
+  Two things found on the way: `biome format` caps output at **20 diagnostics** by default, so the
+  first count read 20 files when it was 32. And a `format:rust` pnpm script makes knip report
+  `cargo` as a binary it can't find — cargo commands belong in `src-tauri`, which is where the gate
+  runs them, and that beats adding a knip ignore.
+
+- **The file tree's rows have a right-click menu** — 2026-08-16, TODO item 3, shipped in v0.8.0.
+  Open · Open in default app · Copy contents · Copy absolute path · Copy relative path, on
   `@radix-ui/react-context-menu` through the `ContextMenu` primitive item 25 left behind. F12 keeps
   its "no hover actions" rule and gains the actions anyway. `Select for the agent` stayed deferred
   to item 19, as the entry said it should.
@@ -35,9 +80,10 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   the rest of the page, so `getByRole` cannot see the row underneath it. Assert selection after
   the menu closes.
 
-- **The session header asks before it kills** — 2026-08-16, TODO item 22's unblocked half. The
-  header's labelled `Stop` (a `Square` icon, `outline` Button) was the one place in the app where
-  one click ended a running agent with no undo and no question — against `00-overview.md` §
+- **The session header asks before it kills** — 2026-08-16, TODO item 22's unblocked half, shipped
+  in v0.8.0. The header's labelled `Stop` (a `Square` icon, `outline` Button) was the one place in
+  the app where one click ended a running agent with no undo and no question — against
+  `00-overview.md` §
   "The operating model", which says every irreversible action keeps its confirmation. It is now an
   `IconButton` + `X`, and `Square` was the wrong metaphor anyway: the handler kills the PTY,
   disposes the pooled xterm and navigates back to the project, which is closing a session, not
@@ -62,8 +108,9 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   kill-failure path. The preference to turn the confirm off stays blocked on item 4 — it has
   nowhere to live until the settings surface is decided.
 
-- **`get_session` deleted; `get_session_tail` kept** — 2026-08-16, TODO item 9. The item asked
-  for one decision about two commands, and the two had already parted company: the sub-agent
+- **`get_session` deleted; `get_session_tail` kept** — 2026-08-16, TODO item 9, shipped in v0.8.0.
+  The item asked for one decision about two commands, and the two had already parted company: the
+  sub-agent
   transcript view wired `get_session_tail` while it sat unread, so only the offset-paged
   `get_session` was still dead — registered, wrapped in `lib/tauri.ts`, mocked, and called by
   nothing.
@@ -74,8 +121,9 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   that reads a transcript by offset is the shape of the JSONL viewer removed in `c6374d6` and the
   reflex to re-add it is exactly what the note is for.
 
-- **The indexer reaps sessions whose transcript is gone** — 2026-08-16, TODO item 26. The index
-  was upsert-only, so a deleted `.jsonl` stayed in it forever: **147 rows against 80 files** on the
+- **The indexer reaps sessions whose transcript is gone** — 2026-08-16, TODO item 26, shipped in
+  v0.8.0. The index was upsert-only, so a deleted `.jsonl` stayed in it forever: **147 rows against
+  80 files** on the
   machine this was found on. The stale count was the harmless half — the row kept its title, so a
   search hit opened it, found no transcript, and spawned `claude --session-id` rather than
   `--resume` (ADR-0008, working as specified), landing you in an empty session wearing a 1721-turn
