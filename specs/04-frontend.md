@@ -115,6 +115,15 @@ row until Claude writes its transcript:
 The sidebar's per-project session count stays index-derived — it counts what's
 on disk, not what's running.
 
+The shell draws its own border on the sides and the bottom — the titlebar
+caps the top — and **rounds the bottom corners on macOS only**. There the OS
+clips the window to its own radius, so the arc lands on transparent pixels.
+Linux gets no such clip: the WM hands us a titlebar and no side or bottom
+frame, the window stays a hard rectangle, and rounding only carves the fill
+away, leaving a dark wedge outside the arc. `isMacOS()` in `lib/platform.ts`
+is the switch — a user-agent sniff rather than `plugin-os`, because the
+answer is needed on the first paint and in browser-only dev too.
+
 The top bar spans the **full window width** deliberately: that's the shape
 the custom titlebar needs when we drop the OS decorations (M5), so that
 step adds buttons instead of restructuring the shell. The app's brand row
