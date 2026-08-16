@@ -38,10 +38,18 @@ all that differs. Width persists (180–480px). The session count was dropped fr
 competed with the status dot for the end of the row, and it is not what you
 scan a sidebar for.
 
-**Pinning** is a **hover icon, not a context menu.** An earlier draft specced
-right-click → Pin / Unpin / Reveal in file manager; nothing in the app has ever
-taught anyone to right-click, and building a context-menu system for one action
-would drag "Reveal in file manager" along with it. Pinned projects rise into a
+**Pinning** is a **hover icon, and also a context-menu item.** An earlier draft
+of this section rejected a right-click menu outright, on the grounds that
+nothing in the app teaches anyone to right-click and that building the system
+for one action would drag "Reveal in file manager" along with it. **That
+reasoning has expired** and this paragraph supersedes it: there are three
+actions now, and one of them — Remove — has nowhere else sane to live. A fifth
+hover target in a 180px row is a misclick waiting to happen on a row with no
+undo.
+
+So the row has both, and they are not redundant: the icon is the fast path for
+the action you take constantly, the menu is the one place all three live. The
+hover icon stays exactly as specced below. Pinned projects rise into a
 block at the top of the list, separated by a divider with **no header** — the
 filled pin on each row is what says why they're up there, and it doubles as the
 unpin target. The glyph shows **state at rest and action on hover**: an
@@ -65,6 +73,31 @@ writes optimistically to the cached list, because the projects query polls at
 
 The scrolling list reserves a right-hand gutter so those hover buttons never
 sit under the scrollbar.
+
+**The row's context menu** (`ContextMenu` in `@factorai/ui`, shared with the
+file tree's — TODO item 3 needs the same primitive) carries **Pin / Unpin**,
+**Reveal in file manager**, a separator, and **Remove Project**. Remove sits
+below the separator and nowhere near Pin: the two are otherwise a slip apart and
+only one of them is reversible with a click.
+
+**Removing a project.** It drops the folder from the workspace and purges this
+project's rows from the index. Nothing under `~/.claude` is touched — ADR-0004
+— so no work is destroyed; adding the folder back re-parses it from transcripts
+that never moved.
+
+It does **not ask first**, and does not offer an undo. Nothing on disk changes
+and recovery is Add Project… away, so a dialog on every removal would be
+friction on exactly the action this whole model exists to make possible — you
+will do it thirty times the week you upgrade. The cost of a misclick is a
+re-parse.
+
+The **one exception is a live session**. Then it confirms, names the count, and
+on confirm kills those PTYs and closes their tabs before removing the row. The
+alternative is `claude` still running with no row and no tab to reach it by,
+which is precisely the invisible-agent state ADR-0005's quit guard exists to
+prevent. If a kill fails the removal is abandoned rather than completed: the
+tab is where you can still see the process, so keeping it is the safe failure.
+Removing the project you are currently looking at navigates home.
 
 The section header carries a sort control: **Recent** (the backend's
 `last_session_at DESC` order, left exactly as returned rather than re-derived
