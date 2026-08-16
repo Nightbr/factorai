@@ -8,6 +8,7 @@
 //! the tempdir rather than invented paths like `/Users/alice/…`, because adding
 //! one now canonicalizes it.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -75,6 +76,24 @@ fn make_indexer(db: Db, claude_dir: PathBuf) -> (Indexer, Arc<Mutex<Vec<Sessions
 
 fn open_db(tmp: &Path) -> Db {
 	Db::open(&tmp.join("data")).expect("open db")
+}
+
+/// Rows and FTS entries for one session id, as the reap tests read them back.
+fn counts(db: &Db, session_id: &str) -> (i64, i64) {
+	db.with(|conn| {
+		let rows: i64 = conn.query_row(
+			"SELECT COUNT(*) FROM sessions WHERE id = ?1",
+			params![session_id],
+			|r| r.get(0),
+		)?;
+		let fts: i64 = conn.query_row(
+			"SELECT COUNT(*) FROM messages_fts WHERE session_id = ?1",
+			params![session_id],
+			|r| r.get(0),
+		)?;
+		Ok((rows, fts))
+	})
+	.expect("counts")
 }
 
 /// The one project row, as `list_projects` would return it.
@@ -451,6 +470,104 @@ fn an_empty_custom_title_falls_back_instead_of_blanking_the_row() {
 		Ok(())
 	})
 	.expect("read back");
+}
+
+// ── Reaping transcripts that are gone ────────────────────────────────────────
+//
+// The index used to be upsert-only, so a deleted transcript stayed in it
+// forever: 147 rows against 80 files on the machine this was found on, and a
+// search hit that opened an empty new session wearing a long conversation's
+// title (ADR-0008 — no transcript means `--session-id`, not `--resume`).
+
+#[test]
+fn a_deleted_transcript_is_reaped_from_the_index() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, store, session_id) = fixture_one_session(tmp.path(), &db);
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+
+	indexer.full_scan().expect("first scan");
+	assert_eq!(counts(&db, &session_id), (1, 2), "indexed before the delete");
+
+	std::fs::remove_file(store.join(format!("{session_id}.jsonl"))).expect("rm transcript");
+	indexer.full_scan().expect("second scan");
+
+	assert_eq!(
+		counts(&db, &session_id),
+		(0, 0),
+		"the row and its fts entries both go"
+	);
+	assert_eq!(only_project(&db).session_count, 0);
+}
+
+/// A sub-agent transcript is reaped on the same terms — and, more importantly,
+/// is *not* reaped while it is still there. Agent rows carry their parent's
+/// `discovered_id`, so a reap that only knew about top-level transcripts would
+/// delete every one of them on the first scan.
+#[test]
+fn subagent_rows_survive_a_reap_and_go_when_their_file_does() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, cwd, project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+	let events = subagent_events(cwd.to_str().unwrap());
+	let refs: Vec<&str> = events.iter().map(String::as_str).collect();
+	let agent_path = write_subagent(&project_dir, &session_id, "agent-1111", &refs);
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("first scan");
+	indexer.full_scan().expect("second scan");
+	assert_eq!(
+		counts(&db, "agent-1111"),
+		(1, 2),
+		"a live sub-agent transcript must survive every scan"
+	);
+
+	std::fs::remove_file(&agent_path).expect("rm agent transcript");
+	indexer.full_scan().expect("third scan");
+	assert_eq!(counts(&db, "agent-1111"), (0, 0));
+	assert_eq!(counts(&db, &session_id).0, 1, "the parent is untouched");
+}
+
+/// An unreadable directory and an empty one are different answers, and only one
+/// of them may delete. This is the case that turns a reap into data loss: the
+/// whole store going away — Claude uninstalled, `CLAUDE_HOME` pointed
+/// elsewhere — must leave the index alone rather than empty it.
+#[test]
+fn a_vanished_store_reaps_nothing() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, store, session_id) = fixture_one_session(tmp.path(), &db);
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+
+	indexer.full_scan().expect("first scan");
+	std::fs::remove_dir_all(&store).expect("rm store dir");
+	indexer.full_scan().expect("second scan");
+
+	assert_eq!(
+		counts(&db, &session_id),
+		(1, 2),
+		"a store we could not read is not a store with nothing in it"
+	);
+}
+
+/// A session with a PTY behind it keeps its row even if the transcript goes,
+/// so a tab you are watching does not lose its title. (The ADR-0008 window —
+/// spawned but never messaged — needs no exemption: rows only come from
+/// transcripts, so there is nothing to reap yet.)
+#[test]
+fn a_live_session_is_exempt_from_the_reap() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, store, session_id) = fixture_one_session(tmp.path(), &db);
+	let live_id = session_id.clone();
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	let indexer = indexer.with_live_ids(Arc::new(move || HashSet::from([live_id.clone()])));
+
+	indexer.full_scan().expect("first scan");
+	std::fs::remove_file(store.join(format!("{session_id}.jsonl"))).expect("rm transcript");
+	indexer.full_scan().expect("second scan");
+
+	assert_eq!(counts(&db, &session_id), (1, 2), "a live session keeps its row");
 }
 
 // ── Sub-agent transcripts ────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -14,6 +15,12 @@ use crate::services::jsonl::{derive_title, flatten_message_text, EventIter};
 
 pub type ProgressCb = Arc<dyn Fn(IndexerProgress) + Send + Sync>;
 pub type ChangedCb = Arc<dyn Fn(SessionsChanged) + Send + Sync>;
+/// The session ids that currently have a live PTY. Injected rather than read
+/// from `TerminalManager` directly, for the same reason the emit callbacks are:
+/// the indexer's tests build one without a Tauri runtime. Defaults to "nothing
+/// is live", which is the right answer for a scan that has no terminals behind
+/// it at all.
+pub type LiveIdsCb = Arc<dyn Fn() -> HashSet<String> + Send + Sync>;
 
 /// Owns the scan + watcher. Cheap to clone (Arc internals). Emit is wired
 /// via callbacks so tests can construct an Indexer without a Tauri runtime.
@@ -28,6 +35,7 @@ pub struct Indexer {
 	claude_dir: PathBuf,
 	on_progress: ProgressCb,
 	on_changed: ChangedCb,
+	live_ids: LiveIdsCb,
 }
 
 /// One agent directory that belongs to a folder in the workspace: everything
@@ -63,7 +71,17 @@ impl Indexer {
 			on_changed: Arc::new(move |s| {
 				let _ = app_changed.emit("sessions:changed", s);
 			}),
+			live_ids: Arc::new(HashSet::new),
 		}
+	}
+
+	/// Teach the indexer which sessions are live, so the reap pass can spare
+	/// them. A builder rather than a constructor argument because `setup()`
+	/// builds the `TerminalManager` alongside this, and neither should have to
+	/// know which is constructed first.
+	pub fn with_live_ids(mut self, live_ids: LiveIdsCb) -> Self {
+		self.live_ids = live_ids;
+		self
 	}
 
 	/// Build an indexer with explicit emit callbacks. Useful for tests that
@@ -74,7 +92,7 @@ impl Indexer {
 		on_progress: ProgressCb,
 		on_changed: ChangedCb,
 	) -> Self {
-		Self { db, claude_dir, on_progress, on_changed }
+		Self { db, claude_dir, on_progress, on_changed, live_ids: Arc::new(HashSet::new) }
 	}
 
 	pub fn claude_dir(&self) -> &Path {
@@ -215,11 +233,24 @@ impl Indexer {
 				.map(|e| e.path())
 				.filter(|p| p.extension().is_some_and(|e| e == "jsonl"))
 				.collect(),
+			// Nothing below runs, the reap included. An unreadable directory and
+			// an empty one are different answers, and only one of them may delete
+			// rows — a store that has vanished (Claude uninstalled, CLAUDE_HOME
+			// moved) must leave the index alone rather than empty it.
 			Err(_) => return Ok(()),
 		};
 
+		// Every id this directory holds a transcript for, built as we go and
+		// handed to the reap below. Sub-agents are in it too: their rows carry
+		// the parent's `discovered_id`, so a set of top-level ids alone would
+		// read every agent transcript as deleted.
+		let mut on_disk: HashSet<String> = HashSet::new();
+
 		let mut changed_ids: Vec<String> = Vec::new();
 		for session_path in &session_files {
+			if let Some(id) = session_path.file_stem().and_then(|s| s.to_str()) {
+				on_disk.insert(id.to_string());
+			}
 			match self.index_session_if_changed(dir.discovered_id, session_path, None) {
 				Ok(Some(session_id)) => changed_ids.push(session_id),
 				Ok(None) => {}
@@ -238,6 +269,9 @@ impl Indexer {
 		for session_path in &session_files {
 			if let Some(session_id) = session_path.file_stem().and_then(|s| s.to_str()) {
 				for agent_path in subagent_files(session_path) {
+					if let Some(id) = agent_path.file_stem().and_then(|s| s.to_str()) {
+						on_disk.insert(id.to_string());
+					}
 					match self.index_session_if_changed(dir.discovered_id, &agent_path, Some(session_id))
 					{
 						Ok(Some(agent_id)) => changed_ids.push(agent_id),
@@ -246,6 +280,10 @@ impl Indexer {
 					}
 				}
 			}
+		}
+
+		if let Err(e) = self.reap_deleted(dir.discovered_id, &on_disk) {
+			warn!(key = %dir.key, error = %e, "reap of deleted transcripts failed");
 		}
 
 		// No aggregate refresh here any more. `projects` carried `session_count`
@@ -261,6 +299,62 @@ impl Indexer {
 			});
 		}
 		Ok(())
+	}
+
+	/// Drop the rows of one directory whose transcripts are no longer on disk,
+	/// with their FTS entries, in one transaction.
+	///
+	/// `index_session_if_changed` only ever upserts, so nothing used to walk the
+	/// other way and a deleted transcript stayed indexed forever — 147 rows
+	/// against 80 files on the machine this was found on. The visible symptom is
+	/// worse than a stale count: the row still has a title, so a search hit opens
+	/// it, finds no transcript, and spawns `claude --session-id <id>` rather than
+	/// `--resume`. That is exactly what ADR-0008 specifies, but the effect is
+	/// that you click a 1721-turn conversation and land in an empty new session
+	/// wearing its title.
+	///
+	/// Deliberately not a probe per read: the caller already holds the directory
+	/// listing, so the answer is a set difference rather than a `stat` per row.
+	///
+	/// **A live session is exempt.** Rows only ever come from transcripts, so the
+	/// ADR-0008 window — a session spawned but not yet messaged, which has no
+	/// file — has no row to reap either. The case this guards is the other one:
+	/// a transcript deleted out from under a session that is still running, where
+	/// dropping the row would take the title off a tab the user is looking at.
+	fn reap_deleted(&self, discovered_id: i64, on_disk: &HashSet<String>) -> AppResult<Vec<String>> {
+		let indexed: Vec<String> = self.db.with(|conn| {
+			let mut stmt = conn.prepare("SELECT id FROM sessions WHERE discovered_id = ?1")?;
+			let ids = stmt
+				.query_map(params![discovered_id], |r| r.get::<_, String>(0))?
+				.collect::<rusqlite::Result<Vec<_>>>()?;
+			Ok(ids)
+		})?;
+
+		let live = (self.live_ids)();
+		let gone: Vec<String> = indexed
+			.into_iter()
+			.filter(|id| !on_disk.contains(id) && !live.contains(id))
+			.collect();
+		if gone.is_empty() {
+			return Ok(gone);
+		}
+
+		self.db.with_mut(|conn| {
+			let tx = conn.transaction()?;
+			{
+				let mut del_fts = tx.prepare("DELETE FROM messages_fts WHERE session_id = ?1")?;
+				let mut del_row = tx.prepare("DELETE FROM sessions WHERE id = ?1")?;
+				for id in &gone {
+					del_fts.execute(params![id])?;
+					del_row.execute(params![id])?;
+				}
+			}
+			tx.commit()?;
+			Ok(())
+		})?;
+
+		info!(count = gone.len(), discovered_id, "reaped sessions whose transcript is gone");
+		Ok(gone)
 	}
 
 	/// Index one .jsonl. Returns the session id if it was reindexed (or

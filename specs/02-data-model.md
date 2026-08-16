@@ -325,6 +325,8 @@ same way, so parsing a folder you never added would be work no query can read.
           else: parse incrementally → upsert sessions row
                 re-tokenize → DELETE messages_fts WHERE session_id = ?
                               INSERT new rows
+        reap: rows for this directory whose .jsonl is no longer in the
+              listing → DELETE sessions + messages_fts, one transaction
 
 [add a project]
   └── scan_project(id) — the same, for one folder. Nothing was parsed before.
@@ -338,6 +340,28 @@ same way, so parsing a folder you never added would be work no query can read.
 
 `sessions:changed` carries the **workspace** project id, since that is what the
 renderer keys its caches by.
+
+**The reap is a set difference, not a probe per row.** The scan already holds
+the directory listing, so the rows to drop are the ones that aren't in it —
+sub-agent transcripts included, since their rows carry the parent directory's
+`discovered_id` and a listing of top-level ids alone would read every one of
+them as deleted. Three things it must not do, each of which is a test:
+
+- **Reap from a listing it never read.** A directory whose `read_dir` failed,
+  or a store that has vanished entirely (Claude uninstalled, `CLAUDE_HOME`
+  moved), leaves the index alone. Unreadable and empty are different answers.
+- **Reap outside the directory it scanned.** The delete is scoped to that
+  `discovered_id`.
+- **Reap a live session.** A session with a PTY behind it keeps its row even if
+  the transcript goes, so a tab you are watching does not lose its title. The
+  ADR-0008 window — spawned but never messaged — needs no exemption: rows only
+  ever come from transcripts, so there is nothing there to reap.
+
+Without it the index was upsert-only and a deleted transcript stayed forever.
+The visible symptom was worse than a stale count: the row still had a title, so
+a search hit opened it, found no transcript, and spawned `claude --session-id`
+rather than `--resume` — exactly as ADR-0008 specifies, but landing you in an
+empty session wearing a long conversation's name.
 
 We do not block UI on the initial scan. The indexer streams progress events
 (`indexer:progress { processed, total }`) and the UI shows a small spinner

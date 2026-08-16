@@ -58,8 +58,14 @@ pub fn run() {
 			let cd = claude_dir();
 			info!(?cd, ?data_dir, "factorai booting");
 
-			let indexer = Arc::new(Indexer::for_app(db.clone(), cd.clone(), app.handle().clone()));
+			// Terminals first: the indexer's reap pass asks them what is live
+			// before it deletes the row of a session whose transcript is gone.
 			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone());
+			let live = terminals.clone();
+			let indexer = Arc::new(
+				Indexer::for_app(db.clone(), cd.clone(), app.handle().clone())
+					.with_live_ids(Arc::new(move || live.live_session_ids())),
+			);
 
 			app.manage(AppState {
 				db,
