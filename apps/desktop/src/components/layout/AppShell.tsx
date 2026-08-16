@@ -21,14 +21,16 @@ export function AppShell({ children }: AppShellProps) {
 		// the children (the sidebar's own border, its lighter background) inside
 		// it.
 		//
-		// The bottom corners are rounded on macOS only. There the OS clips the
-		// window to its own radius, so the curve we draw lands on transparent
-		// pixels and the two agree. On Linux nothing clips: the WM gives us a
-		// titlebar and no side or bottom frame (_NET_FRAME_EXTENTS = 0,0,36,0),
-		// the window stays a hard rectangle, and `rounded-b-*` only carves the
-		// fill away — leaving a dark wedge outside the arc with the border curving
-		// off into it. Square there is the honest shape: the border then runs
-		// unbroken into the corner the WM actually draws.
+		// The bottom corners are rounded on macOS only, where the OS clips the
+		// window to its own radius and the curve we carve lands on pixels it has
+		// already discarded. Linux clips nothing: `border-radius` there takes a
+		// bite out of the shell and whatever paints behind it fills the gap, so
+		// the corner comes out as a wedge of background sitting over the arc the
+		// WM draws on its frame — worse than no curve at all. Making the window
+		// transparent does fix the geometry, and was tried; it exposes the
+		// compositor's drop shadow through the notch instead, which is a smudge
+		// where the wedge was. Square, with the border running unbroken into the
+		// corner, is the least-bad shape there. See Q21.
 		<div
 			className={`flex h-screen flex-col overflow-hidden border-border border-x border-b bg-background text-foreground ${
 				isMacOS() ? 'rounded-b-xl' : ''

@@ -116,13 +116,12 @@ The sidebar's per-project session count stays index-derived — it counts what's
 on disk, not what's running.
 
 The shell draws its own border on the sides and the bottom — the titlebar
-caps the top — and **rounds the bottom corners on macOS only**. There the OS
-clips the window to its own radius, so the arc lands on transparent pixels.
-Linux gets no such clip: the WM hands us a titlebar and no side or bottom
-frame, the window stays a hard rectangle, and rounding only carves the fill
-away, leaving a dark wedge outside the arc. `isMacOS()` in `lib/platform.ts`
-is the switch — a user-agent sniff rather than `plugin-os`, because the
-answer is needed on the first paint and in browser-only dev too.
+caps the top — and **rounds the bottom corners on macOS only**, via `isMacOS()`
+in `lib/platform.ts`. There the OS clips the window to its own radius, so the
+curve lands on pixels it has already discarded. Linux clips nothing, an opaque
+window keeps painting behind the curve, and the corner comes out as a wedge;
+transparency fixes the geometry and exposes the compositor's shadow instead.
+Q21 has the measurements and the rejected alternative.
 
 The top bar spans the **full window width** deliberately: that's the shape
 the custom titlebar needs when we drop the OS decorations (M5), so that
