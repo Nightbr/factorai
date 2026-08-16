@@ -4,6 +4,7 @@ import {
 	DEFAULT_SIDEBAR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
 	MIN_SIDEBAR_WIDTH,
+	migrateSidebarState,
 } from '@store/sidebarStore';
 
 describe('clampSidebarWidth', () => {
@@ -22,5 +23,31 @@ describe('clampSidebarWidth', () => {
 
 	it('falls back to the default for a value that is not a number', () => {
 		expect(clampSidebarWidth(Number.NaN)).toBe(DEFAULT_SIDEBAR_WIDTH);
+	});
+});
+
+describe('migrateSidebarState', () => {
+	const v1 = { sort: 'name', width: 320, expanded: ['-home-alice-code-foo'] };
+
+	it('drops v1 expansion state, which is keyed by ids that no longer exist', () => {
+		expect(migrateSidebarState(v1, 1)).toEqual({ sort: 'name', width: 320, expanded: [] });
+	});
+
+	it('keeps the preferences that have nothing to do with project ids', () => {
+		const out = migrateSidebarState(v1, 1) as typeof v1;
+		expect(out.sort).toBe('name');
+		expect(out.width).toBe(320);
+	});
+
+	it('leaves a current state alone', () => {
+		const v2 = { sort: 'recent', width: 256, expanded: ['p0000001-0000-4000-8000-000000000001'] };
+		expect(migrateSidebarState(v2, 2)).toBe(v2);
+	});
+
+	it('survives a persisted blob that is not an object', () => {
+		// Hand-edited or half-written localStorage shouldn't take the app down on
+		// boot — the store falls back to its defaults instead.
+		expect(migrateSidebarState(null, 1)).toBe(null);
+		expect(migrateSidebarState('garbage', 1)).toBe('garbage');
 	});
 });

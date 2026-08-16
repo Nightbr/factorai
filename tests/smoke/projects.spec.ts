@@ -6,7 +6,7 @@ test.describe('projects sidebar', () => {
 		await installMockBridge(page, { projects: [] });
 		await page.goto('/');
 		await expect(page.getByText('factorai').first()).toBeVisible();
-		await expect(page.getByText(/No projects found/i)).toBeVisible();
+		await expect(page.getByText(/No projects yet/i)).toBeVisible();
 	});
 
 	// This suite runs against `vite:dev`, so the badge's condition

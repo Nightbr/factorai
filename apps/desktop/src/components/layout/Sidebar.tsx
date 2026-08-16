@@ -195,11 +195,15 @@ export function Sidebar() {
 				{projectsQ.isLoading && (
 					<div className="px-4 py-2 text-muted-foreground text-xs">Loading…</div>
 				)}
+				{/* An empty workspace has nothing to do with what Claude has. The old
+				    copy led with "No projects found in ~/.claude/projects yet", which
+				    was true of a mirror and is backwards now that a project is a
+				    folder you added (ADR-0011). */}
 				{projectsQ.data && projectsQ.data.length === 0 && (
 					<div className="px-4 py-2 text-muted-foreground text-xs">
-						No projects found in ~/.claude/projects yet. Add a folder with the{' '}
-						<FolderPlus className="inline size-3 align-text-bottom" aria-hidden /> above to start
-						one anywhere.
+						No projects yet. Add a folder with the{' '}
+						<FolderPlus className="inline size-3 align-text-bottom" aria-hidden /> above — any
+						folder, whether or not you have run Claude in it.
 					</div>
 				)}
 				{pinned.length > 0 && (
