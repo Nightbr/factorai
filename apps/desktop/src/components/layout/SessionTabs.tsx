@@ -1,21 +1,13 @@
+import { CloseSessionConfirm } from '@components/dialog/CloseSessionConfirm';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { disposeTerminal } from '@components/terminal/Terminal';
 import type { SessionSummary } from '@factorai/types';
-import {
-	Button,
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '@factorai/ui';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
 import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { AlertTriangle, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 /**
@@ -226,33 +218,12 @@ export function SessionTabs() {
 				})}
 			</div>
 
-			<Dialog open={closing !== null} onOpenChange={(open) => !open && setClosing(null)}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle className="flex items-center gap-2">
-							<AlertTriangle className="size-5 text-destructive" />
-							Close this session?
-						</DialogTitle>
-						<DialogDescription>
-							{closing ? (titles.get(closing) ?? shortId(closing)) : ''} is running. Closing the tab
-							terminates its Claude session — the transcript is kept, but any work in progress is
-							lost. This cannot be undone.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button variant="outline" onClick={() => setClosing(null)}>
-							Keep it running
-						</Button>
-						<Button
-							variant="destructive"
-							disabled={!closingLive}
-							onClick={() => closing && closeSession(closing)}
-						>
-							Close &amp; kill session
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			<CloseSessionConfirm
+				sessionName={closing ? (titles.get(closing) ?? shortId(closing)) : null}
+				canConfirm={Boolean(closingLive)}
+				onCancel={() => setClosing(null)}
+				onConfirm={() => closing && closeSession(closing)}
+			/>
 		</>
 	);
 }

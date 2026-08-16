@@ -34,7 +34,7 @@ test.describe('sub-agent sessions', () => {
 
 		// The header says what this is and offers no process controls.
 		await expect(page.getByText('sub-agent', { exact: true })).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Close session' })).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'Restart' })).toHaveCount(0);
 
 		// The transcript body renders from get_session_tail's fixture page.

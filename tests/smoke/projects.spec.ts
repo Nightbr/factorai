@@ -66,11 +66,11 @@ test.describe('projects sidebar', () => {
 		// the .xterm class on the host element it opens into.
 		await expect(page.locator('.xterm')).toBeVisible();
 		// The mock bridge resolves terminal_spawn, so the session registers as
-		// live → the header exposes the Stop control (running lifecycle).
-		await expect(page.getByRole('button', { name: /stop/i })).toBeVisible();
+		// live → the header exposes the close control (running lifecycle).
+		await expect(page.getByRole('button', { name: 'Close session' })).toBeVisible();
 	});
 
-	test('@smoke stopping a session kills the PTY and returns to the project', async ({ page }) => {
+	test('@smoke closing a session kills the PTY and returns to the project', async ({ page }) => {
 		const fx = fixtureOneProjectOneSession();
 		await installMockBridge(page, fx);
 		await page.goto('/');
@@ -78,7 +78,9 @@ test.describe('projects sidebar', () => {
 		await page.getByText('Refactor the auth middleware').click();
 		await expect(page.locator('.xterm')).toBeVisible();
 
-		await page.getByRole('button', { name: /stop/i }).click();
+		await page.getByRole('button', { name: 'Close session' }).click();
+		// Closing kills a running agent, so it asks first (F3).
+		await page.getByRole('button', { name: /Close & kill session/ }).click();
 
 		// Back on the project's session list rather than parked on a dead pane
 		// reading `[process exited]`.

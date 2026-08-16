@@ -1,9 +1,10 @@
 import type { SessionSummary, TerminalId } from '@factorai/types';
-import { Button } from '@factorai/ui';
+import { Button, IconButton } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { BookOpen, Play, Square } from 'lucide-react';
+import { BookOpen, Play, X } from 'lucide-react';
 import { useState } from 'react';
+import { CloseSessionConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
 import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, Terminal } from '@components/terminal/Terminal';
@@ -53,14 +54,23 @@ function SessionView() {
 	const isSubAgent = session?.subagentOf != null;
 
 	const live = useTerminalStore((s) => s.bySession[sessionId]);
+	const detach = useTerminalStore((s) => s.detach);
 	// Remounting the Terminal (new key) tears down the dead xterm and triggers
 	// a fresh spawn — used to restart a stopped session.
 	const [restartNonce, setRestartNonce] = useState(0);
+	// The confirm is open while this is true. Killing a live agent is
+	// irreversible, and this header used to do it on one unguarded click —
+	// see `00-overview.md` § "The operating model".
+	const [closing, setClosing] = useState(false);
 	const navigate = useNavigate();
 
 	/**
-	 * Stopping a session ends your business with it, so leave rather than
+	 * Closing a session ends your business with it, so leave rather than
 	 * parking on a dead pane reading `[process exited]`.
+	 *
+	 * "Close", not "stop": this kills the PTY, disposes the pooled xterm and
+	 * navigates away. The header said `Stop` behind a `Square` icon, which reads
+	 * as halting a process you stay parked on.
 	 *
 	 * The pooled xterm is disposed too, not just killed: terminals survive
 	 * navigation by design (they live in `terminalStore`, not in this
@@ -72,13 +82,22 @@ function SessionView() {
 	 * A process that exits on its own is deliberately NOT redirected: then the
 	 * exit message is the thing you came to read, and Restart is right there.
 	 */
-	async function stopSession(terminalId: TerminalId) {
+	async function closeSession(terminalId: TerminalId) {
+		setClosing(false);
 		try {
 			await cmd.terminalKill(terminalId);
+			// Drop it from the store now rather than waiting for `terminal:exit`,
+			// exactly as the tab strip does: we know what we just did, and a tab
+			// that lingers until an event arrives is a tab that lingers forever if
+			// the event is ever missed. This header used to leave that to the
+			// event and so left its own tab behind.
+			detach(sessionId);
 		} catch (e) {
-			// Leaving anyway. A kill that failed means the PTY may still be
-			// running, and the project page will say so through its status dot —
-			// better than sitting on a page whose button appeared to do nothing.
+			// Leaving anyway, and deliberately *not* detaching: a kill that failed
+			// means the PTY may still be running, and the project page will say so
+			// through its status dot — better than sitting on a page whose button
+			// appeared to do nothing, and better than a tab quietly disappearing
+			// off a process that is still alive.
 			console.error('terminal_kill failed', e);
 		}
 		disposeTerminal(sessionId);
@@ -111,14 +130,16 @@ function SessionView() {
 					// is the resume that cannot work (see isSubAgent above).
 					<span className="text-muted-foreground text-xs">read-only</span>
 				) : live ? (
-					<Button
-						size="sm"
-						variant="outline"
-						className="h-7 gap-1.5"
-						onClick={() => void stopSession(live.terminalId)}
+					// An icon, not a labelled button: it does what a tab's × does, and
+					// the two surfaces should not disagree about the gesture any more
+					// than they do about the confirm (F16, F3).
+					<IconButton
+						aria-label="Close session"
+						title="Close session"
+						onClick={() => setClosing(true)}
 					>
-						<Square className="size-3" /> Stop
-					</Button>
+						<X />
+					</IconButton>
 				) : (
 					<Button
 						size="sm"
@@ -146,6 +167,15 @@ function SessionView() {
 					/>
 				</div>
 			)}
+			{/* The same dialog the tab strip opens — one component, so the two
+			    call sites cannot drift apart. A dead session needs no confirm, so
+			    only the live branch above can open it. */}
+			<CloseSessionConfirm
+				sessionName={closing ? sessionLabel(sessionId, sessionsQ.data) : null}
+				canConfirm={Boolean(live)}
+				onCancel={() => setClosing(false)}
+				onConfirm={() => live && void closeSession(live.terminalId)}
+			/>
 		</main>
 	);
 }
