@@ -284,6 +284,18 @@ and the project page is where the nested rows live.
 the pane, with a thin header for the project name + session id. There is
 **no** chronological JSONL event viewer for ordinary sessions.
 
+**The header's one control is a close `×`**, an `IconButton` at the right
+end, swapping to a labelled `Restart` when no PTY is live. Closing kills the
+process, disposes the pooled xterm and navigates back to the project — which
+is why it is a `×` and not the `Stop` it used to be: `Square` says "halt
+something you stay parked on". It opens `CloseSessionConfirm`, the **same
+component** a tab's `×` opens (F16), because two confirms for one act drift
+apart — and until 2026-08-16 they had, the tab asking and the header not
+asking at all. The dead branch needs no confirm and gets none. A kill that
+fails still navigates away and **keeps** the session in `terminalStore`, so
+the project page's status dot goes on telling the truth about a PTY that may
+still be running.
+
 **Sub-agent sessions are the exception, and read-only.** A sub-agent
 transcript can never be resumed — `claude --resume` probes for a top-level
 `<id>.jsonl` and an agent id has none, so "opening" one as a terminal would
@@ -373,8 +385,12 @@ upgrade this to SQL FTS.
 **Behavior.** Launch `claude` (or `claude --resume <id>`) inside an
 xterm.js terminal, backed by a PTY in Rust.
 
-**UI.** Main pane top half. Toolbar: Resume/Restart, Kill, Copy selection,
-Search-in-terminal (`Cmd+F`).
+**UI.** Main pane, under F3's header — which holds the only controls there
+are: close `×` (or `Restart` when the process is dead). No toolbar. This line
+used to advertise "Resume/Restart, Kill, Copy selection, Search-in-terminal
+(`Cmd+F`)"; copy-selection has no control at all, and `SearchAddon` is loaded
+but nothing drives it, so `Cmd+F` is a keyboard-scheme item (roadmap item 5),
+not a shipped one.
 
 **Backend.** `terminal_spawn`, `terminal_write`, `terminal_resize`,
 `terminal_kill`. `terminal:data` events stream output. Status heuristics
@@ -1018,7 +1034,10 @@ session header.
 
 **Closing kills the session, so it always asks** — same terms as the quit
 guard: an unattended `claude` is real money, and closing one mid-task loses its
-work. On confirm the tab is dropped immediately rather than waiting for
+work. The dialog is `components/dialog/CloseSessionConfirm`, **shared with the
+session header** (F3): one component, so the two surfaces cannot come to
+disagree about what the act is called or whether it is worth asking about.
+On confirm the tab is dropped immediately rather than waiting for
 `terminal:exit`; we know what we just did, and a tab that waits for an event is
 a tab that lingers forever if the event is missed. A **failed** kill keeps the
 tab, since the PTY may well still be running.

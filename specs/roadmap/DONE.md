@@ -3,6 +3,33 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The session header asks before it kills** — 2026-08-16, TODO item 22's unblocked half. The
+  header's labelled `Stop` (a `Square` icon, `outline` Button) was the one place in the app where
+  one click ended a running agent with no undo and no question — against `00-overview.md` §
+  "The operating model", which says every irreversible action keeps its confirmation. It is now an
+  `IconButton` + `X`, and `Square` was the wrong metaphor anyway: the handler kills the PTY,
+  disposes the pooled xterm and navigates back to the project, which is closing a session, not
+  halting a process you stay parked on.
+
+  The dialog was lifted out of `SessionTabs` into `components/dialog/CloseSessionConfirm` and both
+  call sites drive it. Controlled rather than self-managing, because what happens *after* differs:
+  the strip navigates only if you were looking at the session it closed.
+
+  **The drift was worse than the missing confirm, and the smoke test is what found it.** The tab
+  strip drops a closed session from `terminalStore` immediately — "a tab that lingers until an
+  event arrives is a tab that lingers forever if the event is missed" — and the header never did,
+  leaving its own tab behind until `terminal:exit` arrived. Two call sites for one act had already
+  grown two behaviours. The header now detaches too, but only on a **successful** kill: a failed
+  one keeps the entry so the project page's status dot goes on telling the truth about a PTY that
+  may still be running.
+
+  Verified in the running app, not only in Chromium: resumed a real session, header `×` → the
+  dialog, confirm → PTY dead, back on the project page, strip empty, sidebar dot gone.
+
+  Left alone deliberately: the `Restart` swap for a dead session (nothing to confirm) and the
+  kill-failure path. The preference to turn the confirm off stays blocked on item 4 — it has
+  nowhere to live until the settings surface is decided.
+
 - **`get_session` deleted; `get_session_tail` kept** — 2026-08-16, TODO item 9. The item asked
   for one decision about two commands, and the two had already parted company: the sub-agent
   transcript view wired `get_session_tail` while it sat unread, so only the offset-paged
