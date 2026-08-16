@@ -3,6 +3,53 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A project is a folder you added, not a directory Claude has** — 2026-08-16, TODO item 25.
+  Recorded as [ADR-0011](../../docs/adr/0011-a-project-is-a-folder-in-the-workspace.md); F1 was
+  rewritten rather than patched, since it was written from the premise this deletes.
+
+  The workspace was a **mirror of `~/.claude/projects/`** — `full_scan()` upserted a row per
+  directory, and `projects.id` was Claude's own path encoding. Three things followed. Projects
+  arrived uninvited. Closing one was impossible, and not by oversight: a `DELETE` was undone by
+  the next scan, so any close button built first would have lied within a second. And a second
+  agent had nowhere to go, since identity *was* one agent's naming scheme.
+
+  Now two tables with two owners: `projects` is what you added, `discovered_projects` is what a
+  store holds, linked by canonical path with `ON DELETE SET NULL`. Sessions hang off the
+  discovery, so adding or removing a project moves a handful of rows rather than every session in
+  it. `encode_path` moved to `agents::claude` and stopped being identity.
+
+  **Landed in four commits**, schema first, with the full gate between each: (a) schema, migration
+  and commands, invisible to the UI; (b) the store migration and the empty state; (c) the import
+  dialog; (d) remove, and the `ContextMenu` primitive TODO item 3 will reuse.
+
+  **Findings worth keeping.**
+
+  - **The migration was verified against a copy of the real database**, not only against
+    fixtures, and that is where the interesting case turned up: two encoded directories that had
+    resolved to the *same* folder. `INSERT OR IGNORE` on `real_path UNIQUE` collapsed them into
+    one project with both discoveries attached — 12 rows became 11 projects with all 146 sessions
+    and 7072 FTS rows intact. A fixtures-only test would not have produced that shape.
+  - **The FTS table was rebuilt from its own columns**, not by re-parsing. An FTS5 table reads
+    back as an ordinary one, so dropping its `project_id` cost nobody a reindex on first launch.
+    It had to go: it held a stable encoded name, and a workspace id is not stable across a remove
+    and a re-add.
+  - **A `<label>` around a Radix checkbox associates nothing** — the control renders a `<button>`,
+    which is not a labelable element, so the click never lands. Biome's `noLabelWithoutControl`
+    caught it and was right; the fix is `Label htmlFor`, not an ignore comment.
+  - **`liveSessionsIn` as a zustand selector re-renders forever**, since it builds a new array per
+    call. Subscribe to `bySession` and derive with `useMemo`.
+  - **One rule covers both doors onto `add_project`.** A missing path is a mistake from the
+    picker (you can only browse to what exists) and legitimate from the import list (the folder
+    was deleted, the transcripts survived). Rather than a caller-supplied flag: a missing folder
+    is admissible **only if an agent already has history for it** — which is exactly the import
+    list's set, and excludes a typo.
+
+  **What this cost, stated because it is a real loss.** Search no longer reaches outside the
+  workspace. Indexing is gated the same way, so it is coherent — there is nothing to find because
+  nothing was parsed — but F4 used to cover every folder Claude had ever touched, and the moment
+  you want that is the moment you cannot remember which folder it was. Un-gating is two lines and
+  a reindex if it proves wrong in use; F4 says where.
+
 - **A quality gate that runs, and a dead-code gate that works** — 2026-08-15, shipped in v0.6.0.
   `.github/workflows/quality.yml` runs § 2c minus `e2e` on every PR and every push to main, in two
   parallel jobs. No Playwright: it wants a browser download and a dev server for a ~70s suite, so
