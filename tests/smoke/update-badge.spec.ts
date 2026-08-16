@@ -25,9 +25,7 @@ test.describe('update badge', () => {
 		await expect(check).toHaveText('Check for updates', { timeout: 6000 });
 	});
 
-	test('@smoke shows the staged version and restarts when nothing is running', async ({
-		page,
-	}) => {
+	test('@smoke shows the staged version and restarts when nothing is running', async ({ page }) => {
 		await installMockBridge(page, { ...fixtureOneProjectOneSession(), updateReady: '0.2.0' });
 		await page.goto('/');
 

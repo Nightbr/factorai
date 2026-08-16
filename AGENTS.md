@@ -72,19 +72,40 @@ full spec.
 Run, in this order, all green:
 
 ```bash
+pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm e2e
 pnpm deps:check
 pnpm deps:unused
-cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
+cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
 `deps:check` is in that list because it wasn't: a `@tauri-apps/plugin-updater`
 caret drifted in with F14 and sat there failing for a day, in a repo that
 otherwise pins exact versions. A check nobody runs is a check that doesn't
 exist. `pnpm deps:fix` resolves the usual case.
+
+**Formatting is gated as of 2026-08-16, both sides**, and the two fixers are
+`pnpm format` (biome, whole repo) and `cargo fmt`. It is in the list for the
+same reason `deps:check` is: the repo was *not* format-clean, in 32 JS/TS/CSS
+files and 16 Rust ones, and nothing said so. Two consequences of that had
+already cost time and are now gone:
+
+- `pnpm format` used to run `biome format --write src` in each of three
+  packages, so `tests/`, `knip.js` and every root config file were never
+  formatted at all — and running it rewrote all of `packages/ui`, burying
+  whatever you were actually changing. It is now one root command over the
+  whole tree, and the vendored shadcn files have been formatted into house
+  style once so they stop being a landmine.
+- Rust has a `rustfmt.toml` (`hard_tabs`, `max_width = 100`,
+  `use_small_heuristics = "Max"`) written to match the code that was already
+  there — see its own comment for why that third setting is the load-bearing
+  one.
+
+Note `biome format` caps output at 20 diagnostics by default, which is how a
+32-file backlog can read as a 20-file one; `format:check` raises the cap.
 
 **CI runs all of this except `e2e`** — `.github/workflows/quality.yml`, on every
 PR and every push to `main`. It is the net under the local gate, not a
@@ -185,6 +206,9 @@ Concrete rules:
   `noUnusedVariables: error`.
 - Rust: `cargo clippy --all-targets -- -D warnings`. `#[allow(...)]`
   needs a comment explaining why.
+- Formatting is not a matter of taste and not reviewed by hand: `biome`
+  owns every JS/TS/CSS file and `rustfmt` owns every Rust one, both
+  checked in the gate (§ 2c).
 - No emojis in code or commits unless a user explicitly asks.
 
 ---
@@ -321,7 +345,8 @@ the same commit updates the spec it changed, *then* the entry moves to
 pnpm dev                  # tauri dev — full app
 pnpm typecheck            # tsc --noEmit across the workspace
 pnpm lint                 # biome lint
-pnpm format               # biome format --write
+pnpm format               # biome format --write . — the whole repo, safe to run
+pnpm format:check         # the same, read-only. In the gate.
 pnpm deps:check           # syncpack — workspace version drift
 pnpm deps:unused          # knip — dead code / deps
 
@@ -330,6 +355,7 @@ pnpm vite:dev             # renderer only, no Tauri (mock the bridge)
 pnpm tauri build          # production build (.app/.dmg/.AppImage)
 
 # Inside apps/desktop/src-tauri:
+cargo fmt                 # rustfmt.toml is written to match the existing style
 cargo check
 cargo clippy --all-targets -- -D warnings
 cargo test

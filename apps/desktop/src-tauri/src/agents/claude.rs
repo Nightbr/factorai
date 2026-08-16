@@ -56,10 +56,7 @@ pub fn transcript_path(claude_dir: &Path, real_path: &Path, session_id: &str) ->
 /// name rather than by a folder. Used when reading a session we already have
 /// indexed, where the key is recorded and exact.
 pub fn transcript_path_by_key(claude_dir: &Path, key: &str, session_id: &str) -> PathBuf {
-	claude_dir
-		.join("projects")
-		.join(key)
-		.join(format!("{session_id}.jsonl"))
+	claude_dir.join("projects").join(key).join(format!("{session_id}.jsonl"))
 }
 
 /// The transcript file for a **sub-agent** run, which Claude Code nests inside
@@ -127,16 +124,13 @@ pub fn real_path_of(dir: &Path) -> Option<String> {
 				.unwrap_or(0),
 		)
 	});
-	if let Some(cwd) = session_files
-		.iter()
-		.find_map(|p| EventIter::open(p).ok()?.find_map(|ev| ev.cwd))
+	if let Some(cwd) =
+		session_files.iter().find_map(|p| EventIter::open(p).ok()?.find_map(|ev| ev.cwd))
 	{
 		return Some(cwd);
 	}
 	let name = dir.file_name()?.to_str()?;
-	decode_candidates(name)
-		.into_iter()
-		.find(|c| Path::new(c).is_dir())
+	decode_candidates(name).into_iter().find(|c| Path::new(c).is_dir())
 }
 
 /// Transcript count and last-modified time for a store directory, without
@@ -174,10 +168,7 @@ mod tests {
 
 	#[test]
 	fn encode_simple_path() {
-		assert_eq!(
-			encode_path(&PathBuf::from("/Users/alice/code/foo")),
-			"-Users-alice-code-foo"
-		);
+		assert_eq!(encode_path(&PathBuf::from("/Users/alice/code/foo")), "-Users-alice-code-foo");
 	}
 
 	#[test]
@@ -207,11 +198,8 @@ mod tests {
 		// literal dash in it, so only the recorded `cwd` gets this right.
 		let dir = claude_dir.join("projects").join("-home-me-my-repo");
 		std::fs::create_dir_all(&dir).unwrap();
-		std::fs::write(
-			dir.join("s1.jsonl"),
-			"{\"type\":\"user\",\"cwd\":\"/home/me/my-repo\"}\n",
-		)
-		.unwrap();
+		std::fs::write(dir.join("s1.jsonl"), "{\"type\":\"user\",\"cwd\":\"/home/me/my-repo\"}\n")
+			.unwrap();
 
 		let found = discover(claude_dir);
 		assert_eq!(found.len(), 1);
@@ -228,10 +216,7 @@ mod tests {
 
 		let found = discover(tmp.path());
 		assert_eq!(found.len(), 1);
-		assert_eq!(
-			found[0].real_path, None,
-			"an unconfirmable guess is worse than no answer"
-		);
+		assert_eq!(found[0].real_path, None, "an unconfirmable guess is worse than no answer");
 	}
 
 	#[test]

@@ -170,7 +170,9 @@ export function fixtureWithSubagents(): TestFixture {
 						sessionId: 'agent-1111',
 						message: {
 							role: 'assistant',
-							content: [{ type: 'text', text: 'Found the sidebar at components/layout/Sidebar.tsx' }],
+							content: [
+								{ type: 'text', text: 'Found the sidebar at components/layout/Sidebar.tsx' },
+							],
 						},
 					},
 				],

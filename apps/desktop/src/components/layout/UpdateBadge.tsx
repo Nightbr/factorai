@@ -76,9 +76,9 @@ export function UpdateBadge() {
 							Restart to update?
 						</DialogTitle>
 						<DialogDescription>
-							factorai {state.version} is ready. Restarting terminates {liveCount} running
-							Claude session{liveCount === 1 ? '' : 's'}. This cannot be undone — the update
-							will also apply on its own the next time you quit and reopen.
+							factorai {state.version} is ready. Restarting terminates {liveCount} running Claude
+							session{liveCount === 1 ? '' : 's'}. This cannot be undone — the update will also
+							apply on its own the next time you quit and reopen.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

@@ -294,10 +294,8 @@ impl TerminalManager {
 				pixel_height: 0,
 			})
 			.map_err(|e| AppError::Process(format!("openpty: {e}")))?;
-		let child = pair
-			.slave
-			.spawn_command(cmd)
-			.map_err(|e| AppError::Process(format!("spawn: {e}")))?;
+		let child =
+			pair.slave.spawn_command(cmd).map_err(|e| AppError::Process(format!("spawn: {e}")))?;
 		// Clone a killer now, before the child is moved into the waiter thread.
 		// See `TerminalHandle::killer` for why the child isn't shared.
 		let killer = child.clone_killer();
@@ -331,41 +329,46 @@ impl TerminalManager {
 		// Wait thread: owns the child and blocks on `wait()`; emits on_exit
 		// when it terminates. Owning (not sharing) the child is what keeps
 		// `kill()` from blocking — see `TerminalHandle::killer`.
-		spawn_waiter(id.clone(), child, handle.clone(), self.on_status.clone(), self.on_exit.clone(), self.terminals.clone());
+		spawn_waiter(
+			id.clone(),
+			child,
+			handle.clone(),
+			self.on_status.clone(),
+			self.on_exit.clone(),
+			self.terminals.clone(),
+		);
 
 		Ok(id)
 	}
 
 	pub fn write(&self, id: &str, data: &[u8]) -> AppResult<()> {
-		let handle = self
-			.terminals
-			.get(id)
-			.ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
+		let handle =
+			self.terminals.get(id).ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
 		let mut w = handle.writer.lock();
-		w.write_all(data)
-			.map_err(|e| AppError::Io(format!("terminal write: {e}")))?;
+		w.write_all(data).map_err(|e| AppError::Io(format!("terminal write: {e}")))?;
 		handle.last_activity.store(now_ms(), Ordering::Relaxed);
 		Ok(())
 	}
 
 	pub fn resize(&self, id: &str, cols: u16, rows: u16) -> AppResult<()> {
-		let handle = self
-			.terminals
-			.get(id)
-			.ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
+		let handle =
+			self.terminals.get(id).ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
 		handle
 			.master
 			.lock()
-			.resize(PtySize { cols: cols.max(20), rows: rows.max(5), pixel_width: 0, pixel_height: 0 })
+			.resize(PtySize {
+				cols: cols.max(20),
+				rows: rows.max(5),
+				pixel_width: 0,
+				pixel_height: 0,
+			})
 			.map_err(|e| AppError::Process(format!("resize: {e}")))?;
 		Ok(())
 	}
 
 	pub fn kill(&self, id: &str) -> AppResult<()> {
-		let handle = self
-			.terminals
-			.get(id)
-			.ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
+		let handle =
+			self.terminals.get(id).ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
 		// Signal via the killer, not the child — the waiter thread owns the
 		// child and is parked in `wait()`. Best effort: it may already be gone.
 		let _ = handle.killer.lock().kill();
@@ -507,7 +510,11 @@ fn spawn_waiter(
 				*st = TerminalStatus::Stopped;
 			}
 			let last_activity = handle.last_activity.load(Ordering::Relaxed);
-			(on_status)(TerminalStatusEvent { id: id.clone(), status: TerminalStatus::Stopped, last_activity });
+			(on_status)(TerminalStatusEvent {
+				id: id.clone(),
+				status: TerminalStatus::Stopped,
+				last_activity,
+			});
 			(on_exit)(TerminalExitEvent { id: id.clone(), code: exit_code });
 			terminals.remove(&id);
 		})
@@ -599,11 +606,7 @@ mod tests {
 		let id = mgr
 			.spawn_with_argv(
 				opts(80, 24),
-				Some(vec![
-					"/bin/sh".into(),
-					"-c".into(),
-					"echo HELLO_PTY".into(),
-				]),
+				Some(vec!["/bin/sh".into(), "-c".into(), "echo HELLO_PTY".into()]),
 			)
 			.expect("spawn");
 		// Wait for the child to exit.
@@ -618,14 +621,13 @@ mod tests {
 			.unwrap()
 			.iter()
 			.filter(|e| e.id == id)
-			.map(|e| String::from_utf8_lossy(&B64.decode(&e.bytes_b64).unwrap_or_default()).into_owned())
+			.map(|e| {
+				String::from_utf8_lossy(&B64.decode(&e.bytes_b64).unwrap_or_default()).into_owned()
+			})
 			.collect();
 		let merged = chunks.join("");
 		assert!(merged.contains("HELLO_PTY"), "expected HELLO_PTY in stream, got: {merged}");
-		assert!(
-			exit.lock().unwrap().iter().any(|e| e.id == id),
-			"expected exit event"
-		);
+		assert!(exit.lock().unwrap().iter().any(|e| e.id == id), "expected exit event");
 	}
 
 	#[test]
@@ -636,11 +638,7 @@ mod tests {
 		let id = mgr
 			.spawn_with_argv(
 				opts(80, 24),
-				Some(vec![
-					"/bin/sh".into(),
-					"-c".into(),
-					"read line; echo \"GOT:$line\"".into(),
-				]),
+				Some(vec!["/bin/sh".into(), "-c".into(), "read line; echo \"GOT:$line\"".into()]),
 			)
 			.expect("spawn");
 		// Give the shell a moment to start its `read` loop.
@@ -663,10 +661,7 @@ mod tests {
 			})
 			.collect::<Vec<_>>()
 			.join("");
-		assert!(
-			merged.contains("GOT:hello"),
-			"expected GOT:hello in stream, got: {merged:?}"
-		);
+		assert!(merged.contains("GOT:hello"), "expected GOT:hello in stream, got: {merged:?}");
 	}
 
 	#[test]
@@ -717,10 +712,7 @@ mod tests {
 		// portable-pty starts the child elsewhere rather than failing, so without
 		// this guard a new session in a deleted project folder would be filed
 		// under $HOME's project instead of the one that was clicked.
-		assert!(
-			matches!(err, AppError::NotFound(_)),
-			"expected NotFound, got {err:?}"
-		);
+		assert!(matches!(err, AppError::NotFound(_)), "expected NotFound, got {err:?}");
 		assert_eq!(mgr.live_count(), 0, "nothing should have been spawned");
 	}
 

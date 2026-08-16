@@ -114,7 +114,6 @@ test.describe('pinned projects', () => {
 		await page.getByRole('menuitemradio', { name: 'Name' }).click();
 		await expect(pinnedNames.first()).toContainText('alpha');
 	});
-
 });
 
 test.describe('sidebar resizing', () => {
@@ -160,9 +159,7 @@ test.describe('sidebar resizing', () => {
 });
 
 test.describe('sidebar header', () => {
-	test('@smoke PROJECTS and the sort control stay put while the list scrolls', async ({
-		page,
-	}) => {
+	test('@smoke PROJECTS and the sort control stay put while the list scrolls', async ({ page }) => {
 		// Short window plus every project expanded, so the list must overflow —
 		// at the default viewport it simply fits, and the test would pass without
 		// ever scrolling anything.
@@ -177,9 +174,7 @@ test.describe('sidebar header', () => {
 
 		const scroller = page.locator('aside nav');
 		await scroller.evaluate((el) => el.scrollBy(0, 400));
-		await expect
-			.poll(async () => (await scroller.evaluate((el) => el.scrollTop)) > 0)
-			.toBe(true);
+		await expect.poll(async () => (await scroller.evaluate((el) => el.scrollTop)) > 0).toBe(true);
 
 		// The header is a sibling above the scroller, so scrolling cannot move it.
 		expect(await header.boundingBox()).toEqual(before);

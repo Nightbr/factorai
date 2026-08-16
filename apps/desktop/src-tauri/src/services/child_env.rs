@@ -158,10 +158,7 @@ mod tests {
 	const APPDIR: &str = "/tmp/.mount_Factorfa";
 
 	fn env(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
-		pairs
-			.iter()
-			.map(|(k, v)| (OsString::from(k), OsString::from(v)))
-			.collect()
+		pairs.iter().map(|(k, v)| (OsString::from(k), OsString::from(v))).collect()
 	}
 
 	/// The environment a child actually ends up with: the input, with the

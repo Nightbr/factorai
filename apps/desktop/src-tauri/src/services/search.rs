@@ -21,10 +21,8 @@ const MAX_HITS: usize = 200;
 /// has no usable tokens (empty / whitespace-only), which the caller maps to an
 /// empty result set.
 pub fn build_match(query: &str) -> Option<String> {
-	let tokens: Vec<String> = query
-		.split_whitespace()
-		.map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
-		.collect();
+	let tokens: Vec<String> =
+		query.split_whitespace().map(|t| format!("\"{}\"", t.replace('"', "\"\""))).collect();
 	if tokens.is_empty() {
 		None
 	} else {

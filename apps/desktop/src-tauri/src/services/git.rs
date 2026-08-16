@@ -150,12 +150,7 @@ pub fn blob(path: &str, rev: GitRev, max_bytes: Option<usize>) -> AppResult<Opti
 
 	let blob = repo.find_blob(oid).map_err(git_err)?;
 	let cap = max_bytes.unwrap_or(files::DEFAULT_MAX_BYTES);
-	Ok(Some(files::contents_from_bytes(
-		path,
-		blob.content(),
-		blob.size() as u64,
-		cap,
-	)))
+	Ok(Some(files::contents_from_bytes(path, blob.content(), blob.size() as u64, cap)))
 }
 
 /// Answers "would git ignore this?" for the entries of one directory listing.
@@ -346,7 +341,11 @@ fn line_stats(repo: &Repository, rows: &[RawRow]) -> HashMap<(GitGroup, String),
 	wanted
 }
 
-fn fill_stats(diff: &Diff<'_>, group: GitGroup, wanted: &mut HashMap<(GitGroup, String), LineStat>) {
+fn fill_stats(
+	diff: &Diff<'_>,
+	group: GitGroup,
+	wanted: &mut HashMap<(GitGroup, String), LineStat>,
+) {
 	for (idx, delta) in diff.deltas().enumerate() {
 		let Some(path) = delta
 			.new_file()
@@ -401,11 +400,7 @@ fn discover(path: &str) -> Option<Repository> {
 	// The path may not exist (a deleted file we're asked for the HEAD side of),
 	// in which case discovery walks up from the nearest parent that does.
 	let start = Path::new(path);
-	let start = if start.exists() {
-		start.to_path_buf()
-	} else {
-		start.parent()?.to_path_buf()
-	};
+	let start = if start.exists() { start.to_path_buf() } else { start.parent()?.to_path_buf() };
 	Repository::discover(start).ok()
 }
 
@@ -431,18 +426,11 @@ fn relative_from(base: &Path, target: &Path) -> String {
 	let base: Vec<Component<'_>> = base.components().collect();
 	let target: Vec<Component<'_>> = target.components().collect();
 
-	let shared = base
-		.iter()
-		.zip(target.iter())
-		.take_while(|(a, b)| a == b)
-		.count();
+	let shared = base.iter().zip(target.iter()).take_while(|(a, b)| a == b).count();
 
-	let mut parts: Vec<String> = std::iter::repeat_n("..".to_string(), base.len() - shared).collect();
-	parts.extend(
-		target[shared..]
-			.iter()
-			.map(|c| c.as_os_str().to_string_lossy().into_owned()),
-	);
+	let mut parts: Vec<String> =
+		std::iter::repeat_n("..".to_string(), base.len() - shared).collect();
+	parts.extend(target[shared..].iter().map(|c| c.as_os_str().to_string_lossy().into_owned()));
 
 	if parts.is_empty() {
 		// target == base. Only reachable if a directory is somehow a change row.
@@ -488,9 +476,7 @@ mod tests {
 
 	fn commit_all(repo: &Repository, message: &str) -> Oid {
 		let mut index = repo.index().unwrap();
-		index
-			.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
-			.unwrap();
+		index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None).unwrap();
 		index.write().unwrap();
 		let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
 		let sig = Signature::now("factorai tests", "tests@example.invalid").unwrap();
@@ -501,8 +487,7 @@ mod tests {
 			.map(|c| vec![c])
 			.unwrap_or_default();
 		let parent_refs: Vec<&git2::Commit<'_>> = parents.iter().collect();
-		repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
-			.unwrap()
+		repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs).unwrap()
 	}
 
 	fn root(dir: &TempDir) -> String {
@@ -795,7 +780,10 @@ mod tests {
 		let base = Path::new("/repo/apps/desktop");
 
 		assert_eq!(relative_from(base, Path::new("/repo/apps/desktop/src/a.ts")), "src/a.ts");
-		assert_eq!(relative_from(base, Path::new("/repo/packages/types/i.ts")), "../../packages/types/i.ts");
+		assert_eq!(
+			relative_from(base, Path::new("/repo/packages/types/i.ts")),
+			"../../packages/types/i.ts"
+		);
 		assert_eq!(relative_from(base, Path::new("/repo")), "../..");
 		assert_eq!(relative_from(base, base), ".");
 	}

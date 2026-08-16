@@ -98,12 +98,7 @@ export function SubAgentTranscript({ sessionId }: { sessionId: string }) {
 	return (
 		<div className="min-h-0 flex-1 overflow-y-auto bg-[#0c0e12] px-4 py-3">
 			{hasEarlier && (
-				<Button
-					variant="outline"
-					size="sm"
-					className="mb-3"
-					onClick={() => setWidth(width + PAGE)}
-				>
+				<Button variant="outline" size="sm" className="mb-3" onClick={() => setWidth(width + PAGE)}>
 					<ChevronUp className="size-3.5" /> Show earlier ({data.offset} events hidden)
 				</Button>
 			)}

@@ -211,9 +211,7 @@ impl Indexer {
 		}
 		let linked = self.db.with(|conn| {
 			let sql = format!("{LINKED_SELECT} AND d.key = ?1");
-			Ok(conn
-				.query_row(&sql, params![key], map_linked)
-				.optional()?)
+			Ok(conn.query_row(&sql, params![key], map_linked).optional()?)
 		})?;
 		match linked {
 			Some(dir) => self.index_dir(&dir),
@@ -272,8 +270,11 @@ impl Indexer {
 					if let Some(id) = agent_path.file_stem().and_then(|s| s.to_str()) {
 						on_disk.insert(id.to_string());
 					}
-					match self.index_session_if_changed(dir.discovered_id, &agent_path, Some(session_id))
-					{
+					match self.index_session_if_changed(
+						dir.discovered_id,
+						&agent_path,
+						Some(session_id),
+					) {
 						Ok(Some(agent_id)) => changed_ids.push(agent_id),
 						Ok(None) => {}
 						Err(e) => warn!(path = ?agent_path, error = %e, "sub-agent index failed"),
@@ -321,7 +322,11 @@ impl Indexer {
 	/// file — has no row to reap either. The case this guards is the other one:
 	/// a transcript deleted out from under a session that is still running, where
 	/// dropping the row would take the title off a tab the user is looking at.
-	fn reap_deleted(&self, discovered_id: i64, on_disk: &HashSet<String>) -> AppResult<Vec<String>> {
+	fn reap_deleted(
+		&self,
+		discovered_id: i64,
+		on_disk: &HashSet<String>,
+	) -> AppResult<Vec<String>> {
 		let indexed: Vec<String> = self.db.with(|conn| {
 			let mut stmt = conn.prepare("SELECT id FROM sessions WHERE discovered_id = ?1")?;
 			let ids = stmt
@@ -331,10 +336,8 @@ impl Indexer {
 		})?;
 
 		let live = (self.live_ids)();
-		let gone: Vec<String> = indexed
-			.into_iter()
-			.filter(|id| !on_disk.contains(id) && !live.contains(id))
-			.collect();
+		let gone: Vec<String> =
+			indexed.into_iter().filter(|id| !on_disk.contains(id) && !live.contains(id)).collect();
 		if gone.is_empty() {
 			return Ok(gone);
 		}
@@ -400,9 +403,9 @@ impl Indexer {
 		let mut turn_count: i64 = 0;
 		let mut cwd: Option<String> = None;
 		let mut fts_rows: Vec<(String, String)> = Vec::new(); // (role, body)
-		// Two independent title sources, kept apart so precedence is decided once
-		// at the end rather than by whichever line happens to come last in the
-		// file: `/rename` always beats Claude's own auto-title.
+														// Two independent title sources, kept apart so precedence is decided once
+														// at the end rather than by whichever line happens to come last in the
+														// file: `/rename` always beats Claude's own auto-title.
 		let mut custom_title: Option<String> = None;
 		let mut ai_title: Option<String> = None;
 
@@ -533,7 +536,9 @@ fn linked_dirs(conn: &Connection, project_id: Option<&str>) -> AppResult<Vec<Lin
 	};
 	let mut stmt = conn.prepare(&sql)?;
 	let rows = match project_id {
-		Some(id) => stmt.query_map(params![id], map_linked)?.collect::<rusqlite::Result<Vec<_>>>()?,
+		Some(id) => {
+			stmt.query_map(params![id], map_linked)?.collect::<rusqlite::Result<Vec<_>>>()?
+		}
 		None => stmt.query_map([], map_linked)?.collect::<rusqlite::Result<Vec<_>>>()?,
 	};
 	Ok(rows)
@@ -541,11 +546,9 @@ fn linked_dirs(conn: &Connection, project_id: Option<&str>) -> AppResult<Vec<Lin
 
 fn discovered_id_for(conn: &Connection, key: &str) -> AppResult<Option<i64>> {
 	Ok(conn
-		.query_row(
-			"SELECT id FROM discovered_projects WHERE key = ?1",
-			params![key],
-			|r| r.get::<_, i64>(0),
-		)
+		.query_row("SELECT id FROM discovered_projects WHERE key = ?1", params![key], |r| {
+			r.get::<_, i64>(0)
+		})
 		.optional()?)
 }
 
@@ -601,11 +604,8 @@ pub fn project_dir_for_event(path: &Path, projects_dir: &Path) -> Option<PathBuf
 	}
 }
 
-
 fn parse_iso(s: &str) -> Option<i64> {
-	chrono::DateTime::parse_from_rfc3339(s)
-		.ok()
-		.map(|dt| dt.timestamp_millis())
+	chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.timestamp_millis())
 }
 
 /// Spawn the indexer's initial full scan on a background thread.
@@ -637,7 +637,8 @@ mod tests {
 	#[test]
 	fn project_dir_for_event_walks_a_subagent_transcript_up_to_the_project() {
 		let projects = Path::new("/home/a/.claude/projects");
-		let p = Path::new("/home/a/.claude/projects/-code-foo/1111-2222/subagents/agent-3333.jsonl");
+		let p =
+			Path::new("/home/a/.claude/projects/-code-foo/1111-2222/subagents/agent-3333.jsonl");
 		assert_eq!(
 			project_dir_for_event(p, projects).as_deref(),
 			Some(Path::new("/home/a/.claude/projects/-code-foo"))

@@ -253,10 +253,7 @@ pub(crate) fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
 	if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
 		return Some("image/webp");
 	}
-	IMAGE_MAGIC
-		.iter()
-		.find(|(magic, _)| bytes.starts_with(magic))
-		.map(|(_, mime)| *mime)
+	IMAGE_MAGIC.iter().find(|(magic, _)| bytes.starts_with(magic)).map(|(_, mime)| *mime)
 }
 
 /// Turn bytes into what the viewer renders.
@@ -608,10 +605,7 @@ mod tests {
 		let dir = tempdir().unwrap();
 		let missing = dir.path().join("nope.txt");
 
-		assert!(matches!(
-			read_file(missing.to_str().unwrap(), None),
-			Err(AppError::NotFound(_))
-		));
+		assert!(matches!(read_file(missing.to_str().unwrap(), None), Err(AppError::NotFound(_))));
 		assert!(matches!(
 			read_file(dir.path().to_str().unwrap(), None),
 			Err(AppError::InvalidInput(_))
@@ -625,14 +619,7 @@ mod tests {
 		let file = dir.path().join("f.txt");
 		File::create(&file).unwrap();
 
-		assert!(matches!(
-			list_dir(missing.to_str().unwrap(), None),
-			Err(AppError::NotFound(_))
-		));
-		assert!(matches!(
-			list_dir(file.to_str().unwrap(), None),
-			Err(AppError::InvalidInput(_))
-		));
+		assert!(matches!(list_dir(missing.to_str().unwrap(), None), Err(AppError::NotFound(_))));
+		assert!(matches!(list_dir(file.to_str().unwrap(), None), Err(AppError::InvalidInput(_))));
 	}
-
 }

@@ -81,8 +81,7 @@ fn seed_old_database(data_dir: &Path) {
 }
 
 fn scalar<T: rusqlite::types::FromSql>(db: &Db, sql: &str) -> T {
-	db.with(|conn| Ok(conn.query_row(sql, [], |r| r.get::<_, T>(0))?))
-		.expect("query")
+	db.with(|conn| Ok(conn.query_row(sql, [], |r| r.get::<_, T>(0))?)).expect("query")
 }
 
 #[test]
@@ -93,9 +92,7 @@ fn every_resolved_project_survives_the_migration() {
 
 	let db = Db::open(&data_dir).expect("migrate");
 
-	let projects = db
-		.with(factorai_lib::commands::projects::list_projects_in)
-		.expect("list");
+	let projects = db.with(factorai_lib::commands::projects::list_projects_in).expect("list");
 	let names: Vec<&str> = projects.iter().map(|p| p.display_name.as_str()).collect();
 	assert_eq!(names, vec!["foo", "bar"], "both resolved projects are in the workspace");
 
@@ -182,10 +179,7 @@ fn an_unresolvable_directory_is_dropped_rather_than_guessed_at() {
 		1
 	);
 	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM sessions WHERE id = 's4'"), 0);
-	assert_eq!(
-		scalar::<i64>(&db, "SELECT COUNT(*) FROM messages_fts WHERE session_id = 's4'"),
-		0
-	);
+	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM messages_fts WHERE session_id = 's4'"), 0);
 	// And the three sessions that did have a home are all still here.
 	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM sessions"), 3);
 }
