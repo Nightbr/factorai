@@ -944,3 +944,61 @@ Worth confirming when someone picks this up:
 - Method, so this isn't re-derived: full-screen `gnome-screenshot`, crop the corner by the client
   geometry from `xwininfo -id <wid>`, and dump per-pixel luminance. Scaled screenshots lie about
   exactly the pixels this is about — the first round of this was diagnosed wrongly off one.
+
+## 28. Order the pinned projects by hand (F1)
+
+**User ask, 2026-08-16:** the pinned block should be in the order *you* choose, not the order a
+sort picked for you. Appended after item 27 — numbering here is append-only.
+
+**What pinning is today.** `projects.pinned` is a boolean column, set through `pin_project`, and
+F1 is explicit that it is the column and **not** a client-side list. The block's *internal* order
+is nobody's choice: `groupProjects` in `Sidebar.tsx` filters the already-sorted list in two, so a
+pinned project sits wherever the sidebar's sort control put it — `recent` keeps the backend's
+`last_session_at DESC`, `name` is a `localeCompare`. Pinning three projects to the top and having
+them shuffle every time one of them runs a session is the complaint.
+
+**The real decision is what the sort control means afterwards**, and it has to be made before any
+schema. F1 chose deliberately that the sort *"applies inside both groups, so the control means one
+thing wherever you look"*. A hand-ordered pinned block contradicts that, and there are only two
+honest resolutions:
+
+- **Manual order always wins in the pinned block**, and the sort control governs `rest` alone.
+  Simplest to explain — "you pinned these, you arranged them" — but it makes the control mean two
+  things after all, and the block needs to *say* it's manually ordered or the control looks broken.
+- **Manual is a third value of the sort control** (`recent | name | manual`), applying to the
+  pinned block only, with the two existing sorts still reaching inside it. Keeps one control with
+  one meaning, at the cost of a mode nobody discovers.
+
+Pick one and write it into F1 in the same commit (§ 2a) — the current F1 sentence is wrong under
+either.
+
+- [ ] **Storage: an ordinal column, not an overloaded flag.** `pinned` stays a boolean; add
+      `pin_order INTEGER` beside it. **Check the highest migration on an up-to-date `origin/main`
+      before naming the file** — 0001–0005 exist locally and migrations are keyed by *name*, so a
+      second `0006` cannot be renumbered once it has run anywhere (§ 2b, the 0004 collision).
+- [ ] **One command that writes the whole order**, e.g. `reorder_pinned_projects(ids: Vec<String>)`
+      in `commands/projects.rs`, rewriting every ordinal in a single transaction. A per-row
+      "move up" command looks cheaper and isn't: it leaves gaps, races the 2s refetch, and has no
+      way to reject an order that no longer matches what the user saw.
+- [ ] **Decide where a newly pinned project lands** — top or bottom of the block. `pin_project`
+      currently writes a flag and nothing else; it now has to assign an ordinal too, and
+      *unpinning* has to decide whether the old position is remembered for a re-pin (recommendation:
+      it isn't — a repin goes to the end, and that is one less piece of invisible state).
+- [ ] **The gesture, cheapest first.** The row's `ContextMenu` already exists (item 25) and already
+      carries Pin / Unpin, so **`Move up` / `Move down` rows in it are nearly free** and are a
+      complete answer to the ask. Drag-and-drop is the nicer gesture and is a **new load-bearing
+      dependency** (nothing in the workspace does dnd today) — that is an ADR under § 5, plus a
+      keyboard path regardless, since a drag-only reorder is unreachable without a mouse. Ship the
+      menu rows first; treat dnd as a separate follow-up that reuses the same command.
+- [ ] **Optimistic update or it will fight the poll.** The sidebar refetches every 2s and
+      `usePinProject` already shows the pattern (`onMutate` rewrites the cached list). A reorder
+      that waits for the round-trip will visibly snap back; the optimistic write has to cover the
+      ordering, not just the flag.
+- [ ] **Keep the ordering rule pure and exported**, the way `sortProjects` is — the whole point of
+      that shape is that the rule is testable without a render. `Sidebar.test.ts` /
+      `SidebarProject.test.ts` cover the unit; add one `@smoke` case that reorders and asserts the
+      order survives a refetch.
+
+**Not a general project ordering.** This is the pinned block only. `rest` stays sorted, because a
+hand-ordered list of every project the workspace has ever seen is a thing to maintain rather than
+a feature.
