@@ -241,6 +241,30 @@ keep-awake toggle needs both the route and a Rust-readable setting, item 22's
 confirm-before-killing-a-session toggle needs the route (renderer-only — no Rust read-back), and
 the preferences other items keep wanting have still got nowhere to live.
 
+**The surface itself is not settled, and that is what is actually blocking them** (noted
+2026-08-16). F11 names four sections and this entry says "`/settings` route", but neither says
+**where you click to get there**, and the modal-versus-route choice was never argued — it was
+inherited. Both are cheap to decide and expensive to guess wrong, so this item wants a
+**clarify-needs pass first**, the way item 1 does. What it has to answer:
+
+- **The entry point.** Nothing in the app opens settings today. `TopBar` is the obvious home and
+  is already contested — brand, session tabs, panel toggle, and item 6 is about to put window
+  controls there. A gear in the sidebar footer (VS Code's answer) costs no top-bar width. The
+  palette (item 12) is a third route in, and a fine *additional* one, but a surface reachable only
+  by a keystroke is unfindable.
+- **Modal or route.** A route deep-links (`#/settings`), survives a reload, and holds four
+  sections without cramping — and it is cheaper here than it looks, because terminals live in
+  `terminalStore` and survive navigation, so opening settings costs you nothing you were watching.
+  A modal keeps the session visible behind it and matches `FileViewerModal`, but has no URL and
+  gets tight fast. Decide it, then say so in F11 rather than leaving the next reader to infer it
+  from a route file.
+- **`Cmd/Ctrl+,` is already in item 5's table**, which quietly assumes the answer: a binding that
+  toggles a modal and a binding that navigates to a route behave differently when you press it
+  twice. Land the two decisions together.
+- **What a section looks like** — a label / description / control row is the unit, and the
+  Confirmations group in item 22 is the first real customer for it. Building the row primitive
+  once here is what stops every future preference inventing its own layout.
+
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 
 `05-features.md` § "Keyboard shortcuts" lists six bindings; **none are wired**. The table is not
@@ -730,12 +754,20 @@ the app where a single click ends a running agent with no undo and no question.
       `X` opens the dialog, `Keep it running` leaves the terminal live, confirming lands on
       `/projects/$id`.
 
-**A preference to turn the confirm off — decided 2026-08-16, and it needs item 4 first.** Whether
-killing a session asks becomes the user's call, **on by default**. Surface TBD along with the rest
-of the settings shape (F11 names Appearance / Editor / Claude / Advanced; this is a session
-behaviour, so Claude or Advanced, not Appearance). Unlike item 20's keep-awake, this one is
-**renderer-only** — no `get_setting`/`set_setting`, just `prefsStore` — which makes item 4 the
-route dependency and nothing more.
+**A preference to turn the confirm off — decided 2026-08-16. ⛔ Blocked on item 4.** Whether
+killing a session asks becomes the user's call, **on by default**.
+
+**Split this item when you pick it up.** The `X` + shared-dialog rework above is **not blocked**
+and should ship on its own — it needs no preference to be an improvement, since today's header
+button asks nothing at all. The switches below wait, and waiting on them must not hold the rest
+hostage.
+
+What blocks them is not the toggle logic, which is trivial, but that **there is nowhere to put
+it**: the settings surface is undecided beyond F11 naming four sections. Where its entry point
+lives, and whether it is a modal or a route, are open (see item 4) — and a preference whose home
+is unknown cannot be specced, only guessed at. Unlike item 20's keep-awake, this one is
+**renderer-only** — no `get_setting`/`set_setting`, just `prefsStore` — so item 4's *surface* is
+the whole of the dependency; none of its Rust half matters here.
 
 What to get right when it lands:
 
