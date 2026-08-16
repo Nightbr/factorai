@@ -1,16 +1,31 @@
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
 import type { Project, SessionSummary } from '@factorai/types';
-import { IconButton } from '@factorai/ui';
+import {
+	Button,
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuTrigger,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	IconButton,
+} from '@factorai/ui';
+import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
-import { cmd } from '@lib/tauri';
+import { cmd, openExternally } from '@lib/tauri';
 import { useSidebarStore } from '@store/sidebarStore';
 import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronRight, Pin, PinOff, Plus } from 'lucide-react';
-import { useMemo } from 'react';
+import { AlertTriangle, ChevronRight, FolderOpen, Pin, PinOff, Plus, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
 /** How many sessions an expanded project shows. Enough to cover "the one I was
  *  just in", short enough that expanding two projects doesn't bury the list. */
@@ -48,6 +63,24 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
 	const startSession = useStartSession();
 	const togglePin = usePinProject(project);
+	const removeProject = useRemoveProject();
+	// Removing is silent when nothing is running: it touches nothing on disk and
+	// re-adding rebuilds, so a dialog on every tidy-up is friction on the action
+	// you will do thirty times. A live PTY is the exception — see the dialog.
+	// Subscribe to `bySession` and derive: `liveSessionsIn` builds a new array
+	// each call, so selecting it directly would hand zustand a fresh reference
+	// on every store read and re-render forever.
+	const bySession = useTerminalStore((s) => s.bySession);
+	const liveHere = useMemo(() => liveSessionsIn(bySession, project.id), [bySession, project.id]);
+	const [confirmRemove, setConfirmRemove] = useState(false);
+
+	function remove() {
+		if (liveHere.length > 0) {
+			setConfirmRemove(true);
+			return;
+		}
+		void removeProject(project.id);
+	}
 
 	// A `missing` folder has a known path that is no longer on disk, so claude
 	// would boot in $HOME and file the new session under a *different* project
@@ -64,104 +97,175 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 
 	return (
 		<li>
-			{/* The row is a flex container, so the hover background covers the
-			    chevron, the link and the + alike. Each is a SIBLING of the Link —
-			    nesting a button inside an anchor is invalid, and the two would
-			    fight over the click. */}
-			<div
-				className={`group flex items-center pr-1 transition-colors ${
-					isActive ? 'bg-secondary' : 'hover:bg-secondary/50'
-				}`}
-			>
-				<IconButton
-					aria-label={
-						expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`
-					}
-					aria-expanded={expanded}
-					className="my-1 mr-1 ml-1"
-					onClick={() => toggleProject(project.id)}
-				>
-					<ChevronRight className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
-				</IconButton>
-
-				<Link
-					to="/projects/$id"
-					params={{ id: project.id }}
-					data-missing={project.missing || undefined}
-					// Dimmed rather than struck through or badged: the row is still
-					// worth opening — its transcripts are all still there — it just
-					// can't start anything. Half-opacity says "less" without saying
-					// "broken".
-					className={`flex min-w-0 flex-1 items-center gap-2 py-2 text-sm ${
-						isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
-					} ${project.missing ? 'opacity-50' : ''}`}
-					// The decoded path, because when a folder has moved the question
-					// is always "moved from where?" and the name alone can't answer it.
-					title={project.missing ? `Folder not found: ${project.realPath}` : undefined}
-				>
-					<ProjectIcon
-						name={project.displayName}
-						path={project.realPath}
-						size={16}
-						status={isLive ? 'running' : undefined}
-					/>
-					<span className="min-w-0 flex-1 truncate">{project.displayName}</span>
-					{project.missing && (
-						<span className="shrink-0 text-muted-foreground/70 text-xs">missing</span>
-					)}
-				</Link>
-
-				<IconButton
-					// `group/pin` scopes the glyph swap below to THIS icon's hover, not
-					// the row's — the row already owns the bare `group`.
-					className={`group/pin transition-all focus-visible:opacity-100 ${
-						alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-					}`}
-					aria-label={
-						project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`
-					}
-					title={project.pinned ? 'Unpin' : 'Pin to top'}
-					onClick={() => togglePin()}
-				>
-					{project.pinned ? (
-						<>
-							{/* Filled at rest says "pinned"; slashed under the cursor says
-							    what the click will do. */}
-							<Pin className="fill-current group-hover/pin:hidden" />
-							<PinOff className="hidden group-hover/pin:block" />
-						</>
-					) : (
-						<Pin />
-					)}
-				</IconButton>
-
-				{/* The title lives on the wrapper: a disabled button sets
-				    pointer-events-none, which suppresses a native tooltip on the
-				    element itself — exactly when the explanation matters most. */}
-				<span
-					className="flex items-center"
-					title={
-						canStart
-							? `New session in ${project.displayName}`
-							: 'No project folder on disk — cannot start a session here'
-					}
-				>
-					<IconButton
-						// Always there on a pinned or selected project: those are the ones
-						// you start work in, so the affordance shouldn't need hunting for.
-						className={`transition-all focus-visible:opacity-100 ${
-							alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+			{/* F1 once rejected a right-click menu here, on the grounds that one
+			    action (pin) didn't justify building the system. That reasoning has
+			    expired: there are three now, and one of them — Remove — has nowhere
+			    else sane to live. A fifth hover target in a 180px row would be a
+			    misclick waiting to happen, and this row has no undo. */}
+			<ContextMenu>
+				<ContextMenuTrigger asChild>
+					{/* The row is a flex container, so the hover background covers the
+					    chevron, the link and the + alike. Each is a SIBLING of the Link —
+					    nesting a button inside an anchor is invalid, and the two would
+					    fight over the click. */}
+					<div
+						className={`group flex items-center pr-1 transition-colors ${
+							isActive ? 'bg-secondary' : 'hover:bg-secondary/50'
 						}`}
-						aria-label={`New session in ${project.displayName}`}
-						disabled={!canStart}
-						onClick={() => void startSession(project.id)}
+						data-testid={`project-row-${project.id}`}
 					>
-						<Plus />
-					</IconButton>
-				</span>
-			</div>
+						<IconButton
+							aria-label={
+								expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`
+							}
+							aria-expanded={expanded}
+							className="my-1 mr-1 ml-1"
+							onClick={() => toggleProject(project.id)}
+						>
+							<ChevronRight className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+						</IconButton>
+
+						<Link
+							to="/projects/$id"
+							params={{ id: project.id }}
+							data-missing={project.missing || undefined}
+							// Dimmed rather than struck through or badged: the row is still
+							// worth opening — its transcripts are all still there — it just
+							// can't start anything. Half-opacity says "less" without saying
+							// "broken".
+							className={`flex min-w-0 flex-1 items-center gap-2 py-2 text-sm ${
+								isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
+							} ${project.missing ? 'opacity-50' : ''}`}
+							// The decoded path, because when a folder has moved the question
+							// is always "moved from where?" and the name alone can't answer it.
+							title={project.missing ? `Folder not found: ${project.realPath}` : undefined}
+						>
+							<ProjectIcon
+								name={project.displayName}
+								path={project.realPath}
+								size={16}
+								status={isLive ? 'running' : undefined}
+							/>
+							<span className="min-w-0 flex-1 truncate">{project.displayName}</span>
+							{project.missing && (
+								<span className="shrink-0 text-muted-foreground/70 text-xs">missing</span>
+							)}
+						</Link>
+
+						<IconButton
+							// `group/pin` scopes the glyph swap below to THIS icon's hover, not
+							// the row's — the row already owns the bare `group`.
+							className={`group/pin transition-all focus-visible:opacity-100 ${
+								alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+							}`}
+							aria-label={
+								project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`
+							}
+							title={project.pinned ? 'Unpin' : 'Pin to top'}
+							onClick={() => togglePin()}
+						>
+							{project.pinned ? (
+								<>
+									{/* Filled at rest says "pinned"; slashed under the cursor says
+									    what the click will do. */}
+									<Pin className="fill-current group-hover/pin:hidden" />
+									<PinOff className="hidden group-hover/pin:block" />
+								</>
+							) : (
+								<Pin />
+							)}
+						</IconButton>
+
+						{/* The title lives on the wrapper: a disabled button sets
+						    pointer-events-none, which suppresses a native tooltip on the
+						    element itself — exactly when the explanation matters most. */}
+						<span
+							className="flex items-center"
+							title={
+								canStart
+									? `New session in ${project.displayName}`
+									: 'No project folder on disk — cannot start a session here'
+							}
+						>
+							<IconButton
+								// Always there on a pinned or selected project: those are the ones
+								// you start work in, so the affordance shouldn't need hunting for.
+								className={`transition-all focus-visible:opacity-100 ${
+									alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+								}`}
+								aria-label={`New session in ${project.displayName}`}
+								disabled={!canStart}
+								onClick={() => void startSession(project.id)}
+							>
+								<Plus />
+							</IconButton>
+						</span>
+					</div>
+				</ContextMenuTrigger>
+				<ContextMenuContent className="w-56">
+					<ContextMenuItem onSelect={() => togglePin()}>
+						{project.pinned ? <PinOff /> : <Pin />}
+						{project.pinned ? 'Unpin' : 'Pin to top'}
+					</ContextMenuItem>
+					<ContextMenuItem
+						disabled={project.missing}
+						onSelect={() => void openExternally(project.realPath)}
+					>
+						<FolderOpen />
+						Reveal in file manager
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					{/* Below the separator and nowhere near Pin: this one has no undo,
+					    and the two are otherwise a slip apart. */}
+					<ContextMenuItem
+						variant="destructive"
+						data-testid={`remove-project-${project.id}`}
+						onSelect={remove}
+					>
+						<Trash2 />
+						Remove Project
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
 
 			{expanded && <SessionList project={project} />}
+
+			{/* Only reached with something running. Removing is otherwise silent:
+			    it touches nothing on disk (ADR-0004) and re-adding rebuilds the
+			    index, so a dialog every time would be friction on the action this
+			    whole item exists to make possible. What a live PTY changes is that
+			    the alternative to killing it is leaving `claude` running with no row
+			    and no tab — the invisible-agent state ADR-0005 forbids. */}
+			<Dialog open={confirmRemove} onOpenChange={setConfirmRemove}>
+				<DialogContent data-testid="confirm-remove-project">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							<AlertTriangle className="size-5 text-destructive" />
+							Remove {project.displayName}?
+						</DialogTitle>
+						<DialogDescription>
+							{liveHere.length} running session{liveHere.length === 1 ? '' : 's'} in this project
+							will be stopped. Nothing on disk is deleted — your transcripts stay where they are,
+							and adding the folder back restores them.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setConfirmRemove(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							data-testid="confirm-remove-project-yes"
+							onClick={() => {
+								setConfirmRemove(false);
+								void removeProject(project.id);
+							}}
+						>
+							Stop &amp; remove
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</li>
 	);
 }
