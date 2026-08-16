@@ -747,13 +747,38 @@ Four things to get right when it lands:
 - **The quit dialog is not covered by it.** F5 calls the window-close confirm **mandatory** and
   ADR-0005 makes kill-on-quit non-optional; that dialog is about losing *every* live session at
   once and stays regardless of this toggle. Wire the preference to the per-session path only.
-- **Middle-click is the accident case.** The tab strip routes middle-click through the same
-  confirm deliberately — *"a shortcut to the action, not a way around the question"*. With the
-  confirm off, a stray middle-click on a tab kills a running agent instantly. That is the user's
-  choice to make, but it is the argument for the default being on and for saying what the toggle
-  costs in its own description line.
-- **One preference, both call sites.** Same reason the dialog gets lifted into a shared component
-  above: a toggle that silences the header but not the tab strip is worse than no toggle.
+- **Middle-click is the accident case, and it gets its own row** (refined 2026-08-16). The tab
+  strip routes middle-click through the confirm deliberately — *"a shortcut to the action, not a
+  way around the question"* — and unlike the `×` it has no aim to it: you can hit a tab you
+  weren't pointing at. Someone who finds the confirm tedious on a deliberate `×` may still want
+  the question on a stray wheel-click, so collapsing the two into one switch takes that answer
+  away.
+- **So it is a settings group, not a toggle** — a **Confirmations** section with one row per
+  entry point, each independently switchable and **all on by default**:
+  - closing a session from the header `X`
+  - closing a session from a tab's `×`
+  - closing a tab by middle-click
+- **No master switch above the group.** A general "ask before killing" plus per-action overrides
+  produces a matrix with a dead cell (general on → the per-action rows do nothing) and a UI that
+  has to grey rows out to explain itself. Three peers, no hierarchy, and the group heading is the
+  only grouping there is.
+- **Quit belongs in the list as an un-switchable row.** F5 calls the window-close confirm
+  **mandatory** and ADR-0005 makes kill-on-quit non-optional, so it is not configurable — but a
+  Confirmations group that silently omits the app's most consequential confirm reads as an
+  oversight. Show it, disabled, saying it always asks.
+- **Store it as one keyed object, render it from a table.** `prefsStore` gets a `confirmations`
+  record keyed by action id, and the section renders from a `{ id, label, description, default }`
+  table so a future confirm is a row rather than a code change. **The table needs an entry rule
+  or it becomes a junk drawer**: only actions whose cost is recoverable may appear — anything an
+  ADR calls mandatory (quit) is listed and locked, and anything that writes to disk or to another
+  process is not listed at all.
+- **One preference per action, both halves of that action.** Same reason the dialog gets lifted
+  into a shared component above: the header row must govern the header, the tab row the tab, and
+  neither may half-apply.
+- **`@factorai/ui` has no `Switch`.** That is the third primitive these items need — context menu
+  (item 3), checkbox (item 25), switch (here) — all `@radix-ui/*` siblings of packages already in
+  the workspace. Item 4's settings route wants the switch regardless, so add it there rather than
+  three times over.
 
 ## 23. `Button`'s size scale is a web scale, not a desktop one
 
