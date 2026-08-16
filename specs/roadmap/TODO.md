@@ -19,6 +19,10 @@ the top of the list because that is where the freed slot was, **not** as a claim
 M4's remainder — it is gated on a clarify-needs interview and has no spec yet, so nothing about
 it is ready to build. Re-order it once that interview has happened and its size is known.
 
+Added 2026-08-16: **item 3 is the file tree's right-click menu**, taking the slot held open on
+2026-08-15 for exactly this — so nothing between 4 and 21 moved. Same caveat as item 1: the slot
+is where it landed, not a statement that it outranks M4's remainder.
+
 ## 1. Git graph — the commit tree, branches and tags
 
 **Not started, and not to be started from this entry.** The next step is a **clarify-needs
@@ -143,11 +147,73 @@ Changes`, hardcoded, not a registry. So Memory takes the cheaper route it should
 also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
 it still describes the tab.
 
-## 3. Shipped — see [`DONE.md`](./DONE.md) (2026-08-15)
+## 3. File tree — right-click menu on a row (F12)
 
-The `missing` flag on `Project` landed with F1's dimmed row and F6's disabled `+`. Slot kept
-rather than renumbered, so items 4–21 and the cross-references pointing at them stay put; the
-next item added takes it.
+**User ask, 2026-08-16.** The tree has exactly one gesture today (click) and one destination (the
+viewer). A right-click menu is where the other things you want to do with a file go — open it the
+other way, take its contents, take its path — without any of them costing a permanent control in
+a 288px-wide row. F12 is explicit that the row gains **no hover actions**; a context menu is how
+that stays true while the actions still exist.
+
+**Position is the slot freed on 2026-08-15, not a priority claim** — the file's own rule was that
+the next item added takes it, so items 4–21 and every cross-reference into them stay put. Read it
+as roughly the size of item 7, not as outranking M4's remainder.
+
+**The actions, as asked.** Open · Copy to clipboard · Copy absolute path · Copy relative path ·
+Select for the agent (later). Four of the five are shallow; the fifth is item 19's and is not
+part of this build.
+
+- [ ] **The primitive.** `@factorai/ui` ships `dropdown-menu` (radix, used by the sidebar's sort
+      menu) and **no context menu**. Add `context-menu.tsx` on `@radix-ui/react-context-menu` —
+      the sibling of a package already here, pinned exact like the other nine radix deps
+      (`deps:check`), and shadcn-conventional in that folder. Do **not** hand-position the
+      dropdown from `onContextMenu`: that re-implements the keyboard model, collision handling
+      and focus return the primitive already ships. No ADR — same family, same version line, not
+      a load-bearing new dependency by § 5's test.
+- [ ] **Kill the native menu first, and verify rather than assume.** Right-click in the WebView
+      currently gets whatever WebKitGTK / WKWebView draws, and `tauri.conf.json` says nothing
+      about it. Radix calls `preventDefault` on the trigger, which covers the row — it does not
+      cover a right-click on the panel's padding, the tree's empty space, or the terminal.
+      Check what each platform actually does before deciding whether this needs an app-level
+      suppression.
+- [ ] **`Open` means the viewer; `Open in default app` is a second row.** The tree settled this
+      already — single click opens Monaco (F7), and "open in the OS default app" lives in the
+      viewer's header via `openExternally` (`shell:allow-open`, already granted). The menu should
+      name both rather than collapse them into one ambiguous `Open`. **F12's spec text was stale
+      here** (it still described double-click / `Enter` opening the default app, which `402a23c`
+      replaced); corrected 2026-08-16 in the same pass that added this item.
+- [ ] **`Copy to clipboard` is the file's contents as text**, and the ambiguity is worth settling
+      out loud: the other reading — the file itself, for a paste into a file manager — has no
+      reachable implementation. `navigator.clipboard.writeText` works on WebKitGTK (the viewer's
+      copy-path button proves it) but `ClipboardItem` does not (see `copyImageToClipboard`'s
+      comment in `lib/tauri.ts`), and there is no file-URI flavour to write from a webview.
+      `read_file` already returns what the row needs to behave: `isBinary` and `truncated` mean
+      the menu can **disable** the row rather than putting a null byte or half a file on the
+      clipboard. An image copies through the existing `copyImageToClipboard` path instead.
+- [ ] **`Copy relative path` is relative to the project root** — the only base that isn't a guess,
+      and `root` is already threaded into every `FileTreeNode` for `list_dir`. POSIX separators
+      (macOS + Linux only, § 8), no leading `./`. `Copy absolute path` is `entry.path` verbatim,
+      untouched — no `~` collapsing: a path you copy is a path you paste into a shell.
+- [ ] **Directories get the same menu with the contents row disabled**, not a second menu. Paths
+      are meaningful for a directory; contents aren't.
+- [ ] **Right-clicking a row selects it.** `panelStore` has a single `selectedPath` and the tree
+      has no multi-select, so the menu acts on one row — and the row it acts on has to be the one
+      visibly selected, or the menu is acting on something you can't see.
+- [ ] **Say that the copy happened.** The viewer's copy-path button already has the pattern (a
+      transient tick). A toast would be the other answer and there still isn't one — item 7.
+- [ ] Smoke coverage in `tests/smoke/`: menu opens on right-click, each row fires the right call.
+      Clipboard assertions in the Chromium lane need the permission granted in the fixture; the
+      `writeText`-vs-WebKitGTK difference means a green test here does **not** prove the copy
+      works in the app, so pair it with one manual pass (§ 2e).
+
+**`Select for the agent` — deferred, and it belongs to item 19.** The real version is the IDE
+emulation surface: the CLI asks its editor what is selected, and factorai answers. That is the
+MCP server, its security boundary and its session-attribution question, none of which this item
+should grow. Worth noting there is a **cheap floor** available with no MCP at all — write
+`@<relative path>` into the active session's PTY, which is the mention syntax the CLI already
+parses — but it inherits the same unanswered question item 19 has: *which* session, when a
+project can have several and may have none running. Don't ship the floor as if it were the
+feature; if it ships at all it ships as a stopgap that says so.
 
 ## 4. M5 — Settings route (F11) and a real `prefsStore`
 
