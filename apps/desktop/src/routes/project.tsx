@@ -7,9 +7,24 @@ import { cmd } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute } from '@tanstack/react-router';
-import { ChevronRight, Plus } from 'lucide-react';
+import { Bot, ChevronRight, Plus } from 'lucide-react';
 import { useMemo } from 'react';
 import { rootRoute } from './__root';
+
+/** The marker on a sub-agent row: an agent run by a session, readable but
+ *  not resumable. Small and quiet — it disambiguates, it doesn't shout. */
+function SubAgentBadge() {
+	return (
+		<span
+			data-testid="subagent-badge"
+			title="Run by an agent inside the session above — readable, not resumable"
+			className="inline-flex shrink-0 items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-muted-foreground text-xs"
+		>
+			<Bot className="size-3" aria-hidden />
+			sub-agent
+		</span>
+	);
+}
 
 function ProjectView() {
 	const { id } = projectRoute.useParams();
@@ -119,19 +134,31 @@ function ProjectView() {
 								<Link
 									to="/projects/$projectId/sessions/$sessionId"
 									params={{ projectId: id, sessionId: s.id }}
-									className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary"
+									// A sub-agent row indents under its parent and swaps the
+									// chevron for the badge that says what it is — it opens
+									// a transcript, not a terminal.
+									className={`flex items-center gap-3 py-3 pr-4 transition-colors hover:bg-secondary ${
+										s.subagentOf ? 'pl-10' : 'pl-4'
+									}`}
 								>
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
 											{bySession[s.id] && <StatusDot status={bySession[s.id].status} />}
 											<span className="truncate font-medium">{s.title || s.id.slice(0, 8)}</span>
+											{s.subagentOf && <SubAgentBadge />}
 										</div>
 										<div className="text-muted-foreground text-xs">
 											{s.turnCount} turn{s.turnCount === 1 ? '' : 's'} ·{' '}
 											{formatRelative(s.updatedAt)}
 										</div>
 									</div>
-									<ChevronRight className="size-4 text-muted-foreground" />
+									{s.subagentOf ? (
+										// Read-only affordance: no chevron, which everywhere
+										// else in this list means "a terminal opens".
+										<span className="text-muted-foreground/60 text-xs">read-only</span>
+									) : (
+										<ChevronRight className="size-4 text-muted-foreground" />
+									)}
 								</Link>
 							</li>
 						))}

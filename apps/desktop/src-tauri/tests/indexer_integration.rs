@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use factorai_lib::commands::projects::add_project_in;
+use factorai_lib::commands::projects::{add_project_in, list_projects_in};
 use factorai_lib::db::Db;
 use factorai_lib::models::SessionsChanged;
 use factorai_lib::services::indexer::Indexer;
@@ -451,4 +451,151 @@ fn an_empty_custom_title_falls_back_instead_of_blanking_the_row() {
 		Ok(())
 	})
 	.expect("read back");
+}
+
+// ── Sub-agent transcripts ────────────────────────────────────────────────────
+//
+// Claude Code writes each agent a session spawns to
+// <session-id>/subagents/agent-*.jsonl inside the project directory. These
+// mirror the shapes observed in a real ~/.claude/projects tree.
+
+/// Write a sub-agent transcript under a parent session, with the shapes a
+/// real agent file carries: `isSidechain: true` on every event, an `agentId`
+/// matching the filename.
+fn write_subagent(
+	project_dir: &Path,
+	parent_id: &str,
+	agent_name: &str,
+	lines: &[&str],
+) -> PathBuf {
+	let dir = project_dir.join(parent_id).join("subagents");
+	std::fs::create_dir_all(&dir).expect("mkdir subagents");
+	let path = dir.join(format!("{agent_name}.jsonl"));
+	std::fs::write(&path, lines.join("\n")).expect("write subagent");
+	path
+}
+
+/// The events a sub-agent transcript opens with, taken from a real file.
+fn subagent_events(cwd: &str) -> Vec<String> {
+	vec![
+		format!(
+			r#"{{"parentUuid":null,"isSidechain":true,"promptId":"p1","agentId":"agent-1111","type":"user","timestamp":"2026-08-15T19:02:00Z","cwd":"{cwd}","message":{{"role":"user","content":"Explore the repo"}}}}"#
+		),
+		format!(
+			r#"{{"parentUuid":"u1","isSidechain":true,"agentId":"agent-1111","type":"assistant","timestamp":"2026-08-15T19:03:00Z","cwd":"{cwd}","message":{{"role":"assistant","content":[{{"type":"text","text":"Found it"}}]}}}}"#
+		),
+	]
+}
+
+/// A sub-agent transcript is indexed as a session row under the real project,
+/// marked `subagent_of` — and never manufactures a project named after its
+/// containing folder.
+#[test]
+fn subagent_transcripts_are_indexed_under_their_real_project() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, cwd, project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+
+	let events = subagent_events(cwd.to_str().unwrap());
+	let refs: Vec<&str> = events.iter().map(String::as_str).collect();
+	write_subagent(&project_dir, &session_id, "agent-1111", &refs);
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		// The agent row exists, under the discovery its parent belongs to, and
+		// marked. Same directory, not one of its own: that a `subagents/` folder
+		// is part of a session rather than a store directory is the whole point.
+		let (discovered_id, subagent_of): (i64, Option<String>) = conn
+			.query_row(
+				"SELECT discovered_id, subagent_of FROM sessions WHERE id = 'agent-1111'",
+				[],
+				|row| Ok((row.get(0)?, row.get(1)?)),
+			)
+			.expect("subagent row");
+		let parent_discovered: i64 = conn
+			.query_row(
+				"SELECT discovered_id FROM sessions WHERE id = ?1",
+				params![&session_id],
+				|row| row.get(0),
+			)
+			.unwrap();
+		assert_eq!(discovered_id, parent_discovered);
+		assert_eq!(subagent_of.as_deref(), Some(session_id.as_str()));
+
+		// No discovery — and so no project — was manufactured for the folder the
+		// agent transcript sits in.
+		let discovered: i64 = conn
+			.query_row("SELECT COUNT(*) FROM discovered_projects", [], |row| row.get(0))
+			.unwrap();
+		assert_eq!(discovered, 1, "the subagent dir must not become a store directory");
+
+		// The project's own count excludes the agent, read through the query the
+		// sidebar actually uses.
+		let projects = list_projects_in(conn).expect("list projects");
+		assert_eq!(projects.len(), 1);
+		assert_eq!(
+			projects[0].session_count, 1,
+			"sub-agents do not count as project sessions"
+		);
+		Ok(())
+	})
+	.unwrap();
+}
+
+/// The FTS index covers sub-agent transcripts too — search hits inside an
+/// agent run land on the agent's row, which the UI can open read-only.
+#[test]
+fn subagent_messages_are_searchable() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, cwd, project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+
+	let events = subagent_events(cwd.to_str().unwrap());
+	let refs: Vec<&str> = events.iter().map(String::as_str).collect();
+	write_subagent(&project_dir, &session_id, "agent-1111", &refs);
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let hits: i64 = conn
+			.query_row(
+				"SELECT COUNT(*) FROM messages_fts WHERE session_id = 'agent-1111' AND messages_fts MATCH 'Explore'",
+				[],
+				|row| row.get(0),
+			)
+			.unwrap();
+		assert_eq!(hits, 1);
+		Ok(())
+	})
+	.unwrap();
+}
+
+/// A stray `.jsonl` in the session's own directory (not under `subagents/`)
+/// is not a transcript layout Claude writes; the watcher's mapping ignores
+/// it rather than manufacturing a project for the session dir.
+#[test]
+fn a_jsonl_outside_subagents_does_not_become_a_project() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+	let session_dir = project_dir.join(&session_id);
+	std::fs::create_dir_all(&session_dir).expect("mkdir session dir");
+	std::fs::write(session_dir.join("stray.jsonl"), "{}\n").expect("write stray");
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let discovered: i64 = conn
+			.query_row("SELECT COUNT(*) FROM discovered_projects", [], |row| row.get(0))
+			.unwrap();
+		assert_eq!(discovered, 1, "no new store directory from a stray jsonl");
+		let projects = list_projects_in(conn).expect("list projects");
+		assert_eq!(projects.len(), 1, "no new project from a stray jsonl");
+		Ok(())
+	})
+	.unwrap();
 }

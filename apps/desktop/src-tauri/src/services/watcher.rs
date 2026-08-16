@@ -5,10 +5,12 @@ use notify::RecursiveMode;
 use notify_debouncer_mini::new_debouncer;
 use tracing::{info, warn};
 
-use crate::services::indexer::Indexer;
+use crate::services::indexer::{project_dir_for_event, Indexer};
 
 /// Spawn a debounced filesystem watcher on the claude projects dir. Re-runs
-/// the project scan for any directory containing a changed `.jsonl`.
+/// the project scan for any project containing a changed `.jsonl` —
+/// including a sub-agent transcript, which maps up to its project rather
+/// than being mistaken for one.
 ///
 /// Debounce window is 1s per spec/Q5. We watch the whole projects tree
 /// recursively; the indexer's mtime/size check makes targeted reindex cheap.
@@ -53,8 +55,14 @@ pub fn spawn(indexer: Arc<Indexer>) {
 						for ev in events {
 							let path = &ev.path;
 							if path.extension().is_some_and(|e| e == "jsonl") {
-								if let Some(parent) = path.parent() {
-									dirty_projects.insert(parent.to_path_buf());
+								match project_dir_for_event(path, &projects_dir) {
+									Some(p) => {
+										dirty_projects.insert(p);
+									}
+									None => warn!(
+										path = ?path,
+										"changed jsonl is not inside a project directory; ignoring"
+									),
 								}
 							}
 						}

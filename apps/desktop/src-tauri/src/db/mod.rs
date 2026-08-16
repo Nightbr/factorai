@@ -19,6 +19,17 @@ const MIGRATIONS: &[(&str, &str)] = &[
 		"0004_workspace_projects",
 		include_str!("migrations/0004_workspace_projects.sql"),
 	),
+	// Renumbered from 0004 on the way in from PR #2, which developed alongside
+	// the workspace split rather than after it. Order is what makes it correct:
+	// 0004 rebuilds `sessions` and drops the old `projects` mirror, so this one
+	// has to run second and is written against the tables that come out of it.
+	// Renaming is only safe because it had not been applied anywhere real — it
+	// is keyed by name in `_meta`, so a rename re-runs it, and
+	// `ALTER TABLE ... ADD COLUMN` is not idempotent.
+	(
+		"0005_session_subagent",
+		include_str!("migrations/0005_session_subagent.sql"),
+	),
 ];
 
 /// Thread-safe handle to the SQLite connection.

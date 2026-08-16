@@ -3,6 +3,24 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Two window fixes, and a corner that stays square on Linux** — 2026-08-16, shipped in v0.7.0.
+  A long filename in the Changes tab used to set a min-content width the 288px panel couldn't
+  meet, so the whole list scrolled sideways and every row's name went off the left edge; both
+  halves of the path shrink now, the directory first. And the shell's bottom corners round on
+  macOS only — Linux clips nothing, so a rounded corner there is a wedge of background sitting
+  over the WM's own arc. Transparency fixes the geometry and exposes the compositor's shadow
+  instead; the measurements and the rejected alternative are [Q21](../07-open-questions.md), and
+  what's left of the artifact is TODO item 27.
+
+- **Sub-agent sessions and the workspace split, merged** — 2026-08-16. The two landed in parallel
+  and collided: PR #2 shipped `0004_session_subagent` while item 25 shipped
+  `0004_workspace_projects`, and migrations are keyed by name. The sub-agent one was renumbered
+  to `0005` (safe only because it had never been applied anywhere real) and rewritten against the
+  schema the split leaves behind — the manufactured `subagents` project is a *discovery* now, and
+  its FTS rows have to go by hand since nothing cascades. Sub-agents index against their parent's
+  discovery, and "sub-agents don't count" moved from a stored `session_count` column to the
+  `PROJECT_SELECT` aggregate.
+
 - **A project is a folder you added, not a directory Claude has** — 2026-08-16, TODO item 25.
   Recorded as [ADR-0011](../../docs/adr/0011-a-project-is-a-folder-in-the-workspace.md); F1 was
   rewritten rather than patched, since it was written from the premise this deletes.
@@ -49,6 +67,25 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   nothing was parsed — but F4 used to cover every folder Claude had ever touched, and the moment
   you want that is the moment you cannot remember which folder it was. Un-gating is two lines and
   a reindex if it proves wrong in use; F4 says where.
+- **Sub-agent sessions are real, marked, and read-only** — 2026-08-15. Claude Code writes each
+  agent a session spawns to `<session>/subagents/agent-*.jsonl`. The watcher was treating that
+  file's direct parent as a project directory, which manufactured a project literally named
+  `subagents` (its `real_path` even resolved to factorai, via the agent's own `cwd` — a second
+  "factorai" in the sidebar) and indexed the agent transcripts as ordinary sessions. Opening one
+  probed for a top-level transcript that doesn't exist and spawned a fresh `claude` under the
+  agent's id.
+
+  The fix, per the rule the user set: they *are* explorable, so keep them — marked and read-only.
+  The watcher now maps a changed `.jsonl` up to the directory that is actually a direct child of
+  `~/.claude/projects/` (anything else is logged and ignored — no more manufactured projects from
+  stray files). The indexer indexes `agent-*.jsonl` under the real project with `sessions.subagent_of`
+  set (the migration that deletes the bogus rows landed as `0005` — see below). `list_sessions` nests sub-agent rows directly
+  under their parent, and the project page renders them indented with a `sub-agent` badge;
+  `session_count` excludes them, and the sidebar's inline ten-session list leaves them out. The
+  session view swaps the terminal for a paged read-only transcript (`get_session_tail`, widened by
+  "show earlier") — no Stop/Restart, since `claude --resume` can never open one. Verified against a
+  copy of the real DB: bogus rows gone, every agent transcript across all projects re-indexed
+  marked under its true parent.
 
 - **A quality gate that runs, and a dead-code gate that works** — 2026-08-15, shipped in v0.6.0.
   `.github/workflows/quality.yml` runs § 2c minus `e2e` on every PR and every push to main, in two

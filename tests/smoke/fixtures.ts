@@ -105,6 +105,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		updatedAt: Date.now() - 60_000,
 		turnCount: 42,
 		cwd: project.realPath,
+		subagentOf: null,
 	};
 	return {
 		projects: [project],
@@ -116,6 +117,66 @@ export function fixtureOneProjectOneSession(): TestFixture {
 				offset: 0,
 				limit: 100,
 				total: 42,
+			},
+		},
+	};
+}
+
+/** A parent session plus two nested sub-agents — the F2 nesting shape, with
+ *  the project's count covering only the parent (sub-agents don't count). */
+export function fixtureWithSubagents(): TestFixture {
+	const base = fixtureOneProjectOneSession();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const parent = base.sessionsByProject?.[project.id]?.[0];
+	if (!parent) throw new Error('base fixture has no session');
+
+	const agent = (id: string, title: string, ageMs: number): SessionSummary => ({
+		id,
+		projectId: project.id,
+		title,
+		createdAt: Date.now() - ageMs,
+		updatedAt: Date.now() - ageMs,
+		turnCount: 12,
+		cwd: project.realPath,
+		subagentOf: parent.id,
+	});
+
+	const agents = [
+		agent('agent-1111', 'Explore the sidebar component', 50_000),
+		agent('agent-2222', 'Design the hide-project plan', 40_000),
+	];
+
+	return {
+		...base,
+		sessionsByProject: { [project.id]: [parent, ...agents] },
+		sessionPages: {
+			...base.sessionPages,
+			// The tail page the read-only view fetches on open.
+			'agent-1111': {
+				id: 'agent-1111',
+				events: [
+					{
+						type: 'user',
+						uuid: 'u1',
+						timestamp: '2026-08-15T19:02:00.000Z',
+						sessionId: 'agent-1111',
+						message: { role: 'user', content: 'Explore the repo, search breadth medium' },
+					},
+					{
+						type: 'assistant',
+						uuid: 'a1',
+						timestamp: '2026-08-15T19:03:00.000Z',
+						sessionId: 'agent-1111',
+						message: {
+							role: 'assistant',
+							content: [{ type: 'text', text: 'Found the sidebar at components/layout/Sidebar.tsx' }],
+						},
+					},
+				],
+				offset: 0,
+				limit: 100,
+				total: 2,
 			},
 		},
 	};
@@ -374,6 +435,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		updatedAt: Date.now() - (12 - i) * 60_000,
 		turnCount: i + 1,
 		cwd: zulu.realPath,
+		subagentOf: null,
 	}));
 
 	return {
@@ -389,6 +451,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					updatedAt: Date.now() - 90_000,
 					turnCount: 3,
 					cwd: alpha.realPath,
+					subagentOf: null,
 				},
 			],
 		},
