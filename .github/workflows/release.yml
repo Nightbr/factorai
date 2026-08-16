@@ -148,8 +148,16 @@ jobs:
           # publish the draft by hand.
           prerelease: false
           generateReleaseNotes: true
-          # latest.json is the manifest the app polls; the .sig files are what
-          # prove an update came from us (F14, ADR-0010).
-          uploadUpdaterJson: true
-          uploadUpdaterSignatures: true
+          # latest.json is the manifest the app polls (F14, ADR-0010). The
+          # .sig files that prove an update came from us need no input — they
+          # are bundle artifacts and upload with the rest.
+          #
+          # The name matters and has churned: this is `includeUpdaterJson` on
+          # `@v0`, renamed to `uploadUpdaterJson` on the action's `dev` branch,
+          # and a wrong one is only a **warning** — v0.7.0 shipped with two
+          # inputs the action had never heard of, and worked purely because
+          # this defaults to true. If you retarget the action, re-read its
+          # `action.yml` at the ref you pin rather than its README:
+          #   gh api repos/tauri-apps/tauri-action/contents/action.yml?ref=<sha>
+          includeUpdaterJson: true
           args: ${{ matrix.args }}
