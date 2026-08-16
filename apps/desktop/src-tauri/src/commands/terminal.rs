@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Manager, State};
 
+use crate::commands::projects::project_path;
 use crate::error::AppResult;
 use crate::services::claude_cli::{check_cli, ClaudeCliStatus};
 use crate::services::terminal::{SpawnOpts, TerminalStatusDto};
@@ -16,9 +17,14 @@ pub fn check_claude_cli() -> ClaudeCliStatus {
 /// process does — the route, the xterm pool and the status store are all keyed
 /// by it. Reuses a live, never-messaged session rather than starting a second
 /// `claude` in the same project; see `TerminalManager::next_session_id`.
+///
+/// Takes the project's folder as well as its id, because "has this session been
+/// messaged" is answered by probing the transcript, and a uuid says nothing
+/// about where that is.
 #[tauri::command]
-pub fn start_session(state: State<'_, AppState>, project_id: String) -> String {
-	state.terminals.next_session_id(&project_id)
+pub fn start_session(state: State<'_, AppState>, project_id: String) -> AppResult<String> {
+	let folder = state.db.with(|conn| project_path(conn, &project_id))?;
+	Ok(state.terminals.next_session_id(&project_id, &folder))
 }
 
 #[tauri::command]

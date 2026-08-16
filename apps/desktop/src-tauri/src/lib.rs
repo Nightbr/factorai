@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod commands;
 pub mod db;
 pub mod error;
@@ -114,6 +115,8 @@ pub fn run() {
 		.invoke_handler(tauri::generate_handler![
 			commands::projects::list_projects,
 			commands::projects::add_project,
+			commands::projects::remove_project,
+			commands::projects::list_import_candidates,
 			commands::projects::resolve_project_path,
 			commands::projects::pin_project,
 			commands::sessions::list_sessions,

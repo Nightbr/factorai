@@ -12,6 +12,13 @@ use crate::services::indexer::Indexer;
 ///
 /// Debounce window is 1s per spec/Q5. We watch the whole projects tree
 /// recursively; the indexer's mtime/size check makes targeted reindex cheap.
+///
+/// Watching everything and filtering late is deliberate. Activity in a folder
+/// that isn't in the workspace is dropped by `scan_dir_path` — silently, which
+/// is the point of the new model: a project arrives because you added it, never
+/// because Claude touched a directory. But a folder you *have* added and never
+/// run Claude in has no directory to watch until its first session exists, and
+/// only a recursive watch on the parent notices that appearing.
 pub fn spawn(indexer: Arc<Indexer>) {
 	let projects_dir = indexer.claude_dir().join("projects");
 	if !projects_dir.exists() {
@@ -52,7 +59,7 @@ pub fn spawn(indexer: Arc<Indexer>) {
 							}
 						}
 						for p in dirty_projects {
-							if let Err(e) = indexer.scan_project_dir(&p) {
+							if let Err(e) = indexer.scan_dir_path(&p) {
 								warn!(path = ?p, error = %e, "reindex failed");
 							}
 						}

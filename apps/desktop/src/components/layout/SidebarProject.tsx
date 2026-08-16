@@ -49,13 +49,14 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 	const startSession = useStartSession();
 	const togglePin = usePinProject(project);
 
-	// No resolved cwd means we never found a `cwd` in this project's sessions, so
-	// there is nowhere to start one: claude would boot in $HOME and file the new
-	// session under a *different* project than the row that was clicked. A
-	// `missing` folder fails the same way for a different reason — the path is
-	// known and gone — so it takes the same gate, and now says so before the
-	// click rather than after it.
-	const canStart = project.realPath !== null && !project.missing;
+	// A `missing` folder has a known path that is no longer on disk, so claude
+	// would boot in $HOME and file the new session under a *different* project
+	// than the row that was clicked. The gate says so before the click rather
+	// than after it.
+	//
+	// There is no longer an "unresolved path" case to gate on as well: a project
+	// is a folder you added, so it always has one (ADR-0011).
+	const canStart = !project.missing;
 	// Pinned and selected projects keep their controls on show: both are rows you
 	// act on repeatedly, so the affordance shouldn't need hunting for. Everything
 	// else stays quiet until hovered.
@@ -100,7 +101,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 				>
 					<ProjectIcon
 						name={project.displayName}
-						path={project.realPath ?? project.id}
+						path={project.realPath}
 						size={16}
 						status={isLive ? 'running' : undefined}
 					/>

@@ -15,6 +15,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 		"0003_project_missing",
 		include_str!("migrations/0003_project_missing.sql"),
 	),
+	(
+		"0004_workspace_projects",
+		include_str!("migrations/0004_workspace_projects.sql"),
+	),
 ];
 
 /// Thread-safe handle to the SQLite connection.

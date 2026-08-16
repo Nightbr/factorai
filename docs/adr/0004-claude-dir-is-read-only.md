@@ -1,6 +1,9 @@
 # ADR-0004 — `~/.claude/` is read-only ground truth
 
-**Status.** Accepted (M0, 2026-05-28).
+**Status.** Accepted (M0, 2026-05-28). Generalised to every agent store by
+[ADR-0011](./0011-a-project-is-a-folder-in-the-workspace.md) — the stance below
+is about *an agent's* transcript store, and Claude's is simply the only one we
+read today.
 
 ## Context
 

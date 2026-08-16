@@ -25,10 +25,9 @@ function ProjectView() {
 	const startSession = useStartSession();
 
 	const project = projectsQ.data?.find((p) => p.id === id);
-	// Same rule as the sidebar's +: without a resolved cwd — or with one that no
-	// longer exists — claude would boot in $HOME and file the session under
-	// another project.
-	const canStart = project ? project.realPath !== null && !project.missing : false;
+	// Same rule as the sidebar's +: a folder that is no longer on disk would send
+	// claude to $HOME, filing the session under another project.
+	const canStart = project ? !project.missing : false;
 
 	// Live sessions this project has that the index hasn't seen. A session gets
 	// no `sessions` row until claude writes its transcript and the watcher

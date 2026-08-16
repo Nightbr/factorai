@@ -1,20 +1,51 @@
 use serde::{Deserialize, Serialize};
 
-/// One project directory under ~/.claude/projects/. Mirrors `@factorai/types`
-/// `Project`.
+/// A folder in the workspace. Mirrors `@factorai/types` `Project`.
+///
+/// `real_path` is not optional: a project *is* a folder, so it always has one.
+/// That was not true of the old model, where a project was a directory in
+/// Claude's store whose folder we might never have identified.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
+	/// uuid v4. Not derived from the path — see migration 0004.
 	pub id: String,
-	pub real_path: Option<String>,
+	pub real_path: String,
 	pub display_name: String,
+	/// Aggregated over the sessions of every agent directory linked to this
+	/// folder. Computed per query rather than stored: the numbers change
+	/// whenever the indexer runs, and a stale count is worse than a join.
 	pub last_session_at: Option<i64>,
 	pub session_count: i64,
 	pub pinned: bool,
-	/// `real_path` is known and isn't on disk any more. Distinct from
-	/// `real_path: None`, which means we never learned where the project is —
-	/// unknown is not the same as gone, and only one of them is worth saying.
+	/// The folder is gone from disk. Set by the scan, not computed per
+	/// `list_projects` — that query is polled every 2s (F1).
 	pub missing: bool,
+}
+
+/// One folder an agent has worked in that isn't in the workspace yet — a row in
+/// the "Import from Claude Code" list (F1).
+///
+/// Built from `read_dir` and `stat` alone, so the dialog opens instantly no
+/// matter how much history the store holds. Nothing here is indexed until you
+/// import it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCandidate {
+	/// Which agent's store this came from. `'claude'` today.
+	pub agent: String,
+	/// The agent's own directory name — the stable key for the row.
+	pub key: String,
+	pub real_path: String,
+	pub display_name: String,
+	pub session_count: i64,
+	pub last_activity_at: Option<i64>,
+	/// The folder is gone from disk. Still importable — every transcript is
+	/// still there and only *starting* a session is impossible (F1).
+	pub missing: bool,
+	/// Already in the workspace. The row renders checked and disabled rather
+	/// than being hidden, so the list answers "is this one already in?".
+	pub already_open: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,12 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
+import { ALPHA_ID, ZULU_ID, fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
 
 /**
  * Sidebar project list: sort menu and expandable sessions
  * (specs/05-features.md F1, F2).
  */
-
-const ZULU = '-home-alice-code-zulu';
 
 test.describe('sidebar projects', () => {
 	test('@smoke a project expands to its latest sessions, newest first', async ({ page }) => {
@@ -15,7 +13,7 @@ test.describe('sidebar projects', () => {
 
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
 
-		const rows = page.getByTestId(`sidebar-sessions-${ZULU}`).getByRole('link');
+		const rows = page.getByTestId(`sidebar-sessions-${ZULU_ID}`).getByRole('link');
 		// 10 sessions + the "2 more…" link.
 		await expect(rows).toHaveCount(11);
 		await expect(rows.first()).toContainText('Zulu task 11');
@@ -28,12 +26,12 @@ test.describe('sidebar projects', () => {
 		await page.goto('/');
 
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
-		await expect(page.getByTestId(`sidebar-sessions-${ZULU}`)).toBeVisible();
+		await expect(page.getByTestId(`sidebar-sessions-${ZULU_ID}`)).toBeVisible();
 		// The other project stayed shut.
-		await expect(page.getByTestId('sidebar-sessions--home-alice-code-alpha')).toHaveCount(0);
+		await expect(page.getByTestId(`sidebar-sessions-${ALPHA_ID}`)).toHaveCount(0);
 
 		await page.getByRole('button', { name: 'Collapse zulu' }).click();
-		await expect(page.getByTestId(`sidebar-sessions-${ZULU}`)).toHaveCount(0);
+		await expect(page.getByTestId(`sidebar-sessions-${ZULU_ID}`)).toHaveCount(0);
 	});
 
 	test('@smoke sorting by name reorders the list, and persists across reload', async ({ page }) => {
@@ -58,12 +56,12 @@ test.describe('sidebar projects', () => {
 
 		await page.getByRole('button', { name: 'Sort and expand projects' }).click();
 		await page.getByRole('menuitem', { name: 'Expand all' }).click();
-		await expect(page.getByTestId(`sidebar-sessions-${ZULU}`)).toBeVisible();
-		await expect(page.getByTestId('sidebar-sessions--home-alice-code-alpha')).toBeVisible();
+		await expect(page.getByTestId(`sidebar-sessions-${ZULU_ID}`)).toBeVisible();
+		await expect(page.getByTestId(`sidebar-sessions-${ALPHA_ID}`)).toBeVisible();
 
 		await page.getByRole('button', { name: 'Sort and expand projects' }).click();
 		await page.getByRole('menuitem', { name: 'Collapse all' }).click();
-		await expect(page.getByTestId(`sidebar-sessions-${ZULU}`)).toHaveCount(0);
+		await expect(page.getByTestId(`sidebar-sessions-${ZULU_ID}`)).toHaveCount(0);
 	});
 
 	test('@smoke a session in the sidebar opens that session', async ({ page }) => {

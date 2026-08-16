@@ -26,8 +26,10 @@ test.describe('add project', () => {
 		expect(
 			calls.some((c) => c.name === 'add_project' && c.args?.path === '/home/alice/code/brand-new'),
 		).toBe(true);
-		// …and you land on it, ready to start the first session there.
-		await expect(page).toHaveURL(/projects\/-home-alice-code-brand-new$/);
+		// …and you land on it, ready to start the first session there. The id is a
+		// uuid the backend minted, so the assertion is on the shape of the route
+		// rather than on a path smuggled into it (ADR-0011).
+		await expect(page).toHaveURL(/projects\/[0-9a-f-]{36}$/);
 	});
 
 	test('@smoke cancelling the picker changes nothing', async ({ page }) => {
@@ -56,8 +58,9 @@ test.describe('add project', () => {
 
 		await page.getByTestId('add-project').click();
 
-		// One row, not two: the id is derived from the path, so re-adding lands on
-		// the project that is already there.
+		// One row, not two: the workspace is keyed by canonical path, so re-adding
+		// lands on the project that is already there rather than minting a second
+		// uuid for the same folder.
 		await expect(
 			page.locator('aside').getByText(existing.displayName, { exact: true }),
 		).toHaveCount(1);

@@ -5,6 +5,7 @@ import type {
 	GitRev,
 	GitStatus,
 	ImageContents,
+	ImportCandidate,
 	IndexerProgressEvent,
 	Project,
 	QuitRequestedEvent,
@@ -43,12 +44,20 @@ async function listen<T>(name: string, handler: (payload: T) => void): Promise<U
 }
 
 export const cmd = {
+	/** The workspace: folders you added. Never anything Claude merely touched. */
 	listProjects: () => invoke<Project[]>('list_projects'),
 	resolveProjectPath: (id: string) => invoke<string | null>('resolve_project_path', { id }),
-	/** Add a folder as a project, whether or not Claude has ever run in it.
-	 *  Idempotent: the id is Claude's own directory encoding, so re-adding a
-	 *  known folder returns the existing row rather than making a second one. */
+	/** Add a folder to the workspace, whether or not Claude has ever run in it.
+	 *  Idempotent by canonical path, so neither the picker nor the import dialog
+	 *  can produce duplicates. Also indexes the folder, since nothing outside
+	 *  the workspace is parsed. */
 	addProject: (path: string) => invoke<Project>('add_project', { path }),
+	/** Remove a folder from the workspace. Touches nothing on disk; drops this
+	 *  project's rows from the index, which re-adding rebuilds. */
+	removeProject: (id: string) => invoke<void>('remove_project', { id }),
+	/** Folders Claude has worked in, for the import dialog. Read from the store
+	 *  rather than the index — the point is to show what *isn't* indexed. */
+	listImportCandidates: () => invoke<ImportCandidate[]>('list_import_candidates'),
 	pinProject: (id: string, pinned: boolean) => invoke<void>('pin_project', { id, pinned }),
 	listSessions: (projectId: string) => invoke<SessionSummary[]>('list_sessions', { projectId }),
 	getSession: (sessionId: string, offset?: number, limit?: number) =>
@@ -209,8 +218,28 @@ export const events = {
 // tests/smoke/fixtures.ts before the page navigates). Hand-rolling
 // fixtures avoids dragging msw/server mocks into the renderer.
 
+/**
+ * A stable, uuid-shaped id for a mocked project.
+ *
+ * Derived from the path rather than random so a fixture can predict it and a
+ * re-run of the same test produces the same URLs. The real command mints a
+ * genuine v4 — nothing in the renderer may depend on the id's *content*, only
+ * on its stability, which is exactly what this preserves.
+ */
+function mockUuid(seed: string): string {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < seed.length; i++) {
+		h = Math.imul(h ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+	}
+	const hex = h.toString(16).padStart(8, '0');
+	return `${hex}-0000-4000-8000-${hex}00000000`.slice(0, 36);
+}
+
 interface TestFixture {
 	projects?: Project[];
+	/** Rows the import dialog offers (F1). Also what `add_project` reads a
+	 *  session count off, so importing a candidate looks like importing. */
+	importCandidates?: ImportCandidate[];
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
@@ -268,27 +297,54 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return (fx?.projects ?? []) as unknown as T;
 		case 'add_project': {
 			const path = String(args?.path ?? '');
+			// Idempotent **by path**, not by id — that is the real command's rule
+			// now that ids are uuids, and a test that re-adds a folder is asserting
+			// exactly this.
+			const existing = fx?.projects ?? [];
+			const already = existing.find((p) => p.realPath === path);
+			if (already) return already as unknown as T;
+			const candidate = fx?.importCandidates?.find((c) => c.realPath === path);
 			const project: Project = {
-				// Claude's encoding, mirrored from the Rust side so a test asserting
-				// on the id is asserting the same thing the app would show.
-				id: `-${path.replace(/^\/+/, '').replace(/\//g, '-')}`,
+				id: mockUuid(path),
 				realPath: path,
 				displayName: path.split('/').filter(Boolean).pop() ?? path,
-				lastSessionAt: null,
-				sessionCount: 0,
+				lastSessionAt: candidate?.lastActivityAt ?? null,
+				sessionCount: candidate?.sessionCount ?? 0,
 				pinned: false,
-				// The picker only returns a folder that exists.
-				missing: false,
+				missing: candidate?.missing ?? false,
 			};
 			// Write it back into the fixture so the next `list_projects` returns it,
-			// as the real command's row would. Idempotent for the same reason the
-			// real one is.
+			// as the real command's row would.
 			if (fx) {
-				const existing = fx.projects ?? [];
-				fx.projects = existing.some((p) => p.id === project.id) ? existing : [...existing, project];
+				fx.projects = [...existing, project];
+				// And it stops being importable, the way the real candidate list
+				// reports `alreadyOpen` against the workspace.
+				for (const c of fx.importCandidates ?? []) {
+					if (c.realPath === path) c.alreadyOpen = true;
+				}
 			}
 			return project as unknown as T;
 		}
+		case 'remove_project': {
+			const id = String(args?.id ?? '');
+			if (fx) {
+				const gone = fx.projects?.find((p) => p.id === id);
+				fx.projects = (fx.projects ?? []).filter((p) => p.id !== id);
+				// The index goes with the membership, so its sessions and its search
+				// hits go too — the mock models that, or a test would "prove" the
+				// removed project is still searchable.
+				if (gone) {
+					delete fx.sessionsByProject?.[id];
+					fx.searchHits = (fx.searchHits ?? []).filter((h) => h.projectId !== id);
+					for (const c of fx.importCandidates ?? []) {
+						if (c.realPath === gone.realPath) c.alreadyOpen = false;
+					}
+				}
+			}
+			return undefined as unknown as T;
+		}
+		case 'list_import_candidates':
+			return (fx?.importCandidates ?? []) as unknown as T;
 		case 'list_sessions': {
 			const projectId = String(args?.projectId ?? '');
 			return (fx?.sessionsByProject?.[projectId] ?? []) as unknown as T;

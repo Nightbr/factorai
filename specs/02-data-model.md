@@ -3,7 +3,13 @@
 ## Source of truth: `~/.claude/projects/`
 
 Claude Code persists session state on disk in a fixed layout. We **read** this
-directory as the ground truth and cache derived data in our own SQLite.
+directory as the ground truth for session *content* and cache derived data in
+our own SQLite.
+
+It is not the source of truth for what your **workspace** contains — that is a
+record of folders you added, kept in `projects` and written by nothing else
+(ADR-0011). This directory is where we go to find out what Claude has done, not
+what you are working on.
 
 ```
 ~/.claude/
@@ -17,6 +23,12 @@ directory as the ground truth and cache derived data in our own SQLite.
 
 ### Project-path encoding
 
+**This is one agent's naming scheme, not an identity.** It lives in
+`agents::claude` and nothing outside that module encodes or decodes a path. A
+project is a folder you added, keyed by a uuid (ADR-0011); the encoding is how
+we find *Claude's* directory for a folder, and how a second agent's adapter
+would differ.
+
 `switchboard/encode-project-path.js` and `derive-project-path.js` perform an
 invertible mapping from a filesystem path → directory name. We need both
 directions.
@@ -28,9 +40,12 @@ Encoding rule observed from existing claude folders:
 - Result: `/Users/alice/code/foo` → `-Users-alice-code-foo`.
 
 Decoding is ambiguous (a real `-` in the path collides with the separator).
-Strategy: when reading, walk candidates and probe with `Path::exists()` to
-find the real path. Cache the result in SQLite (`projects.real_path`) so we
-only resolve once.
+Strategy: prefer the `cwd` Claude itself recorded in the transcript (Q4), and
+fall back to walking decoded candidates and probing with `Path::exists()`. A
+candidate we cannot confirm is discarded rather than guessed at — filing
+sessions under a folder nobody worked in is worse than admitting we don't know.
+The answer is cached in `discovered_projects.real_path`, which is also the
+column the workspace links against.
 
 ### Session JSONL format
 
@@ -171,46 +186,75 @@ memory, and stream summary metadata to the UI.
 Tables created on first launch and migrated forward by ordered SQL files in
 `apps/desktop/src-tauri/src/db/migrations/`.
 
-### `projects`
+Two tables carry the project model, and **which one owns which fact is the
+design** (ADR-0011). `projects` records decisions you made; `discovered_projects`
+records what an agent's store contains. The scan never writes the first; user
+actions never write the second.
 
-| col              | type    | notes                                              |
-| ---------------- | ------- | -------------------------------------------------- |
-| id               | TEXT PK | encoded directory name from `~/.claude/projects/`  |
-| real_path        | TEXT    | resolved absolute path (nullable until resolved)   |
-| display_name     | TEXT    | last path component                                |
-| last_session_at  | INTEGER | unix ms                                            |
-| session_count    | INTEGER |                                                    |
-| pinned           | INTEGER | 0/1                                                |
-| missing          | INTEGER | 0/1 — `real_path` is known and gone from disk       |
+### `projects` — the workspace
+
+| col              | type      | notes                                                   |
+| ---------------- | --------- | ------------------------------------------------------- |
+| id               | TEXT PK   | uuid v4. Not derived from the path                      |
+| real_path        | TEXT      | canonical absolute path, **NOT NULL UNIQUE**            |
+| display_name     | TEXT      | last path component                                     |
+| pinned           | INTEGER   | 0/1                                                     |
+| missing          | INTEGER   | 0/1 — the folder is gone from disk                      |
+| opened_at        | INTEGER   | unix ms                                                 |
+
+`session_count` and `last_session_at` are **not columns**. They are aggregated
+per query from the sessions of every discovered directory linked to the folder:
+they change whenever the indexer runs, and a stale count is worse than a join.
+
+### `discovered_projects` — what the agents' stores hold
+
+| col        | type      | notes                                                            |
+| ---------- | --------- | ---------------------------------------------------------------- |
+| id         | INTEGER PK|                                                                   |
+| agent      | TEXT      | `'claude'`. Exists so a second agent is an INSERT, not a migration |
+| key        | TEXT      | the agent's own directory name — a foreign key into *their* store |
+| real_path  | TEXT      | the folder it describes; NULL when unresolvable                   |
+| project_id | TEXT FK   | `projects(id) ON DELETE SET NULL`; NULL = not in the workspace    |
+
+`UNIQUE (agent, key)`. The `ON DELETE SET NULL` is what makes removing a project
+cheap: the discovery survives, only the membership goes.
 
 ### `sessions`
 
-| col            | type    | notes                                                            |
-| -------------- | ------- | ---------------------------------------------------------------- |
-| id             | TEXT PK | session UUID (= filename minus `.jsonl`)                         |
-| project_id     | TEXT FK | projects.id                                                      |
-| title          | TEXT    | from `/rename` event, else first user message excerpt            |
-| created_at     | INTEGER | from first event timestamp                                       |
-| updated_at     | INTEGER | from last event timestamp                                        |
-| turn_count     | INTEGER |                                                                  |
-| file_mtime     | INTEGER | filesystem mtime when last indexed (for change detection)        |
-| file_size      | INTEGER | bytes at last index (cheap "did this change?" probe)             |
-| cwd            | TEXT    | last observed `cwd` from events                                  |
-| status         | TEXT    | `idle` (default). Live status is in-memory only.                 |
+| col            | type       | notes                                                            |
+| -------------- | ---------- | ---------------------------------------------------------------- |
+| id             | TEXT PK    | session UUID (= filename minus `.jsonl`)                         |
+| discovered_id  | INTEGER FK | `discovered_projects(id) ON DELETE CASCADE`                      |
+| title          | TEXT       | from `/rename` event, else first user message excerpt            |
+| created_at     | INTEGER    | from first event timestamp                                       |
+| updated_at     | INTEGER    | from last event timestamp                                        |
+| turn_count     | INTEGER    |                                                                  |
+| file_mtime     | INTEGER    | filesystem mtime when last indexed (for change detection)        |
+| file_size      | INTEGER    | bytes at last index (cheap "did this change?" probe)             |
+| cwd            | TEXT       | last observed `cwd` from events                                  |
+
+A session hangs off the **discovery**, not the workspace: it belongs to a
+directory in an agent's store, and whether that directory is in your workspace
+is a separate, changeable fact. Putting the link one level up means adding or
+removing a project updates a handful of rows instead of every session in it.
+
+Live status is in-memory only and has no column here.
 
 ### `messages_fts` (FTS5 virtual table)
 
 ```sql
 CREATE VIRTUAL TABLE messages_fts USING fts5(
   session_id UNINDEXED,
-  project_id UNINDEXED,
   role,        -- 'user' | 'assistant'
   body,        -- flattened text content
   tokenize = 'porter unicode61'
 );
 ```
 
-Populated by the indexer; not the source of truth (rebuildable).
+Populated by the indexer; not the source of truth (rebuildable). No
+`project_id`: a workspace id is not stable across a remove and a re-add, so
+storing one would leave rows pointing at projects that no longer exist. The
+project is resolved through `sessions` → `discovered_projects` at query time.
 
 ### `_meta`
 
@@ -220,7 +264,7 @@ nothing else — it exists so a migration runs once.
 
 | Column | Type    | Notes                    |
 | ------ | ------- | ------------------------ |
-| key    | TEXT PK | e.g. `migration:0003_project_missing` |
+| key    | TEXT PK | e.g. `migration:0004_workspace_projects` |
 | value  | TEXT    | RFC3339 applied-at       |
 
 ### `settings`
@@ -236,28 +280,46 @@ instead (file-backed JSON, simpler).
 ### Indexes
 
 ```sql
-CREATE INDEX idx_sessions_project ON sessions(project_id, updated_at DESC);
-CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
+CREATE INDEX idx_sessions_discovered ON sessions(discovered_id, updated_at DESC);
+CREATE INDEX idx_sessions_updated    ON sessions(updated_at DESC);
+CREATE INDEX idx_discovered_project  ON discovered_projects(project_id);
+CREATE INDEX idx_discovered_real_path ON discovered_projects(real_path);
 ```
 
 ## Indexer lifecycle
 
+**Discovery is global; parsing is gated on the workspace** (ADR-0011). Finding
+out what a store holds is cheap and worth doing unconditionally — it is what
+fills the import dialog. Reading transcripts is not, and search is scoped the
+same way, so parsing a folder you never added would be work no query can read.
+
 ```
 [app start]
-  └── projects::scan() walks ~/.claude/projects/
-        └── for each project dir, scan() .jsonl files
-              └── for each file:
-                    if (mtime, size) unchanged from sessions.{file_mtime,file_size}:
-                        skip
-                    else:
-                        parse incrementally → upsert sessions row
-                        re-tokenize → DELETE messages_fts WHERE session_id = ?
-                                       INSERT new rows
+  └── discover()          -- cheap, every agent, every directory
+        read_dir ~/.claude/projects/
+        + one partial file read per directory to recover `cwd`
+        → upsert discovered_projects(agent, key, real_path)
+        → reconcile(): link to projects by canonical path, exact match
+  └── refresh_missing()   -- stat each workspace folder, once per scan
+  └── for each LINKED directory:
+        for each .jsonl:
+          if (mtime, size) unchanged from sessions.{file_mtime,file_size}: skip
+          else: parse incrementally → upsert sessions row
+                re-tokenize → DELETE messages_fts WHERE session_id = ?
+                              INSERT new rows
+
+[add a project]
+  └── scan_project(id) — the same, for one folder. Nothing was parsed before.
+
 [runtime]
-  notify watcher on ~/.claude/projects/**/*.jsonl
-      → debounce 500ms → re-index changed files only
-      → emit `sessions:changed` event with the diff
+  notify watcher on ~/.claude/projects/**/*.jsonl   (recursive)
+      → debounce 1s → scan_dir_path(dir)
+      → not linked to a workspace folder? drop it, silently
+      → otherwise re-index changed files and emit `sessions:changed`
 ```
+
+`sessions:changed` carries the **workspace** project id, since that is what the
+renderer keys its caches by.
 
 We do not block UI on the initial scan. The indexer streams progress events
 (`indexer:progress { processed, total }`) and the UI shows a small spinner
