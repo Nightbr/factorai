@@ -753,14 +753,16 @@ Four things to get right when it lands:
   weren't pointing at. Someone who finds the confirm tedious on a deliberate `×` may still want
   the question on a stray wheel-click, so collapsing the two into one switch takes that answer
   away.
-- **So it is a settings group, not a toggle** — a **Confirmations** section with one row per
-  entry point, each independently switchable and **all on by default**:
-  - closing a session from the header `X`
-  - closing a session from a tab's `×`
-  - closing a tab by middle-click
+- **So it is a settings group — and exactly two switches in it** (simplified 2026-08-16), both
+  **on by default**:
+  - **closing a session with the `X`** — the header's and a tab's `×` are one row, not two. They
+    are the same gesture: a deliberate click on a close affordance you aimed at. Someone who
+    wants that question in one place wants it in the other, and splitting them buys a row of
+    settings for a distinction nobody holds.
+  - **closing a tab by middle-click** — a different gesture, per the point above.
 - **No master switch above the group.** A general "ask before killing" plus per-action overrides
   produces a matrix with a dead cell (general on → the per-action rows do nothing) and a UI that
-  has to grey rows out to explain itself. Three peers, no hierarchy, and the group heading is the
+  has to grey rows out to explain itself. Two peers, no hierarchy, and the group heading is the
   only grouping there is.
 - **Quit belongs in the list as an un-switchable row.** F5 calls the window-close confirm
   **mandatory** and ADR-0005 makes kill-on-quit non-optional, so it is not configurable — but a
@@ -772,9 +774,9 @@ Four things to get right when it lands:
   or it becomes a junk drawer**: only actions whose cost is recoverable may appear — anything an
   ADR calls mandatory (quit) is listed and locked, and anything that writes to disk or to another
   process is not listed at all.
-- **One preference per action, both halves of that action.** Same reason the dialog gets lifted
-  into a shared component above: the header row must govern the header, the tab row the tab, and
-  neither may half-apply.
+- **The `X` switch governs both call sites.** Same reason the dialog gets lifted into a shared
+  component above — a preference that silences the header but leaves the tab strip asking is a
+  bug wearing a setting's clothes.
 - **`@factorai/ui` has no `Switch`.** That is the third primitive these items need — context menu
   (item 3), checkbox (item 25), switch (here) — all `@radix-ui/*` siblings of packages already in
   the workspace. Item 4's settings route wants the switch regardless, so add it there rather than
