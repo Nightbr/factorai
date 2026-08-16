@@ -723,3 +723,61 @@ the app where a single click ends a running agent with no undo and no question.
 - [ ] Smoke coverage: `session-tabs.spec.ts` already exercises the tab `×`; add the header path —
       `X` opens the dialog, `Keep it running` leaves the terminal live, confirming lands on
       `/projects/$id`.
+
+## 23. `Button`'s size scale is a web scale, not a desktop one
+
+**User ask, 2026-08-16:** `+ New session` is too big — shrink the default button in the UI
+package. It is `size="sm"` already (`routes/project.tsx:77`), which is the point: the scale
+underneath it is wrong, not that one call site.
+
+**`packages/ui` still ships stock shadcn sizing** — `default h-10 px-4`, `sm h-9`, `lg h-11`,
+`icon h-10 w-10`, with `[&_svg]:size-4` in the base. That is sized for a web page with room to
+breathe. This app is a dense desktop tool, **and every dense surface in it already says so by
+overriding the primitive inline**:
+
+- `routes/session.tsx` — `size="sm"` + `className="h-7 gap-1.5"` (twice)
+- `viewer/FileView.tsx` — `size="sm"` + `h-6 … text-xs` (twice), same in `viewer/DiffView.tsx`
+- `routes/project.tsx` — passes `<Plus className="size-3.5" />` to override the base `size-4`
+- `layout/Sidebar.tsx` — the search `Input` is hand-shrunk to `h-8`
+
+Six overrides fighting one default is the diagnosis. Fix the scale and delete them.
+
+- [ ] Re-cut the `size` variants in `button.tsx` for this app's density, and re-check the base
+      `[&_svg]:size-4` while you're there — if call sites keep passing `size-3.5`, the base is
+      wrong.
+- [ ] **Then remove the inline height overrides**, or the change is invisible: a call site pinning
+      `h-6` doesn't care what the default became. This is the half that actually takes the time,
+      and skipping it leaves the app looking exactly as it does now.
+- [ ] **`Input` and `Select` are `h-10` too, and they pair with buttons.** Shrinking `Button`
+      alone misaligns any row that has both — which the `/settings` route (item 4) is about to be
+      full of. Decide one scale for the trio even if only `Button` changes today, and write the
+      numbers down (item 24 is where they should end up).
+- [ ] Check the dialog footers last: `QuitConfirm`, `SessionTabs`, `UpdateBadge` use the bare
+      default, and a confirm button is the one place where *smaller* is not automatically better.
+      A destructive action that is easy to hit by accident is the failure mode there.
+
+**Two mechanical cautions.** `button.tsx` is vendored shadcn — 2-space, double-quoted, unlike the
+rest of the repo — so edit the variants and **don't reformat the file**; `pnpm format` rewrites
+all of `packages/ui` and buries the change. And `IconButton` is already dense and house-authored
+(`sm: p-0.5 [&_svg]:size-3.5`): it is the reference for what "this app's scale" means, not a thing
+to change alongside.
+
+## 24. `DESIGN.md` — one home for the design rules
+
+**User ask, 2026-08-16, explicitly later.** Not now, and worth stating why it isn't free.
+
+Design rules today live in `CLAUDE.md` § 4 — cursor-pointer as a base rule, icon buttons paint no
+background, chevrons colour on hover, repeatedly-actioned rows keep their affordances visible —
+plus whatever a component's own doc comment says (`IconButton`'s is a small design essay), plus
+per-feature UI notes in `specs/05-features.md`. A `DESIGN.md` that doesn't say what it *takes
+over* becomes a fourth place, and this repo already knows what that costs: `08-inconsistencies.md`
+§ "What the resolved ones taught" — a rule recorded where nobody reads it is not a rule.
+
+So the first decision is boundaries, not content:
+
+- `CLAUDE.md` § 4 either **moves wholesale** into `DESIGN.md` and links out, or `DESIGN.md`
+  doesn't exist. Two lists of design rules is the failure.
+- `specs/` keeps per-feature behaviour; `DESIGN.md` holds what is true across every surface —
+  the scale from item 23, colour and status semantics, density, hover and focus, empty states.
+- It is the natural home for the numbers item 23 produces, which is an argument for doing 23
+  first and letting the file start from something concrete rather than from principles.
