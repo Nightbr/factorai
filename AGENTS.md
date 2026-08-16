@@ -45,9 +45,20 @@ full spec.
 
 ### 2b. While implementing
 
+- **Start from an up-to-date `main`.** `git fetch origin && git status`
+  before the first edit, and pull if you are behind — someone else's
+  branch may have merged while you were reading specs. This is not
+  hygiene, it is the cheapest version of a conflict you will otherwise
+  resolve later with both features half-built: on 2026-08-16 two agents
+  spent a weekend on `sessions` from different schemas and both shipped
+  a migration numbered `0004`, which is keyed by name and so cannot
+  simply be renumbered once it has run anywhere. Push small slices for
+  the same reason — a commit sitting unpushed is a conflict accruing
+  interest.
 - Work on `main`. No PR ceremony for solo work. Branches are fine when
   multiple agents are pairing on the same area — coordinate, don't
-  collide.
+  collide. If you *do* branch, say so in the roadmap entry you are
+  working from, so the next agent sees the collision coming.
 - Commit in small slices (one Red→Green or one feature step). Prefix
   with `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 - **⛔ Never use `--no-verify`.** Hooks exist for a reason. If a hook
