@@ -14,11 +14,22 @@ use crate::state::AppState;
 pub fn list_sessions(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<SessionSummary>> {
 	state.db.with(|conn| {
 		let mut stmt = conn.prepare(
-			"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at, s.turn_count, s.cwd
+			// Sub-agent rows sort directly under their parent: groups are
+			// ordered by the *parent's* recency (a sub-agent is part of the
+			// work its parent session was), the parent leads its group, and
+			// siblings order among themselves by recency. An orphaned
+			// sub-agent (parent transcript deleted) keeps its marking but
+			// sorts as its own group — the LEFT JOIN leaves `p` NULL and
+			// COALESCE falls back to its own updated_at.
+			"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
+			        s.turn_count, s.cwd, s.subagent_of
 			 FROM sessions s
 			 JOIN discovered_projects d ON d.id = s.discovered_id
+			 LEFT JOIN sessions p ON p.id = s.subagent_of
 			 WHERE d.project_id = ?1
-			 ORDER BY s.updated_at DESC",
+			 ORDER BY COALESCE(p.updated_at, s.updated_at) DESC,
+			          (s.subagent_of IS NULL) DESC,
+			          s.updated_at DESC",
 		)?;
 		let rows = stmt
 			.query_map(params![project_id], |row| {
@@ -30,6 +41,7 @@ pub fn list_sessions(state: State<'_, AppState>, project_id: String) -> AppResul
 					updated_at: row.get(4)?,
 					turn_count: row.get(5)?,
 					cwd: row.get(6)?,
+					subagent_of: row.get(7)?,
 				})
 			})?
 			.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -47,8 +59,8 @@ pub fn get_session(
 	let offset = offset.unwrap_or(0);
 	let limit = limit.unwrap_or(100);
 
-	let (key, total) = lookup_store_key_and_total(&state, &session_id)?;
-	let path = claude::transcript_path_by_key(&state.claude_dir, &key, &session_id);
+	let (key, parent_id, total) = lookup_store_key_and_total(&state, &session_id)?;
+	let path = transcript_path(&state.claude_dir, &key, parent_id.as_deref(), &session_id);
 	let events: Vec<SessionEvent> = EventIter::open(&path)?.skip(offset).take(limit).collect();
 
 	Ok(SessionPage { id: session_id, events, offset, limit, total })
@@ -65,10 +77,10 @@ pub fn get_session_tail(
 ) -> AppResult<SessionPage> {
 	let limit = limit.unwrap_or(100);
 
-	let (key, total) = lookup_store_key_and_total(&state, &session_id)?;
+	let (key, parent_id, total) = lookup_store_key_and_total(&state, &session_id)?;
 	let offset = total.saturating_sub(limit);
 
-	let path = claude::transcript_path_by_key(&state.claude_dir, &key, &session_id);
+	let path = transcript_path(&state.claude_dir, &key, parent_id.as_deref(), &session_id);
 	let events: Vec<SessionEvent> = EventIter::open(&path)?.skip(offset).take(limit).collect();
 
 	Ok(SessionPage { id: session_id, events, offset, limit, total })
@@ -94,22 +106,44 @@ pub fn search_sessions(
 		.with(|conn| search::search(conn, &query, project_id.as_deref(), limit))
 }
 
-/// The agent store directory a session's transcript lives in, plus its event
-/// count. The key is what was recorded when the session was indexed, so it is
-/// exact — never a re-encode of a path.
+/// The agent store directory a session's transcript lives in, the parent
+/// session if it is a sub-agent run, and its event count. The key is what was
+/// recorded when the session was indexed, so it is exact — never a re-encode
+/// of a path.
 fn lookup_store_key_and_total(
 	state: &State<'_, AppState>,
 	session_id: &str,
-) -> AppResult<(String, usize)> {
+) -> AppResult<(String, Option<String>, usize)> {
 	state.db.with(|conn| {
 		conn.query_row(
-			"SELECT d.key, s.turn_count
+			"SELECT d.key, s.subagent_of, s.turn_count
 			 FROM sessions s
 			 JOIN discovered_projects d ON d.id = s.discovered_id
 			 WHERE s.id = ?1",
 			params![session_id],
-			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize)),
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, Option<String>>(1)?,
+					row.get::<_, i64>(2)? as usize,
+				))
+			},
 		)
 		.map_err(|_| AppError::NotFound(format!("session {session_id}")))
 	})
+}
+
+/// Where a session's transcript lives, addressed by the store directory we
+/// recorded for it. A sub-agent's is nested under its parent's id:
+/// `<store dir>/<parent>/subagents/agent-*.jsonl`.
+fn transcript_path(
+	claude_dir: &std::path::Path,
+	key: &str,
+	subagent_of: Option<&str>,
+	session_id: &str,
+) -> std::path::PathBuf {
+	match subagent_of {
+		Some(parent) => claude::subagent_transcript_path(claude_dir, key, parent, session_id),
+		None => claude::transcript_path_by_key(claude_dir, key, session_id),
+	}
 }

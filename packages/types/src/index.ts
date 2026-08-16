@@ -53,6 +53,11 @@ export interface SessionSummary {
 	updatedAt: number;
 	turnCount: number;
 	cwd: string | null;
+	/** Set when this is a sub-agent transcript (`<session>/subagents/agent-*`):
+	 *  the id of the session that spawned it. Sub-agent sessions are readable
+	 *  read-only — the session view shows their transcript with no terminal,
+	 *  because `claude --resume` cannot open them. */
+	subagentOf: string | null;
 }
 
 export interface SessionPage {

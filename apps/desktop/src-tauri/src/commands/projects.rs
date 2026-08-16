@@ -19,9 +19,13 @@ use crate::state::AppState;
 /// Columns and aggregates for one workspace row, shared by every query that
 /// returns a [`Project`] so the shape can't drift between them.
 const PROJECT_SELECT: &str = "SELECT p.id, p.real_path, p.display_name, p.pinned, p.missing,
+	-- Sub-agents don't count: the number answers how many sessions the project
+	-- has, and an agent run on a session's behalf is part of that session
+	-- rather than another one. Last activity is not filtered the same way --
+	-- an agent working is the project being worked on.
 	(SELECT COUNT(*) FROM sessions s
 	   JOIN discovered_projects d ON d.id = s.discovered_id
-	  WHERE d.project_id = p.id),
+	  WHERE d.project_id = p.id AND s.subagent_of IS NULL),
 	(SELECT MAX(s.updated_at) FROM sessions s
 	   JOIN discovered_projects d ON d.id = s.discovered_id
 	  WHERE d.project_id = p.id)

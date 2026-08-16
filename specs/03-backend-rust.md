@@ -68,6 +68,11 @@ pin_project(id: String, pinned: bool) -> ()
 // sessions
 // Joins through discovered_projects: a project's sessions are those of every
 // agent directory linked to its folder.
+// SessionSummary carries `subagentOf` — set for a sub-agent transcript
+// (`<session>/subagents/agent-*.jsonl`, see 02-data-model.md). list_sessions
+// nests those rows directly under their parent (groups ordered by the
+// parent's recency); get_session/get_session_tail resolve a sub-agent's
+// transcript through its parent's directory inside the same store directory.
 list_sessions(project_id: String) -> Vec<SessionSummary>
 get_session(session_id: String, offset: usize, limit: usize) -> SessionPage
 get_session_tail(session_id: String, limit: usize) -> SessionPage

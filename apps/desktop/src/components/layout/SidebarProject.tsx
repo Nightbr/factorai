@@ -34,6 +34,10 @@ export const SIDEBAR_SESSION_LIMIT = 10;
 /**
  * Newest-first, but anything with a live PTY first of all.
  *
+ * Sub-agents are left out: they belong to the session that spawned them, and
+ * the sidebar's ten slots are for sessions you can actually go back into.
+ * They stay reachable from the project page, nested under their parent.
+ *
  * Pure and exported so the ordering — the part with actual rules — is testable
  * without rendering a sidebar.
  */
@@ -42,7 +46,8 @@ export function orderSessions(
 	bySession: Record<string, LiveTerminal>,
 	limit = SIDEBAR_SESSION_LIMIT,
 ): SessionSummary[] {
-	return [...sessions]
+	return sessions
+		.filter((s) => s.subagentOf === null)
 		.sort((a, b) => {
 			const aLive = a.id in bySession ? 1 : 0;
 			const bLive = b.id in bySession ? 1 : 0;

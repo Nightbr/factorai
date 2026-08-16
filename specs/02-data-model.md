@@ -16,10 +16,21 @@ what you are working on.
 ├── projects/
 │   └── <encoded-project-path>/
 │       ├── <session-id>.jsonl       # one event per line
+│       ├── <session-id>/            # created lazily, per session that spawned agents
+│       │   └── subagents/
+│       │       ├── agent-<id>.jsonl # one sub-agent's transcript, same event shape
+│       │       └── agent-<id>.meta.json
 │       └── ...
 ├── settings.json                    # global settings
 └── ...
 ```
+
+Sub-agent transcripts carry `isSidechain: true` and an `agentId` on their
+events. They are **sessions of a kind** — same JSONL event format, indexed
+into `sessions` with `subagent_of` set — but they are never resumable:
+`claude --resume` looks for a top-level `<id>.jsonl` under the project, and
+an agent id has none. They surface nested under their parent in the session
+list (F2), open read-only (F3), and don't count toward `session_count`.
 
 ### Project-path encoding
 
@@ -232,11 +243,18 @@ cheap: the discovery survives, only the membership goes.
 | file_mtime     | INTEGER    | filesystem mtime when last indexed (for change detection)        |
 | file_size      | INTEGER    | bytes at last index (cheap "did this change?" probe)             |
 | cwd            | TEXT       | last observed `cwd` from events                                  |
+| subagent_of    | TEXT       | parent session id for a sub-agent transcript; NULL for a real one. No FK: read_dir order can index an agent before its parent, and an enforced reference would turn that into an error. |
 
 A session hangs off the **discovery**, not the workspace: it belongs to a
 directory in an agent's store, and whether that directory is in your workspace
 is a separate, changeable fact. Putting the link one level up means adding or
 removing a project updates a handful of rows instead of every session in it.
+
+A **sub-agent** transcript hangs off the same discovery as the session that
+spawned it. Claude Code writes it to `<session-id>/subagents/agent-*.jsonl`
+inside the store directory, and that nested folder is part of a session rather
+than a directory of the store — reading it as one is what used to manufacture a
+project called `subagents`.
 
 Live status is in-memory only and has no column here.
 

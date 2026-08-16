@@ -62,6 +62,26 @@ pub fn transcript_path_by_key(claude_dir: &Path, key: &str, session_id: &str) ->
 		.join(format!("{session_id}.jsonl"))
 }
 
+/// The transcript file for a **sub-agent** run, which Claude Code nests inside
+/// the directory of the session that spawned it:
+/// `<store dir>/<parent session>/subagents/agent-*.jsonl`.
+///
+/// Same addressing as [`transcript_path_by_key`] otherwise — the key is
+/// recorded, not re-encoded.
+pub fn subagent_transcript_path(
+	claude_dir: &Path,
+	key: &str,
+	parent_session_id: &str,
+	session_id: &str,
+) -> PathBuf {
+	claude_dir
+		.join("projects")
+		.join(key)
+		.join(parent_session_id)
+		.join("subagents")
+		.join(format!("{session_id}.jsonl"))
+}
+
 /// Every directory in Claude's store, with the folder each one describes.
 ///
 /// Cheap by design: one `read_dir`, plus one partial file read per directory to

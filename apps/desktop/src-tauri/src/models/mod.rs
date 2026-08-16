@@ -58,6 +58,11 @@ pub struct SessionSummary {
 	pub updated_at: i64,
 	pub turn_count: i64,
 	pub cwd: Option<String>,
+	/// Set when this is a sub-agent transcript (`<session>/subagents/agent-*`):
+	/// the id of the session that spawned it. Such sessions are readable
+	/// read-only and can never be resumed — `claude --resume` looks for a
+	/// top-level transcript, which an agent id has none of.
+	pub subagent_of: Option<String>,
 }
 
 /// One full-text search result. Mirrors `@factorai/types` `SearchHit`.
