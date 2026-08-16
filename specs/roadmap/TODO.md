@@ -905,3 +905,42 @@ set is gone. Delete the row and its `messages_fts` rows in the same transaction.
 - Decide whether a reaped session that is **currently live** is exempt. It has no transcript until
   its first message (ADR-0008), so a reap during that window would delete the row for a running
   session. The narrow rule: skip ids present in `TerminalManager`.
+
+## 27. The window's bottom corners on Linux are still not pixel-clean
+
+**Found 2026-08-16, after two attempts at it.** Cosmetic, and the reason it gets an entry rather
+than a third attempt is that both cheap answers are now known to be wrong — see
+[Q21](../07-open-questions.md) for the measurements, which are worth reading before touching this.
+
+Where it stands: the corners are **square** on Linux, with the shell's 1px border running unbroken
+into them. That is the least-bad shape, not a clean one. The WM rounds all four corners of the
+frame it draws — its own outline traces a ~12px arc at the top-left, and at the bottom-left it
+fades out over the last ~10 rows because our opaque client area is painted over the curve. So the
+app covers the frame's arc, and the last few pixels before the corner read as a hairline that
+stops early.
+
+Ruled out, both verified on the real window rather than reasoned about:
+
+- **`border-radius` on an opaque window.** Carves the shell away and whatever paints behind it
+  fills the gap — a wedge of `bg-background` outside the arc, the border curving off into it.
+- **A transparent window** (`transparent: true` in a `tauri.linux.conf.json`, `<html>`/`body`
+  painting nothing). The geometry is right — a real 12px antialiased arc, desktop visible through
+  it — but the corner then exposes the **compositor's drop shadow**, which is a grey smudge where
+  the wedge was.
+
+**The likely real fix is client-side decorations**, which is why this is worth doing next to
+**item 4 / M5's custom titlebar** rather than on its own. With `decorations: false` the app owns
+the whole frame: it declares its shadow margins through `_GTK_FRAME_EXTENTS`, draws the shadow
+itself, and rounds the corners inside a region it controls — which is exactly how every GTK4 app
+gets clean rounded corners on this desktop. Doing it as part of the titlebar work means one change
+to the window shape rather than two.
+
+Worth confirming when someone picks this up:
+
+- Whether the artifact survives on **Wayland** (all of the above was measured on X11 + Mutter with
+  server-side decorations) and under a different WM. It may be narrower than "Linux".
+- Whether Mutter can be told not to draw its shadow under the client corner. If it can, the
+  transparent-window route becomes viable without the titlebar work.
+- Method, so this isn't re-derived: full-screen `gnome-screenshot`, crop the corner by the client
+  geometry from `xwininfo -id <wid>`, and dump per-pixel luminance. Scaled screenshots lie about
+  exactly the pixels this is about — the first round of this was diagnosed wrongly off one.
