@@ -76,6 +76,44 @@ test.describe('changes tab', () => {
 		await expect(page.getByText('Not a git repository.')).toBeVisible();
 	});
 
+	test('@smoke a long path truncates rather than scrolling the list sideways', async ({ page }) => {
+		// Built here rather than in `fixtureWithChanges`, so the grouping test
+		// above keeps counting the rows it was written against.
+		const fixture = fixtureWithChanges();
+		const [status] = Object.values(fixture.gitStatuses ?? {});
+		if (!status?.repoRoot) throw new Error('fixtureWithChanges must declare a repository');
+		// A filename longer than the 288px panel on its own — the directory beside
+		// it is what the row has to give up first.
+		const relPath = 'docs/adr/0011-a-project-is-a-folder-in-the-workspace.md';
+		status.changes.push({
+			path: `${status.repoRoot}/${relPath}`,
+			relPath,
+			group: 'unstaged',
+			kind: 'untracked',
+			oldRelPath: null,
+			additions: 168,
+			deletions: 0,
+			isBinary: false,
+		});
+		status.total = status.changes.length;
+
+		await installMockBridge(page, fixture);
+		await page.goto(PROJECT);
+		await openPanel(page);
+		await page.getByRole('tab', { name: 'Changes' }).click();
+
+		// The row is there, and the full path is still reachable from the tooltip.
+		await expect(page.locator(`button[title="${relPath}"]`)).toBeVisible();
+
+		// Nothing in the list is wider than the panel it sits in: one deep path
+		// used to set a min-content width for every row and push the filenames
+		// off the left edge.
+		const bleed = await page
+			.getByTestId('changes-view')
+			.evaluate((el) => el.scrollWidth - el.clientWidth);
+		expect(bleed).toBeLessThanOrEqual(1);
+	});
+
 	test('@smoke the chosen tab survives a reload and never switches itself', async ({ page }) => {
 		await installMockBridge(page, fixtureWithChanges());
 		await page.goto(PROJECT);

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { FileTreePanel } from '@components/files/FileTreePanel';
+import { isMacOS } from '@lib/platform';
 import { clampSidebarWidth, useSidebarStore } from '@store/sidebarStore';
 import { PanelResizer } from './PanelResizer';
 import { Sidebar } from './Sidebar';
@@ -14,21 +15,25 @@ export function AppShell({ children }: AppShellProps) {
 	const setSidebarWidth = useSidebarStore((s) => s.setWidth);
 
 	return (
-		// The WM gives this window a 36px titlebar and no side or bottom frame
-		// (_NET_FRAME_EXTENTS = 0,0,36,0): it rounds the two corners it draws, and
-		// the bottom two are ours. `rounded-b-xl` is 12px, measured off the
-		// titlebar's own arc so the two ends of the window agree.
+		// The border is what gives the app a defined silhouette against the
+		// desktop: sides and bottom only, since the titlebar already caps the top
+		// and a border there would just double its edge. `overflow-hidden` keeps
+		// the children (the sidebar's own border, its lighter background) inside
+		// it.
 		//
-		// The border is what makes that curve legible. Rounding alone only bends
-		// the fill, and at these values (`bg-card` 18% against `bg-background` 16%)
-		// the result is invisible — the corner still reads as unfinished, with the
-		// footer's border-t running out to nothing. A stroke along the rounded edge
-		// gives the app a defined silhouette instead.
-		//
-		// Sides and bottom only: the titlebar already caps the top, so a border
-		// there would just double its edge. `overflow-hidden` keeps the children
-		// (the sidebar's own border, its lighter background) inside the curve.
-		<div className="flex h-screen flex-col overflow-hidden rounded-b-xl border-border border-x border-b bg-background text-foreground">
+		// The bottom corners are rounded on macOS only. There the OS clips the
+		// window to its own radius, so the curve we draw lands on transparent
+		// pixels and the two agree. On Linux nothing clips: the WM gives us a
+		// titlebar and no side or bottom frame (_NET_FRAME_EXTENTS = 0,0,36,0),
+		// the window stays a hard rectangle, and `rounded-b-*` only carves the
+		// fill away — leaving a dark wedge outside the arc with the border curving
+		// off into it. Square there is the honest shape: the border then runs
+		// unbroken into the corner the WM actually draws.
+		<div
+			className={`flex h-screen flex-col overflow-hidden border-border border-x border-b bg-background text-foreground ${
+				isMacOS() ? 'rounded-b-xl' : ''
+			}`}
+		>
 			<TopBar />
 			<div className="flex min-h-0 flex-1">
 				<aside

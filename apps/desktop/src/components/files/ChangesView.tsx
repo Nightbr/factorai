@@ -69,8 +69,16 @@ function ChangeRow({ change }: { change: GitChange }) {
 				onClick={() => open(change.path, diff)}
 			>
 				<FileIcon fileName={name} />
-				<span className="shrink-0 truncate text-foreground">{name}</span>
-				{dir && <span className="min-w-0 flex-1 truncate text-muted-foreground/60 text-xs">{dir}</span>}
+				{/* Both halves of the path shrink, or the row sets a min-content width
+				    the panel can't meet and the whole list scrolls sideways — one
+				    `0004_workspace_projects.sql` was enough to push every other row's
+				    name off the left edge. They shrink in proportion to their own
+				    length (`grow`, not `flex-1`, keeps the directory's basis at its
+				    content size), so the long half gives up the space and a short
+				    filename beside a deep path stays whole. `title` on the button has
+				    the full path when both end up clipped. */}
+				<span className="min-w-0 truncate text-foreground">{name}</span>
+				{dir && <span className="min-w-0 grow truncate text-muted-foreground/60 text-xs">{dir}</span>}
 				{!dir && <span className="flex-1" />}
 				<LineCounts change={change} />
 				<span

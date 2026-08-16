@@ -1,5 +1,9 @@
 export const queryKeys = {
 	projects: () => ['projects'] as const,
+	/** Folders Claude has worked in, for the import dialog. Separate from
+	 *  `projects` because it comes from a different place — a walk of the store,
+	 *  not the workspace table — and is read only while the dialog is open. */
+	importCandidates: () => ['import-candidates'] as const,
 	sessions: (projectId: string) => ['sessions', projectId] as const,
 	session: (sessionId: string, offset: number, limit: number) =>
 		['session', sessionId, offset, limit] as const,

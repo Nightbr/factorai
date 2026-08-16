@@ -1,8 +1,10 @@
+import { ImportProjects } from '@components/dialog/ImportProjects';
 import { SidebarProject } from '@components/layout/SidebarProject';
 import { UpdateBadge } from '@components/layout/UpdateBadge';
 import { ZoomControls } from '@components/layout/ZoomControls';
 import type { Project } from '@factorai/types';
 import {
+	Button,
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -85,13 +87,14 @@ export function Sidebar() {
 	);
 	const allIds = useMemo(() => [...pinned, ...rest].map((p) => p.id), [pinned, rest]);
 
-	// Adding a folder as a project (F1). A project normally arrives by the
-	// indexer noticing it under ~/.claude/projects, which means a folder you
-	// have never run Claude in is invisible here — exactly the folder you want
-	// to start in.
+	// Adding a folder to the workspace (F1). Since ADR-0011 this is the *only*
+	// way a project appears — nothing arrives because Claude touched a directory
+	// — so it has two entry points: the picker for a folder you browse to, and
+	// the import dialog for folders Claude already knows.
 	const queryClient = useQueryClient();
 	const [adding, setAdding] = useState(false);
 	const [addError, setAddError] = useState<string | null>(null);
+	const [importOpen, setImportOpen] = useState(false);
 
 	async function addProject() {
 		setAddError(null);
@@ -148,15 +151,30 @@ export function Sidebar() {
 				<span className="flex-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
 					Projects
 				</span>
-				<IconButton
-					aria-label="Add project"
-					title="Add a project folder"
-					data-testid="add-project"
-					disabled={adding}
-					onClick={() => void addProject()}
-				>
-					<FolderPlus />
-				</IconButton>
+				{/* Two doors onto one action (ADR-0011): the picker gives
+				    `add_project` a path you browsed to, the dialog gives it paths
+				    Claude already knows. A menu rather than two more icons — the
+				    header is 180px at its narrowest and already carries sort. */}
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<IconButton
+							aria-label="Add project"
+							title="Add a project"
+							data-testid="add-project-menu"
+							disabled={adding}
+						>
+							<FolderPlus />
+						</IconButton>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-52">
+						<DropdownMenuItem data-testid="add-project" onSelect={() => void addProject()}>
+							Add Project…
+						</DropdownMenuItem>
+						<DropdownMenuItem data-testid="open-import" onSelect={() => setImportOpen(true)}>
+							Import from Claude Code…
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<IconButton aria-label="Sort and expand projects" title="Sort and expand projects">
@@ -198,12 +216,35 @@ export function Sidebar() {
 				{/* An empty workspace has nothing to do with what Claude has. The old
 				    copy led with "No projects found in ~/.claude/projects yet", which
 				    was true of a mirror and is backwards now that a project is a
-				    folder you added (ADR-0011). */}
+				    folder you added (ADR-0011).
+
+				    Both ways in are offered as buttons rather than pointed at from
+				    prose: this is the one screen where the way out is the only thing
+				    worth saying. */}
 				{projectsQ.data && projectsQ.data.length === 0 && (
-					<div className="px-4 py-2 text-muted-foreground text-xs">
-						No projects yet. Add a folder with the{' '}
-						<FolderPlus className="inline size-3 align-text-bottom" aria-hidden /> above — any
-						folder, whether or not you have run Claude in it.
+					<div className="flex flex-col items-start gap-2 px-4 py-2">
+						<p className="text-muted-foreground text-xs">
+							No projects yet. Add any folder — whether or not you have run Claude in it.
+						</p>
+						<div className="flex flex-wrap gap-2">
+							<Button
+								size="sm"
+								variant="outline"
+								data-testid="empty-add-project"
+								disabled={adding}
+								onClick={() => void addProject()}
+							>
+								Add Project…
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								data-testid="empty-open-import"
+								onClick={() => setImportOpen(true)}
+							>
+								Import from Claude Code…
+							</Button>
+						</div>
 					</div>
 				)}
 				{pinned.length > 0 && (
@@ -248,6 +289,10 @@ export function Sidebar() {
 				</span>
 				<ZoomControls />
 			</footer>
+
+			{/* Mounted here rather than at the app shell: it is the sidebar's
+			    action, and its only two triggers are in this component. */}
+			<ImportProjects open={importOpen} onOpenChange={setImportOpen} />
 		</>
 	);
 }
