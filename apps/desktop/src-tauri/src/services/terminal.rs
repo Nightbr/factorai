@@ -24,6 +24,7 @@ use tauri::{AppHandle, Emitter};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::agents::claude;
 use crate::error::{AppError, AppResult};
 use crate::services::claude_cli::find_claude_binary;
 
@@ -46,10 +47,13 @@ pub struct SpawnOpts {
 	/// `next_session_id` and ADR-0008). Whether it becomes `--resume` or
 	/// `--session-id` is decided by `session_flag`, not by the caller.
 	pub session_id: String,
-	/// Encoded project directory name under `~/.claude/projects/`. Used to
-	/// locate the session's transcript; see `jsonl_path`.
+	/// The workspace project this session belongs to. Used for grouping — the
+	/// status dots, `next_session_id`'s reuse rule — and nothing else. It says
+	/// nothing about where the transcript lives; `cwd` does.
 	pub project_id: String,
-	/// Working directory. Defaults to user $HOME when not provided.
+	/// Working directory: the project's folder. Defaults to user $HOME when not
+	/// provided. Also what the transcript path is derived from, since that is
+	/// exactly what Claude encodes to name its own directory.
 	pub cwd: Option<String>,
 	pub cols: u16,
 	pub rows: u16,
@@ -199,11 +203,11 @@ impl TerminalManager {
 	/// answer "has this been messaged" without a round trip anyway. This also
 	/// can't race the indexer's 1s debounce, because it reads the transcript
 	/// directly rather than the index.
-	pub fn next_session_id(&self, project_id: &str) -> String {
+	pub fn next_session_id(&self, project_id: &str, folder: &Path) -> String {
 		for entry in self.terminals.iter() {
 			let h = entry.value();
 			if h.project_id == project_id
-				&& !jsonl_path(&self.claude_dir, project_id, &h.session_id).exists()
+				&& !claude::transcript_path(&self.claude_dir, folder, &h.session_id).exists()
 			{
 				return h.session_id.clone();
 			}
@@ -223,6 +227,15 @@ impl TerminalManager {
 		opts: SpawnOpts,
 		argv_override: Option<Vec<String>>,
 	) -> AppResult<TerminalId> {
+		// Resolved before argv, because the transcript probe that decides
+		// `--resume` vs `--session-id` is keyed by the folder Claude will run in.
+		let cwd_path = opts
+			.cwd
+			.as_deref()
+			.map(PathBuf::from)
+			.or_else(dirs::home_dir)
+			.unwrap_or_else(|| PathBuf::from("/"));
+
 		let argv = match argv_override {
 			Some(v) => v,
 			None => {
@@ -231,7 +244,7 @@ impl TerminalManager {
 					None => find_claude_binary()?,
 				};
 				let mut v = vec![bin.to_string_lossy().to_string()];
-				v.push(session_flag(&self.claude_dir, &opts.project_id, &opts.session_id).into());
+				v.push(session_flag(&self.claude_dir, &cwd_path, &opts.session_id).into());
 				v.push(opts.session_id.clone());
 				v
 			}
@@ -241,12 +254,6 @@ impl TerminalManager {
 		for a in argv.iter().skip(1) {
 			cmd.arg(a);
 		}
-		let cwd_path = opts
-			.cwd
-			.as_deref()
-			.map(PathBuf::from)
-			.or_else(dirs::home_dir)
-			.unwrap_or_else(|| PathBuf::from("/"));
 		// `CommandBuilder::cwd` does NOT fail on a directory that isn't there —
 		// the child simply starts somewhere else, which for us was $HOME. That is
 		// silent misfiling: "new session" on a project whose folder has since been
@@ -499,16 +506,6 @@ fn spawn_waiter(
 		.expect("spawn term-wait thread");
 }
 
-/// Where Claude Code writes a session's transcript. `project_id` is already
-/// the encoded directory name (`-home-alice-code-foo`), so this is a join
-/// rather than a re-encode of the cwd — no ambiguity about embedded dashes.
-fn jsonl_path(claude_dir: &Path, project_id: &str, session_id: &str) -> PathBuf {
-	claude_dir
-		.join("projects")
-		.join(project_id)
-		.join(format!("{session_id}.jsonl"))
-}
-
 /// The flag that carries a session id into `claude`.
 ///
 /// The two are mutually exclusive and both fail loudly when given the wrong
@@ -521,8 +518,14 @@ fn jsonl_path(claude_dir: &Path, project_id: &str, session_id: &str) -> PathBuf 
 /// what makes restart correct in every case. A session created new and then
 /// messaged has a transcript, so it resumes; one abandoned before its first
 /// message has none, so it claims its id again.
-fn session_flag(claude_dir: &Path, project_id: &str, session_id: &str) -> &'static str {
-	if jsonl_path(claude_dir, project_id, session_id).exists() {
+///
+/// Addressed by the **folder**, not by a project id. A project id is a uuid now
+/// and says nothing about where Claude writes; the folder is exactly what
+/// Claude encodes to name its directory, and it is the one thing we have for a
+/// project Claude has never run in — which is precisely the case that needs
+/// `--session-id`.
+fn session_flag(claude_dir: &Path, folder: &Path, session_id: &str) -> &'static str {
+	if claude::transcript_path(claude_dir, folder, session_id).exists() {
 		"--resume"
 	} else {
 		"--session-id"
@@ -567,16 +570,17 @@ mod tests {
 	fn opts(cols: u16, rows: u16) -> SpawnOpts {
 		SpawnOpts {
 			session_id: "11111111-2222-3333-4444-555555555555".into(),
-			project_id: "-tmp-test-project".into(),
+			project_id: "11111111-aaaa-4bbb-8ccc-dddddddddddd".into(),
 			cwd: None,
 			cols,
 			rows,
 		}
 	}
 
-	/// Create the transcript `session_flag` probes for.
-	fn write_transcript(claude_dir: &Path, project_id: &str, session_id: &str) {
-		let path = jsonl_path(claude_dir, project_id, session_id);
+	/// Create the transcript `session_flag` probes for, in the store directory
+	/// Claude would use for `folder`.
+	fn write_transcript(claude_dir: &Path, folder: &str, session_id: &str) {
+		let path = claude::transcript_path(claude_dir, Path::new(folder), session_id);
 		std::fs::create_dir_all(path.parent().unwrap()).unwrap();
 		std::fs::write(&path, "{}\n").unwrap();
 	}
@@ -713,20 +717,18 @@ mod tests {
 	}
 
 	#[test]
-	fn jsonl_path_joins_the_encoded_project_dir() {
-		assert_eq!(
-			jsonl_path(Path::new("/home/a/.claude"), "-home-a-code-foo", "abc-123"),
-			PathBuf::from("/home/a/.claude/projects/-home-a-code-foo/abc-123.jsonl")
-		);
-	}
-
-	#[test]
 	fn session_flag_claims_an_id_with_no_transcript() {
 		let tmp = tempfile::TempDir::new().unwrap();
 		// Nothing on disk: this session does not exist yet, so the id is ours to
-		// claim. `--resume` here would fail with "no conversation found".
+		// claim. `--resume` here would fail with "no conversation found". This is
+		// also the shape of a folder Claude has never run in — no store directory
+		// exists for it at all, and the probe still answers correctly.
 		assert_eq!(
-			session_flag(tmp.path(), "-tmp-proj", "11111111-2222-3333-4444-555555555555"),
+			session_flag(
+				tmp.path(),
+				Path::new("/tmp/proj"),
+				"11111111-2222-3333-4444-555555555555"
+			),
 			"--session-id"
 		);
 	}
@@ -735,28 +737,28 @@ mod tests {
 	fn session_flag_resumes_an_id_with_a_transcript() {
 		let tmp = tempfile::TempDir::new().unwrap();
 		let sid = "11111111-2222-3333-4444-555555555555";
-		write_transcript(tmp.path(), "-tmp-proj", sid);
+		write_transcript(tmp.path(), "/tmp/proj", sid);
 		// Claude rejects `--session-id` on an id it already knows ("already in
 		// use"), so an existing transcript must flip us to `--resume`. This is
 		// the case that makes Restart correct after the first message.
-		assert_eq!(session_flag(tmp.path(), "-tmp-proj", sid), "--resume");
+		assert_eq!(session_flag(tmp.path(), Path::new("/tmp/proj"), sid), "--resume");
 	}
 
 	#[test]
-	fn session_flag_is_scoped_per_project() {
+	fn session_flag_is_scoped_per_folder() {
 		let tmp = tempfile::TempDir::new().unwrap();
 		let sid = "11111111-2222-3333-4444-555555555555";
-		write_transcript(tmp.path(), "-tmp-other", sid);
-		// Same session id, different project dir — not our transcript.
-		assert_eq!(session_flag(tmp.path(), "-tmp-proj", sid), "--session-id");
+		write_transcript(tmp.path(), "/tmp/other", sid);
+		// Same session id, different folder — not our transcript.
+		assert_eq!(session_flag(tmp.path(), Path::new("/tmp/proj"), sid), "--session-id");
 	}
 
 	#[test]
 	fn next_session_id_mints_a_fresh_uuid_when_nothing_is_live() {
 		let tmp = tempfile::TempDir::new().unwrap();
 		let (mgr, _d, _e) = make_manager_in(tmp.path().to_path_buf());
-		let a = mgr.next_session_id("-tmp-proj");
-		let b = mgr.next_session_id("-tmp-proj");
+		let a = mgr.next_session_id("proj", Path::new("/tmp/proj"));
+		let b = mgr.next_session_id("proj", Path::new("/tmp/proj"));
 		assert_ne!(a, b, "each call with nothing to reuse is a new session");
 		assert_eq!(a.len(), 36, "expected a uuid, got {a}");
 	}
@@ -766,15 +768,15 @@ mod tests {
 		let tmp = tempfile::TempDir::new().unwrap();
 		let (mgr, _d, _e) = make_manager_in(tmp.path().to_path_buf());
 		let mut o = opts(80, 24);
-		o.project_id = "-tmp-proj".into();
+		o.project_id = "proj".into();
 		let session = o.session_id.clone();
 		mgr.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
 			.unwrap();
 
 		// Live, never messaged → the click lands on it rather than a second claude.
-		assert_eq!(mgr.next_session_id("-tmp-proj"), session);
+		assert_eq!(mgr.next_session_id("proj", Path::new("/tmp/proj")), session);
 		// A different project must not borrow it.
-		assert_ne!(mgr.next_session_id("-tmp-elsewhere"), session);
+		assert_ne!(mgr.next_session_id("elsewhere", Path::new("/tmp/elsewhere")), session);
 		mgr.kill_all();
 	}
 
@@ -783,14 +785,14 @@ mod tests {
 		let tmp = tempfile::TempDir::new().unwrap();
 		let (mgr, _d, _e) = make_manager_in(tmp.path().to_path_buf());
 		let mut o = opts(80, 24);
-		o.project_id = "-tmp-proj".into();
+		o.project_id = "proj".into();
 		let session = o.session_id.clone();
-		write_transcript(tmp.path(), "-tmp-proj", &session);
+		write_transcript(tmp.path(), "/tmp/proj", &session);
 		mgr.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
 			.unwrap();
 
 		// It has real content, so "new session" must not hijack it.
-		assert_ne!(mgr.next_session_id("-tmp-proj"), session);
+		assert_ne!(mgr.next_session_id("proj", Path::new("/tmp/proj")), session);
 		mgr.kill_all();
 	}
 

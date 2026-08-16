@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fixtureOneProjectOneSession, installMockBridge } from './fixtures';
+import { FOO_ID, fixtureOneProjectOneSession, installMockBridge } from './fixtures';
 
 test.describe('projects sidebar', () => {
 	test('@smoke renders the empty state when no projects', async ({ page }) => {
@@ -82,7 +82,7 @@ test.describe('projects sidebar', () => {
 
 		// Back on the project's session list rather than parked on a dead pane
 		// reading `[process exited]`.
-		await expect(page).toHaveURL(/#\/projects\/-home-alice-code-foo$/);
+		await expect(page).toHaveURL(new RegExp(`#/projects/${FOO_ID}$`));
 		await expect(page.getByRole('heading', { name: 'foo' })).toBeVisible();
 
 		// The PTY was actually killed, with the id the spawn handed back — not

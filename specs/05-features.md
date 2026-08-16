@@ -8,8 +8,22 @@ from, for cross-checking.
 
 ## F1 — Project list
 
-**Behavior.** On launch, show every project under `~/.claude/projects/`,
-ordered by `last_session_at DESC`. Pinned projects float to the top.
+**A project is a folder you added.** Not a directory Claude happens to have
+worked in — see [ADR-0011](../docs/adr/0011-a-project-is-a-folder-in-the-workspace.md),
+which is the contract this section implements. `~/.claude/projects/` is a
+**discovery source**: we read it to find out which folders Claude has been used
+in, and it takes an explicit act of yours to turn one of those into a project.
+
+Two tables, two owners. `projects` is what you added and only your actions
+write it; `discovered_projects` is what an agent's store contains and only the
+scan writes it. Everything else in this section falls out of that split, most of
+all the fact that **removing a project sticks** — the scan has nothing to put
+back.
+
+**Behavior.** On launch, show the folders in the workspace, ordered by
+`last_session_at DESC`. Pinned projects float to the top. A folder Claude has
+never run in is an ordinary project with no sessions yet; a folder Claude has
+worked in that you never added does not appear at all, and nothing announces it.
 
 **UI.** Sidebar section. Each row: a collapse/expand chevron, the project
 avatar **badged with the status dot** when any terminal in it is live, the
@@ -58,33 +72,41 @@ client-side) or **Name**, plus **Expand all** / **Collapse all**. Sort and
 expansion persist in `sidebarStore` — unlike the file tree's expanded *paths*,
 which go stale when a directory is deleted, a project id stays valid.
 
-**Adding a folder.** Projects otherwise arrive only by the indexer noticing
-them under `~/.claude/projects/`, which means the folder you have *never* run
-Claude in — the one you most want to start in — cannot be reached from the app
-at all. A `FolderPlus` in the section header opens the native directory picker;
-the chosen folder becomes a project row and the app navigates to it, where the
-existing `+` starts the first session. Adding and starting stay separate
-actions: adding is cheap and reversible, starting a session is neither.
+**Adding a folder.** A `FolderPlus` in the section header opens the native
+directory picker; the chosen folder becomes a project and the app navigates to
+it, where the existing `+` starts the first session. Adding and starting stay
+separate actions: adding is cheap and reversible, starting a session is neither.
 
-The row's id is **Claude Code's own directory encoding of the path**, and that
-is the whole design. When a session is finally run there, Claude writes
-`~/.claude/projects/<same encoding>/`, the indexer upserts, and it lands on
-this row rather than creating a second one for the same folder. Two
-consequences fall out of that and are tested: adding a folder twice is a no-op
-returning the existing row (so the button cannot make duplicates), and the path
-is **canonicalized first** — a symlink or a `..` would otherwise encode to an
-id the indexer will never produce, leaving a dead empty row beside the live
-one. `display_name` and `pinned` are left alone on conflict; re-adding a
-project must not silently unpin it.
+Adding is also what makes a folder **searchable**: indexing is gated on the
+workspace, so `add_project` kicks off a scan of that folder on a background
+thread, reporting through the `indexer:progress` events the footer already
+shows. A store with thousands of turns would otherwise block the command.
+
+The project's id is a **uuid**, and the folder's canonical path is what makes it
+unique. Adding a folder twice is a no-op returning the existing project, so
+neither the picker nor the import dialog can make duplicates; the path is
+**canonicalized first**, so a symlink or a `..` lands on the row it should.
+`display_name` and `pinned` are left alone on conflict — re-adding a project
+must not silently rename or unpin it.
 
 Cancelling the picker is an answer, not a failure — nothing happens and nothing
-is said. A folder that can't be a project (not absolute, gone, not a directory)
-reports in a line under the section header rather than a toast: it belongs to
-the button that caused it, and clears the next time that button is pressed.
+is said. A folder that can't be a project reports in a line under the section
+header rather than a toast: it belongs to the button that caused it, and clears
+the next time that button is pressed.
 
-**Backend.** `list_projects()`, `add_project()`, `pin_project()`,
-`resolve_project_path()`. The list comes from the cached `projects` table;
-the indexer keeps it up to date.
+"Can't be a project" is: not absolute, not a directory, or **a path no agent has
+history for that isn't on disk**. That last clause is doing real work. From the
+picker a missing path is always a mistake, since you can only browse to a folder
+that exists. From the import dialog it isn't: the folder was deleted, every
+transcript survived, and reading that history is the whole reason the row is
+offered. One rule covers both without a flag the caller can get wrong — and it
+still rejects a typo, which no store has ever heard of.
+
+**Backend.** `list_projects()`, `add_project()`, `remove_project()`,
+`list_import_candidates()`, `pin_project()`, `resolve_project_path()`.
+`list_projects` joins the workspace to its discovered directories and aggregates
+`session_count` / `last_session_at` per query rather than storing them — they
+change whenever the indexer runs, and a stale count is worse than a join.
 
 **Edge cases.**
 - **A project whose folder is gone** → the row dims to half opacity, gains a
@@ -96,12 +118,15 @@ the indexer keeps it up to date.
   It is a `missing` column on `projects`, **set by the indexer's scan** — not
   computed per `list_projects` call, which is polled every 2s and would put a
   stat on every project in a hot path to answer a question that changes when
-  someone deletes a directory. It is deliberately **distinct from
-  `real_path: null`**: unknown and gone are different states, and only the
-  second one can be reported usefully. The flag clears on a later scan, so a
-  restored folder needs no wiped database, and `add_project` clears it too —
-  that command has just canonicalized the directory, so it knows better than a
-  stale flag does.
+  someone deletes a directory. The flag clears on a later scan, so a restored
+  folder needs no wiped database, and `add_project` clears it too — that command
+  has just canonicalized the directory, so it knows better than a stale flag
+  does.
+
+  There is no longer a third state to distinguish it from. A project is a
+  folder, so `real_path` is never null; "we never learned where this is" is now
+  a property of a *discovered directory*, and one that can't be added until it
+  resolves.
 
   Dimmed rather than struck through or badged in red: the row is still worth
   opening, since every transcript under `~/.claude/` is still there. Only
@@ -112,10 +137,19 @@ the indexer keeps it up to date.
   does not fail on a missing directory, it silently starts the child in
   `$HOME`, which files the session under the wrong project. The flag is the
   affordance; the guard is the invariant.
-- New project folders appearing → watcher triggers a project refresh.
-- `~/.claude/projects/` doesn't exist → empty state with a one-line
-  explainer and a link to install Claude Code. The empty state also points
-  at "Add project", since that is the way out of it.
+- **Claude runs somewhere new** → the watcher sees it and, if the folder is in
+  the workspace, indexes it. If it isn't, the event is dropped **silently**.
+  There is no badge, no count and no nudge: projects arriving uninvited is the
+  thing this design removes, and the import dialog reads the store fresh every
+  time it opens, so nothing is lost by staying quiet.
+
+  The watcher still watches the whole tree recursively and filters late. That is
+  deliberate: a folder you added and have never run Claude in has no store
+  directory to watch until its first session exists, and only a recursive watch
+  on the parent notices that appearing.
+- `~/.claude/projects/` doesn't exist → nothing to import, which is not an
+  error. The empty state points at "Add project", since that is the way out of
+  it, and at installing Claude Code.
 
 **The prior app ref.** `sidebar.js`, `derive-project-path.js`,
 `folder-index-state.js`.
@@ -190,10 +224,19 @@ context preview) but are not wired into the session view.
 
 ## F4 — Full-text search
 
-**Behavior.** Search across all indexed sessions by message body. Keep it
-simple: one query string, optional filter to a single project, ranked
-results. No event-level navigation (the session view is terminal-only — see
-F3), so a hit identifies a *session*, not a position within it.
+**Behavior.** Search across the workspace by message body. Keep it simple: one
+query string, optional filter to a single project, ranked results. No
+event-level navigation (the session view is terminal-only — see F3), so a hit
+identifies a *session*, not a position within it.
+
+**Scope: added folders only** (ADR-0011). Indexing is gated on the workspace, so
+a conversation in a folder you never added was never parsed and there is nothing
+of it to find. This is a real loss of reach and is worth stating plainly: before
+ADR-0011 search covered every folder Claude had ever touched, and the moment you
+most want that is the moment you can't remember which folder it was. The
+recovery path is to add the folder, which re-parses it with progress, and then
+search. If that proves to be the wrong trade in use, the fix is small — un-gate
+indexing and drop the `project_id IS NOT NULL` clause in `services/search.rs`.
 
 **UI.** Sidebar search input (debounced) plus a dedicated `/search` route
 that lists hits grouped by session, each with a `snippet()` excerpt and the
@@ -204,6 +247,14 @@ matched role. Click a hit → navigate to that session (opens its terminal).
 (default/cap 200) hits, each `{ sessionId, projectId, title, role, snippet }`
 (`title` JOINed from `sessions` for the result label). The FTS index stores
 no per-event position, so hits carry no `event_index`.
+
+`messages_fts` carries **no `project_id` column**. It used to, holding the
+encoded directory name, which was stable; a workspace id is not, since removing
+a project and adding it back mints a new one and every stored row would be
+stale. The project is resolved through `sessions` → `discovered_projects`
+instead — one indexed join, always current, and the same join is what scopes the
+search: it is inner, and a directory with no `project_id` isn't in the
+workspace.
 
 **Edge cases.**
 - Empty / whitespace query → clear results, no command call.

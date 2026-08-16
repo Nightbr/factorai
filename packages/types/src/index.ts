@@ -1,17 +1,48 @@
 // ── Core domain models ───────────────────────────────────────────────────────
 
+/**
+ * A folder in the workspace (F1, ADR-0011).
+ *
+ * `realPath` is not optional: a project *is* a folder, so it always has one.
+ * That was not true of the old model, where a project was a directory in
+ * Claude's store whose folder we might never have identified.
+ */
 export interface Project {
+	/** uuid v4. Not derived from the path — moving a folder later can keep the
+	 *  project rather than orphaning its pin and its sessions. */
 	id: string;
-	realPath: string | null;
+	realPath: string;
 	displayName: string;
 	lastSessionAt: number | null;
 	sessionCount: number;
 	pinned: boolean;
-	/** `realPath` is known and isn't on disk any more. Distinct from
-	 *  `realPath: null`, which means we never learned where the project is —
-	 *  unknown is not the same as gone. Set by the indexer's scan, not per
-	 *  `list_projects` call. */
+	/** The folder is gone from disk. Set by the indexer's scan, not computed per
+	 *  `list_projects` call — that query is polled every 2s. */
 	missing: boolean;
+}
+
+/**
+ * A folder an agent has worked in that isn't in the workspace yet — one row in
+ * the "Import from Claude Code" list (F1).
+ *
+ * Read from the agent's store directly rather than from the index, since
+ * nothing outside the workspace is indexed.
+ */
+export interface ImportCandidate {
+	/** Which agent's store this came from. `'claude'` today. */
+	agent: string;
+	/** The agent's own directory name — the stable key for the row. */
+	key: string;
+	realPath: string;
+	displayName: string;
+	sessionCount: number;
+	lastActivityAt: number | null;
+	/** The folder is gone from disk. Still importable: every transcript is still
+	 *  there and only *starting* a session is impossible. */
+	missing: boolean;
+	/** Already in the workspace — the row renders checked and disabled rather
+	 *  than being hidden. */
+	alreadyOpen: boolean;
 }
 
 export interface SessionSummary {
@@ -98,9 +129,12 @@ export interface SpawnOpts {
 	 *  backend decides `--resume` vs `--session-id` by probing for the
 	 *  transcript — callers never say which they want. */
 	sessionId: string;
-	/** Encoded project dir name under `~/.claude/projects/`, used to locate
-	 *  that transcript. */
+	/** The workspace project this session belongs to. Used for grouping — the
+	 *  status dots, the new-session reuse rule — and nothing else. It says
+	 *  nothing about where the transcript lives; `cwd` does. */
 	projectId: string;
+	/** The project's folder. Also what the transcript path is derived from,
+	 *  since that is exactly what Claude encodes to name its own directory. */
 	cwd?: string;
 	cols: number;
 	rows: number;

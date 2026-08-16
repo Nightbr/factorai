@@ -1,27 +1,52 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rusqlite::params;
+use rusqlite::{params, Connection, OptionalExtension};
 use tauri::{AppHandle, Emitter};
 use tracing::{debug, info, warn};
 
+use crate::agents::claude;
+use crate::commands::projects::reconcile;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{IndexerPhase, IndexerProgress, SessionsChanged};
 use crate::services::jsonl::{derive_title, flatten_message_text, EventIter};
-use crate::services::path_encoding::display_name_for;
 
 pub type ProgressCb = Arc<dyn Fn(IndexerProgress) + Send + Sync>;
 pub type ChangedCb = Arc<dyn Fn(SessionsChanged) + Send + Sync>;
 
 /// Owns the scan + watcher. Cheap to clone (Arc internals). Emit is wired
 /// via callbacks so tests can construct an Indexer without a Tauri runtime.
+///
+/// **Parsing is gated on the workspace.** Discovery is cheap and global — we
+/// list every directory in every agent's store — but only folders you added get
+/// their transcripts read and tokenized. Search is scoped the same way, so
+/// indexing anything else would be work no query can reach.
 #[derive(Clone)]
 pub struct Indexer {
 	db: Db,
 	claude_dir: PathBuf,
 	on_progress: ProgressCb,
 	on_changed: ChangedCb,
+}
+
+/// One agent directory that belongs to a folder in the workspace: everything
+/// needed to index it, resolved once per scan.
+struct LinkedDir {
+	discovered_id: i64,
+	project_id: String,
+	agent: String,
+	key: String,
+}
+
+impl LinkedDir {
+	/// Where this directory lives. The only place the scan needs to know whose
+	/// store it is reading — and so the one place a second agent adds a branch.
+	/// Until then every row is Claude's, which `discover` guarantees.
+	fn path(&self, claude_dir: &Path) -> PathBuf {
+		debug_assert_eq!(self.agent, crate::agents::CLAUDE);
+		claude_dir.join("projects").join(&self.key)
+	}
 }
 
 impl Indexer {
@@ -60,54 +85,131 @@ impl Indexer {
 		&self.db
 	}
 
-	/// Scan every project / session under ~/.claude/projects/, upserting rows
-	/// for anything new or changed. Emits `indexer:progress` along the way.
+	/// Discover what the agents' stores hold, link it to the workspace, then
+	/// index every folder in the workspace.
 	pub fn full_scan(&self) -> AppResult<()> {
-		let projects_dir = self.claude_dir.join("projects");
-		if !projects_dir.exists() {
-			info!(path = ?projects_dir, "claude projects dir does not exist; skipping scan");
-			self.emit_progress(0, 0, IndexerPhase::Idle);
-			return Ok(());
-		}
+		self.discover()?;
+		self.refresh_missing()?;
 
-		let project_dirs: Vec<PathBuf> = match std::fs::read_dir(&projects_dir) {
-			Ok(rd) => rd
-				.filter_map(Result::ok)
-				.filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-				.map(|e| e.path())
-				.collect(),
-			Err(e) => {
-				warn!(error = %e, "failed to read claude projects dir");
-				return Err(AppError::Io(e.to_string()));
-			}
-		};
-
-		info!(count = project_dirs.len(), "scanning projects");
-		self.emit_progress(0, project_dirs.len() as u32, IndexerPhase::Scanning);
+		let dirs = self.db.with(|conn| linked_dirs(conn, None))?;
+		info!(count = dirs.len(), "scanning workspace projects");
+		self.emit_progress(0, dirs.len() as u32, IndexerPhase::Scanning);
 
 		let mut processed = 0u32;
-		for project_path in &project_dirs {
-			if let Err(e) = self.scan_project_dir(project_path) {
-				warn!(?project_path, error = %e, "project scan failed");
+		for dir in &dirs {
+			if let Err(e) = self.index_dir(dir) {
+				warn!(key = %dir.key, error = %e, "project scan failed");
 			}
 			processed += 1;
-			self.emit_progress(processed, project_dirs.len() as u32, IndexerPhase::Parsing);
+			self.emit_progress(processed, dirs.len() as u32, IndexerPhase::Parsing);
 		}
 
-		self.emit_progress(processed, project_dirs.len() as u32, IndexerPhase::Idle);
+		self.emit_progress(processed, dirs.len() as u32, IndexerPhase::Idle);
 		info!("scan complete");
 		Ok(())
 	}
 
-	/// Index one project directory. Public so the watcher can call it on
-	/// targeted invalidation.
-	pub fn scan_project_dir(&self, project_path: &Path) -> AppResult<()> {
-		let encoded = match project_path.file_name().and_then(|s| s.to_str()) {
-			Some(name) => name.to_string(),
-			None => return Err(AppError::InvalidInput("project dir name not utf-8".into())),
-		};
+	/// Index one workspace project — every agent directory linked to its folder.
+	/// Called when a project is added, since nothing was parsed for it before.
+	pub fn scan_project(&self, project_id: &str) -> AppResult<()> {
+		self.discover()?;
+		let dirs = self.db.with(|conn| linked_dirs(conn, Some(project_id)))?;
+		self.emit_progress(0, dirs.len() as u32, IndexerPhase::Scanning);
+		let mut processed = 0u32;
+		for dir in &dirs {
+			if let Err(e) = self.index_dir(dir) {
+				warn!(key = %dir.key, error = %e, "project scan failed");
+			}
+			processed += 1;
+			self.emit_progress(processed, dirs.len() as u32, IndexerPhase::Parsing);
+		}
+		self.emit_progress(processed, dirs.len() as u32, IndexerPhase::Idle);
+		Ok(())
+	}
 
-		let session_files: Vec<PathBuf> = match std::fs::read_dir(project_path) {
+	/// Record every directory each agent's store holds, and link it to the
+	/// workspace folder it describes. No transcript is parsed in full here.
+	pub fn discover(&self) -> AppResult<()> {
+		let found = claude::discover(&self.claude_dir);
+		self.db.with_mut(|conn| {
+			let tx = conn.transaction()?;
+			{
+				let mut stmt = tx.prepare(
+					"INSERT INTO discovered_projects(agent, key, real_path) VALUES(?1, ?2, ?3)
+					 ON CONFLICT(agent, key) DO UPDATE SET
+					   real_path = COALESCE(excluded.real_path, discovered_projects.real_path)",
+				)?;
+				for d in &found {
+					stmt.execute(params![d.agent, d.key, d.real_path])?;
+				}
+			}
+			reconcile(&tx)?;
+			tx.commit()?;
+			Ok(())
+		})
+	}
+
+	/// Restate which workspace folders are gone from disk.
+	///
+	/// Once per scan rather than per `list_projects` call: that query is polled
+	/// every 2s, and this answer changes when someone deletes a directory (F1).
+	fn refresh_missing(&self) -> AppResult<()> {
+		let rows: Vec<(String, String)> = self.db.with(|conn| {
+			let mut stmt = conn.prepare("SELECT id, real_path FROM projects")?;
+			let rows = stmt
+				.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+				.collect::<rusqlite::Result<Vec<_>>>()?;
+			Ok(rows)
+		})?;
+		self.db.with_mut(|conn| {
+			let tx = conn.transaction()?;
+			{
+				let mut stmt = tx.prepare("UPDATE projects SET missing = ?2 WHERE id = ?1")?;
+				for (id, real_path) in &rows {
+					let missing = !Path::new(real_path).is_dir();
+					stmt.execute(params![id, missing as i64])?;
+				}
+			}
+			tx.commit()?;
+			Ok(())
+		})
+	}
+
+	/// Re-index one agent directory, addressed by its path on disk. The
+	/// watcher's entry point: it sees a changed `.jsonl` and knows only which
+	/// directory it sat in.
+	///
+	/// A directory that isn't linked to a workspace folder is skipped, which is
+	/// how "new Claude activity in a project you never added" stays silent.
+	pub fn scan_dir_path(&self, dir: &Path) -> AppResult<()> {
+		let Some(key) = dir.file_name().and_then(|s| s.to_str()) else {
+			return Err(AppError::InvalidInput("project dir name not utf-8".into()));
+		};
+		// A directory that appeared since the last scan has no row yet. Resolving
+		// it here is what makes the *first* session in a freshly added folder show
+		// up without waiting for a restart.
+		if self.db.with(|conn| discovered_id_for(conn, key))?.is_none() {
+			self.discover()?;
+		}
+		let linked = self.db.with(|conn| {
+			let sql = format!("{LINKED_SELECT} AND d.key = ?1");
+			Ok(conn
+				.query_row(&sql, params![key], map_linked)
+				.optional()?)
+		})?;
+		match linked {
+			Some(dir) => self.index_dir(&dir),
+			None => {
+				debug!(?dir, "ignoring activity outside the workspace");
+				Ok(())
+			}
+		}
+	}
+
+	/// Parse every transcript in one linked directory that has changed since we
+	/// last looked.
+	fn index_dir(&self, dir: &LinkedDir) -> AppResult<()> {
+		let session_files: Vec<PathBuf> = match std::fs::read_dir(dir.path(&self.claude_dir)) {
 			Ok(rd) => rd
 				.filter_map(Result::ok)
 				.map(|e| e.path())
@@ -116,59 +218,21 @@ impl Indexer {
 			Err(_) => return Ok(()),
 		};
 
-		// Probe the first session for `cwd` to resolve the real path.
-		let real_path = session_files
-			.iter()
-			.find_map(|p| first_cwd_from_session(p));
-
-		let display_name = display_name_for(&encoded, real_path.as_deref());
-		// Stat here, once per scan, rather than per `list_projects` — that query
-		// is polled every 2s and this answer changes about as often as someone
-		// deletes a directory. A path we never learned is *not* missing: unknown
-		// and gone are different states and only one of them is worth saying.
-		let missing = real_path.as_deref().is_some_and(|p| !Path::new(p).exists());
-
-		self.db.with_mut(|conn| {
-			conn.execute(
-				"INSERT INTO projects(id, real_path, display_name, session_count, missing)
-				 VALUES(?1, ?2, ?3, 0, ?4)
-				 ON CONFLICT(id) DO UPDATE SET
-				   real_path = COALESCE(excluded.real_path, projects.real_path),
-				   display_name = excluded.display_name,
-				   missing = excluded.missing",
-				params![encoded, real_path, display_name, missing as i64],
-			)?;
-			Ok(())
-		})?;
-
 		let mut changed_ids: Vec<String> = Vec::new();
 		for session_path in &session_files {
-			match self.index_session_if_changed(&encoded, session_path) {
+			match self.index_session_if_changed(dir.discovered_id, session_path) {
 				Ok(Some(session_id)) => changed_ids.push(session_id),
 				Ok(None) => {}
 				Err(e) => warn!(path = ?session_path, error = %e, "session index failed"),
 			}
 		}
 
-		// Refresh aggregates on `projects`.
-		self.db.with(|conn| {
-			conn.execute(
-				"UPDATE projects SET
-				   session_count = (SELECT COUNT(*) FROM sessions WHERE project_id = ?1),
-				   last_session_at = (SELECT MAX(updated_at) FROM sessions WHERE project_id = ?1)
-				 WHERE id = ?1",
-				params![encoded],
-			)?;
-			Ok(())
-		})?;
-
 		if !changed_ids.is_empty() {
 			(self.on_changed)(SessionsChanged {
-				project_id: encoded.clone(),
+				project_id: dir.project_id.clone(),
 				session_ids: changed_ids,
 			});
 		}
-
 		Ok(())
 	}
 
@@ -176,7 +240,7 @@ impl Indexer {
 	/// newly indexed), `None` if the cached `(mtime, size)` already matched.
 	pub fn index_session_if_changed(
 		&self,
-		project_id: &str,
+		discovered_id: i64,
 		session_path: &Path,
 	) -> AppResult<Option<String>> {
 		let session_id = match session_path.file_stem().and_then(|s| s.to_str()) {
@@ -280,7 +344,7 @@ impl Indexer {
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			tx.execute(
-				"INSERT INTO sessions(id, project_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd)
+				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd)
 				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
 				 ON CONFLICT(id) DO UPDATE SET
 				   title = excluded.title,
@@ -291,7 +355,7 @@ impl Indexer {
 				   cwd = COALESCE(excluded.cwd, sessions.cwd)",
 				params![
 					session_id,
-					project_id,
+					discovered_id,
 					title,
 					created_at,
 					updated_at,
@@ -304,10 +368,10 @@ impl Indexer {
 			tx.execute("DELETE FROM messages_fts WHERE session_id = ?1", params![session_id])?;
 			{
 				let mut stmt = tx.prepare(
-					"INSERT INTO messages_fts(session_id, project_id, role, body) VALUES(?1, ?2, ?3, ?4)",
+					"INSERT INTO messages_fts(session_id, role, body) VALUES(?1, ?2, ?3)",
 				)?;
 				for (role, body) in &fts_rows {
-					stmt.execute(params![session_id, project_id, role, body])?;
+					stmt.execute(params![session_id, role, body])?;
 				}
 			}
 			tx.commit()?;
@@ -322,10 +386,41 @@ impl Indexer {
 	}
 }
 
-/// Peek at the first event in a session file and return its `cwd`. Best
-/// effort: any parse error → `None`.
-fn first_cwd_from_session(path: &Path) -> Option<String> {
-	EventIter::open(path).ok()?.find_map(|ev| ev.cwd)
+/// Every agent directory whose folder is in the workspace.
+const LINKED_SELECT: &str = "SELECT d.id, d.project_id, d.agent, d.key
+	FROM discovered_projects d
+	WHERE d.project_id IS NOT NULL";
+
+fn map_linked(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkedDir> {
+	Ok(LinkedDir {
+		discovered_id: row.get(0)?,
+		project_id: row.get(1)?,
+		agent: row.get(2)?,
+		key: row.get(3)?,
+	})
+}
+
+fn linked_dirs(conn: &Connection, project_id: Option<&str>) -> AppResult<Vec<LinkedDir>> {
+	let sql = match project_id {
+		Some(_) => format!("{LINKED_SELECT} AND d.project_id = ?1"),
+		None => LINKED_SELECT.to_string(),
+	};
+	let mut stmt = conn.prepare(&sql)?;
+	let rows = match project_id {
+		Some(id) => stmt.query_map(params![id], map_linked)?.collect::<rusqlite::Result<Vec<_>>>()?,
+		None => stmt.query_map([], map_linked)?.collect::<rusqlite::Result<Vec<_>>>()?,
+	};
+	Ok(rows)
+}
+
+fn discovered_id_for(conn: &Connection, key: &str) -> AppResult<Option<i64>> {
+	Ok(conn
+		.query_row(
+			"SELECT id FROM discovered_projects WHERE key = ?1",
+			params![key],
+			|r| r.get::<_, i64>(0),
+		)
+		.optional()?)
 }
 
 fn parse_iso(s: &str) -> Option<i64> {

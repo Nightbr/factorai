@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fixtureWithChanges, fixtureWithFileTree, installMockBridge } from './fixtures';
+import { FOO_ID, fixtureWithChanges, fixtureWithFileTree, installMockBridge } from './fixtures';
 
 /**
  * The panel's Changes tab (specs/05-features.md F13).
@@ -9,7 +9,7 @@ import { fixtureWithChanges, fixtureWithFileTree, installMockBridge } from './fi
  * produce, not libgit2 (that has its own tests in services/git.rs).
  */
 
-const PROJECT = '/#/projects/-home-alice-code-foo';
+const PROJECT = `/#/projects/${FOO_ID}`;
 
 async function openPanel(page: import('@playwright/test').Page) {
 	await page.getByRole('button', { name: 'Toggle file tree' }).click();

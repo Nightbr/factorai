@@ -1,9 +1,17 @@
 //! Integration tests for the indexer. Each test builds a synthetic Claude
 //! home directory in a tempdir, runs a scan, and asserts the SQLite state.
+//!
+//! Since ADR-0011 the scan only parses folders that are **in the workspace**,
+//! so every fixture here adds the folder first. That is not ceremony — it is
+//! the behaviour under test in `a_scan_never_adds_a_project_you_did_not_ask_for`
+//! over in `add_project_integration.rs`. The folders are real directories under
+//! the tempdir rather than invented paths like `/Users/alice/…`, because adding
+//! one now canonicalizes it.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use factorai_lib::commands::projects::add_project_in;
 use factorai_lib::db::Db;
 use factorai_lib::models::SessionsChanged;
 use factorai_lib::services::indexer::Indexer;
@@ -18,25 +26,39 @@ fn write_session(project_dir: &Path, session_id: &str, lines: &[&str]) -> PathBu
 	path
 }
 
-/// Construct a fake Claude home with one project and one session.
-/// Returns (claude_dir, encoded_project_id, session_id).
-fn fixture_one_session(tmp: &Path, cwd: &str) -> (PathBuf, String, String) {
+/// A real folder under the tempdir, canonicalized the way `add_project` will.
+fn make_folder(tmp: &Path, name: &str) -> PathBuf {
+	let dir = tmp.join("code").join(name);
+	std::fs::create_dir_all(&dir).expect("mkdir folder");
+	dir.canonicalize().expect("canonicalize")
+}
+
+/// Claude's store directory for a folder.
+fn store_dir(claude_dir: &Path, cwd: &Path) -> PathBuf {
+	let encoded = format!("-{}", cwd.to_string_lossy().trim_start_matches('/').replace('/', "-"));
+	let dir = claude_dir.join("projects").join(encoded);
+	std::fs::create_dir_all(&dir).expect("mkdir store");
+	dir
+}
+
+/// Construct a fake Claude home with one project and one session, and put the
+/// folder in the workspace. Returns (claude_dir, cwd, store_dir, session_id).
+fn fixture_one_session(tmp: &Path, db: &Db) -> (PathBuf, PathBuf, PathBuf, String) {
 	let claude_dir = tmp.join(".claude");
-	let projects_dir = claude_dir.join("projects");
-	let encoded = cwd.trim_start_matches('/').replace('/', "-");
-	let encoded = format!("-{encoded}");
-	let project_dir = projects_dir.join(&encoded);
-	std::fs::create_dir_all(&project_dir).expect("mkdir project");
+	let cwd = make_folder(tmp, "foo");
+	let project_dir = store_dir(&claude_dir, &cwd);
 
 	let session_id = "11111111-2222-3333-4444-555555555555";
+	let cwd_str = cwd.to_string_lossy();
 	let user_msg = format!(
-		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd}","message":{{"role":"user","content":"Help me with React hooks"}}}}"#
+		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"Help me with React hooks"}}}}"#
 	);
 	let assistant_msg = format!(
-		r#"{{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-01T00:00:05Z","cwd":"{cwd}","message":{{"role":"assistant","content":[{{"type":"text","text":"Sure, here's a useEffect example"}}]}}}}"#
+		r#"{{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-01T00:00:05Z","cwd":"{cwd_str}","message":{{"role":"assistant","content":[{{"type":"text","text":"Sure, here's a useEffect example"}}]}}}}"#
 	);
 	write_session(&project_dir, session_id, &[&user_msg, &assistant_msg]);
-	(claude_dir, encoded, session_id.to_string())
+	add_project_in(db, cwd.to_str().unwrap()).expect("add project");
+	(claude_dir, cwd, project_dir, session_id.to_string())
 }
 
 fn make_indexer(db: Db, claude_dir: PathBuf) -> (Indexer, Arc<Mutex<Vec<SessionsChanged>>>) {
@@ -55,29 +77,31 @@ fn open_db(tmp: &Path) -> Db {
 	Db::open(&tmp.join("data")).expect("open db")
 }
 
+/// The one project row, as `list_projects` would return it.
+fn only_project(db: &Db) -> factorai_lib::models::Project {
+	let mut all = db
+		.with(factorai_lib::commands::projects::list_projects_in)
+		.expect("list");
+	assert_eq!(all.len(), 1, "expected exactly one project");
+	all.remove(0)
+}
+
 #[test]
-fn scan_creates_project_and_session_rows() {
+fn scan_indexes_the_sessions_of_a_folder_in_the_workspace() {
 	let tmp = TempDir::new().unwrap();
-	let (claude_dir, encoded, session_id) =
-		fixture_one_session(tmp.path(), "/Users/alice/code/foo");
 	let db = open_db(tmp.path());
+	let (claude_dir, cwd, _store, session_id) = fixture_one_session(tmp.path(), &db);
 	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
 
 	indexer.full_scan().expect("scan");
 
-	db.with(|conn| {
-		let (real_path, display_name, session_count): (Option<String>, String, i64) = conn
-			.query_row(
-				"SELECT real_path, display_name, session_count FROM projects WHERE id = ?1",
-				params![&encoded],
-				|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-			)
-			.expect("project row");
-		assert_eq!(real_path.as_deref(), Some("/Users/alice/code/foo"));
-		assert_eq!(display_name, "foo");
-		assert_eq!(session_count, 1);
+	let project = only_project(&db);
+	assert_eq!(project.real_path, cwd.to_str().unwrap());
+	assert_eq!(project.display_name, "foo");
+	assert_eq!(project.session_count, 1);
 
-		let (title, turn_count, cwd): (String, i64, Option<String>) = conn
+	db.with(|conn| {
+		let (title, turn_count, session_cwd): (String, i64, Option<String>) = conn
 			.query_row(
 				"SELECT title, turn_count, cwd FROM sessions WHERE id = ?1",
 				params![&session_id],
@@ -86,7 +110,7 @@ fn scan_creates_project_and_session_rows() {
 			.expect("session row");
 		assert_eq!(title, "Help me with React hooks");
 		assert_eq!(turn_count, 2);
-		assert_eq!(cwd.as_deref(), Some("/Users/alice/code/foo"));
+		assert_eq!(session_cwd.as_deref(), cwd.to_str());
 		Ok(())
 	})
 	.unwrap();
@@ -95,9 +119,8 @@ fn scan_creates_project_and_session_rows() {
 #[test]
 fn fts_rows_inserted_for_indexed_messages() {
 	let tmp = TempDir::new().unwrap();
-	let (claude_dir, _encoded, session_id) =
-		fixture_one_session(tmp.path(), "/Users/alice/code/foo");
 	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, _store, session_id) = fixture_one_session(tmp.path(), &db);
 	let (indexer, _) = make_indexer(db.clone(), claude_dir);
 
 	indexer.full_scan().expect("scan");
@@ -129,8 +152,8 @@ fn fts_rows_inserted_for_indexed_messages() {
 #[test]
 fn unchanged_session_is_skipped_on_rescan() {
 	let tmp = TempDir::new().unwrap();
-	let (claude_dir, encoded, _) = fixture_one_session(tmp.path(), "/Users/alice/code/foo");
 	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, _store, _sid) = fixture_one_session(tmp.path(), &db);
 	let (indexer, changes) = make_indexer(db.clone(), claude_dir);
 
 	indexer.full_scan().expect("first scan");
@@ -144,44 +167,46 @@ fn unchanged_session_is_skipped_on_rescan() {
 		"rescan with unchanged files should emit no further sessions:changed"
 	);
 
-	// Aggregate refresh still ran (no harm), but session_count stays 1.
-	db.with(|conn| {
-		let n: i64 = conn
-			.query_row(
-				"SELECT session_count FROM projects WHERE id = ?1",
-				params![&encoded],
-				|row| row.get(0),
-			)
-			.unwrap();
-		assert_eq!(n, 1);
-		Ok(())
-	})
-	.unwrap();
+	assert_eq!(only_project(&db).session_count, 1);
+}
+
+/// The `sessions:changed` payload carries the **workspace** project id, since
+/// that is what the renderer keys its caches by. A store directory name would
+/// invalidate nothing.
+#[test]
+fn sessions_changed_names_the_workspace_project() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, _store, _sid) = fixture_one_session(tmp.path(), &db);
+	let (indexer, changes) = make_indexer(db.clone(), claude_dir);
+
+	indexer.full_scan().expect("scan");
+
+	let expected = only_project(&db).id;
+	let seen = changes.lock().unwrap();
+	assert_eq!(seen.len(), 1);
+	assert_eq!(seen[0].project_id, expected);
 }
 
 #[test]
 fn appending_to_session_triggers_reindex() {
 	let tmp = TempDir::new().unwrap();
-	let (claude_dir, encoded, session_id) =
-		fixture_one_session(tmp.path(), "/Users/alice/code/foo");
 	let db = open_db(tmp.path());
-	let (indexer, _) = make_indexer(db.clone(), claude_dir.clone());
+	let (claude_dir, _cwd, store, session_id) = fixture_one_session(tmp.path(), &db);
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
 
 	indexer.full_scan().expect("first scan");
 
 	// Append another assistant turn.
-	let project_dir = claude_dir.join("projects").join(&encoded);
-	let path = project_dir.join(format!("{session_id}.jsonl"));
+	let path = store.join(format!("{session_id}.jsonl"));
 	let current = std::fs::read_to_string(&path).unwrap();
 	let next = format!(
 		"{current}\n{}",
 		r#"{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"2026-01-01T00:00:10Z","message":{"role":"assistant","content":"second reply"}}"#
 	);
-	// Bump mtime by writing through std (filesystems update mtime on write).
 	std::fs::write(&path, next).unwrap();
 	// Sleep briefly so mtime differs from the prior scan on coarse filesystems.
 	std::thread::sleep(std::time::Duration::from_millis(20));
-	// Touch by writing the same content again — guarantees the mtime change.
 	let again = std::fs::read_to_string(&path).unwrap();
 	std::fs::write(&path, again).unwrap();
 
@@ -214,17 +239,21 @@ fn missing_claude_projects_dir_is_handled() {
 #[test]
 fn malformed_jsonl_line_is_skipped_not_fatal() {
 	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
 	let claude_dir = tmp.path().join(".claude");
-	let project_dir = claude_dir.join("projects").join("-tmp-test");
-	std::fs::create_dir_all(&project_dir).unwrap();
+	let cwd = make_folder(tmp.path(), "malformed");
+	let project_dir = store_dir(&claude_dir, &cwd);
 
 	let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-	let good = r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"hi"}}"#;
+	let cwd_str = cwd.to_string_lossy();
+	let good = format!(
+		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"hi"}}}}"#
+	);
 	let bad = r#"{this is not valid json"#;
 	let good2 = r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","content":"reply"}}"#;
-	write_session(&project_dir, session_id, &[good, bad, good2]);
+	write_session(&project_dir, session_id, &[&good, bad, good2]);
+	add_project_in(&db, cwd.to_str().unwrap()).expect("add");
 
-	let db = open_db(tmp.path());
 	let (indexer, _) = make_indexer(db.clone(), claude_dir);
 	indexer.full_scan().expect("scan");
 
@@ -242,39 +271,30 @@ fn malformed_jsonl_line_is_skipped_not_fatal() {
 	.unwrap();
 }
 
-/// Pinning is stored in the projects table, and a later scan must not undo it.
+/// Pinning is a workspace decision, and the scan has no business touching it.
 ///
-/// The upsert on re-scan sets `real_path` and `display_name` only — if it ever
-/// grows to rewrite the whole row, every pin in the sidebar silently clears on
-/// the next file change (specs/05-features.md F1).
+/// Under the old model this was a live risk: the indexer upserted the very row
+/// that held the pin, so one careless column in that `ON CONFLICT` cleared
+/// every pin in the sidebar. It now writes a different table entirely, and this
+/// test is what keeps that true (specs/05-features.md F1).
 #[test]
 fn a_pinned_project_stays_pinned_across_a_rescan() {
 	let tmp = TempDir::new().unwrap();
-	let (claude_dir, encoded, _session_id) =
-		fixture_one_session(tmp.path(), "/Users/alice/code/foo");
 	let db = open_db(tmp.path());
-	let (indexer, _changes) = make_indexer(db.clone(), claude_dir.clone());
+	let (claude_dir, _cwd, _store, _sid) = fixture_one_session(tmp.path(), &db);
+	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
 	indexer.full_scan().expect("first scan");
 
+	let id = only_project(&db).id;
 	db.with(|conn| {
-		conn.execute("UPDATE projects SET pinned = 1 WHERE id = ?1", params![&encoded])?;
+		conn.execute("UPDATE projects SET pinned = 1 WHERE id = ?1", params![&id])?;
 		Ok(())
 	})
 	.expect("pin");
 
-	// A second scan re-runs the same upsert against an existing row.
 	indexer.full_scan().expect("second scan");
 
-	db.with(|conn| {
-		let pinned: i64 = conn
-			.query_row("SELECT pinned FROM projects WHERE id = ?1", params![&encoded], |row| {
-				row.get(0)
-			})
-			.expect("project row");
-		assert_eq!(pinned, 1, "re-scanning must not clear a pin");
-		Ok(())
-	})
-	.expect("read back");
+	assert!(only_project(&db).pinned, "re-scanning must not clear a pin");
 }
 
 /// `list_projects` orders pinned first, and only then by recency — the sidebar
@@ -283,33 +303,35 @@ fn a_pinned_project_stays_pinned_across_a_rescan() {
 fn pinned_projects_sort_ahead_of_more_recent_ones() {
 	let tmp = TempDir::new().unwrap();
 	let db = open_db(tmp.path());
+	let old = make_folder(tmp.path(), "old");
+	let new = make_folder(tmp.path(), "new");
 
-	db.with(|conn| {
+	let old_id = add_project_in(&db, old.to_str().unwrap()).expect("add old").id;
+	add_project_in(&db, new.to_str().unwrap()).expect("add new");
+
+	// Give each a session, so recency is a real ordering signal, then pin the
+	// staler one.
+	db.with_mut(|conn| {
+		conn.execute("UPDATE projects SET pinned = 1 WHERE id = ?1", params![&old_id])?;
 		conn.execute(
-			"INSERT INTO projects(id, real_path, display_name, last_session_at, session_count, pinned)
-			 VALUES('-old', '/code/old', 'old', 100, 1, 1),
-			       ('-new', '/code/new', 'new', 900, 1, 0)",
-			[],
+			"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, file_mtime, file_size)
+			 SELECT 's-' || d.id, d.id, 't', 0, CASE WHEN d.project_id = ?1 THEN 100 ELSE 900 END, 0, 0
+			 FROM discovered_projects d",
+			params![&old_id],
 		)?;
 		Ok(())
 	})
 	.expect("seed");
 
 	let ordered: Vec<String> = db
-		.with(|conn| {
-			let mut stmt = conn.prepare(
-				"SELECT id FROM projects
-				 ORDER BY pinned DESC, COALESCE(last_session_at, 0) DESC, display_name ASC",
-			)?;
-			let rows = stmt
-				.query_map([], |row| row.get::<_, String>(0))?
-				.collect::<rusqlite::Result<Vec<_>>>()?;
-			Ok(rows)
-		})
-		.expect("query");
+		.with(factorai_lib::commands::projects::list_projects_in)
+		.expect("list")
+		.into_iter()
+		.map(|p| p.display_name)
+		.collect();
 
 	// The stale-but-pinned project wins over the freshly-used one.
-	assert_eq!(ordered, vec!["-old".to_string(), "-new".to_string()]);
+	assert_eq!(ordered, vec!["old".to_string(), "new".to_string()]);
 }
 
 /// `/rename` writes a `custom-title` line; that name is the user's own choice
@@ -322,25 +344,27 @@ fn pinned_projects_sort_ahead_of_more_recent_ones() {
 #[test]
 fn a_renamed_session_keeps_the_name_the_user_chose() {
 	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
 	let claude_dir = tmp.path().join(".claude");
-	let project_dir = claude_dir.join("projects").join("-code-foo");
-	std::fs::create_dir_all(&project_dir).unwrap();
+	let cwd = make_folder(tmp.path(), "renamed");
+	let project_dir = store_dir(&claude_dir, &cwd);
 	let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+	let cwd_str = cwd.to_string_lossy();
 
 	write_session(
 		&project_dir,
 		session_id,
 		&[
-			r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/code/foo","message":{"role":"user","content":"first thing I said"}}"#,
+			&format!(r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"first thing I said"}}}}"#),
 			// Claude names it, then the user renames it, then Claude renames it
 			// again — which happens, and must not win.
 			&format!(r#"{{"type":"ai-title","aiTitle":"Some generated name","sessionId":"{session_id}"}}"#),
-            &format!(r#"{{"type":"custom-title","customTitle":"Deploy storybook in staging","sessionId":"{session_id}"}}"#),
+			&format!(r#"{{"type":"custom-title","customTitle":"Deploy storybook in staging","sessionId":"{session_id}"}}"#),
 			&format!(r#"{{"type":"ai-title","aiTitle":"A later generated name","sessionId":"{session_id}"}}"#),
 		],
 	);
+	add_project_in(&db, cwd.to_str().unwrap()).expect("add");
 
-	let db = open_db(tmp.path());
 	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
 	indexer.full_scan().expect("scan");
 
@@ -360,22 +384,24 @@ fn a_renamed_session_keeps_the_name_the_user_chose() {
 #[test]
 fn the_latest_rename_is_the_one_that_shows() {
 	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
 	let claude_dir = tmp.path().join(".claude");
-	let project_dir = claude_dir.join("projects").join("-code-foo");
-	std::fs::create_dir_all(&project_dir).unwrap();
+	let cwd = make_folder(tmp.path(), "twice");
+	let project_dir = store_dir(&claude_dir, &cwd);
 	let session_id = "11112222-3333-4444-5555-666677778888";
+	let cwd_str = cwd.to_string_lossy();
 
 	write_session(
 		&project_dir,
 		session_id,
 		&[
-			r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/code/foo","message":{"role":"user","content":"hello"}}"#,
+			&format!(r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"hello"}}}}"#),
 			&format!(r#"{{"type":"custom-title","customTitle":"First name","sessionId":"{session_id}"}}"#),
 			&format!(r#"{{"type":"custom-title","customTitle":"Second name","sessionId":"{session_id}"}}"#),
 		],
 	);
+	add_project_in(&db, cwd.to_str().unwrap()).expect("add");
 
-	let db = open_db(tmp.path());
 	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
 	indexer.full_scan().expect("scan");
 
@@ -395,21 +421,23 @@ fn the_latest_rename_is_the_one_that_shows() {
 #[test]
 fn an_empty_custom_title_falls_back_instead_of_blanking_the_row() {
 	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
 	let claude_dir = tmp.path().join(".claude");
-	let project_dir = claude_dir.join("projects").join("-code-foo");
-	std::fs::create_dir_all(&project_dir).unwrap();
+	let cwd = make_folder(tmp.path(), "blank");
+	let project_dir = store_dir(&claude_dir, &cwd);
 	let session_id = "99998888-7777-6666-5555-444433332222";
+	let cwd_str = cwd.to_string_lossy();
 
 	write_session(
 		&project_dir,
 		session_id,
 		&[
-			r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/code/foo","message":{"role":"user","content":"what I actually asked"}}"#,
+			&format!(r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"what I actually asked"}}}}"#),
 			&format!(r#"{{"type":"custom-title","customTitle":"   ","sessionId":"{session_id}"}}"#),
 		],
 	);
+	add_project_in(&db, cwd.to_str().unwrap()).expect("add");
 
-	let db = open_db(tmp.path());
 	let (indexer, _changes) = make_indexer(db.clone(), claude_dir);
 	indexer.full_scan().expect("scan");
 

@@ -32,8 +32,18 @@ pub fn build_match(query: &str) -> Option<String> {
 	}
 }
 
-/// Run a full-text search. `project_id` optionally restricts to one project.
-/// `limit` is clamped to `[1, MAX_HITS]`.
+/// Run a full-text search across the workspace. `project_id` optionally
+/// restricts to one project. `limit` is clamped to `[1, MAX_HITS]`.
+///
+/// The project a hit belongs to is resolved through `sessions` →
+/// `discovered_projects` rather than stored on the FTS row. A workspace id is
+/// not stable across a remove and a re-add, and an index full of ids that no
+/// longer resolve is worse than one indexed join.
+///
+/// The join is inner, which is also what scopes the search: a session whose
+/// directory has no `project_id` isn't in the workspace, and its rows never
+/// reach a result. Indexing is gated the same way, so in practice there are no
+/// such rows — the join is the belt to that braces.
 pub fn search(
 	conn: &Connection,
 	query: &str,
@@ -45,15 +55,16 @@ pub fn search(
 	};
 	let limit = limit.clamp(1, MAX_HITS) as i64;
 
-	// Column 3 of messages_fts is `body` → snippet target. bm25() ascending
+	// Column 2 of messages_fts is `body` → snippet target. bm25() ascending
 	// puts the best matches first. The FTS table is named in full (not
 	// aliased) so the bm25()/snippet() auxiliary functions resolve cleanly.
-	let select = "SELECT messages_fts.session_id, messages_fts.project_id, \
+	let select = "SELECT messages_fts.session_id, discovered_projects.project_id, \
 		COALESCE(sessions.title, ''), messages_fts.role, \
-		snippet(messages_fts, 3, '', '', '…', 16) \
+		snippet(messages_fts, 2, '', '', '…', 16) \
 		FROM messages_fts \
-		LEFT JOIN sessions ON sessions.id = messages_fts.session_id \
-		WHERE messages_fts MATCH ?1";
+		JOIN sessions ON sessions.id = messages_fts.session_id \
+		JOIN discovered_projects ON discovered_projects.id = sessions.discovered_id \
+		WHERE messages_fts MATCH ?1 AND discovered_projects.project_id IS NOT NULL";
 
 	let map = |row: &rusqlite::Row<'_>| {
 		Ok(SearchHit {
@@ -69,7 +80,7 @@ pub fn search(
 	match project_id {
 		Some(pid) => {
 			let sql = format!(
-				"{select} AND messages_fts.project_id = ?2 ORDER BY bm25(messages_fts) LIMIT ?3"
+				"{select} AND discovered_projects.project_id = ?2 ORDER BY bm25(messages_fts) LIMIT ?3"
 			);
 			let mut stmt = conn.prepare(&sql)?;
 			let rows = stmt.query_map(params![match_expr, pid, limit], map)?;
@@ -93,31 +104,34 @@ pub fn search(
 mod tests {
 	use super::*;
 
+	/// Three sessions: two in workspace project `p1`, one in `p2`, and one in a
+	/// directory nobody has added — `d3` has no `project_id`, which is what the
+	/// scoping test needs.
 	fn setup() -> Connection {
 		let conn = Connection::open_in_memory().unwrap();
 		conn.execute_batch(
-			"CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT);
+			"CREATE TABLE discovered_projects (id INTEGER PRIMARY KEY, project_id TEXT);
+			 CREATE TABLE sessions (id TEXT PRIMARY KEY, discovered_id INTEGER, title TEXT);
 			 CREATE VIRTUAL TABLE messages_fts USING fts5(
-				session_id UNINDEXED, project_id UNINDEXED, role, body,
-				tokenize = 'porter unicode61');",
+				session_id UNINDEXED, role, body,
+				tokenize = 'porter unicode61');
+			 INSERT INTO discovered_projects(id, project_id) VALUES(1,'p1'),(2,'p2'),(3,NULL);
+			 INSERT INTO sessions(id, discovered_id, title)
+			   VALUES('s1', 1, 'Refactor the indexer'),
+			         ('s2', 2, NULL),
+			         ('s3', 3, 'Never added');",
 		)
 		.unwrap();
-		conn.execute(
-			"INSERT INTO sessions(id, title) VALUES('s1', 'Refactor the indexer')",
-			[],
-		)
-		.unwrap();
-		conn.execute("INSERT INTO sessions(id, title) VALUES('s2', NULL)", [])
-			.unwrap();
 		let rows = [
-			("s1", "p1", "user", "please refactor the sqlite indexer for speed"),
-			("s1", "p1", "assistant", "I rewrote the indexer to batch inserts"),
-			("s2", "p2", "user", "how does the terminal pty work on linux"),
+			("s1", "user", "please refactor the sqlite indexer for speed"),
+			("s1", "assistant", "I rewrote the indexer to batch inserts"),
+			("s2", "user", "how does the terminal pty work on linux"),
+			("s3", "user", "an indexer conversation in a folder nobody added"),
 		];
-		for (sid, pid, role, body) in rows {
+		for (sid, role, body) in rows {
 			conn.execute(
-				"INSERT INTO messages_fts(session_id, project_id, role, body) VALUES(?1,?2,?3,?4)",
-				params![sid, pid, role, body],
+				"INSERT INTO messages_fts(session_id, role, body) VALUES(?1,?2,?3)",
+				params![sid, role, body],
 			)
 			.unwrap();
 		}
@@ -138,10 +152,23 @@ mod tests {
 	fn finds_matches_and_joins_title() {
 		let conn = setup();
 		let hits = search(&conn, "indexer", None, 50).unwrap();
-		assert_eq!(hits.len(), 2, "two messages mention 'indexer'");
+		assert_eq!(hits.len(), 2, "two messages mention 'indexer' inside the workspace");
 		assert!(hits.iter().all(|h| h.session_id == "s1"));
 		assert!(hits.iter().all(|h| h.title == "Refactor the indexer"));
+		assert!(hits.iter().all(|h| h.project_id == "p1"));
 		assert!(hits.iter().any(|h| h.snippet.contains("indexer")));
+	}
+
+	#[test]
+	fn a_session_outside_the_workspace_is_never_a_hit() {
+		let conn = setup();
+		// s3 says "indexer" too, in a directory with no project_id. Search is
+		// scoped to folders you added, so it must not surface.
+		let hits = search(&conn, "indexer", None, 50).unwrap();
+		assert!(
+			hits.iter().all(|h| h.session_id != "s3"),
+			"an unadded folder's sessions are unreachable from search"
+		);
 	}
 
 	#[test]

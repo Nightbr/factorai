@@ -70,10 +70,22 @@ export async function installMockBridge(page: Page, fixture: TestFixture): Promi
 	}, fixture);
 }
 
+/**
+ * Project ids the specs route by.
+ *
+ * Exported rather than spelled out at each call site: since ADR-0011 an id is a
+ * uuid the backend mints, so a spec cannot derive one from a path any more —
+ * and the ones that tried were the ones that broke when identity changed.
+ * Uuid-shaped on purpose, so a fixture never teaches the old model.
+ */
+export const FOO_ID = 'p0000001-0000-4000-8000-000000000001';
+export const ZULU_ID = 'p0000002-0000-4000-8000-000000000002';
+export const ALPHA_ID = 'p0000003-0000-4000-8000-000000000003';
+
 /** Small fixture factory for the common "one project, one session" shape. */
 export function fixtureOneProjectOneSession(): TestFixture {
 	const project: Project = {
-		id: '-home-alice-code-foo',
+		id: FOO_ID,
 		realPath: '/home/alice/code/foo',
 		displayName: 'foo',
 		lastSessionAt: Date.now() - 60_000,
@@ -237,9 +249,10 @@ export function fixtureWithFileTree(): TestFixture {
 /**
  * A project whose folder has been deleted since it was indexed (F1 + F6).
  *
- * Note `realPath` is still set — that is the whole distinction. `null` means we
- * never learned where the project is; `missing` means we know exactly where it
- * was and it isn't there. Only the second one can be reported usefully.
+ * `realPath` is still set — a project is a folder, so it always has one. What
+ * `missing` adds is that we know exactly where it was and it isn't there: the
+ * row stays openable, since every transcript survives, and only *starting* a
+ * session is impossible.
  */
 export function fixtureMissingProject(): TestFixture {
 	const base = fixtureOneProjectOneSession();
@@ -330,7 +343,7 @@ export function fixtureWithChanges(): TestFixture {
  */
 export function fixtureTwoProjectsManySessions(): TestFixture {
 	const zulu: Project = {
-		id: '-home-alice-code-zulu',
+		id: ZULU_ID,
 		realPath: '/home/alice/code/zulu',
 		displayName: 'zulu',
 		lastSessionAt: Date.now() - 1_000,
@@ -339,7 +352,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		missing: false,
 	};
 	const alpha: Project = {
-		id: '-home-alice-code-alpha',
+		id: ALPHA_ID,
 		realPath: '/home/alice/code/alpha',
 		displayName: 'alpha',
 		lastSessionAt: Date.now() - 90_000,

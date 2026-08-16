@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
+import { ZULU_ID, fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
 
 /**
  * Header tabs for live sessions (specs/05-features.md F16).
@@ -87,7 +87,7 @@ test.describe('session tabs', () => {
 		expect(calls.some((c) => c.name === 'terminal_kill')).toBe(true);
 		// Tab gone, and you land back on the project rather than a dead pane.
 		await expect(page.getByTestId('session-tabs')).toHaveCount(0);
-		await expect(page).toHaveURL(/projects\/-home-alice-code-zulu$/);
+		await expect(page).toHaveURL(new RegExp(`projects/${ZULU_ID}$`));
 	});
 
 	test('@smoke keeping it running closes the dialog and changes nothing', async ({ page }) => {

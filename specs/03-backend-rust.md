@@ -7,13 +7,17 @@ lib.rs                # tauri::Builder, plugins, command registry, state init
 main.rs               # calls lib::run()
 commands/
   mod.rs
-  projects.rs         # list_projects, add_project, resolve_project_path, pin_project
+  projects.rs         # list_projects, add_project, remove_project,
+                      #   list_import_candidates, resolve_project_path, pin_project
   sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, list_dir
   git.rs              # git_status, git_blob
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
   settings.rs         # get_setting, set_setting
+agents/
+  mod.rs              # Discovered, display_name_for_path — the store-agnostic bits
+  claude.rs           # Claude's directory encoding, transcript paths, discovery
 services/
   mod.rs
   indexer.rs          # IndexerService — scan + watch + FTS upsert
@@ -23,7 +27,6 @@ services/
   search.rs           # FTS query builder + result hydration
   files.rs            # list_dir, read_file, read_image
   child_env.rs        # strip the AppImage runtime out of a child's env
-  path_encoding.rs    # Claude's ~/.claude/projects/ directory encoding
   git.rs              # repository status + blob reads (ADR-0009)
 db/
   mod.rs              # open(), migrate(), Pool wrapper
@@ -46,18 +49,29 @@ with `serde::Serialize` so it crosses the bridge cleanly.
 
 ```rust
 // projects
+// The workspace: folders you added (F1, ADR-0011). Never anything the scan
+// merely found. Aggregates session_count / last_session_at per query.
 list_projects() -> Vec<Project>
-// Adds a folder Claude may never have run in (F1). Canonicalizes, then keys the
-// row by Claude's own directory encoding, so a later scan of the sessions that
-// appear there upserts onto this row instead of making a second one. Idempotent.
+// Adds a folder Claude may never have run in. Canonicalizes, keys it by that
+// canonical path (UNIQUE), mints a uuid, and kicks off an index of the folder —
+// nothing outside the workspace is parsed. Idempotent by path.
 add_project(path: String) -> Project
+// Drops the folder from the workspace and purges its rows from the index.
+// Touches nothing under ~/.claude; re-adding rebuilds from the transcripts.
+remove_project(id: String) -> ()
+// Folders an agent has worked in, read straight from the store — the index only
+// covers the workspace, and the point is to show what isn't in it.
+list_import_candidates() -> Vec<ImportCandidate>
 resolve_project_path(id: String) -> Option<String>
 pin_project(id: String, pinned: bool) -> ()
 
 // sessions
+// Joins through discovered_projects: a project's sessions are those of every
+// agent directory linked to its folder.
 list_sessions(project_id: String) -> Vec<SessionSummary>
 get_session(session_id: String, offset: usize, limit: usize) -> SessionPage
 get_session_tail(session_id: String, limit: usize) -> SessionPage
+// Scoped to the workspace — see F4. Nothing outside it was ever indexed.
 search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<SearchHit>
 // NOTE: fork_session was specced but cut from the MVP (see 05-features.md F6).
 // SearchHit = { sessionId, projectId, title, role, snippet } — no event_index,
@@ -230,9 +244,15 @@ is no `resume_session_id` and no mode flag: the caller supplies the id, and
 
 Probing per spawn (rather than remembering how a session started) is what
 makes Restart correct for a session that was created new and has since been
-messaged. `project_id` is already the encoded directory name, so locating the
-transcript is a join — never a re-encode of `cwd`, which is ambiguous when a
-path contains a literal `-`.
+messaged.
+
+The transcript is located from the **folder**, via
+`agents::claude::transcript_path(claude_dir, cwd, session_id)`. It used to be a
+join on `project_id`, back when that was the encoded directory name; a project
+id is a uuid now and says nothing about where Claude writes. The folder is
+exactly what Claude encodes, and it is the only thing we have for a project
+Claude has never run in — which is precisely the case that needs
+`--session-id`.
 
 **`start_session(project_id)` returns the id to route to.** A fresh v4 UUID,
 unless the project already has a live session with no transcript — one that
