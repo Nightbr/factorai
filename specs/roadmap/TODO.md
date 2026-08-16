@@ -737,7 +737,7 @@ behaviour, so Claude or Advanced, not Appearance). Unlike item 20's keep-awake, 
 **renderer-only** — no `get_setting`/`set_setting`, just `prefsStore` — which makes item 4 the
 route dependency and nothing more.
 
-Four things to get right when it lands:
+What to get right when it lands:
 
 - **It does not contradict § 1**, and the entry should say why rather than leave the next reader
   to wonder. "Every irreversible action keeps its confirmation" binds *the app* — it forbids
