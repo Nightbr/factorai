@@ -590,8 +590,11 @@ project it shows follows the route (`/projects/$id` or
   as it does today.
 - Row: chevron for directories, language icon for files (ADR-0006), name,
   and a link glyph on symlinks. Single click selects; a directory also
-  toggles. Double-click or `Enter` on a file opens it in the OS default
-  app via `plugin-shell`'s `open` (`shell:allow-open` is already granted).
+  toggles. Single click on a file **opens the viewer** (F7) — not the OS
+  default app: "Open in default app" lives in the viewer's header instead,
+  via `plugin-shell`'s `open` (`shell:allow-open` is already granted),
+  because the first click of a double-click has already opened the modal
+  and the second lands on its overlay.
 - Root row is the project's display name, expanded the first time the tree
   is shown for that project. Collapse-all collapses the root too, and
   isn't undone on the next render.
