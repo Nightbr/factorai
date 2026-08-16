@@ -875,36 +875,10 @@ So the first decision is boundaries, not content:
 - It is the natural home for the numbers item 23 produces, which is an argument for doing 23
   first and letting the file start from something concrete rather than from principles.
 
-## 26. The indexer never reaps a session whose transcript is gone
+## 26. Indexer reap pass — shipped 2026-08-16 (see [`DONE.md`](./DONE.md))
 
-**Found during the item 25 QA pass, 2026-08-16, on the real database.** Pre-existing, not caused
-by that change — it is visible now only because the QA pass counted files against rows.
-
-`sessions` had **147 rows against 80 `.jsonl` files on disk.** Every surviving transcript is keyed
-correctly (zero mis-keyed, checked), so this is not a lookup bug: 67 transcripts have simply been
-deleted from `~/.claude/projects/` at some point and the index still lists them.
-
-`index_session_if_changed` only ever upserts. Nothing walks the other way — "rows whose file is no
-longer there" — so a deleted transcript lives in the index forever.
-
-**What it looks like from the outside**, which is worse than a stale count: a search hit for one of
-those sessions opens fine (the row has a title), and clicking through to it spawns
-`claude --session-id <id>` rather than `--resume`. That is exactly what ADR-0008 specifies — the
-filesystem is the authority, and there is no transcript — but the effect is that you click a
-1721-turn conversation and land in an empty new session wearing its title.
-
-**The fix is a reap pass, not a probe per read.** During `index_dir`, the set of `.jsonl` files in
-the directory is already in hand; anything in `sessions` for that `discovered_id` and not in that
-set is gone. Delete the row and its `messages_fts` rows in the same transaction.
-
-- Scope it to directories the scan actually visited. A directory that failed to `read_dir` must
-  not be read as "every session in it is deleted" — an unreadable directory and an empty one are
-  different, and only one of them should delete anything.
-- Same for a store that has vanished entirely (Claude uninstalled, `CLAUDE_HOME` pointed
-  elsewhere): the scan should skip, not empty the index.
-- Decide whether a reaped session that is **currently live** is exempt. It has no transcript until
-  its first message (ADR-0008), so a reap during that window would delete the row for a running
-  session. The narrow rule: skip ids present in `TerminalManager`.
+The lifecycle in `02-data-model.md` § "Indexer lifecycle" is now the description of it, including
+the three things the reap must not do.
 
 ## 27. The window's bottom corners on Linux are still not pixel-clean
 

@@ -3,6 +3,30 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The indexer reaps sessions whose transcript is gone** — 2026-08-16, TODO item 26. The index
+  was upsert-only, so a deleted `.jsonl` stayed in it forever: **147 rows against 80 files** on the
+  machine this was found on. The stale count was the harmless half — the row kept its title, so a
+  search hit opened it, found no transcript, and spawned `claude --session-id` rather than
+  `--resume` (ADR-0008, working as specified), landing you in an empty session wearing a 1721-turn
+  conversation's name.
+
+  `index_dir` already holds the directory listing, so the reap is a set difference rather than a
+  `stat` per row. Three guards, each a test: an unreadable directory reaps nothing (the early
+  return on `read_dir` failure was already there and now carries the reason), the delete is scoped
+  to one `discovered_id`, and a session with a live PTY keeps its row.
+
+  **Sub-agent rows are the trap.** They carry the *parent directory's* `discovered_id`, so a reap
+  built from top-level ids alone deletes every agent transcript on its first run. The on-disk set
+  is assembled from both walks, and the test asserts survival across two scans before it asserts
+  deletion.
+
+  **The live-session exemption is narrower than it looks.** The ADR-0008 window — a session
+  spawned but not yet messaged — needs no exemption at all, because rows only ever come from
+  transcripts and there is no row yet. What it actually guards is a transcript deleted out from
+  under a running session. `TerminalManager::live_session_ids()` reaches the indexer as an
+  injected callback, the same way its emit callbacks do, so the tests still build one without a
+  Tauri runtime.
+
 - **Two window fixes, and a corner that stays square on Linux** — 2026-08-16, shipped in v0.7.0.
   A long filename in the Changes tab used to set a min-content width the 288px panel couldn't
   meet, so the whole list scrolled sideways and every row's name went off the left edge; both

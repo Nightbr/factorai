@@ -8,6 +8,7 @@
 //! Kill-on-quit (ADR-0005) is wired through `kill_all()`, which is also
 //! invoked from `Drop` as a last-ditch backstop.
 
+use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -172,6 +173,13 @@ impl TerminalManager {
 
 	pub fn live_count(&self) -> usize {
 		self.terminals.len()
+	}
+
+	/// The session ids with a PTY behind them right now. The indexer's reap
+	/// pass takes this so it never drops the row of a session you are watching,
+	/// whatever happened to its transcript on disk.
+	pub fn live_session_ids(&self) -> HashSet<String> {
+		self.terminals.iter().map(|e| e.value().session_id.clone()).collect()
 	}
 
 	pub fn list(&self) -> Vec<TerminalStatusDto> {
