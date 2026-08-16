@@ -35,7 +35,8 @@ toolchain wired up.
 **Deliverables.**
 - SQLite open + migrations (`0001_init.sql`, `0002_fts.sql`).
 - IndexerService full scan + watcher.
-- Commands: `list_projects`, `list_sessions`, `get_session`,
+- Commands: `list_projects`, `list_sessions`, `get_session` (removed
+  2026-08-16 with the viewer it served — see 05-features.md F3),
   `resolve_project_path`.
 - Sidebar with projects + sessions, project view, session view (JSONL
   rendered, no terminal half yet — viewer takes the whole main pane).

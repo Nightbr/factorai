@@ -302,10 +302,17 @@ v1 event viewer:
 > search results (F4), which show short `snippet()` excerpts, and the
 > sub-agent transcript view — both cheap to render and bounded.
 
-**Backend.** `get_session(session_id, offset, limit)` and
-`get_session_tail` — the latter is what the sub-agent transcript view
-reads. Both resolve a sub-agent's transcript path through its
-`subagent_of` parent.
+**Backend.** `get_session_tail(session_id, limit)`, and nothing else — it is
+what the sub-agent transcript view reads, and it resolves a sub-agent's
+transcript path through its `subagent_of` parent.
+
+There was an offset-paged `get_session` beside it, kept "available for future
+use" after the viewer went. It was never called again and was **deleted on
+2026-08-16** (roadmap item 9). Said plainly so it isn't re-added by reflex: a
+command that reads a transcript by offset is the shape of the viewer the
+history note above says not to rebuild. If a search-hit context preview ever
+wants a bounded window around a hit, that is a new command with a hit position
+in its signature, not this one restored.
 
 **Edge cases.**
 - Malformed line in JSONL → skip and log during indexing; never fatal.

@@ -12,8 +12,8 @@ import { useState } from 'react';
  * but never resumed: `claude --resume` looks for a top-level transcript under
  * the project directory, and an agent id has none — resuming would spawn a
  * *new* claude under the agent's id. So the session view swaps the terminal
- * for this paged, stateless rendering of the same `get_session` data search
- * already reads.
+ * for this paged, stateless rendering of the transcript, read through
+ * `get_session_tail`.
  *
  * Plain rows, no per-event components: the v1 JSONL event viewer was removed
  * for freezing WebKitGTK under 100+ stateful components (specs/05-features.md

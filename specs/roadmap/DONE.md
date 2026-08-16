@@ -3,6 +3,18 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **`get_session` deleted; `get_session_tail` kept** — 2026-08-16, TODO item 9. The item asked
+  for one decision about two commands, and the two had already parted company: the sub-agent
+  transcript view wired `get_session_tail` while it sat unread, so only the offset-paged
+  `get_session` was still dead — registered, wrapped in `lib/tauri.ts`, mocked, and called by
+  nothing.
+
+  Deleted rather than kept available. "Available for future use" is what it had been for months,
+  and the named use — a search-hit context preview — needs a hit position in its signature, so it
+  would be a new command rather than this one restored. F3 says that out loud, because a command
+  that reads a transcript by offset is the shape of the JSONL viewer removed in `c6374d6` and the
+  reflex to re-add it is exactly what the note is for.
+
 - **The indexer reaps sessions whose transcript is gone** — 2026-08-16, TODO item 26. The index
   was upsert-only, so a deleted `.jsonl` stayed in it forever: **147 rows against 80 files** on the
   machine this was found on. The stale count was the harmless half — the row kept its title, so a
