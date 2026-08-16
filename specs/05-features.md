@@ -762,6 +762,38 @@ project it shows follows the route (`/projects/$id` or
   via `plugin-shell`'s `open` (`shell:allow-open` is already granted),
   because the first click of a double-click has already opened the modal
   and the second lands on its overlay.
+- **Right-click opens a menu on the row** (`FileRowMenu`), which is how the
+  row can have no hover actions and still let you do more than open a file —
+  at 288px a permanent control is a permanent accident. Right-clicking also
+  **selects** the row: `panelStore` holds one `selectedPath` and there is no
+  multi-select, so the row being acted on has to be the one you can see. Five
+  rows, in order:
+  - **Open** — the viewer, same as a click. Disabled on a directory.
+  - **Open in default app** — `openExternally`. Enabled on a directory, where
+    it hands the folder to the file manager.
+  - **Copy contents** — the file as text. Disabled, *with the reason in the
+    label*, for a directory, a binary, or a file `read_file` returned
+    truncated: half a file on the clipboard that looks like a whole one is
+    worse than no row at all. The read happens when the menu opens, through
+    the viewer's own cache entry, so the disabled state is the truth rather
+    than a guess. An image copies as an image (`copyImageFile`), reaching the
+    same clipboard bridge the viewer's Copy-image button uses.
+  - **Copy absolute path** — `entry.path` verbatim, no `~` collapsing: a path
+    you copy is a path you paste into a shell.
+  - **Copy relative path** — against the project root, POSIX separators, no
+    leading `./`. The root row itself is `.`.
+
+  A copy is acknowledged by a **transient tick on the row** (a cross if the
+  clipboard refused), the pattern the viewer's copy-path button already uses.
+  The menu has closed by then, so it cannot say so itself, and there is still
+  no toast (roadmap item 7).
+- **The WebView's own context menu is suppressed on app chrome**
+  (`useNativeContextMenu`), because it is a browser's: measured on WebKitGTK
+  2.52.3, right-clicking the panel or the sidebar draws `Back · Forward ·
+  Stop · Reload · Inspect Element`. `Reload` there drops every pooled xterm.
+  Two exceptions keep it: **the terminal**, where the native menu is a live
+  `Cut · Copy · Paste` and pasting into the prompt is the only mouse-driven
+  paste a session has (F5), and **text fields**. macOS is unverified.
 - Root row is the project's display name, expanded the first time the tree
   is shown for that project. Collapse-all collapses the root too, and
   isn't undone on the next render.

@@ -4,6 +4,7 @@ import { QuitConfirm } from '@components/dialog/QuitConfirm';
 import { AppShell } from '@components/layout/AppShell';
 import { FileViewerModal } from '@components/viewer/FileViewerModal';
 import { type DiffMode, isDiffMode, useFileViewer } from '@hooks/useFileViewer';
+import { useNativeContextMenu } from '@hooks/useNativeContextMenu';
 import { events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { useTerminalStore } from '@store/terminalStore';
@@ -11,6 +12,9 @@ import { useTerminalStore } from '@store/terminalStore';
 function RootLayout() {
 	const setProgress = useIndexerStore((s) => s.setProgress);
 	const viewer = useFileViewer();
+
+	// The WebView's own menu is a browser's, and this is not a browser.
+	useNativeContextMenu();
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;

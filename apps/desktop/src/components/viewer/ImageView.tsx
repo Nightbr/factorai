@@ -2,7 +2,7 @@ import { BinaryCard, Centered, errorText } from '@components/viewer/chrome';
 import { IconButton } from '@factorai/ui';
 import { formatBytes } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
-import { cmd, copyImageToClipboard } from '@lib/tauri';
+import { cmd, copyImageElement } from '@lib/tauri';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, Minus, Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
@@ -90,23 +90,16 @@ export function ImageView({ path }: { path: string }) {
 	}, []);
 
 	/**
-	 * Copy via a canvas, which decodes whatever format this is into the RGBA
-	 * the clipboard bridge wants — so jpeg, gif and webp behave exactly like
-	 * png, and nothing has to decode images in Rust. Animation is lost, which a
-	 * still copy loses anyway.
+	 * The image on screen is already decoded, so this copies straight off the
+	 * element. `copyImageElement` owns the canvas that turns it into the RGBA
+	 * the clipboard bridge wants; the file tree's menu reaches the same helper
+	 * from the other end (`copyImageFile`), where there is no element to copy.
 	 */
 	async function copyImage() {
 		const img = imgRef.current;
 		if (!img) return;
 		try {
-			const canvas = document.createElement('canvas');
-			canvas.width = img.naturalWidth;
-			canvas.height = img.naturalHeight;
-			const ctx = canvas.getContext('2d');
-			if (!ctx) throw new Error('no 2d context');
-			ctx.drawImage(img, 0, 0);
-			const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-			await copyImageToClipboard(new Uint8Array(data), canvas.width, canvas.height);
+			await copyImageElement(img);
 			setCopied('yes');
 		} catch {
 			// Say so rather than showing a tick for something that didn't happen:

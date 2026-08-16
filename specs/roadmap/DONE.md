@@ -3,6 +3,38 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The file tree's rows have a right-click menu** — 2026-08-16, TODO item 3. Open · Open in
+  default app · Copy contents · Copy absolute path · Copy relative path, on
+  `@radix-ui/react-context-menu` through the `ContextMenu` primitive item 25 left behind. F12 keeps
+  its "no hover actions" rule and gains the actions anyway. `Select for the agent` stayed deferred
+  to item 19, as the entry said it should.
+
+  **The native menu needed the check the entry demanded, and it was not a formality.** Measured on
+  WebKitGTK 2.52.3, right-clicking anywhere the app doesn't draw its own menu produces the
+  *browser's*: `Back · Forward · Stop · Reload · Inspect Element`. `Reload` in a Tauri window
+  drops every pooled xterm. So `useNativeContextMenu` suppresses it — but **not everywhere**,
+  because the same check found the terminal's menu is a live `Cut · Copy · Paste` that pastes into
+  the prompt, and F5's copy/search toolbar was never built, so that is the only mouse-driven paste
+  a session has. Suppressing globally would have removed a capability under cover of a cosmetic
+  fix. Chrome loses its menu; the terminal and text fields keep theirs.
+
+  **`isBinary` / `truncated` decide whether the row is offered, not what it does.** The read
+  happens when the menu opens, through the viewer's own cache entry (same key, same cap), so
+  right-clicking a file you already opened costs nothing — and a disabled row carries its reason
+  in its label (`Copy contents (binary)`), since there is no toast to explain it in.
+
+  **The two image-copy paths converge.** `copyImageElement` took the canvas dance out of
+  `ImageView`; the viewer feeds it the `<img>` already on screen, the tree feeds it one decoded
+  from `read_image`.
+
+  A copy is acknowledged by a transient tick on the row — the menu has closed by then, so it
+  cannot say so itself. Verified in the real app: the menu draws, the row selects, and
+  `Copy relative path` put `AGENTS.md` on the X clipboard.
+
+  **One test-shaped finding worth remembering:** an open Radix menu is modal and `aria-hidden`s
+  the rest of the page, so `getByRole` cannot see the row underneath it. Assert selection after
+  the menu closes.
+
 - **The session header asks before it kills** — 2026-08-16, TODO item 22's unblocked half. The
   header's labelled `Stop` (a `Square` icon, `outline` Button) was the one place in the app where
   one click ended a running agent with no undo and no question — against `00-overview.md` §
