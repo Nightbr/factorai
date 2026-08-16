@@ -129,8 +129,11 @@ export async function openExternally(path: string): Promise<void> {
  *
  * Throws on failure, so the button can say so instead of showing a tick for
  * something that didn't happen.
+ *
+ * Not exported: `copyImageElement` and `copyImageFile` below are the two doors
+ * onto it, and both own the decoding this expects to have been done already.
  */
-export async function copyImageToClipboard(
+async function copyImageToClipboard(
 	rgba: Uint8Array,
 	width: number,
 	height: number,
@@ -151,6 +154,42 @@ export async function copyImageToClipboard(
 		import('@tauri-apps/api/image'),
 	]);
 	await writeImage(await Image.new(rgba, width, height));
+}
+
+/**
+ * Copy a decoded `<img>` to the clipboard through the canvas that turns it into
+ * RGBA. The canvas is what makes jpeg, gif and webp behave exactly like png,
+ * and it is why nothing has to decode images in Rust. Animation is lost, which
+ * a still copy loses anyway.
+ *
+ * Throws on failure, so callers can say so rather than showing a tick for
+ * something that didn't happen.
+ */
+export async function copyImageElement(img: HTMLImageElement): Promise<void> {
+	const canvas = document.createElement('canvas');
+	canvas.width = img.naturalWidth;
+	canvas.height = img.naturalHeight;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) throw new Error('no 2d context');
+	ctx.drawImage(img, 0, 0);
+	const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	await copyImageToClipboard(new Uint8Array(data), canvas.width, canvas.height);
+}
+
+/**
+ * Copy an image *file* to the clipboard, for the file tree's context menu
+ * (F12) — where there is no `<img>` on screen to copy from, unlike the viewer.
+ *
+ * Reads through `read_image` (base64 + a mime sniffed from the magic bytes,
+ * F7) and decodes it in a detached element, so the two copy paths converge on
+ * `copyImageElement` rather than growing a second canvas dance.
+ */
+export async function copyImageFile(path: string): Promise<void> {
+	const image = await cmd.readImage(path);
+	const img = new Image();
+	img.src = `data:${image.mime};base64,${image.base64}`;
+	await img.decode();
+	await copyImageElement(img);
 }
 
 /**

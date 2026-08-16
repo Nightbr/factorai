@@ -1,8 +1,10 @@
 import type { DirEntry } from '@factorai/types';
+import { ContextMenu, ContextMenuTrigger } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Link2 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Check, ChevronRight, Link2, X } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
+import { type CopyOutcome, FileRowMenu } from '@components/files/FileRowMenu';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { DECORATION_CLASSES, useGitDecorations } from '@hooks/useGitDecorations';
 import { cmd } from '@lib/tauri';
@@ -40,6 +42,17 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 	const { open: openViewer } = useFileViewer();
 	const decorations = useGitDecorations();
 	const decoration = decorations.get(entry.path);
+	const [menuOpen, setMenuOpen] = useState(false);
+	// The menu has closed by the time a copy resolves, so the acknowledgement
+	// belongs on the row that was acted on — the transient tick the viewer's
+	// copy-path button already uses. A toast would be the other answer and
+	// there still isn't one (roadmap item 7).
+	const [copied, setCopied] = useState<CopyOutcome | null>(null);
+
+	function reportCopy(outcome: CopyOutcome) {
+		setCopied(outcome);
+		setTimeout(() => setCopied(null), 1400);
+	}
 
 	// A symlink pointing out of the project is shown but not walked.
 	const canExpand = entry.isDir && !entry.symlinkOutsideRoot;
@@ -71,43 +84,66 @@ export function FileTreeNode({ entry, root, projectId, depth }: FileTreeNodeProp
 
 	return (
 		<li>
-			<button
-				type="button"
-				title={hint}
-				aria-expanded={canExpand ? expanded : undefined}
-				style={{ paddingLeft: depth * INDENT + 6 }}
-				className={`group flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-sm transition-colors ${
-					selected ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/50'
-				}`}
-				onClick={activate}
-			>
-				{entry.isDir ? (
-					<ChevronRight
-						className={`size-3.5 shrink-0 text-muted-foreground transition-all group-hover:text-primary ${
-							expanded ? 'rotate-90' : ''
-						} ${canExpand ? '' : 'opacity-30'}`}
-					/>
-				) : (
-					<FileIcon fileName={entry.name} />
-				)}
-				<span
-					className={`min-w-0 flex-1 truncate ${
-						decoration && !entry.isDir ? DECORATION_CLASSES[decoration] : ''
-					} ${entry.ignored ? 'opacity-45' : ''}`}
-				>
-					{entry.name}
-				</span>
-				{entry.isSymlink && <Link2 className="size-3 shrink-0 text-muted-foreground/60" />}
-				{/* A directory says "there is something in here" with a dot rather than
+			<ContextMenu onOpenChange={setMenuOpen}>
+				<ContextMenuTrigger asChild>
+					<button
+						type="button"
+						title={hint}
+						aria-expanded={canExpand ? expanded : undefined}
+						style={{ paddingLeft: depth * INDENT + 6 }}
+						className={`group flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-sm transition-colors ${
+							selected
+								? 'bg-secondary text-foreground'
+								: 'text-muted-foreground hover:bg-secondary/50'
+						}`}
+						onClick={activate}
+						// The menu acts on one row — `panelStore` has a single
+						// `selectedPath` and the tree has no multi-select — so the row it
+						// acts on has to be the one you can see it acting on.
+						onContextMenu={() => select(entry.path)}
+					>
+						{entry.isDir ? (
+							<ChevronRight
+								className={`size-3.5 shrink-0 text-muted-foreground transition-all group-hover:text-primary ${
+									expanded ? 'rotate-90' : ''
+								} ${canExpand ? '' : 'opacity-30'}`}
+							/>
+						) : (
+							<FileIcon fileName={entry.name} />
+						)}
+						<span
+							className={`min-w-0 flex-1 truncate ${
+								decoration && !entry.isDir ? DECORATION_CLASSES[decoration] : ''
+							} ${entry.ignored ? 'opacity-45' : ''}`}
+						>
+							{entry.name}
+						</span>
+						{entry.isSymlink && <Link2 className="size-3 shrink-0 text-muted-foreground/60" />}
+						{copied === 'yes' && (
+							<Check data-testid="row-copied" className="size-3.5 shrink-0 text-primary" />
+						)}
+						{copied === 'failed' && (
+							<X data-testid="row-copy-failed" className="size-3.5 shrink-0 text-destructive" />
+						)}
+						{/* A directory says "there is something in here" with a dot rather than
 				    a colour: at depth, a coloured folder name reads as a changed file. */}
-				{decoration && entry.isDir && (
-					<span
-						aria-hidden="true"
-						data-testid="git-dot"
-						className={`size-1.5 shrink-0 rounded-full bg-current ${DECORATION_CLASSES[decoration]}`}
-					/>
-				)}
-			</button>
+						{decoration && entry.isDir && (
+							<span
+								aria-hidden="true"
+								data-testid="git-dot"
+								className={`size-1.5 shrink-0 rounded-full bg-current ${DECORATION_CLASSES[decoration]}`}
+							/>
+						)}
+					</button>
+				</ContextMenuTrigger>
+				<FileRowMenu
+					entry={entry}
+					root={root}
+					onOpen={entry.isDir ? undefined : () => openViewer(entry.path)}
+					onCopied={reportCopy}
+					menuOpen={menuOpen}
+				/>
+			</ContextMenu>
 
 			{canExpand && expanded && (
 				<ul>
