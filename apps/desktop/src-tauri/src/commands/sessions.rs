@@ -49,23 +49,6 @@ pub fn list_sessions(state: State<'_, AppState>, project_id: String) -> AppResul
 	})
 }
 
-#[tauri::command]
-pub fn get_session(
-	state: State<'_, AppState>,
-	session_id: String,
-	offset: Option<usize>,
-	limit: Option<usize>,
-) -> AppResult<SessionPage> {
-	let offset = offset.unwrap_or(0);
-	let limit = limit.unwrap_or(100);
-
-	let (key, parent_id, total) = lookup_store_key_and_total(&state, &session_id)?;
-	let path = transcript_path(&state.claude_dir, &key, parent_id.as_deref(), &session_id);
-	let events: Vec<SessionEvent> = EventIter::open(&path)?.skip(offset).take(limit).collect();
-
-	Ok(SessionPage { id: session_id, events, offset, limit, total })
-}
-
 /// Read the **last** `limit` events from a session. Default 100. The
 /// returned page's `offset` is the position of the first returned event
 /// in the full sequence — handy for the frontend's "show earlier" paging.

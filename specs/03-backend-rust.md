@@ -71,11 +71,13 @@ pin_project(id: String, pinned: bool) -> ()
 // SessionSummary carries `subagentOf` — set for a sub-agent transcript
 // (`<session>/subagents/agent-*.jsonl`, see 02-data-model.md). list_sessions
 // nests those rows directly under their parent (groups ordered by the
-// parent's recency); get_session/get_session_tail resolve a sub-agent's
-// transcript through its parent's directory inside the same store directory.
+// parent's recency); get_session_tail resolves a sub-agent's transcript
+// through its parent's directory inside the same store directory.
 list_sessions(project_id: String) -> Vec<SessionSummary>
-get_session(session_id: String, offset: usize, limit: usize) -> SessionPage
 get_session_tail(session_id: String, limit: usize) -> SessionPage
+// An offset-paged `get_session` sat here until 2026-08-16. It outlived the
+// JSONL viewer it was written for and was never called again — deleted rather
+// than kept "available", see 05-features.md F3.
 // Scoped to the workspace — see F4. Nothing outside it was ever indexed.
 search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<SearchHit>
 // NOTE: fork_session was specced but cut from the MVP (see 05-features.md F6).

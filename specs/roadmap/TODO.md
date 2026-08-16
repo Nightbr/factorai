@@ -338,21 +338,11 @@ The last mile before the app is something a teammate installs rather than runs f
 **Exit criterion for M5** (`06-milestones.md`): a teammate installs the `.dmg` or `.AppImage` and uses
 factorai for an hour without hitting a flow-breaking bug.
 
-## 9. Retire or re-wire the dead session-read commands
+## 9. The dead session-read commands — settled 2026-08-16 (see [`DONE.md`](./DONE.md))
 
-`get_session` and `get_session_tail` survive from the JSONL viewer removed in `c6374d6` (F3).
-They are correct, tested, and called by nothing. `05-features.md` keeps them "available for
-future use (e.g. a search-hit context preview)".
-
-Pick one and act, because a command surface with dead entries in it drifts silently:
-
-- **Wire it** — F4 hits currently open a session's terminal with no context beyond the `snippet()`
-  excerpt; a bounded preview around the hit is the obvious use, and the tail-first paging the
-  viewer used is still the right shape for it.
-- **Or delete it** — and say so in F3, so nobody re-adds a viewer by accident.
-
-Note the cost of *not* deciding is nonzero: `pnpm deps:unused` (knip) has to keep being told
-these are intentional.
+Both halves resolved differently, which is why the entry could sit unread for so long:
+`get_session_tail` was **wired** by the sub-agent transcript view, and the offset-paged
+`get_session` was **deleted**. F3 now says so, so nobody re-adds it by reflex.
 
 ## 10. Interaction-level QA coverage
 

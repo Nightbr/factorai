@@ -60,8 +60,6 @@ export const cmd = {
 	listImportCandidates: () => invoke<ImportCandidate[]>('list_import_candidates'),
 	pinProject: (id: string, pinned: boolean) => invoke<void>('pin_project', { id, pinned }),
 	listSessions: (projectId: string) => invoke<SessionSummary[]>('list_sessions', { projectId }),
-	getSession: (sessionId: string, offset?: number, limit?: number) =>
-		invoke<SessionPage>('get_session', { sessionId, offset, limit }),
 	getSessionTail: (sessionId: string, limit?: number) =>
 		invoke<SessionPage>('get_session_tail', { sessionId, limit }),
 	searchSessions: (query: string, projectId?: string, limit?: number) =>
@@ -349,7 +347,6 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			const projectId = String(args?.projectId ?? '');
 			return (fx?.sessionsByProject?.[projectId] ?? []) as unknown as T;
 		}
-		case 'get_session':
 		case 'get_session_tail': {
 			const sessionId = String(args?.sessionId ?? '');
 			return (fx?.sessionPages?.[sessionId] ?? {

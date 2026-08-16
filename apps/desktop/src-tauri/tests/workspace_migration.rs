@@ -119,7 +119,7 @@ fn sessions_keep_their_transcripts_addressable() {
 
 	let db = Db::open(&data_dir).expect("migrate");
 
-	// The store key is what `get_session` joins the transcript path from. Losing
+	// The store key is what `get_session_tail` joins the transcript path from. Losing
 	// it would make every migrated session unreadable while still listed.
 	db.with(|conn| {
 		let key: String = conn
