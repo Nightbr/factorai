@@ -23,10 +23,13 @@ Added 2026-08-16: **item 3 is the file tree's right-click menu**, taking the slo
 2026-08-15 for exactly this — so nothing between 4 and 21 moved. Same caveat as item 1: the slot
 is where it landed, not a statement that it outranks M4's remainder.
 
-Also added 2026-08-16, appended as **items 22–25** because numbering here is append-only. Read
-**item 25 as the foundational one** despite sitting last: it redefines what a project is, and
-until it lands "close a project" cannot work and no agent other than Claude can be supported.
-22–24 are small (a confirm dialog, a button scale, a `DESIGN.md`).
+Also added 2026-08-16, appended as **items 22–25** because numbering here is append-only.
+**Item 25 shipped the same day** — see [`DONE.md`](./DONE.md); it redefined what a project is,
+which is what unblocked removing one and left the seam a second agent will need. 22–24 remain and
+are small (a confirm dialog, a button scale, a `DESIGN.md`).
+
+One thing item 25 leaves for **item 3**: `ContextMenu` now exists in `@factorai/ui`, built for the
+sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
 
 ## 1. Git graph — the commit tree, branches and tags
 
@@ -872,104 +875,33 @@ So the first decision is boundaries, not content:
 - It is the natural home for the numbers item 23 produces, which is an argument for doing 23
   first and letting the file start from something concrete rather than from principles.
 
-## 25. Redefine what a project *is* — a folder you opened, not a Claude directory
+## 26. The indexer never reaps a session whose transcript is gone
 
-**User ask, 2026-08-16, and the only genuinely foundational item on this list.** Its number is
-append order, nothing else; by weight it belongs beside M4. It is also the prerequisite hiding
-under three things already written down — closing a project, supporting agents other than Claude,
-and F1's slightly embarrassed explanation of why a folder you've never run Claude in "cannot be
-reached from the app at all".
+**Found during the item 25 QA pass, 2026-08-16, on the real database.** Pre-existing, not caused
+by that change — it is visible now only because the QA pass counted files against rows.
 
-**The ask.** A project is a **folder you open**, and Claude sessions are **linked into it** by an
-explicit import step. Today the link runs the other way and there is no step: `full_scan()`
-upserts a `projects` row for every directory under `~/.claude/projects/`, so your workspace is
-whatever Claude has ever touched. In the user's words: *"aujourd'hui ça ajoute toutes les sessions
-claude par projet sans contrôle — je pense que ça devrait juste être une étape d'import"*, and
-*"au final un peu comme VS Code, sauf que tu peux avoir plusieurs projets ouverts dans la même
-window"*.
+`sessions` had **147 rows against 80 `.jsonl` files on disk.** Every surviving transcript is keyed
+correctly (zero mis-keyed, checked), so this is not a lookup bug: 67 transcripts have simply been
+deleted from `~/.claude/projects/` at some point and the index still lists them.
 
-**Why this is the blocker for closing a project.** *"Aussi pouvoir retirer/fermer un projet."* You
-cannot, today, and it is not an oversight: a `DELETE FROM projects` is undone by the next
-`full_scan()` or the next watcher tick, because the table is a **mirror** of a directory rather
-than a record of a decision. Any close button built before this refactor is a button that lies
-within one second. That is the argument for doing this first rather than bolting a close onto
-what exists.
+`index_session_if_changed` only ever upserts. Nothing walks the other way — "rows whose file is no
+longer there" — so a deleted transcript lives in the index forever.
 
-**Where the current design actually sits, so the refactor is priced honestly.** F1 states that the
-project id being *"Claude Code's own directory encoding of the path"* is **"the whole design"** —
-it is what makes `add_project` and the indexer's upsert land on the same row instead of
-duplicating, and two tests guard it. That mechanism is good and shouldn't be thrown away; what
-changes is that Claude's encoding stops being *identity* and becomes *one agent's foreign key*.
+**What it looks like from the outside**, which is worse than a stale count: a search hit for one of
+those sessions opens fine (the row has a title), and clicking through to it spawns
+`claude --session-id <id>` rather than `--resume`. That is exactly what ADR-0008 specifies — the
+filesystem is the authority, and there is no transcript — but the effect is that you click a
+1721-turn conversation and land in an empty new session wearing its title.
 
-### The schema decision, which everything else waits on
+**The fix is a reap pass, not a probe per read.** During `index_dir`, the set of `.jsonl` files in
+the directory is already in hand; anything in `sessions` for that `discovered_id` and not in that
+set is gone. Delete the row and its `messages_fts` rows in the same transaction.
 
-`sessions.project_id` is `REFERENCES projects(id) ON DELETE CASCADE`, and `projects.id` is the
-encoded Claude path. So "a project the user hasn't imported" has nowhere to hang its sessions, and
-that is the knot. Two ways out:
-
-- **Flag on the existing table** — add `imported`, keep the encoded id, show only imported rows.
-  Cheapest, ships in a day, and is a lie the moment codex sessions arrive: their store won't use
-  Claude's encoding, so a second agent needs a second id space anyway.
-- **Split discovery from the workspace** — `projects` becomes what the user opened (surrogate id,
-  canonical `real_path`, the pin, the display name), and what the scan finds stays in its own
-  discovered-sessions space keyed by the agent's own identifier, joined to a project by canonical
-  path. **Recommended**: it is the shape the multi-agent ask needs, and doing the cheap version
-  first means paying for the split twice.
-
-Either way, settle these in the same pass:
-
-- **Migration must import everything that exists.** A user who already has thirty projects opens
-  the new build and sees thirty projects — not an empty sidebar with a helpful modal. Anything
-  else is data loss as far as the person using it is concerned.
-- **Does the FTS index stay global?** Today it covers every session under `~/.claude/`. If import
-  gates indexing, F4 can no longer find the conversation in a project you forgot to import — which
-  is precisely when you search. Recommendation: **indexing stays global**, import is a workspace
-  concern, and the import modal's candidate list is then just a query against something already
-  built.
-- **Leave a seam for other agents, build none of it.** An `agent` discriminator on a session
-  ('claude' today) and an import path that takes one. ADR-0004 generalises with it: *every*
-  agent's store is read-only, not just Claude's. Do not write a codex adapter in this item.
-
-### The UI, as asked
-
-- [ ] **Sidebar empty state gets two actions**, replacing today's sentence pointing at the
-      `FolderPlus`: **Open project** and **Import from Claude Code**. Note the current copy leads
-      with *"No projects found in ~/.claude/projects yet"* — after this item that sentence is
-      backwards, since an empty workspace has nothing to do with what Claude has.
-- [ ] **The header `FolderPlus` becomes a menu** with the same two items — same actions, one
-      surface each for discovery and for repeat use. `DropdownMenu` is already in the sidebar for
-      sort, so this is cheap; the real question is two dropdown buttons in a 180px-wide section
-      header, which is a crowding problem before it is a code problem.
-- [ ] **Import modal**: the Claude projects we know about, each a checkbox row, one `Import`
-      button. Rows want path, session count and last activity — enough to answer "is this the one
-      I mean". Settle: already-imported rows (checked and disabled, or filtered out), select-all,
-      and a project whose folder is **gone** — importable but dimmed is the consistent answer,
-      since every transcript is still there and F1 already takes that stance for `missing`.
-- [ ] **`@factorai/ui` has no checkbox.** Fifteen primitives, none of them one. Add
-      `@radix-ui/react-checkbox` in the package, same shape as item 3's context menu.
-- [ ] **Pick one verb.** The ask says *Open project* in the empty state and *Add project folder*
-      in the menu; they are the same action and must not have two names. VS Code says
-      **Open Folder**; whatever we choose goes in both places and into F1.
-- [ ] **Close / remove a project.** The sidebar row's context menu is the natural home — and note
-      F1 explicitly **rejected** a right-click menu there, on the grounds that one action (pin)
-      didn't justify building the system. That reasoning has expired: item 3 builds the system,
-      and there are now three actions (close, reveal in file manager, pin). Revisit it
-      deliberately in F1 rather than quietly contradicting it.
-- [ ] **What closing destroys: nothing.** It removes the project from the workspace, leaves the
-      index alone, and re-importing is instant — and it never touches `~/.claude` (ADR-0004). If a
-      session in that project is **live**, closing it confirms first, reusing item 22's dialog
-      rather than inventing a third one.
-
-### Spec and ADR work, which is not small
-
-F1 is written from the premise this item deletes — *"show every project under
-`~/.claude/projects/`"* — so it gets rewritten, not patched. `02-data-model.md`'s schema section
-follows the migration. F4 needs a sentence on whether search reaches unimported projects. And the
-identity change wants **an ADR**: nothing in `docs/adr/` currently records "a project is a Claude
-directory" — F1 asserts it in prose — so the new model should be the thing that gets recorded
-properly. Q3 (a projects-dir override was rejected for MVP) sits next door; don't reopen it by
-accident.
-
-**Slice it, don't land it in one commit.** (a) schema, import gate, migration — invisible, and
-where the risk is; (b) the import modal; (c) close a project; (d) the multi-agent seam. Each is
-shippable on its own and (a) is the one that deserves the review.
+- Scope it to directories the scan actually visited. A directory that failed to `read_dir` must
+  not be read as "every session in it is deleted" — an unreadable directory and an empty one are
+  different, and only one of them should delete anything.
+- Same for a store that has vanished entirely (Claude uninstalled, `CLAUDE_HOME` pointed
+  elsewhere): the scan should skip, not empty the index.
+- Decide whether a reaped session that is **currently live** is exempt. It has no transcript until
+  its first message (ADR-0008), so a reap during that window would delete the row for a running
+  session. The narrow rule: skip ids present in `TerminalManager`.
