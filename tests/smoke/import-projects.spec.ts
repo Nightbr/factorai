@@ -45,10 +45,7 @@ test.describe('import from Claude Code', () => {
 		await page.goto('/');
 		await openDialog(page);
 
-		await page
-			.getByTestId('import-row--home-alice-code-pelican')
-			.getByRole('checkbox')
-			.click();
+		await page.getByTestId('import-row--home-alice-code-pelican').getByRole('checkbox').click();
 		await page.getByTestId('import-row--home-alice-code-heron').getByRole('checkbox').click();
 
 		await expect(page.getByTestId('import-confirm')).toHaveText('Import 2');

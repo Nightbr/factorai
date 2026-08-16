@@ -12,7 +12,10 @@ test('@smoke clickable elements resolve to cursor:pointer', async ({ page }) => 
 	await page.goto('/');
 
 	const cursorOf = (sel: string) =>
-		page.locator(sel).first().evaluate((el) => getComputedStyle(el).cursor);
+		page
+			.locator(sel)
+			.first()
+			.evaluate((el) => getComputedStyle(el).cursor);
 
 	// A hand-rolled control, a primitive-backed one, and a link.
 	expect(await cursorOf('button[aria-label^="Pin "]')).toBe('pointer');

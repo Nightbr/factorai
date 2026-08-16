@@ -49,10 +49,7 @@ pub fn run() {
 		.plugin(tauri_plugin_updater::Builder::new().build())
 		.plugin(tauri_plugin_store::Builder::default().build())
 		.setup(|app| {
-			let data_dir = app
-				.path()
-				.app_data_dir()
-				.expect("failed to resolve app_data_dir");
+			let data_dir = app.path().app_data_dir().expect("failed to resolve app_data_dir");
 			let db = Db::open(&data_dir).expect("failed to open db");
 
 			let cd = claude_dir();

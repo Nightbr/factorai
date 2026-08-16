@@ -1,0 +1,13 @@
+# Written to match the code that was already here rather than to change it —
+# the repo indents with tabs everywhere (see `biome.json`), and this side was
+# hand-formatted at 100 columns with expressions kept on one line wherever they
+# fit.
+#
+# `use_small_heuristics = "Max"` is the one that matters. On the default setting
+# rustfmt breaks a struct literal past 18 columns and a call past 60, which
+# would have exploded `Some(Discovered { agent: CLAUDE, key, real_path })` and a
+# few hundred lines like it into five-line blocks. "Max" lets anything that fits
+# in `max_width` stay on its line, which is what the authors were doing by hand.
+hard_tabs = true
+max_width = 100
+use_small_heuristics = "Max"

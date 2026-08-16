@@ -23,7 +23,14 @@ async function boxes(page: import('@playwright/test').Page) {
 	return icon.evaluate((el) => {
 		const rect = (n: Element) => {
 			const r = n.getBoundingClientRect();
-			return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width, h: r.height };
+			return {
+				left: r.left,
+				right: r.right,
+				top: r.top,
+				bottom: r.bottom,
+				w: r.width,
+				h: r.height,
+			};
 		};
 		const tile = el.querySelector('[data-testid="project-icon-tile"]');
 		const dot = el.querySelector('[title="Running"]');
@@ -83,16 +90,19 @@ test.describe('project icon', () => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
 
-		const centres = await page.locator('aside li > div').first().evaluate((row) => {
-			const mid = (n: Element) => {
-				const r = n.getBoundingClientRect();
-				return r.top + r.height / 2;
-			};
-			const icon = row.querySelector('[data-testid="project-icon"]');
-			const name = icon?.nextElementSibling;
-			if (!icon || !name) throw new Error('missing icon or name');
-			return { row: mid(row), icon: mid(icon), name: mid(name) };
-		});
+		const centres = await page
+			.locator('aside li > div')
+			.first()
+			.evaluate((row) => {
+				const mid = (n: Element) => {
+					const r = n.getBoundingClientRect();
+					return r.top + r.height / 2;
+				};
+				const icon = row.querySelector('[data-testid="project-icon"]');
+				const name = icon?.nextElementSibling;
+				if (!icon || !name) throw new Error('missing icon or name');
+				return { row: mid(row), icon: mid(icon), name: mid(name) };
+			});
 
 		expect(centres.icon).toBeCloseTo(centres.row, 0);
 		expect(centres.icon).toBeCloseTo(centres.name, 0);

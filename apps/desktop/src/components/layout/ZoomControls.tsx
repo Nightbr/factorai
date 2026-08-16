@@ -2,13 +2,7 @@ import { IconButton } from '@factorai/ui';
 import { Minus, Plus } from 'lucide-react';
 import { useEffect } from 'react';
 import { isTauri } from '@lib/tauri';
-import {
-	DEFAULT_ZOOM,
-	MAX_ZOOM,
-	MIN_ZOOM,
-	useZoomStore,
-	zoomPercent,
-} from '@store/zoomStore';
+import { DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM, useZoomStore, zoomPercent } from '@store/zoomStore';
 
 /**
  * Zoom controls in the sidebar footer (specs/05-features.md F15).
@@ -56,12 +50,7 @@ export function ZoomControls() {
 			>
 				{zoomPercent(zoom)}
 			</button>
-			<IconButton
-				aria-label="Zoom in"
-				title="Zoom in"
-				disabled={zoom >= MAX_ZOOM}
-				onClick={zoomIn}
-			>
+			<IconButton aria-label="Zoom in" title="Zoom in" disabled={zoom >= MAX_ZOOM} onClick={zoomIn}>
 				<Plus />
 			</IconButton>
 		</div>

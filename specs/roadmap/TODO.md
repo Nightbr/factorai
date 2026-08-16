@@ -746,11 +746,12 @@ Six overrides fighting one default is the diagnosis. Fix the scale and delete th
       default, and a confirm button is the one place where *smaller* is not automatically better.
       A destructive action that is easy to hit by accident is the failure mode there.
 
-**Two mechanical cautions.** `button.tsx` is vendored shadcn — 2-space, double-quoted, unlike the
-rest of the repo — so edit the variants and **don't reformat the file**; `pnpm format` rewrites
-all of `packages/ui` and buries the change. And `IconButton` is already dense and house-authored
-(`sm: p-0.5 [&_svg]:size-3.5`): it is the reference for what "this app's scale" means, not a thing
-to change alongside.
+**One mechanical caution, and one that expired.** `IconButton` is already dense and
+house-authored (`sm: p-0.5 [&_svg]:size-3.5`): it is the reference for what "this app's scale"
+means, not a thing to change alongside. The other caution used to say `button.tsx` is vendored
+shadcn in a foreign style, so don't reformat it or `pnpm format` buries your change — **gone as of
+2026-08-16**: every vendored file is in house style, formatting is gated (`pnpm format:check`), and
+`pnpm format` is safe to run on anything.
 
 ## 24. `DESIGN.md` — one home for the design rules
 

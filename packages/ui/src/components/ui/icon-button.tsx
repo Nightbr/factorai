@@ -45,9 +45,7 @@ export interface IconButtonProps
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
 	({ className, size, asChild = false, ...props }, ref) => {
 		const Comp = asChild ? Slot : 'button';
-		return (
-			<Comp className={cn(iconButtonVariants({ size }), className)} ref={ref} {...props} />
-		);
+		return <Comp className={cn(iconButtonVariants({ size }), className)} ref={ref} {...props} />;
 	},
 );
 IconButton.displayName = 'IconButton';

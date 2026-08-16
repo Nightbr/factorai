@@ -58,7 +58,8 @@ function ChangeRow({ change }: { change: GitChange }) {
 
 	// Which pair the diff compares is the row's group: a staged row has no side
 	// on disk at all (F13).
-	const diff = change.group === 'staged' ? 'staged' : change.group === 'unstaged' ? 'unstaged' : 'head';
+	const diff =
+		change.group === 'staged' ? 'staged' : change.group === 'unstaged' ? 'unstaged' : 'head';
 
 	return (
 		<li>
@@ -78,7 +79,9 @@ function ChangeRow({ change }: { change: GitChange }) {
 				    filename beside a deep path stays whole. `title` on the button has
 				    the full path when both end up clipped. */}
 				<span className="min-w-0 truncate text-foreground">{name}</span>
-				{dir && <span className="min-w-0 grow truncate text-muted-foreground/60 text-xs">{dir}</span>}
+				{dir && (
+					<span className="min-w-0 grow truncate text-muted-foreground/60 text-xs">{dir}</span>
+				)}
 				{!dir && <span className="flex-1" />}
 				<LineCounts change={change} />
 				<span
@@ -96,7 +99,8 @@ function ChangeRow({ change }: { change: GitChange }) {
 function LineCounts({ change }: { change: GitChange }) {
 	// Binary and over-cap rows keep their place in the list and simply carry no
 	// counts — the row is the information, the numbers are a bonus.
-	if (change.isBinary) return <span className="shrink-0 text-muted-foreground/60 text-xs">bin</span>;
+	if (change.isBinary)
+		return <span className="shrink-0 text-muted-foreground/60 text-xs">bin</span>;
 	if (change.additions === null && change.deletions === null) return null;
 	return (
 		<span className="shrink-0 gap-1 text-xs tabular-nums">
@@ -110,7 +114,9 @@ function LineCounts({ change }: { change: GitChange }) {
  *  A change above the project keeps its `../` so it reads as not-yours. */
 function splitPath(relPath: string): { dir: string; name: string } {
 	const i = relPath.lastIndexOf('/');
-	return i >= 0 ? { dir: relPath.slice(0, i), name: relPath.slice(i + 1) } : { dir: '', name: relPath };
+	return i >= 0
+		? { dir: relPath.slice(0, i), name: relPath.slice(i + 1) }
+		: { dir: '', name: relPath };
 }
 
 const KIND_LETTERS: Record<GitChangeKind, string> = {

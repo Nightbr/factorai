@@ -11,7 +11,10 @@ use crate::state::AppState;
 /// Sessions in one workspace project — every agent directory linked to its
 /// folder, newest first.
 #[tauri::command]
-pub fn list_sessions(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<SessionSummary>> {
+pub fn list_sessions(
+	state: State<'_, AppState>,
+	project_id: String,
+) -> AppResult<Vec<SessionSummary>> {
 	state.db.with(|conn| {
 		let mut stmt = conn.prepare(
 			// Sub-agent rows sort directly under their parent: groups are
@@ -84,9 +87,7 @@ pub fn search_sessions(
 	limit: Option<usize>,
 ) -> AppResult<Vec<SearchHit>> {
 	let limit = limit.unwrap_or(200);
-	state
-		.db
-		.with(|conn| search::search(conn, &query, project_id.as_deref(), limit))
+	state.db.with(|conn| search::search(conn, &query, project_id.as_deref(), limit))
 }
 
 /// The agent store directory a session's transcript lives in, the parent

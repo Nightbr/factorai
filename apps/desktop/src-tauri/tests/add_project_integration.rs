@@ -88,7 +88,11 @@ fn a_later_scan_attaches_its_sessions_to_the_folder_you_added() {
 	assert_eq!(project_count(&db), 1);
 
 	// Now Claude runs there for the first time and the indexer finds it.
-	write_claude_session(&claude_dir, &dir.canonicalize().unwrap(), "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+	write_claude_session(
+		&claude_dir,
+		&dir.canonicalize().unwrap(),
+		"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+	);
 	make_indexer(db.clone(), claude_dir).full_scan().expect("scan");
 
 	// One project, not two: the scan links by path and never invents a row.
@@ -110,7 +114,11 @@ fn a_scan_never_adds_a_project_you_did_not_ask_for() {
 	std::fs::create_dir_all(&untouched).unwrap();
 	let claude_dir = tmp.path().join(".claude");
 	let db = open_db(tmp.path());
-	write_claude_session(&claude_dir, &untouched.canonicalize().unwrap(), "11111111-2222-3333-4444-555555555555");
+	write_claude_session(
+		&claude_dir,
+		&untouched.canonicalize().unwrap(),
+		"11111111-2222-3333-4444-555555555555",
+	);
 
 	make_indexer(db.clone(), claude_dir).full_scan().expect("scan");
 
@@ -130,7 +138,11 @@ fn removing_a_project_survives_the_next_scan() {
 	std::fs::create_dir_all(&dir).unwrap();
 	let claude_dir = tmp.path().join(".claude");
 	let db = open_db(tmp.path());
-	write_claude_session(&claude_dir, &dir.canonicalize().unwrap(), "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+	write_claude_session(
+		&claude_dir,
+		&dir.canonicalize().unwrap(),
+		"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+	);
 
 	let added = add_project_in(&db, dir.to_str().unwrap()).expect("add");
 	make_indexer(db.clone(), claude_dir.clone()).full_scan().expect("scan");
@@ -158,7 +170,11 @@ fn re_adding_a_removed_project_recovers_its_history() {
 	std::fs::create_dir_all(&dir).unwrap();
 	let claude_dir = tmp.path().join(".claude");
 	let db = open_db(tmp.path());
-	write_claude_session(&claude_dir, &dir.canonicalize().unwrap(), "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+	write_claude_session(
+		&claude_dir,
+		&dir.canonicalize().unwrap(),
+		"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+	);
 
 	let added = add_project_in(&db, dir.to_str().unwrap()).expect("add");
 	make_indexer(db.clone(), claude_dir.clone()).full_scan().expect("scan");
@@ -228,8 +244,10 @@ fn a_scan_flags_a_project_whose_folder_has_gone() {
 	add_project_in(&db, real.to_str().unwrap()).expect("add");
 
 	let missing = |db: &Db| -> i64 {
-		db.with(|conn| Ok(conn.query_row("SELECT missing FROM projects LIMIT 1", [], |r| r.get(0))?))
-			.expect("read missing")
+		db.with(
+			|conn| Ok(conn.query_row("SELECT missing FROM projects LIMIT 1", [], |r| r.get(0))?),
+		)
+		.expect("read missing")
 	};
 
 	make_indexer(db.clone(), claude_dir.clone()).full_scan().expect("scan");

@@ -34,7 +34,7 @@
 				// Used from CSS — `@plugin "@tailwindcss/typography"` in
 				// `src/styles/globals.css`. Knip does not parse CSS.
 				"@tailwindcss/typography"
-			],
+			]
 		},
 		"packages/ui": {
 			"entry": ["src/index.ts"],

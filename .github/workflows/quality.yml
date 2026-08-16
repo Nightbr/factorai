@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   js:
-    name: JS — lint, types, unit tests
+    name: JS — format, lint, types, unit tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +49,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Formatting first: it is the cheapest check and the one most likely to
+      # be the only thing wrong. `pnpm format` fixes it.
+      - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
@@ -71,7 +74,7 @@ jobs:
       - run: pnpm deps:unused
 
   rust:
-    name: Rust — clippy, cargo test
+    name: Rust — format, clippy, cargo test
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -95,16 +98,24 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
         with:
           # The Cargo workspace is the repo root; src-tauri is a member.
           workspaces: . -> target
 
-      # No `pnpm install` and no frontend build: `tauri_build::build()` does not
-      # need `frontendDist` to exist for a non-bundling compile, so the Rust job
-      # stays independent of the JS one and the two run in parallel.
+      # No `pnpm install` and no frontend build below: `tauri_build::build()`
+      # does not need `frontendDist` to exist for a non-bundling compile, so the
+      # Rust job stays independent of the JS one and the two run in parallel.
+
+      # `rustfmt.toml` next to the crate encodes the style that was already
+      # there; `cargo fmt` fixes anything this rejects. First because it needs
+      # no compile at all.
+      - name: Formatting
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
+
       - name: Clippy
         working-directory: apps/desktop/src-tauri
         run: cargo clippy --all-targets -- -D warnings

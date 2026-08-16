@@ -47,8 +47,8 @@ export function QuitConfirm() {
 						Quit factorai?
 					</DialogTitle>
 					<DialogDescription>
-						{liveCount} running Claude session{liveCount === 1 ? '' : 's'} will be
-						terminated. This cannot be undone.
+						{liveCount} running Claude session{liveCount === 1 ? '' : 's'} will be terminated. This
+						cannot be undone.
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>

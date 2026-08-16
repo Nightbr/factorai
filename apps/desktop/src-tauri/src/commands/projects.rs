@@ -51,9 +51,7 @@ pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
 pub fn list_projects_in(conn: &Connection) -> AppResult<Vec<Project>> {
 	let sql = format!("{PROJECT_SELECT} ORDER BY p.pinned DESC, 7 DESC, p.display_name ASC");
 	let mut stmt = conn.prepare(&sql)?;
-	let rows = stmt
-		.query_map([], map_project)?
-		.collect::<rusqlite::Result<Vec<_>>>()?;
+	let rows = stmt.query_map([], map_project)?.collect::<rusqlite::Result<Vec<_>>>()?;
 	Ok(rows)
 }
 
@@ -190,9 +188,8 @@ pub fn list_import_candidates(state: State<'_, AppState>) -> AppResult<Vec<Impor
 	let claude_dir = state.claude_dir.clone();
 	let open_paths: Vec<String> = state.db.with(|conn| {
 		let mut stmt = conn.prepare("SELECT real_path FROM projects")?;
-		let rows = stmt
-			.query_map([], |r| r.get::<_, String>(0))?
-			.collect::<rusqlite::Result<Vec<_>>>()?;
+		let rows =
+			stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
 		Ok(rows)
 	})?;
 
@@ -242,10 +239,7 @@ pub fn resolve_project_path(state: State<'_, AppState>, id: String) -> AppResult
 #[tauri::command]
 pub fn pin_project(state: State<'_, AppState>, id: String, pinned: bool) -> AppResult<()> {
 	state.db.with(|conn| {
-		conn.execute(
-			"UPDATE projects SET pinned = ?2 WHERE id = ?1",
-			params![id, pinned as i64],
-		)?;
+		conn.execute("UPDATE projects SET pinned = ?2 WHERE id = ?1", params![id, pinned as i64])?;
 		Ok(())
 	})
 }
@@ -266,10 +260,7 @@ pub fn reconcile(conn: &Connection) -> AppResult<()> {
 		[],
 	)?;
 	// A directory whose folder we never identified can't belong to anything.
-	conn.execute(
-		"UPDATE discovered_projects SET project_id = NULL WHERE real_path IS NULL",
-		[],
-	)?;
+	conn.execute("UPDATE discovered_projects SET project_id = NULL WHERE real_path IS NULL", [])?;
 	Ok(())
 }
 

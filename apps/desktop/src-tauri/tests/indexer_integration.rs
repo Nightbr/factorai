@@ -98,9 +98,7 @@ fn counts(db: &Db, session_id: &str) -> (i64, i64) {
 
 /// The one project row, as `list_projects` would return it.
 fn only_project(db: &Db) -> factorai_lib::models::Project {
-	let mut all = db
-		.with(factorai_lib::commands::projects::list_projects_in)
-		.expect("list");
+	let mut all = db.with(factorai_lib::commands::projects::list_projects_in).expect("list");
 	assert_eq!(all.len(), 1, "expected exactly one project");
 	all.remove(0)
 }
@@ -374,12 +372,20 @@ fn a_renamed_session_keeps_the_name_the_user_chose() {
 		&project_dir,
 		session_id,
 		&[
-			&format!(r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"first thing I said"}}}}"#),
+			&format!(
+				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"first thing I said"}}}}"#
+			),
 			// Claude names it, then the user renames it, then Claude renames it
 			// again — which happens, and must not win.
-			&format!(r#"{{"type":"ai-title","aiTitle":"Some generated name","sessionId":"{session_id}"}}"#),
-			&format!(r#"{{"type":"custom-title","customTitle":"Deploy storybook in staging","sessionId":"{session_id}"}}"#),
-			&format!(r#"{{"type":"ai-title","aiTitle":"A later generated name","sessionId":"{session_id}"}}"#),
+			&format!(
+				r#"{{"type":"ai-title","aiTitle":"Some generated name","sessionId":"{session_id}"}}"#
+			),
+			&format!(
+				r#"{{"type":"custom-title","customTitle":"Deploy storybook in staging","sessionId":"{session_id}"}}"#
+			),
+			&format!(
+				r#"{{"type":"ai-title","aiTitle":"A later generated name","sessionId":"{session_id}"}}"#
+			),
 		],
 	);
 	add_project_in(&db, cwd.to_str().unwrap()).expect("add");
@@ -414,9 +420,15 @@ fn the_latest_rename_is_the_one_that_shows() {
 		&project_dir,
 		session_id,
 		&[
-			&format!(r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"hello"}}}}"#),
-			&format!(r#"{{"type":"custom-title","customTitle":"First name","sessionId":"{session_id}"}}"#),
-			&format!(r#"{{"type":"custom-title","customTitle":"Second name","sessionId":"{session_id}"}}"#),
+			&format!(
+				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"hello"}}}}"#
+			),
+			&format!(
+				r#"{{"type":"custom-title","customTitle":"First name","sessionId":"{session_id}"}}"#
+			),
+			&format!(
+				r#"{{"type":"custom-title","customTitle":"Second name","sessionId":"{session_id}"}}"#
+			),
 		],
 	);
 	add_project_in(&db, cwd.to_str().unwrap()).expect("add");
@@ -451,7 +463,9 @@ fn an_empty_custom_title_falls_back_instead_of_blanking_the_row() {
 		&project_dir,
 		session_id,
 		&[
-			&format!(r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"what I actually asked"}}}}"#),
+			&format!(
+				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"what I actually asked"}}}}"#
+			),
 			&format!(r#"{{"type":"custom-title","customTitle":"   ","sessionId":"{session_id}"}}"#),
 		],
 	);
@@ -492,11 +506,7 @@ fn a_deleted_transcript_is_reaped_from_the_index() {
 	std::fs::remove_file(store.join(format!("{session_id}.jsonl"))).expect("rm transcript");
 	indexer.full_scan().expect("second scan");
 
-	assert_eq!(
-		counts(&db, &session_id),
-		(0, 0),
-		"the row and its fts entries both go"
-	);
+	assert_eq!(counts(&db, &session_id), (0, 0), "the row and its fts entries both go");
 	assert_eq!(only_project(&db).session_count, 0);
 }
 
@@ -652,10 +662,7 @@ fn subagent_transcripts_are_indexed_under_their_real_project() {
 		// sidebar actually uses.
 		let projects = list_projects_in(conn).expect("list projects");
 		assert_eq!(projects.len(), 1);
-		assert_eq!(
-			projects[0].session_count, 1,
-			"sub-agents do not count as project sessions"
-		);
+		assert_eq!(projects[0].session_count, 1, "sub-agents do not count as project sessions");
 		Ok(())
 	})
 	.unwrap();

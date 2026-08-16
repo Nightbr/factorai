@@ -85,12 +85,12 @@ function PanelBody() {
 					</>
 				)}
 				<IconButton
-							aria-label="Close file tree"
-							title="Close file tree"
-							onClick={() => setOpen(false)}
-						>
-							<X />
-						</IconButton>
+					aria-label="Close file tree"
+					title="Close file tree"
+					onClick={() => setOpen(false)}
+				>
+					<X />
+				</IconButton>
 			</header>
 
 			{/* `pr-2` is the scrollbar gutter: with a long tree or a big change

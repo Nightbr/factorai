@@ -45,7 +45,10 @@ describe('toRows', () => {
 		const rows = toRows([
 			ev({
 				type: 'assistant',
-				message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Grep', input: {} }] },
+				message: {
+					role: 'assistant',
+					content: [{ type: 'tool_use', id: 't1', name: 'Grep', input: {} }],
+				},
 			}),
 		]);
 
@@ -55,7 +58,9 @@ describe('toRows', () => {
 
 	it('skips events whose message flattens to nothing', () => {
 		// A whitespace-only reply is noise in a read-only rendering.
-		const rows = toRows([ev({ type: 'assistant', message: { role: 'assistant', content: '   ' } })]);
+		const rows = toRows([
+			ev({ type: 'assistant', message: { role: 'assistant', content: '   ' } }),
+		]);
 
 		expect(rows).toHaveLength(0);
 	});

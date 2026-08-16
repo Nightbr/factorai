@@ -39,10 +39,7 @@ pub fn spawn(indexer: Arc<Indexer>) {
 					return;
 				}
 			};
-			if let Err(e) = debouncer
-				.watcher()
-				.watch(&projects_dir, RecursiveMode::Recursive)
-			{
+			if let Err(e) = debouncer.watcher().watch(&projects_dir, RecursiveMode::Recursive) {
 				warn!(error = %e, "failed to watch projects dir");
 				return;
 			}

@@ -91,11 +91,7 @@ fn user_shell_candidates() -> Vec<PathBuf> {
 }
 
 fn ask_shell(shell: &Path) -> Option<PathBuf> {
-	let output = Command::new(shell)
-		.arg("-lc")
-		.arg("command -v claude")
-		.output()
-		.ok()?;
+	let output = Command::new(shell).arg("-lc").arg("command -v claude").output().ok()?;
 	if !output.status.success() {
 		return None;
 	}
