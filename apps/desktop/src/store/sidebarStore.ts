@@ -25,7 +25,8 @@ interface SidebarState {
 	sort: ProjectSort;
 	/** Expanded project ids. An array rather than a Set so it survives JSON —
 	 *  and unlike the file tree's expanded *paths* (which go stale when a
-	 *  directory is deleted), a project id stays valid, so this is persisted. */
+	 *  directory is deleted), a project id stays valid, so this is persisted.
+	 *  Dropped once, at version 2: see the store's `migrate`. */
 	expanded: string[];
 	/** Sidebar width in px. Persisted, like the file panel's. */
 	width: number;
@@ -35,6 +36,24 @@ interface SidebarState {
 	toggleProject: (projectId: string) => void;
 	expandAll: (projectIds: string[]) => void;
 	collapseAll: () => void;
+}
+
+/**
+ * Bring a persisted sidebar state forward.
+ *
+ * v1 → v2: ADR-0011 reissued every project id as a uuid, so v1's `expanded`
+ * holds encoded paths that match nothing. They are **dropped rather than
+ * remapped**: what that costs is the sidebar starting collapsed once, and the
+ * alternative is a one-shot async lookup in the renderer that has to finish
+ * before the first paint or the list renders wrong and then jumps. `sort` and
+ * `width` are id-free and carry over untouched.
+ *
+ * Pure and exported so the rule is testable without a storage round-trip.
+ */
+export function migrateSidebarState(state: unknown, from: number): unknown {
+	if (from >= 2) return state;
+	if (!state || typeof state !== 'object') return state;
+	return { ...(state as Record<string, unknown>), expanded: [] };
 }
 
 export const useSidebarStore = create<SidebarState>()(
@@ -55,6 +74,10 @@ export const useSidebarStore = create<SidebarState>()(
 			expandAll: (projectIds) => set({ expanded: [...projectIds] }),
 			collapseAll: () => set({ expanded: [] }),
 		}),
-		{ name: 'factorai.sidebar', version: 1 },
+		{
+			name: 'factorai.sidebar',
+			version: 2,
+			migrate: migrateSidebarState,
+		},
 	),
 );
