@@ -2,11 +2,15 @@ import { expect, test } from '@playwright/test';
 import { fixtureOneProjectOneSession, installMockBridge } from './fixtures';
 
 /**
- * Adding a folder as a project (specs/05-features.md F1).
+ * Adding a folder to the workspace (specs/05-features.md F1).
  *
  * The picker itself is native and unreachable from here, so the fixture's
  * `folderPick` stands in for what it returns — a path, or nothing when the
  * user cancels. Everything after that point is the real flow.
+ *
+ * The `FolderPlus` in the section header is a menu now, since there are two
+ * doors onto one action (ADR-0011); these cover the picker door, and
+ * `import-projects.spec.ts` covers the other.
  */
 test.describe('add project', () => {
 	test('@smoke picking a folder adds it and opens it', async ({ page }) => {
@@ -17,6 +21,7 @@ test.describe('add project', () => {
 		const sidebar = page.locator('aside');
 		await expect(sidebar.getByText('brand-new')).toHaveCount(0);
 
+		await page.getByTestId('add-project-menu').click();
 		await page.getByTestId('add-project').click();
 
 		// The row appears…
@@ -39,6 +44,7 @@ test.describe('add project', () => {
 		await page.goto('/');
 		const before = page.url();
 
+		await page.getByTestId('add-project-menu').click();
 		await page.getByTestId('add-project').click();
 
 		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
@@ -56,6 +62,7 @@ test.describe('add project', () => {
 		await installMockBridge(page, { ...fx, folderPick: existing.realPath });
 		await page.goto('/');
 
+		await page.getByTestId('add-project-menu').click();
 		await page.getByTestId('add-project').click();
 
 		// One row, not two: the workspace is keyed by canonical path, so re-adding

@@ -72,10 +72,50 @@ client-side) or **Name**, plus **Expand all** / **Collapse all**. Sort and
 expansion persist in `sidebarStore` — unlike the file tree's expanded *paths*,
 which go stale when a directory is deleted, a project id stays valid.
 
-**Adding a folder.** A `FolderPlus` in the section header opens the native
-directory picker; the chosen folder becomes a project and the app navigates to
-it, where the existing `+` starts the first session. Adding and starting stay
-separate actions: adding is cheap and reversible, starting a session is neither.
+**Adding a folder — two doors, one action.** The `FolderPlus` in the section
+header is a **menu**: **Add Project…** opens the native directory picker, and
+**Import from Claude Code…** opens the dialog below. Both call `add_project`
+with a path; there is one concept in the data model and nothing special about a
+Claude-derived project once it is in. A menu rather than two icons because the
+header is 180px at its narrowest and already carries the sort control.
+
+The chosen folder becomes a project and the app navigates to it, where the
+existing `+` starts the first session. Adding and starting stay separate
+actions: adding is cheap and reversible, starting a session is neither.
+
+The **empty state** carries both as buttons rather than pointing at the icon in
+prose — it is the one screen where the way out is the only thing worth saying.
+Its copy leads with "No projects yet", not with what `~/.claude` contains: an
+empty workspace has nothing to do with what Claude has.
+
+**Import dialog.** One row per folder Claude has worked in, each a checkbox with
+its full path, session count and last activity — enough to answer "is this the
+one I mean". Read straight from the store via `read_dir` + `stat`, never parsed,
+so it opens instantly however much history is there; and read from the store
+rather than the index precisely because the index only covers the workspace.
+
+- A **filter box** matches on the whole path, not the display name: with a dozen
+  repos the names collide long before the paths do.
+- **Select all** is three-valued. A partial selection shows a dash, because an
+  empty box would say something false about what clicking does. Already-open
+  rows are excluded from its counts, so it doesn't read as perpetually partial.
+- **Already-open rows are shown, checked and disabled**, not filtered out — the
+  list then answers "is this one already in?" rather than leaving you wondering
+  whether it's missing. Same stance as the disabled `+` on a missing project:
+  disable rather than remove, so there is somewhere to hang the explanation.
+- A folder that is **gone from disk** is dimmed and labelled, and still
+  importable. Every transcript survives; only starting a session is impossible.
+- Rows are **newest-first**, which is what "is this the one I mean" usually turns
+  on. No sort control: with a filter and a select-all already in a dialog you
+  use twice, a third knob earns less than it costs.
+- Importing runs the adds **sequentially**. Each one kicks off an index of its
+  folder, and firing a dozen scans at one SQLite connection is how the first run
+  that matters feels broken.
+
+`@factorai/ui` gained a `Checkbox` for this (`@radix-ui/react-checkbox`). It is
+paired with `Label htmlFor` rather than nested inside a `<label>`: a Radix
+checkbox renders a `<button>`, which is not a labelable element, so the wrapping
+form would associate nothing and swallow the click.
 
 Adding is also what makes a folder **searchable**: indexing is gated on the
 workspace, so `add_project` kicks off a scan of that folder on a background

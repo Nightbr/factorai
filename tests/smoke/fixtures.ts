@@ -14,6 +14,7 @@ import type {
 	GitChange,
 	GitStatus,
 	ImageContents,
+	ImportCandidate,
 	Project,
 	SearchHit,
 	SessionPage,
@@ -24,6 +25,9 @@ import type { Page } from '@playwright/test';
 
 export interface TestFixture {
 	projects?: Project[];
+	/** Rows the import dialog offers (F1). Read from Claude's store rather than
+	 *  the index, so this is deliberately independent of `projects`. */
+	importCandidates?: ImportCandidate[];
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
@@ -388,5 +392,53 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 				},
 			],
 		},
+	};
+}
+
+/**
+ * An empty workspace with folders available to import (F1).
+ *
+ * The point of the shape: `importCandidates` is independent of `projects`,
+ * because since ADR-0011 the two come from different places — one is a walk of
+ * Claude's store, the other is what you added. One row is already in the
+ * workspace and one folder has been deleted, since those are the two states the
+ * dialog has to render differently.
+ */
+export function fixtureImportCandidates(): TestFixture {
+	const known: Project = {
+		id: 'p0000004-0000-4000-8000-000000000004',
+		realPath: '/home/alice/code/known',
+		displayName: 'known',
+		lastSessionAt: Date.now() - 10_000,
+		sessionCount: 4,
+		pinned: false,
+		missing: false,
+	};
+	const candidate = (
+		realPath: string,
+		sessionCount: number,
+		extra: Partial<ImportCandidate> = {},
+	): ImportCandidate => ({
+		agent: 'claude',
+		key: `-${realPath.replace(/^\/+/, '').replace(/\//g, '-')}`,
+		realPath,
+		displayName: realPath.split('/').filter(Boolean).pop() ?? realPath,
+		sessionCount,
+		lastActivityAt: Date.now() - 3_600_000,
+		missing: false,
+		alreadyOpen: false,
+		...extra,
+	});
+
+	return {
+		projects: [known],
+		importCandidates: [
+			candidate('/home/alice/code/known', 4, { alreadyOpen: true }),
+			candidate('/home/alice/code/pelican', 17),
+			candidate('/home/alice/code/heron', 2),
+			// Deleted on disk. Still importable — every transcript survives, and
+			// only starting a session in it is impossible.
+			candidate('/home/alice/code/vanished', 9, { missing: true }),
+		],
 	};
 }
