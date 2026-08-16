@@ -263,13 +263,34 @@ exists, checked in this order:
 An empty or whitespace-only rename falls through rather than blanking the row.
 
 **Sub-agent rows.** A sub-agent transcript (`<session>/subagents/agent-*.jsonl`,
-`subagent_of` set — see `specs/02-data-model.md`) appears on the project page
-**nested directly under its parent session**, indented, with a `sub-agent`
-badge and a `read-only` affordance instead of the chevron. Groups order by the
-parent's recency; an orphaned sub-agent (parent transcript deleted) keeps its
-marking and sorts as its own group. The sidebar's inline ten-session list
-**excludes** sub-agents — its slots are for sessions you can go back into,
-and the project page is where the nested rows live.
+`subagent_of` set — see `specs/02-data-model.md`) is folded into the project
+page **under the session that spawned it**, and is **collapsed by default**.
+
+- The parent row gets a disclosure chevron in a left gutter and an
+  `agent-count` badge. The count is not decoration: while the group is shut it
+  is the only thing that says the agents exist. A session with none gets no
+  chevron, but the gutter is still reserved, so titles line up in one column
+  either way.
+- Expanding indents the agents **past** the parent's title rather than level
+  with it — nesting you can't see isn't nesting — and each carries a
+  `sub-agent` badge and a `read-only` label where a parent has its chevron.
+- Those two sit **right-aligned**, so every row's badge shares a column. They
+  used to sit inline after the title, which truncates, so the badge landed at a
+  different x on every row.
+- The disclosure toggle is a sibling of the row's `Link`, never a child: a
+  button inside an anchor is invalid and the two fight over the click.
+- Expansion is per-session, **local to the page and not persisted** — same
+  stance F12 takes for the file tree, and for the same reason.
+
+Groups order by the parent's recency. An **orphaned** sub-agent (parent
+transcript deleted) keeps its marking and leads its own group: filing it under
+a parent that isn't in the list would hide it completely, and it is still
+readable. `groupSessions` in `lib/sessionGroups.ts` is that fold, unit-tested
+apart from the rendering.
+
+The sidebar's inline ten-session list **excludes** sub-agents — its slots are
+for sessions you can go back into, and the project page is where the nested
+rows live.
 
 **Edge cases.**
 - Session file is huge (>100MB) → still index, just lazily.
