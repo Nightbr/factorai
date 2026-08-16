@@ -275,3 +275,31 @@ plainly — and the working-tree half is exactly the recursive watcher Q17 alrea
 refused for the file tree (ignore rules, per-project lifecycle, inotify limits).
 Polling stands. Their `@throttle` we get for free: TanStack Query dedupes
 in-flight fetches per query key.
+
+## Q21 — Rounded window corners on Linux → **no; the bottom two stay square**
+
+**Decision.** The shell rounds its bottom corners on **macOS only**
+(`isMacOS()` in `lib/platform.ts`). On Linux they are square and the border
+runs unbroken into them.
+
+Rounding is not free the way it is on macOS, where the OS clips the window to
+its own radius and the corners we carve land on pixels it already discarded.
+Linux clips nothing: `border-radius` on an opaque window carves the *shell*
+away and whatever paints behind it keeps filling the corner. That shipped once
+— a curve with a wedge of `bg-background` outside it and the border running
+off into the wedge — and it is strictly worse than square.
+
+**The WM does round its own frame**, measurably: its 1px outline traces a ~12px
+arc at the top-left, and at the bottom-left it fades out over the last ~10 rows
+and never reappears, because our opaque square client area is painted over the
+curve. So a square corner is not a match for the frame — it covers the frame's
+own arc, and that mismatch is the residual artifact we accept here.
+
+**Transparency was tried and rejected (2026-08-16).** `transparent: true` in a
+`tauri.linux.conf.json`, plus `<html>`/`body` painting nothing, does give a
+real arc: measured 12 device px, antialiased, the desktop visible through it.
+But a transparent corner exposes what sits behind the client area, and what
+sits there is the **compositor's drop shadow** — so the notch reads as a grey
+smudge rather than as a corner. Trading a hairline discontinuity for a visible
+smudge is a bad trade. Not worth revisiting unless the shadow can be excluded
+from that region, which X11 gives us no handle on.
