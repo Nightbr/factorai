@@ -681,3 +681,45 @@ because F7 already commits to them:
   sniffed from the magic bytes, and the viewer renders it in an `<img>`. The asset protocol lost
   because its path scope is static and ours is "whatever project you opened". SVG is still
   source-only, deliberately.
+
+## 22. Session header — rework the `Stop` button (F3 / F5)
+
+**User ask, 2026-08-16:** the `Stop` button is wrong; an `X` plus a modal explaining that this
+closes and kills the session would be better. Appended after item 21 for the same reason items
+12–14 sit where they do — numbers here are append-only, so the deferred catch-all is no longer
+the last section.
+
+**The app already has the asked-for control, one component over — and that is the actual
+finding.** `SessionTabs` gives every tab an `X` that opens a `Dialog`: *"Close this session? …
+Closing the tab terminates its Claude session — the transcript is kept, but any work in progress
+is lost. This cannot be undone."*, with `Keep it running` / `Close & kill session`, and
+middle-click routed through the same confirm on purpose. The session header
+(`routes/session.tsx:96`) does the same irreversible thing through a labelled `outline` Button
+with a `Square` icon **and no confirmation at all**. So the two controls disagree about what the
+act is called, what it looks like, and whether it's worth asking about.
+
+**That makes this more than taste.** `00-overview.md` § "The operating model" — and `CLAUDE.md`
+§ 1 — say every irreversible action keeps its confirmation. The header `Stop` is the one place in
+the app where a single click ends a running agent with no undo and no question.
+
+- [ ] Replace the labelled button with an `IconButton` + `X`, per the design rules (no background,
+      hover colours the icon). The metaphor changes for the better too: `Square` says "halt a
+      process", but the handler kills the PTY, disposes the pooled xterm **and navigates back to
+      the project** — that is closing the session, not stopping it.
+- [ ] **Reuse the tab strip's dialog; do not write a second one.** It lives inline in
+      `SessionTabs.tsx` today with local `closing` state. Lift it to a shared component beside
+      `QuitConfirm` (`components/dialog/`) and have both call sites drive it. Two confirm modals
+      for the same act, free to drift apart, is precisely the bug this item exists to remove.
+- [ ] Decide the stopped-session branch deliberately. The header swaps `Stop` → `Restart` when
+      nothing is live, and a dead session needs no confirm. Recommendation: keep the swap and
+      re-skin only the live branch — the ask is about the confirm, not a header redesign.
+- [ ] Leave the kill-failure path alone. A failed `terminal_kill` still logs and navigates away,
+      because the project page's status dot goes on telling the truth (the comment at
+      `routes/session.tsx:70` is the reasoning). Don't grow an error modal here in passing.
+- [ ] Two spec lines to fix in the same commit (§ 2a), one sentence each. F3 describes "a thin
+      header for the project name + session id" and names no controls; F5's UI line still
+      advertises a toolbar of "Resume/Restart, Kill, Copy selection, Search-in-terminal (`Cmd+F`)"
+      — `SearchAddon` is loaded but nothing drives it, and copy-selection has no control at all.
+- [ ] Smoke coverage: `session-tabs.spec.ts` already exercises the tab `×`; add the header path —
+      `X` opens the dialog, `Keep it running` leaves the terminal live, confirming lands on
+      `/projects/$id`.
