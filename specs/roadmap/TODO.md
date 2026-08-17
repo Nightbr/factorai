@@ -47,6 +47,11 @@ Written straight after cutting v0.9.0 by hand, so its list of gaps is observed r
 imagined — and it puts the **version bump** question back on the table, which `release.yml`'s
 tag-only scheme had settled the other way.
 
+Added 2026-08-17 as **item 33**, a user ask: **restore open session tabs on launch**, behind a
+preference. Filed with a warning rather than a checklist — it contradicts a decided line in F16
+("there are no tabs to restore") and the interesting half is what a restored tab even *is* when
+kill-on-quit means the PTY is gone. Gated on a clarify-needs pass; depends on item 4 for the switch.
+
 Added 2026-08-17 as **item 32**, split out of item 4 during F11's interview: the **light theme**.
 It came out because it is three unbuilt things rather than a settings row — nothing sets
 `data-theme`, Monaco has one theme, and Q8's xterm mapper was specced and never built — and burying
@@ -971,3 +976,73 @@ background, with light values written but never once looked at. Expect real corr
 **Where the control goes is already decided** — F11's Appearance section, which exists as a heading
 the moment this lands and is deliberately absent until then. So this item owns the theme; item 4
 owns the place to put it.
+
+## 33. Restore open session tabs on launch, behind a preference
+
+**User ask, 2026-08-17.** A switch in settings deciding whether the sessions you had open in
+tabs come back when you restart the app.
+
+**The switch is the easy half, and it is not the reason this needs a design pass.** Two things
+have to be settled first, and one of them is a spec that currently says no.
+
+### It contradicts F16, in as many words
+
+[`05-features.md` § F16](../05-features.md) decided:
+
+> **Order** is in memory and appends at the end. Persisting it would be meaningless: quitting kills
+> every PTY (ADR-0005), so there are no tabs to restore.
+
+And the section above it states the invariant the whole strip is built on: **"A tab is a running
+PTY, not an open document."** `terminalStore` has no `persist` at all — deliberately, not by
+omission. So per `AGENTS.md` § 2a the spec gets fixed **before** any code, or this item is
+disqualified and says why. Do not build against F16 as written and leave the contradiction for
+`08-inconsistencies.md` to find later.
+
+### What is a restored tab, given the PTY is gone?
+
+Kill-on-quit is non-optional (Q10, ADR-0005) and **this item does not reopen that** — it is about
+what happens on *launch*, not about keeping processes alive across one. So a restored tab cannot be
+a running PTY at restore time, and every answer costs something:
+
+- **Respawn `claude --resume <id>` for each tab at launch.** Tabs mean what they meant. But this
+  starts N real agents unattended, before you have looked at the window — which is **real money**
+  in the words Q10 already uses, and it decides something on the human's behalf that
+  `00-overview.md` § "The operating model" says the human decides. If this is the answer, the
+  preference cannot default to on.
+- **Restore inert tabs that spawn on click.** No process starts until you ask. But it breaks F16's
+  invariant directly: the strip stops being an honest picture of what is running, and now has two
+  kinds of tab that look alike and behave differently. F16 would need to say what an inert tab looks
+  like, or the honesty it was built for is gone.
+- **A "reopen 3 sessions?" prompt on launch.** The human decides, the invariant survives, nothing
+  spawns behind your back. But it is a new surface, and a modal in front of a cold app every launch
+  is its own kind of annoying — worth asking whether it earns that.
+
+**Related and not the same:** resuming a session already works from the sidebar, one click. So the
+honest question this item has to answer is what restore adds *over that*, for someone who had four
+tabs open — and if the answer is "it saves four clicks", weigh that against starting four agents.
+
+### Smaller things, all of which have precedent to follow
+
+- **Persisted session ids go stale**, and `sidebarStore` already learned this the hard way: at
+  ADR-0011 its persisted project ids stopped matching anything and were **dropped rather than
+  remapped**, because remapping needed an async lookup that had to finish before first paint or the
+  list rendered wrong and then jumped. A restored tab whose transcript is gone, or whose project was
+  removed, gets the same treatment — dropped quietly, not an error.
+- **Where the switch lives.** F11 ships three sections — Claude, Editor, Confirmations — and this
+  fits none of them, so it wants a fourth (*Sessions*, or *Startup*). That is a small change to F11
+  rather than a free slot, and item 32 is already queued to add Appearance.
+- **`prefsStore` or the tab list?** The *switch* is a plain preference. The *tab list* is
+  persisted state that happens to be read at launch, and it is closer to `sidebarStore`'s `expanded`
+  than to a preference — ADR-0013's rule applies: nobody sets it in a settings page. Probably
+  `terminalStore` gains a persisted `order` and nothing else does.
+- **Worth knowing:** `04-frontend.md` listed a `lastProjectId` preference for a year and it was
+  **deleted 2026-08-17** during F11's interview as something no feature had ever asked for. This is
+  the first thing that would plausibly want it. That is not an argument for bringing it back — it is
+  a note that if this item wants "where was I", it should say so out loud rather than quietly
+  reviving a key that was removed for being speculative.
+
+**Gated on a clarify-needs interview**, like items 1 and 4 were, and for the same reason: the
+sequencing is trivial and the design is not. Nothing here is a design — it is the list of what the
+interview has to answer, and the first question is whether F16's invariant bends or holds.
+
+**Depends on item 4** for somewhere to put the switch. Nothing else blocks it.
