@@ -1,8 +1,9 @@
+import { Brand } from '@components/brand/Brand';
 import { DevBadge } from '@components/layout/DevBadge';
 import { SessionTabs } from '@components/layout/SessionTabs';
 import { IconButton } from '@factorai/ui';
 import { usePanelStore } from '@store/panelStore';
-import { FolderGit2, PanelRight } from 'lucide-react';
+import { PanelRight } from 'lucide-react';
 
 /**
  * Full-window header. Deliberately spans above the sidebar too: this is the
@@ -16,8 +17,7 @@ export function TopBar() {
 
 	return (
 		<header className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
-			<FolderGit2 className="size-4 text-primary" />
-			<span className="font-semibold text-sm tracking-tight">factorai</span>
+			<Brand />
 			<DevBadge />
 
 			{/* Tabs take the middle. They render nothing when no session is live, so

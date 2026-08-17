@@ -3,6 +3,27 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The brand row — part of roadmap item 18, spec `09-branding.md` § B8** — 2026-08-17, user ask.
+  `TopBar` drops `FolderGit2` for the real mark, and the name is now set one way everywhere:
+  `factor` in the text colour, `ai` in `--primary`, from a `BrandWordmark` component rather than a
+  string spelled out per site. The empty state uses the same lockup one size up.
+
+  **The open question this was waiting on is answered.** Item 18 said to do it after session tabs
+  landed or do it twice, since the wordmark might not survive beside a full strip. Checked against
+  three live tabs: mark, wordmark and dev badge hold the left end and the strip takes the middle
+  without crowding.
+
+  **The geometry is mirrored by hand** into `components/brand/geometry.ts`, on the same reasoning
+  `CLAUDE.md` § 4 gives for the IPC types — the renderer gets a component that inherits
+  `currentColor` and needs no asset plumbing. `geometry.test.ts` is what makes that safe rather
+  than a slow leak: it reads the master SVG and fails on any divergence, and it also pins
+  `public/favicon.svg` byte-identical to the master, since Vite only serves `public/` and a build
+  step to copy one file is more machinery than the copy is worth.
+
+  **The ports mask needs a unique id per instance** — two marks sharing one id means the second
+  renders unmasked, as a plain rounded square with no notches. `useId` supplies it, colons
+  stripped, which a `url(#…)` reference is better off without.
+
 - **The mark, and every app icon — part of roadmap item 18, spec `09-branding.md`** — 2026-08-17,
   user ask. A notched dark housing with an amber F cut into it. The housing reads as a machine
   from above and as a chip package, which is the two halves of the name without either being
