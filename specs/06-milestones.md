@@ -185,3 +185,27 @@ toolchain wired up.
    build/signing pipeline.
 10. **Mobile / iPad.** Tauri 2 supports mobile. Probably never useful
     for this product, but it's on the table.
+11. **Keep the machine awake while a session is working.** **Demoted here
+    from `roadmap/TODO.md` item 20 on 2026-08-17** — the first item to move
+    in this direction rather than out of it. Hold a sleep inhibitor while an
+    agent is actually working, release it when it isn't.
+
+    Disqualified as too risky for now, and the risk is the *release* path
+    rather than the feature: a leaked inhibitor is invisible. No window, no
+    indicator, just a laptop that quietly never sleeps and is flat by
+    morning. That is ADR-0005's orphan-PTY problem wearing a different hat,
+    and the correct handling — release on the last qualifying session ending,
+    plus an explicit release on quit, plus `Drop` as the backstop — is the
+    same shape of care, on a platform surface we do not control.
+
+    Two things compound it. **Linux has no single mechanism** — logind's
+    `Inhibit` over D-Bus, `org.freedesktop.portal.Inhibit`, and the older
+    ScreenSaver interface, varying by desktop — so this is a new load-bearing
+    dependency and an ADR (§ 5) before it is a feature. And the design
+    question underneath is unsettled: `live_count()` is the wrong signal
+    (it counts terminals, not work), and **`waiting_input` is genuinely
+    ambiguous** — the agent is blocked on a human who is, by hypothesis, not
+    at the machine. That is the case that actually happens overnight.
+
+    Nothing here is wrong, and it may well graduate back. It is parked
+    because the failure mode is silent and lands on the user's hardware.

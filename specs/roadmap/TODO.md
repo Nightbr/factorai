@@ -33,6 +33,12 @@ Added 2026-08-17 as **items 29–30**, both user asks, **both shipped the same d
 leaves behind is in its entry: per-surface error boundaries under 29, and a `head` field on
 `GitStatus` under 30 that item 1 wants anyway.
 
+**Item 20 was disqualified 2026-08-17** — the keep-awake inhibitor, on the user's call that it is
+too risky for now. It is the first item to travel *back* to
+[`06-milestones.md`](../06-milestones.md) § Deferred rather than out of it, and it should not be
+the last: an item that has stopped being the next thing to do belongs there, not sitting in this
+list looking queued. Item 20 is a stub saying where it went and why.
+
 One thing item 25 leaves for **item 3**: `ContextMenu` now exists in `@factorai/ui`, built for the
 sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
 
@@ -190,10 +196,17 @@ unused.
       setting for MVP; don't quietly add it, supersede Q3 if you want it.
 - [ ] Theme + font size reach xterm through the palette→theme mapper (Q8: two themes, no picker).
 
-**Three items now wait on this one**, which is an argument for pulling it forward: item 20's
-keep-awake toggle needs both the route and a Rust-readable setting, item 22's
-confirm-before-killing-a-session toggle needs the route (renderer-only — no Rust read-back), and
-the preferences other items keep wanting have still got nowhere to live.
+**Two items wait on this one** (three until 2026-08-17, when item 20's keep-awake toggle was
+disqualified): item 22's confirm-before-killing-a-session toggle needs the route (renderer-only —
+no Rust read-back), and the preferences other items keep wanting have still got nowhere to live.
+
+**Losing item 20 changes the shape of this one, not just the count.** It was the *only* queued
+customer for `get_setting` / `set_setting` — the Rust-readable half. What is left in that bullet
+is the claude-binary-path override, which the three-tier probe's failure message already promises,
+and nothing else. So the Rust half is now justified by one escape hatch rather than by a queue,
+and it is worth asking whether it ships with this item or waits for a second caller. The
+**renderer-side surface is untouched** by that and is still what everything is actually blocked
+on.
 
 **The surface itself is not settled, and that is what is actually blocking them** (noted
 2026-08-16). F11 names four sections and this entry says "`/settings` route", but neither says
@@ -602,48 +615,20 @@ developer tool into a local RCE, so it is the first thing to design and the firs
   at once; a server that can't attribute a request to a session can't put the diff in the right
   tab.
 
-## 20. Keep the machine awake while a session is working (macOS + Linux)
+## 20. Keep the machine awake — disqualified 2026-08-17, moved to deferred
 
-An agent working for twenty minutes shouldn't be suspended halfway through because nobody
-touched the keyboard. Hold a sleep inhibitor while work is in flight, release it when there
-isn't any, and let the user turn the whole thing off.
+**User call: too risky for now.** Demoted to
+[`06-milestones.md`](../06-milestones.md) § Deferred (entry 11), which holds the full reasoning
+and the two open design questions — it is the first item to travel in that direction rather than
+out of it, and the entry says so.
 
-**The settings half already exists as item 4 — don't build a second one.** F11 names four
-sections (Appearance, Editor, Claude, Advanced) and item 4 brings the `/settings` route,
-`prefsStore` on `tauri-plugin-store`, and `get_setting`/`set_setting` for values Rust reads back.
-This toggle is one preference in that surface and one of those reads. **That makes item 4 a
-prerequisite**, and it is a second item now pulling on it — worth weighing when ordering.
+The short version: the danger is the **release** path, not the feature. A leaked sleep inhibitor
+is invisible — no window, no indicator, a laptop flat by morning — which is ADR-0005's orphan-PTY
+problem on a platform surface we don't control. Linux has no single mechanism (logind / portal /
+ScreenSaver), so it is a load-bearing dependency and an ADR before it is a feature.
 
-**"Active" is the design decision, and `live_count()` is the wrong answer.** It counts terminals,
-not work: a session sitting at a prompt would pin the machine awake forever, which is a worse bug
-than the one being fixed. The status heuristic already distinguishes
-`running | idle | waiting_input | stopped` on its 200ms tick, so the signal is there. `running`
-clearly holds the inhibitor and `idle`/`stopped` clearly don't. **`waiting_input` is the real
-question**: the agent is blocked on a human who is, by hypothesis, not at the machine. Letting it
-sleep is defensible (nothing is progressing); holding it awake is too (you want to come back to a
-live session, not a resumed one). Decide it deliberately — it is the case that will actually
-happen overnight.
-
-**Releasing it is the dangerous half, and this repo already has the pattern.** A leaked inhibitor
-is invisible: no window, no indicator, a laptop that quietly never sleeps and is flat by morning.
-That is ADR-0005's orphan-PTY problem wearing a different hat, and it wants the same answer —
-release on the *last* qualifying session ending, plus an explicit release on quit, plus `Drop` as
-the backstop. Not just "release on quit": a session finishing at 02:00 must not hold the machine
-until you close the app the next day.
-
-**Mechanisms, and the platform risk is Linux.** macOS is settled — IOKit
-`IOPMAssertionCreateWithName`, and the distinction that matters is
-`PreventUserIdleSystemSleep` (what we want) versus keeping the *display* lit (what we don't;
-burning a backlight for a headless agent is not the feature). Linux has no single answer:
-systemd-logind's `Inhibit` over D-Bus covers most desktops, with `org.freedesktop.portal.Inhibit`
-and the older ScreenSaver interface as the Wayland/portal variants. Worth pricing a crate that
-already spans both against hand-rolling; either way a new dependency here is load-bearing and
-takes an ADR (`CLAUDE.md` § 5).
-
-**A toggle that lies is worse than no toggle.** If inhibition can't be established — no logind,
-an unusual compositor, a denied portal — the app has to say so rather than show an enabled switch
-that does nothing. Whatever the settings row is, it needs a state for "on, but not currently in
-effect", which also means the command returns whether the assertion actually took.
+**It no longer pulls on item 4.** That entry counted three dependents; it is two now (items 22 and
+whatever a future preference needs). Nothing else referenced this item.
 
 ## 21. Post-MVP / deferred
 
@@ -676,9 +661,11 @@ killing a session asks becomes the user's call, **on by default**.
 What blocks them is not the toggle logic, which is trivial, but that **there is nowhere to put
 it**: the settings surface is undecided beyond F11 naming four sections. Where its entry point
 lives, and whether it is a modal or a route, are open (see item 4) — and a preference whose home
-is unknown cannot be specced, only guessed at. Unlike item 20's keep-awake, this one is
-**renderer-only** — no `get_setting`/`set_setting`, just `prefsStore` — so item 4's *surface* is
-the whole of the dependency; none of its Rust half matters here.
+is unknown cannot be specced, only guessed at. This one is **renderer-only** — no
+`get_setting`/`set_setting`, just `prefsStore` — so item 4's *surface* is the whole of the
+dependency; none of its Rust half matters here. That distinction now matters more than it did:
+with item 20 disqualified (2026-08-17) this is the **only** item still waiting on item 4, and it
+needs the cheaper half of it.
 
 What to get right when it lands:
 
