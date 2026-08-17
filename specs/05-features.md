@@ -743,8 +743,11 @@ applies — ADR-0007).
 CLAUDE.md is editable in-app; plans are read-only (they're working
 documents Claude writes).
 
-**UI.** **Not a side panel tab** — Q18 settled the strip as `Files | Changes`
-and it is not a registry. `CLAUDE.md` is a file the tree opens, with editing
+**UI.** **Not a side panel tab.** Q18 turned this claimant away because
+`CLAUDE.md` has a cheaper home, and that reason is untouched by the strip later
+growing a third tab for F18 — the strip is hardcoded either way, and a Memory tab
+would be a worse version of something the tree already does. `CLAUDE.md` is a
+file the tree opens, with editing
 switched on for that one path, which makes plans free (they are `.md` under
 `.claude/plans/`). Roadmap item 2 builds it that way.
 Edits to CLAUDE.md trigger an explicit Save action with a dirty indicator.
@@ -818,7 +821,8 @@ project it shows follows the route (`/projects/$id` or
   Open state and width persist (see below). No keyboard shortcut yet:
   `Ctrl+B` is readline's back-a-char and tmux's prefix, so binding it would
   break typing in the embedded claude terminal.
-- Panel header: a `Files | Changes` tab strip (F13), then collapse-all,
+- Panel header: a `Files | Changes` tab strip (F13) — `Files | Changes | Graph`
+  once F18 lands — then collapse-all,
   refresh, close. The tree keeps its layout, spacing, icons and indentation
   exactly as they are — no indent guides, no folder icons, no compact folders,
   no hover actions. The only thing git adds to the tree is **paint**:
@@ -914,9 +918,11 @@ factorai shows you what the agent did, it does not stage, discard or commit —
 the terminal beside it already does that better. See ADR-0009.
 
 **UI.** A `Files | Changes` tab strip in the panel header (the slot F12 left for
-it). Files is the default; the last tab chosen persists app-wide in
-`panelStore`, alongside `open` and `width`. The strip **never** switches itself
-because a file changed — the panel sits next to a terminal you are typing into.
+it) — **`Files | Changes | Graph` once F18 lands**, which appends rather than
+reorders, so Changes keeps its position. Files is the default; the last tab
+chosen persists app-wide in `panelStore`, alongside `open` and `width`. The strip
+**never** switches itself because a file changed — the panel sits next to a
+terminal you are typing into.
 
 Three groups, in order, each with a count and hidden when empty:
 
@@ -1202,6 +1208,223 @@ so a URL carrying a raw space or newline — which every stack trace has — fai
 the plugin's regex validation and the click silently does nothing. Both halves
 are guarded: `lib/crashReport.test.ts` on the building side and
 `src-tauri/tests/shell_open_scope.rs` on the scope itself.
+
+---
+
+## F18 — Git graph
+
+**Specified 2026-08-17**, from the clarify-needs interview roadmap item 1 was
+gated on. Not built yet.
+
+**A viewer, not a git client, and that asymmetry is the whole reason it is
+tractable.** GitKraken was open beside factorai for exactly one purpose:
+*seeing* where the repository is — which branches exist, what is on them, how
+they diverged. Everything a git GUI is usually for — committing, rebasing,
+merging, resolving — the agent in the terminal below already does better. This
+ships the half that justifies the weight and none of the half that doesn't.
+[ADR-0009](../docs/adr/0009-git2-for-repository-state.md)'s read-only clause is
+untouched: nothing here commits, stages, checks out, pushes or fetches, and
+`git2` is compiled `default-features = false`, so network transport isn't merely
+unimplemented — it isn't linked in.
+
+### Placement
+
+**A third tab: `Files | Changes | Graph`**, appended so the two existing tabs
+keep their positions and their muscle memory. This **amends Q18**, which
+originally decided the strip ships "exactly two tabs" — see that question for
+what changed and what didn't. Q18's other half is why the strip is safe to grow
+at all: selection persists app-wide in `panelStore` and **never switches
+itself**.
+
+**The panel is 200–600px, and that is the design input rather than a squeeze to
+resolve later.** Q18 disqualified project-wide search from this strip
+specifically for wanting more than 288px, and a commit graph is at least as
+width-hungry. So phase 1 is a **rail** designed for 288px from the first line —
+lanes and subjects in a column, GitLens's sidebar density rather than Git
+Graph's tabular spread.
+
+**Phase 2 is deferred, not dropped, and it is a hosting change.** The same
+component, at 900–1200px in a near-fullscreen modal: pitch back to its full
+12px, subjects untruncated, the detail pane moving from below the list to beside
+it. Keeping it a *hosting* change rather than a second layout is what keeps it
+cheap enough to actually happen. `FileViewerModal` is the shell precedent, and
+F16's per-project tabs are the eventual home for both.
+
+**Bound to the project folder and to that alone** — `Repository::discover()`
+from the project root, exactly as F13 does, so a project inside a monorepo shows
+that repository. Worktrees change what "the repository" means on screen and are
+a later phase.
+
+### The row
+
+**26px, one line, `py-[3px] text-sm`** — the same density as the file tree and
+the Changes list, because three tabs that scroll at three rhythms read as three
+apps. Left to right: the lane rail, then ref chips, then the subject.
+
+**Refs come before the subject** because they are what you are scanning for, and
+they **fold before they collapse**. Three rules, applied in order, mostly
+dissolve the crowding rather than managing it:
+
+1. `HEAD` merges into its branch chip as `HEAD→main` rather than taking a slot
+   of its own.
+2. `origin/HEAD` is **hidden outright**. It is a symbolic ref duplicating
+   `origin/main` and it is the single most common cause of overflow.
+3. A local branch and its remote **on the same commit** collapse to one chip,
+   `main ≡origin`. This is the load-bearing one: local and remote crowd the same
+   row *only when they are in sync* — once they diverge they are on different
+   rows and there is nothing to crowd.
+
+So the four-chip worst case — `main`, `origin/main`, `origin/HEAD`, `v0.3.0` —
+becomes `HEAD→main ≡origin  v0.3.0`, which fits. What still overflows collapses
+to a `+N` chip, ordered local branch → remote branch → tag; the chip is itself
+hoverable and opens the same card. **`+N` is meant to be rare**, which is the
+only condition under which hiding a ref behind it is acceptable.
+
+### The rail
+
+**The rail's width is capped; the lane pitch compresses.** Budget is ~35% of
+panel width. Pitch starts at 12px and compresses toward a **6px floor** as lanes
+grow, so four lanes look generous and fourteen still fit; past what 6px can hold
+the rail alone scrolls horizontally. The two failure modes this is chosen
+against are the ones that matter: **no commit is ever hidden**, and the subject
+always keeps a floor.
+
+The alternatives were a fixed 12px pitch (a 16-lane moment leaves ~90px for text
+inside a 288px panel) and a hard six-lane cap with an overflow lane — rejected
+because its edges are approximate, and a viewer whose entire job is being
+trustworthy cannot draw a shape that isn't the repository's.
+
+**Lanes are coloured by index**, from a small fixed palette cycled per lane.
+Colour is what makes an edge traceable across a merge in a narrow column, and
+tracing is the job. This feature **establishes the repo's categorical colour
+tokens** — see
+[ADR-0012](../docs/adr/0012-categorical-colour-tokens.md).
+
+### Interaction
+
+**Hover un-truncates. Click goes deeper.** That is the whole rule, and it is
+what makes a 38-character row acceptable.
+
+- **Hover** opens a card showing what the row had to cut: full subject, the
+  complete ref list (including whatever `+N` hid), author, absolute *and*
+  relative date, short SHA. A vendored shadcn **HoverCard**
+  (`@radix-ui/react-hover-card`) — the correct primitive for "popover opened by
+  hover": it carries open/close delays and does not steal focus. Radix Popover
+  is click-triggered, and Tooltip is `role="tooltip"` with content you cannot
+  select or click, so neither fits. **400ms open / 150ms close**, so sweeping
+  down the list does not fire a cascade of cards.
+- **Click** selects the row and fills a detail pane **docked at the bottom of
+  the panel**, split from the list by a horizontal drag handle whose height
+  persists in `panelStore`. The pane carries the message body, author, date, the
+  short SHA with a copy control, the parent chips, and the commit's changed-file
+  list — **reusing `ChangesView`'s row rendering verbatim**, since a `+12 −3`
+  badge at 288px is a problem F13 already solved and a second file-row style
+  would be a second thing to keep consistent.
+- **Clicking a file** opens the existing Monaco diff:
+  `?file=<path>&diff=<parentSha>..<sha>`. Git's own range notation, both ends
+  explicit, so nothing in the renderer has to resolve `sha^`.
+- **A merge diffs against its first parent**, labelled `vs 88f3b0e`, with every
+  parent shown as a chip that selects that commit in the graph. First-parent
+  diff on a merge is precisely "what did this merge bring in from the other
+  branch", which is the question you have when you click one. A combined diff
+  has no Monaco representation, and a parent *picker* is phase-2 polish.
+- **Keyboard**: `↑`/`↓` move the selection, `Enter` opens the detail,
+  `Home`/`End` jump. A **component-local roving tabindex**, deliberately not a
+  global binding — these are list semantics while the list has focus, so they
+  add nothing to the one-`useEffect`-per-shortcut problem the keybinding scheme
+  exists to solve, and that scheme adopts them unchanged. F2's sidebar `↑`/`↓`
+  was deferred to that pass; this breaks with it because 300 rows is where
+  mouse-only genuinely hurts.
+
+### Scope of the walk
+
+**All refs**: every local branch, every remote-tracking branch, every tag, and
+`HEAD`, walked `TOPOLOGICAL | TIME`. "Which branches exist, what is on them, how
+they diverged" is unanswerable from a filtered walk, and "the current branch and
+its neighbours" has no definition that survives a real repository — a
+six-month-old branch is or isn't a neighbour depending on what you wanted. The
+page limit does the work, not the ref count: a revwalk with forty pushed refs and
+a 300-commit limit costs what one pushed ref costs.
+
+**Remote-tracking refs are shown and labelled.** The staleness objection is real
+in general and does not apply here: the agents in factorai's own embedded
+terminal run fetch, pull and push constantly, so `.git`'s remote refs are as
+fresh as this workflow makes them — fresher, in practice, than a git GUI polling
+on its own schedule. And "am I ahead of `origin/main`" is the most common form
+of the divergence question.
+
+### Freshness
+
+**A 30s poll, gated on `open && tab === 'graph'`**, plus `refetchOnWindowFocus`
+and the refresh button already in the panel header. This mirrors both existing
+precedents exactly: `useGitBranch`'s 30s cadence, because a commit landing is a
+`git checkout`-class event and not a keystroke-class one, and `useGitStatus`'s
+`enabled` gate, so switching to Files stops the revwalk dead and a closed panel
+costs nothing. The 3s Changes cadence is wrong here — a revwalk plus full ref
+enumeration is meaningfully more work than a status walk, and rows shifting
+under a line you are reading is the annoyance Q18 legislated against for tabs.
+
+### Scale
+
+**300-commit pages, plain DOM, an explicit "Load more".** No virtualisation:
+there is none anywhere in this repo, `MAX_CHANGES: 500` is the established
+answer to "too many rows", and 900 rows of 26px DOM is not something React
+struggles with. `@tanstack/react-virtual` would be a new load-bearing dependency
+and therefore an ADR — buy that when paging demonstrably hurts, not before. It
+also interacts badly with lane assignment, which is computed across the walk
+rather than per row.
+
+### The working tree
+
+**A dirty marker on the HEAD row, and no pseudo-node.** A graph showing `main`
+on a commit while forty files are uncommitted reads as "clean", and that is a
+lie worth fixing — but not by duplicating the Changes tab one tab over, which is
+the canonical surface for it and models the index in three groups (Q19) in a way
+one graph row cannot. The marker is **free**: the graph tab being open means the
+panel is open, which means `useGitStatus`'s query is already in cache under the
+same key, so this is a cache read and not a second fetch. GitKraken's
+working-tree row was considered and rejected on those grounds — it either
+duplicates F13 or is a row that selects into nothing, and Q18 forbids it solving
+that by switching tabs for you.
+
+### Backend
+
+`git_graph`, `git_commit`, `git_blob_at`, and a new `head` field on `GitStatus`
+— see [`03-backend-rust.md`](./03-backend-rust.md) § `git`. **Lane assignment
+runs in Rust** and the payload carries lane indices and edge segments; the
+renderer draws SVG and never reasons about the DAG. See Q23 for why.
+
+### Edge cases
+
+- **Not a git repository** → the tab stays present and renders `Not a git
+  repository.`, the same string and shape as `ChangesView`. `git_status`
+  already resolves `repoRoot: null` rather than rejecting; the graph does the
+  same thing. The strip must not reflow as you move between projects.
+- **Repository with no commits** (unborn `HEAD`) → `No commits yet.` There is
+  nothing to walk and that is not an error.
+- **Detached `HEAD`** → a bare `HEAD` chip on its commit, with no branch to fold
+  into. The session header's badge shows the short SHA in this state, which is
+  what `GitStatus.head` is for.
+- **Shallow clone** → the walk ends where the clone does and "Load more"
+  disappears, rather than offering history that isn't there.
+- **Refs moved between pages** → invalidate and refetch from page 1 rather than
+  splicing a page walked against different refs onto one that wasn't.
+- **A commit with a dozen tags** → chips fill the ref budget, the rest is `+N`,
+  and the hover card lists all of them. The row's height does not change.
+- **Octopus merge** → all parents are chips; the file list is still the diff
+  against parent 1.
+- **Orphan branch** → its own lane from the top of the walk, joining nothing.
+  This is a lane-assignment test case, not a special case in the UI.
+
+### Non-goals, and they are load-bearing
+
+No commit, stage, discard, rebase, merge, cherry-pick, checkout, push or fetch.
+Adding any of them means revisiting ADR-0009, not adding a button. **No session
+linking in the first cut** — relating a commit to the session that produced it
+is the interesting question and is deferred rather than dropped; the payload
+carries full 40-character SHAs and both author and committer timestamps, which
+is what a later join needs, and the affordance would live in the hover card and
+the detail pane rather than inline on a row that has no room for it.
 
 ---
 

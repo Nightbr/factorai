@@ -217,20 +217,41 @@ watch-limit handling on Linux. The existing watcher is scoped to
 
 ---
 
-## Q18 — Who owns the panel's tab strip? → **`Files | Changes`, hardcoded**
+## Q18 — Who owns the panel's tab strip? → **hardcoded; `Files | Changes | Graph`**
 
-**Decision.** The strip ships with exactly two tabs (F13). It is *not* a
-registry or a plugin point.
-
-Three features had claimed that slot: F9's "Memory" tab (CLAUDE.md + plans),
-project-wide search results, and git status. Git status won it because it is the
-one that must sit beside a running terminal, and because the other two have
-cheaper homes — CLAUDE.md is just a file the tree can open, and search results
-want more width than 288px.
+**Decision.** The strip is **hardcoded** — a fixed list in `panelStore`, not a
+registry and not a plugin point. It carries Files (F12), Changes (F13) and Graph
+(F18).
 
 Selection persists **app-wide** in `panelStore` (next to `open` and `width`),
 defaults to Files, and never switches itself. A tab strip that moves under you
 while you type into the terminal below it is worse than no tab strip.
+
+**Amended 2026-08-17, when F18 was specified.** This question originally decided
+"exactly two tabs", and that number was the wrong thing to have written down.
+What it was actually deciding is what its title asks — *who owns the strip* — and
+that answer has not changed: it is hardcoded, and a third tab is a line in a
+union type rather than an extension point.
+
+The original reasoning stands and is worth keeping, because it is the test any
+fourth claimant has to pass. Three features had claimed the slot F12 left: F9's
+"Memory" tab (CLAUDE.md + plans), project-wide search results, and git status.
+Git status won it because it is the one that must sit beside a running terminal,
+and the other two had cheaper homes — CLAUDE.md is a file the tree can open, and
+search wanted more width than 288px.
+
+**F18 does not pass that test cleanly, and it took the slot anyway.** A commit
+graph is a *glance* — you check where the repository is, then go back to work —
+so "must sit beside a running terminal" is not really an argument for it, and it
+is at least as width-hungry as the search results that were turned away. Both
+objections were put to the user during the F18 interview and the call was to ship
+the narrow rail here first, with a wide surface deferred (Q22). Recording it that
+way rather than retrofitting a justification: the strip grew because a rail at
+288px is genuinely useful and cheap, not because the graph satisfied the
+criterion that decided this question the first time.
+
+The width objection is therefore live rather than answered, and it is what Q22
+holds.
 
 ---
 
@@ -303,3 +324,75 @@ sits there is the **compositor's drop shadow** — so the notch reads as a grey
 smudge rather than as a corner. Trading a hairline discontinuity for a visible
 smudge is a bad trade. Not worth revisiting unless the shadow can be excluded
 from that region, which X11 gives us no handle on.
+
+## Q22 — Rail or wide graph? → **rail first, in the panel; wide modal deferred**
+
+**Decision (2026-08-17, from the F18 interview).** The commit graph ships as a
+**rail in the right panel**, designed for 288px from the first line. A **wide
+surface is phase 2**: the same component in a near-fullscreen modal at
+900–1200px, deferred rather than dropped.
+
+This was the fork the interview existed to resolve, and it is genuinely a fork
+rather than a preference, because the two build differently. In GitLens and
+VS Code's Git Graph — the stated reference — the lane graph gets a *wide* surface
+(an editor tab, an area spanning the window), and what lives in a narrow sidebar
+is a **tree** of branches, tags and commits with at most a hint of a rail. Our
+panel is 200–600px, narrower than either. So either the picture wanted is the
+rail, which fits the panel and is the smaller build, or it is the graph as Git
+Graph draws it, which wants a home other than the panel.
+
+**Why the rail won, stated honestly.** Not because the rail is the better
+picture — the wide surface is, and "how they diverged" is the question that most
+wants horizontal room. It won because it is the cheaper thing to be wrong about.
+The rail is a third tab, one component, and reuses the panel, the resizer and
+F13's file rows; the wide surface is a new host, a new geometry, and a decision
+about whether it is a modal, a route or an F16 tab. Shipping the rail buys the
+daily 80% and produces the thing phase 2 widens.
+
+**What keeps phase 2 cheap is that it is a hosting change.** The rail component
+takes a width; at 1200px the pitch returns to its full 12px, subjects stop
+truncating, and the detail pane moves from below the list to beside it. No second
+layout algorithm, no additional backend data. The tabular layout Git Graph
+actually uses — graph, subject, author, date, SHA as sortable columns — was
+considered for phase 2 and set aside for exactly that reason: it would make phase
+2 a second feature rather than a shell swap, which is how deferred phases stop
+happening.
+
+**Consequence for Q18.** The strip grows to three tabs, and the width objection
+Q18 raised against project-wide search is not answered here — it is deferred to
+phase 2. If the rail turns out to be the wrong picture at 288px, the answer is to
+bring phase 2 forward, not to widen the panel past 600px.
+
+## Q23 — Where does lane assignment run? → **Rust; the payload carries lanes**
+
+**Decision.** `git_graph` returns each commit with its lane index, plus per row
+the lanes passing through and where forks and joins land. The renderer draws SVG
+from that and never holds a parent-adjacency graph.
+
+Lane assignment is the feature — a bad layout is worse than no graph — so where
+it runs decides where it can be tested and how paging behaves. Three reasons it
+is Rust:
+
+- **One pass, not two.** The revwalk is already in Rust. Assigning lanes as
+  commits are emitted is a few dozen lines over state we are holding anyway;
+  the alternative ships a parent list across IPC so the renderer can re-derive
+  what the walk already knew.
+- **It is testable where it matters.** `cargo test` builds real repositories in a
+  `tempdir` — linear, branch-and-merge, octopus, orphan branch, unborn `HEAD` —
+  with no `git` binary and no network. That is the leverage ADR-0009 credits
+  `git2` with for the status matrix, and it applies twice as well to a layout
+  algorithm. In the renderer the same coverage means Playwright, against a suite
+  already past its time budget.
+- **Paging stays honest.** Lanes are computed over the whole prefix on every
+  call, so page 4 cannot disagree with page 1 (see `03-backend-rust.md` §
+  `git`). Doing layout in the renderer means either threading the open-lane
+  frontier across appends or reflowing the list on each one, and any instability
+  there is visible as lanes jumping under the cursor.
+
+**The counter-argument, which is real:** layout is conventionally a renderer
+concern, and a payload with lanes baked in could fight a phase-2 surface that
+wanted to lay the same data out differently. It doesn't, because width changes
+the *pitch* and not the *assignment* — the same lane indices render at 6px or
+12px. If phase 2 ever wants a genuinely different topology on screen, that is the
+point to revisit this, and it would be a new question rather than an edit to
+this one.
