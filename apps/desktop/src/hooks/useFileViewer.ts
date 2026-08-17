@@ -8,13 +8,32 @@ import { useCallback } from 'react';
  * - `staged`   HEAD ↔ index
  * - `unstaged` index ↔ worktree
  * - `head`     HEAD ↔ worktree, used for conflicted rows
+ *
+ * A fourth form arrives with F18: `<parent>..<sha>`, a commit against its first
+ * parent. Git's own range notation, with **both ends explicit** so nothing in the
+ * renderer has to resolve `sha^`. The left side is empty for a root commit, whose
+ * parent is the empty tree.
  */
-export type DiffMode = 'staged' | 'unstaged' | 'head';
+export type DiffMode = 'staged' | 'unstaged' | 'head' | `${string}..${string}`;
 
 const DIFF_MODES: DiffMode[] = ['staged', 'unstaged', 'head'];
 
+/** A full SHA either side, and an empty left for a root commit. Strict on
+ *  purpose: this validates a hand-edited URL, and a loose pattern would let
+ *  `..` alone through as a diff of nothing against nothing. */
+const COMMIT_RANGE = /^(?:[0-9a-f]{40})?\.\.[0-9a-f]{40}$/;
+
 export function isDiffMode(value: unknown): value is DiffMode {
-	return typeof value === 'string' && DIFF_MODES.includes(value as DiffMode);
+	if (typeof value !== 'string') return false;
+	return DIFF_MODES.includes(value as DiffMode) || COMMIT_RANGE.test(value);
+}
+
+/** The two commits a range compares, or null when the mode isn't a range.
+ *  A null `left` is the empty tree — a root commit's files are all additions. */
+export function parseCommitRange(mode: DiffMode): { left: string | null; right: string } | null {
+	if (!COMMIT_RANGE.test(mode)) return null;
+	const [left, right] = mode.split('..');
+	return { left: left || null, right };
 }
 
 /**

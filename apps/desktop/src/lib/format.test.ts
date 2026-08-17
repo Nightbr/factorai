@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatRelative } from './format';
+import { formatAbsolute, formatBytes, formatRelative } from './format';
 
 const NOW = 1_700_000_000_000; // fixed reference
 
@@ -59,5 +59,22 @@ describe('formatBytes', () => {
 	it('returns a dash for nonsense rather than NaN', () => {
 		expect(formatBytes(Number.NaN)).toBe('—');
 		expect(formatBytes(-1)).toBe('—');
+	});
+});
+
+describe('formatAbsolute', () => {
+	it('gives a date and a time to the minute, with no seconds', () => {
+		const formatted = formatAbsolute(Date.UTC(2026, 7, 17, 14, 30, 45));
+
+		// Locale-dependent, so assert the shape rather than the exact string: a
+		// year and an hour:minute are present, and the seconds are not.
+		expect(formatted).toMatch(/2026/);
+		expect(formatted).toMatch(/\d{1,2}:\d{2}/);
+		expect(formatted).not.toMatch(/:\d{2}:\d{2}/);
+	});
+
+	it('returns a dash for nonsense rather than "Invalid Date"', () => {
+		expect(formatAbsolute(Number.NaN)).toBe('—');
+		expect(formatAbsolute(Number.POSITIVE_INFINITY)).toBe('—');
 	});
 });

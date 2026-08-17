@@ -13,9 +13,20 @@ export function clampPanelWidth(width: number): number {
 	return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(width)));
 }
 
-/** The panel's two tabs (F13). Hardcoded rather than a registry — see
- *  07-open-questions.md Q18. */
-export type PanelTab = 'files' | 'changes';
+/** Shorter than this and the commit detail can't show a subject and one file
+ *  row; taller and the graph it belongs to stops being a graph. */
+export const MIN_DETAIL_HEIGHT = 96;
+export const MAX_DETAIL_HEIGHT = 600;
+export const DEFAULT_DETAIL_HEIGHT = 200;
+
+export function clampDetailHeight(height: number): number {
+	if (!Number.isFinite(height)) return DEFAULT_DETAIL_HEIGHT;
+	return Math.min(MAX_DETAIL_HEIGHT, Math.max(MIN_DETAIL_HEIGHT, Math.round(height)));
+}
+
+/** The panel's three tabs (F12, F13, F18). Hardcoded rather than a registry —
+ *  see 07-open-questions.md Q18, amended when the graph took a third slot. */
+export type PanelTab = 'files' | 'changes' | 'graph';
 
 interface PanelState {
 	/** Is the file tree panel showing? Persisted. */
@@ -37,12 +48,17 @@ interface PanelState {
 	 *  Parked here until `prefsStore` exists (roadmap item 4); it migrates with
 	 *  `open`/`width` when F11 lands. */
 	diffInline: boolean;
+	/** Height of the commit detail docked under the graph, in px. Persisted: it
+	 *  is a preference about how much history you want to see at once, and it
+	 *  survives a reload the same way `width` does (F18). */
+	detailHeight: number;
 
 	toggle: () => void;
 	setOpen: (open: boolean) => void;
 	setTab: (tab: PanelTab) => void;
 	setDiffInline: (inline: boolean) => void;
 	setWidth: (width: number) => void;
+	setDetailHeight: (height: number) => void;
 	toggleExpanded: (projectId: string, path: string) => void;
 	/** Expand the root once, the first time this project's tree is shown. A
 	 *  project with an existing (even empty) entry has been seeded already, so a
@@ -61,12 +77,14 @@ export const usePanelStore = create<PanelState>()(
 			expandedByProject: {},
 			selectedPath: null,
 			diffInline: false,
+			detailHeight: DEFAULT_DETAIL_HEIGHT,
 
 			toggle: () => set((s) => ({ open: !s.open })),
 			setOpen: (open) => set({ open }),
 			setTab: (tab) => set({ tab }),
 			setDiffInline: (diffInline) => set({ diffInline }),
 			setWidth: (width) => set({ width: clampPanelWidth(width) }),
+			setDetailHeight: (height) => set({ detailHeight: clampDetailHeight(height) }),
 
 			toggleExpanded: (projectId, path) =>
 				set((s) => {
@@ -104,6 +122,7 @@ export const usePanelStore = create<PanelState>()(
 				width: s.width,
 				tab: s.tab,
 				diffInline: s.diffInline,
+				detailHeight: s.detailHeight,
 			}),
 		},
 	),

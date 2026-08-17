@@ -3,7 +3,7 @@ import { Button } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Columns2, Rows2 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import type { DiffMode } from '@hooks/useFileViewer';
+import { type DiffMode, parseCommitRange } from '@hooks/useFileViewer';
 import { formatBytes } from '@lib/format';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -27,16 +27,46 @@ interface DiffViewProps {
 	mode: DiffMode;
 }
 
-/** The two revisions a mode compares. `null` means the worktree — `read_file`
- *  rather than `git_blob`. */
-function sidesFor(mode: DiffMode): { left: 'head' | 'index'; right: 'index' | null } {
+/** One side of a diff, as a cache key plus the call that fills it.
+ *  `key` is what distinguishes a HEAD blob from a blob at some commit. */
+interface Side {
+	key: readonly unknown[];
+	load: () => Promise<FileContents | null>;
+}
+
+/**
+ * What each side of a diff is read from.
+ *
+ * Three of the four modes are working-tree pairs; the fourth is a commit against
+ * its parent, which is why `git_blob_at` exists as a third command rather than
+ * `GitRev` growing an object member (F18).
+ */
+function sidesFor(path: string, mode: DiffMode): { left: Side; right: Side } {
+	const worktree: Side = { key: queryKeys.file(path, false), load: () => readWorktree(path) };
+	const at = (rev: 'head' | 'index'): Side => ({
+		key: queryKeys.gitBlob(path, rev),
+		load: () => cmd.gitBlob(path, rev),
+	});
+
+	const range = parseCommitRange(mode);
+	if (range) {
+		const { left: parent, right: commit } = range;
+		return {
+			// A root commit has no left side at all: everything in it is an addition,
+			// so an absent blob is the honest answer rather than an error.
+			left: parent
+				? { key: queryKeys.gitBlob(path, parent), load: () => cmd.gitBlobAt(path, parent) }
+				: { key: queryKeys.gitBlob(path, 'empty-tree'), load: () => Promise.resolve(null) },
+			right: { key: queryKeys.gitBlob(path, commit), load: () => cmd.gitBlobAt(path, commit) },
+		};
+	}
 	switch (mode) {
 		case 'staged':
-			return { left: 'head', right: 'index' };
+			return { left: at('head'), right: at('index') };
 		case 'unstaged':
-			return { left: 'index', right: null };
-		case 'head':
-			return { left: 'head', right: null };
+			return { left: at('index'), right: worktree };
+		default:
+			return { left: at('head'), right: worktree };
 	}
 }
 
@@ -48,17 +78,17 @@ function basename(path: string): string {
 export function DiffView({ path, mode }: DiffViewProps) {
 	const inline = usePanelStore((s) => s.diffInline);
 	const setInline = usePanelStore((s) => s.setDiffInline);
-	const { left, right } = sidesFor(mode);
+	const { left, right } = sidesFor(path, mode);
 
 	const leftQ = useQuery({
-		queryKey: queryKeys.gitBlob(path, left),
-		queryFn: () => cmd.gitBlob(path, left),
+		queryKey: left.key,
+		queryFn: left.load,
 		staleTime: Number.POSITIVE_INFINITY,
 		retry: false,
 	});
 	const rightQ = useQuery({
-		queryKey: right ? queryKeys.gitBlob(path, right) : queryKeys.file(path, false),
-		queryFn: () => (right ? cmd.gitBlob(path, right) : readWorktree(path)),
+		queryKey: right.key,
+		queryFn: right.load,
 		staleTime: Number.POSITIVE_INFINITY,
 		retry: false,
 	});

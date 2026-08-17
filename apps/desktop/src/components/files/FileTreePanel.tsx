@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { IconButton } from '@factorai/ui';
 import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
+import { GraphView } from '@components/graph/GraphView';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { PanelResizer } from '@components/layout/PanelResizer';
 import { clampPanelWidth, type PanelTab, usePanelStore } from '@store/panelStore';
@@ -60,10 +61,13 @@ function PanelBody() {
 	return (
 		<>
 			<header className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
-				{/* Two tabs, hardcoded — not a registry (Q18). */}
+				{/* Three tabs, hardcoded — not a registry (Q18, amended when the graph
+				    took a third slot). Appended rather than reordered, so Files and
+				    Changes keep the positions muscle memory already has. */}
 				<div className="flex flex-1 items-center gap-0.5" role="tablist" aria-label="Panel">
 					<TabButton tab="files" label="Files" />
 					<TabButton tab="changes" label="Changes" />
+					<TabButton tab="graph" label="Graph" />
 				</div>
 				{tab === 'files' && (
 					<>
@@ -84,6 +88,18 @@ function PanelBody() {
 						</IconButton>
 					</>
 				)}
+				{tab === 'graph' && (
+					// The graph polls at 30s, not the Changes tab's 3s, so an explicit
+					// refresh is the answer for a commit that just landed while you were
+					// looking at it (F18).
+					<IconButton
+						aria-label="Refresh graph"
+						title="Refresh graph"
+						onClick={() => queryClient.invalidateQueries({ queryKey: ['git-graph'] })}
+					>
+						<RefreshCw />
+					</IconButton>
+				)}
 				<IconButton
 					aria-label="Close file tree"
 					title="Close file tree"
@@ -93,28 +109,36 @@ function PanelBody() {
 				</IconButton>
 			</header>
 
-			{/* `pr-2` is the scrollbar gutter: with a long tree or a big change
-			    set, rows would otherwise run under the scrollbar. */}
-			<div className="min-h-0 flex-1 overflow-auto py-1 pr-2">
-				{tab === 'changes' && <ChangesView />}
-				{tab === 'files' && (
-					<>
-						{!projectId && <Empty>Select a project to browse its files.</Empty>}
-						{projectId && isLoading && <Empty>Loading…</Empty>}
-						{projectId && !isLoading && !root && <Empty>Project folder not found on disk.</Empty>}
-						{projectId && root && (
-							<ul>
-								<FileTreeNode
-									entry={rootEntry(root, project?.displayName ?? root)}
-									root={root}
-									projectId={projectId}
-									depth={0}
-								/>
-							</ul>
-						)}
-					</>
-				)}
-			</div>
+			{/* The graph owns its own scrolling and docks a detail pane at the
+			    bottom, so it sits outside the shared scroll wrapper rather than
+			    inside it — a pane docked to the bottom of a scroll container scrolls
+			    away with the content. */}
+			{tab === 'graph' ? (
+				<GraphView />
+			) : (
+				/* `pr-2` is the scrollbar gutter: with a long tree or a big change
+				   set, rows would otherwise run under the scrollbar. */
+				<div className="min-h-0 flex-1 overflow-auto py-1 pr-2">
+					{tab === 'changes' && <ChangesView />}
+					{tab === 'files' && (
+						<>
+							{!projectId && <Empty>Select a project to browse its files.</Empty>}
+							{projectId && isLoading && <Empty>Loading…</Empty>}
+							{projectId && !isLoading && !root && <Empty>Project folder not found on disk.</Empty>}
+							{projectId && root && (
+								<ul>
+									<FileTreeNode
+										entry={rootEntry(root, project?.displayName ?? root)}
+										root={root}
+										projectId={projectId}
+										depth={0}
+									/>
+								</ul>
+							)}
+						</>
+					)}
+				</div>
+			)}
 		</>
 	);
 }
