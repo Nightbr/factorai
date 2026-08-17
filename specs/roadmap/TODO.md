@@ -16,8 +16,10 @@ stable.
 
 Added 2026-08-15: **item 1 is the git graph**, taking the slot the Changes tab freed. It sits at
 the top of the list because that is where the freed slot was, **not** as a claim that it outranks
-M4's remainder — it is gated on a clarify-needs interview and has no spec yet, so nothing about
-it is ready to build. Re-order it once that interview has happened and its size is known.
+M4's remainder. **Its interview happened 2026-08-17** and it now has a spec (F18) and a size, which
+was the condition for re-ordering it: it is a three-to-five-commit build against item 2's smaller
+one, so **item 1 should move below item 2** — left in place here only because numbering is
+append-only and the entry says so itself.
 
 Added 2026-08-16: **item 3 is the file tree's right-click menu**, taking the slot held open on
 2026-08-15 for exactly this — so nothing between 4 and 21 moved. Same caveat as item 1: the slot
@@ -49,102 +51,46 @@ sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
 
 ## 1. Git graph — the commit tree, branches and tags
 
-**Not started, and not to be started from this entry.** The next step is a **clarify-needs
-interview**, then a spec; only then code (`CLAUDE.md` § 2a). Placement and scope are settled
-below and the rest is a list of what the interview has to answer — nothing here is a design, and
-none of it belongs in a spec until it has been through one, because the roadmap is sequencing and
-never the place a feature gets specified (see [`README.md`](./README.md)).
+**Specified 2026-08-17, not built.** The clarify-needs interview this item was gated on has
+happened, so the design now lives in [`05-features.md` § F18](../05-features.md) and this entry is
+sequencing again (see [`README.md`](./README.md)). Decisions that needed a record went to
+[Q18](../07-open-questions.md) — amended to three tabs, and honest that the graph took the slot
+without passing the test that awarded it the first time — plus **Q22** (rail first, wide modal
+deferred) and **Q23** (lane assignment runs in Rust), with
+[ADR-0012](../../docs/adr/0012-categorical-colour-tokens.md) for the colour tokens. C1 in
+[`08-inconsistencies.md`](../08-inconsistencies.md) is resolved and deleted. **Nothing about the
+design belongs in this entry any more** — if this entry and F18 disagree, F18 wins.
 
-**Why it's worth building.** GitKraken is currently open alongside factorai for exactly one
-purpose: *seeing* where the repository is — which branches exist, what's on them, how they
-diverged. Everything a git GUI is usually for — committing, rebasing, merging, resolving — is
-already done by agents in the terminal factorai embeds. So the half of GitKraken that justifies
-its weight is the half factorai doesn't have, and the half that doesn't is the half we'd never
-build. That asymmetry is what makes this a viewer rather than a git client, and it is the whole
-reason it's tractable.
+**Re-order: this should drop below item 2.** It sat at the top because that is where the slot the
+Changes tab freed happened to be, never as a claim that it outranks M4's remainder — and sizing it
+was part of what the interview was for. It is bigger than F13 was: roughly 500–700 lines of Rust
+(lane assignment is most of it), ~60 of types, 600–800 in the renderer, plus one vendored
+primitive. Three to five commits. Item 2 is the smaller and readier piece and goes first.
 
-**Scope, as agreed 2026-08-15.** Read-only visualization: the commit graph with its lanes, local
-and remote branch refs, tags, and where `HEAD` is. Four things are settled and no longer open:
+**What the build is, in the order it should be done.**
 
-- **It lives in the right panel**, beside `Files` and `Changes`.
-- **It is bound to the project folder**, and to that alone — `Repository::discover()` from the
-  project root, exactly as F13 already does.
-- **A project with no repository shows an empty state**, not an error. `git_status` already
-  resolves `repoRoot: null` rather than rejecting, and `ChangesView` already renders
-  `Not a git repository.` from it; the graph does the same thing.
-- **No session linking in the first cut.** Relating a commit to the session that produced it is
-  the interesting question and is explicitly deferred, not dropped.
+- [ ] **Rust first**, because that is where the feature is and where it is testable: `revwalk` +
+      `repo.references()`, then **lane assignment** with `cargo test` over `tempdir` repos —
+      linear, branch-and-merge, octopus, orphan branch, unborn `HEAD`. A bad layout is worse than
+      no graph, so this is green before any pixel exists.
+- [ ] `git_graph` / `git_commit` / `git_blob_at` at the command boundary, plus `GitStatus.head`
+      and the hand-mirrored types in `packages/types`.
+- [ ] `--lane-N` tokens in `globals.css`, both themes, per ADR-0012. Before the rail, so the rail
+      never carries a colour literal.
+- [ ] Vendor shadcn **HoverCard** into `@factorai/ui` (`@radix-ui/react-hover-card`, pinned exact
+      like its twelve siblings).
+- [ ] `PanelResizer` gains a horizontal variant — it is `edge: 'left' | 'right'` and `clientX`-only
+      today.
+- [ ] The rail: `panelStore` gains `'graph'` and a persisted split height, then the row, the SVG
+      lanes, ref chip folding, the hover card, the detail pane, load-more, keyboard.
+- [ ] **One** `@smoke` test — the tab renders, a repo-less project shows the empty state.
+      Selection, the hover card, paging and the split drag go to **item 10**, not into a suite
+      already at 107 tests and ~2 minutes against a documented budget of "a few seconds" (E1).
 
-**Worktrees are a later phase** — they change what "the repository" means on screen and
-shouldn't complicate the first cut.
-
-**Two spec consequences to settle before code, both cheap but neither silent.**
-
-1. **This amends Q18.** `07-open-questions.md` decided the strip ships *"exactly two tabs"* and
-   is *"not a registry or a plugin point"*, after three features contested the slot. A third tab
-   is a change to that decision and the question text has to be rewritten to say so — per
-   `CLAUDE.md` § 2a the spec gets fixed first. Note Q18's other half still holds and is worth
-   keeping: selection persists app-wide in `panelStore` and **never switches itself**, because a
-   strip that moves while you type into the terminal below is worse than no strip.
-2. **Width is the real design constraint, and Q18 set the precedent.** The panel is 200–600px
-   (`MIN_PANEL_WIDTH`/`MAX_PANEL_WIDTH`), and Q18 disqualified project-wide search from this
-   strip *specifically because* it "wants more width than 288px". A commit graph is at least as
-   width-hungry. So the first cut has to be designed for a narrow rail from the start (graph +
-   subject, everything else on selection or hover), rather than designed wide and then squeezed.
-   This is the thing most likely to make the feature land badly.
-
-**The reference is GitLens / VS Code's Git Graph, not GitKraken** (agreed 2026-08-15) — a
-denser, more restrained take on the same picture. It also sharpens the width question rather
-than answering it, and that tension is the first thing the interview should resolve: in those
-tools the lane graph gets a **wide** surface — an editor tab, or an area spanning the window —
-while what lives in a narrow sidebar is a **tree** of branches, tags and commits, with at most a
-hint of a rail. Our right panel is 200–600px, narrower than either. So one of two things is
-true, and they build differently:
-
-- the picture wanted is the **rail** — lanes and subjects in a column, GitLens's sidebar
-  density — which fits the panel as decided and is the smaller build; or
-- the picture wanted is the **graph** as Git Graph draws it, which wants a wide surface and
-  therefore a home other than the right panel, whatever that turns out to be.
-
-Nothing else in the item depends on which; everything about the layout does.
-
-**Non-goals, and they're load-bearing.** No commit, stage, rebase, merge, cherry-pick, push or
-fetch. ADR-0009 already binds every repository read to `git2` and says the app writes nothing;
-beyond that, `git2` is compiled `default-features = false`, so network transport isn't merely
-unimplemented, it isn't linked in. Adding an operation later means revisiting that ADR, not
-adding a button.
-
-**What already exists to build on.** `services/git.rs` owns `Repository::discover()` from the
-project root, the status walk, blob reads at `head`/`index`, and the `git_err` mapping;
-`commands/git.rs` is the boundary; the renderer has never learned libgit2 exists and shouldn't
-start now. Freshness today is polling while a panel is open, not a watcher (Q17) — F13 and F12
-both take that stance and a graph has no reason to break it.
-
-**Where the difficulty actually is.** Not the data — a `revwalk` with `TOPOLOGICAL | TIME` and
-`repo.references()` gets the raw material in a few dozen lines. It's (a) **lane assignment**: the
-layout that turns a DAG into legible rails is the feature, and a bad one is worse than no graph;
-(b) **scale** — a large repo has hundreds of thousands of commits and neither the walk nor the
-renderer can be eager, so paging/virtualisation is a design input, not an optimisation to add
-later; (c) **fitting it into 200–600px**, per the width note above.
-
-**For the clarify-needs pass.** What placement settled, and what it didn't. Roughly in the order
-they block each other:
-
-- **Rail or wide graph?** The fork above. It decides the layout, and layout decides the rest.
-- What is the unit of "enough"? Which behaviours from those tools are load-bearing for the actual
-  daily use, and which are noise that happens to be on screen? This is the question the whole
-  feature hangs on, and a narrow panel forces it to be answered honestly.
-- Scope of the walk: all refs, or the current branch and its neighbours? How far back by default,
-  and what does "load more" look like in a rail?
-- Does it need remotes at all, given nothing fetches — i.e. remote-tracking refs read from what
-  is already in `.git`, and is a stale `origin/main` useful or misleading?
-- Interaction floor: what happens on click? Selecting a commit implies showing it, which implies
-  a diff surface — and one already exists (F13, ADR-0007's Monaco). Reuse it, or is selection
-  purely a highlight in the first cut?
-- Refresh: F13 polls while the panel is open. A graph changes far less often than a working
-  tree — does it poll at all, or refresh on tab focus and after a session exits?
-- Deferred but worth not painting into a corner: when sessions do get linked, what does the
-  graph need to have kept around for that to be additive rather than a rewrite?
+**Phase 2 becomes its own item when it comes**, not a checkbox here: the same component in a
+near-fullscreen modal at 900–1200px, with the detail pane beside the list rather than below it.
+Q22 says why it is deferred and why it has to stay a hosting change rather than a second layout.
+**Worktrees** are later still — they change what "the repository" means on screen.
 
 ## 2. M4 — CLAUDE.md & plans (F9)
 
@@ -165,8 +111,10 @@ it is the load-bearing one, and its position in this list understates it.
 - [ ] "Create CLAUDE.md" stub button when the project has none.
 
 **Where does it live? — settled by Q18.** F9 says "side panel tab *Memory*", written when the
-side panel was notional. That slot went to `Changes` (item 1): the tab strip is `Files |
-Changes`, hardcoded, not a registry. So Memory takes the cheaper route it should have anyway —
+side panel was notional. That slot went to `Changes`: the tab strip is hardcoded and not a
+registry — `Files | Changes` today, `Files | Changes | Graph` once item 1 lands, and Q18 was
+amended 2026-08-17 to say so. Memory is turned away by the same reasoning either way, because it
+takes the cheaper route it should have anyway —
 `CLAUDE.md` is **a file the tree opens**, with editability switched on for that one path, which
 also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
 it still describes the tab.
@@ -359,9 +307,10 @@ Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 ## 11. `Changes` tab — shipped 2026-08-14 (see [`DONE.md`](./DONE.md))
 
 Was a separate item, merged into item 1 during the design interview and shipped with it. The
-tab-slot contest it flagged is resolved in `07-open-questions.md` Q18: the strip holds
-`Files | Changes` and is not a registry — Memory (item 2) and search results (item 13) get
-cheaper homes.
+tab-slot contest it flagged is resolved in `07-open-questions.md` Q18: the strip is hardcoded and
+not a registry — Memory (item 2) and search results (item 13) get cheaper homes. It holds
+`Files | Changes` today and `Files | Changes | Graph` once item 1 lands; Q18 was amended
+2026-08-17 to say so.
 
 ## 12. Command palette — `Cmd+P` quick-open by filename
 

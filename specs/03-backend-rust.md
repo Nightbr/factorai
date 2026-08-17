@@ -116,6 +116,10 @@ list_dir(path: String, root: Option<String>) -> DirListing            // one lev
 // git (ADR-0009)
 git_status(project_path: String) -> GitStatus                         // whole repo, grouped, capped
 git_blob(path: String, rev: GitRev) -> Option<FileContents>           // rev = head | index
+// graph (F18) — PLANNED, none of these three are registered yet (roadmap item 1)
+git_graph(project_path: String, offset: usize, limit: usize) -> GitGraph   // lanes assigned in Rust
+git_commit(project_path: String, sha: String) -> Option<GitCommitDetail>   // body + changed files
+git_blob_at(path: String, commit: String, max_bytes: Option<usize>) -> Option<FileContents>
 
 // memory / plans — PLANNED. None of these are registered yet (roadmap item 2).
 read_claude_md(project_path: String) -> Option<String>
@@ -406,6 +410,13 @@ why this is libgit2 and not `git` on PATH.
   changes — including changes above itself. Not a repo → `GitStatus { repo:
   None, .. }`, which is a success, not an error: "this project isn't versioned"
   is an answer the UI renders, not a failure it toasts.
+- `head` is the full SHA that `HEAD` resolves to, or `None` on an unborn branch.
+  **Added by F18**, and not because the graph needs it — the graph walks `HEAD`
+  itself. It exists because `branch: None` conflated two states the session
+  header's badge has to tell apart: a detached `HEAD`, where there is a commit to
+  name, and an unborn branch, where there isn't. The badge went quiet in both
+  rather than guessing "detached"; with `head` it shows the short SHA in the
+  first case and stays quiet in the second.
 - Each changed path produces one **row per group**: `staged` (HEAD ↔ index),
   `unstaged` (index ↔ worktree), `conflicted`. A partly-staged file legitimately
   appears twice, once in each group, with its own line counts — that is the only
@@ -453,6 +464,58 @@ toasts.
 
 The worktree side of a diff is not served here — it's `read_file`, which already
 exists and already handles binaries, caps and lossy UTF-8.
+
+#### The graph (F18) — planned
+
+Three commands, none registered yet. All read-only, all in `services/git.rs`
+behind `commands/git.rs`, and the renderer still never learns libgit2 exists.
+
+`git_graph(project_path, offset, limit) -> GitGraph` walks the DAG and **assigns
+lanes in Rust**. The payload is per-commit: full SHA, short SHA, subject, body,
+author name, author and committer timestamps, parent SHAs, the refs pointing at
+it, **its lane index**, and per row the set of lanes passing through plus where
+forks and joins land. The renderer draws SVG from that; it does not hold a
+parent-adjacency graph and does not compute layout. See Q23.
+
+- Refs are enumerated with `repo.references()`: local branches, remote-tracking
+  branches, tags, and `HEAD`. All of them are pushed into one revwalk, sorted
+  `TOPOLOGICAL | TIME`. `refs/remotes/*/HEAD` is dropped at this layer rather
+  than in the UI — it is a symbolic ref duplicating another ref we already
+  return, so returning it means every consumer has to know to ignore it.
+- **Paging is an offset with a full re-walk**, not a resumable cursor. Each call
+  walks from the same pushed refs, skips `offset`, and returns the next `limit`
+  with lanes recomputed over the whole prefix. That is deterministic for a given
+  set of refs, so page 4's lanes cannot disagree with page 1's — which is the
+  failure the alternative invites: threading the open-lane frontier through an
+  opaque cursor means either a server-side cache to invalidate when refs move, or
+  a client that reflows every append. Re-walking 1 200 commits to serve the
+  fourth page is microseconds of libgit2; lane instability is visible and
+  permanent.
+- The payload reports the refs it walked against (a cheap digest is enough). If
+  that changes between pages, the renderer invalidates back to page 1 rather than
+  splicing a page walked against different refs onto one that wasn't.
+- `limit` is **300** by default. `total` is not reported: counting a 200 000-commit
+  repository to render "300 of N" costs a full walk on every poll, which is the
+  one thing paging exists to avoid. The absence of a further page is signalled by
+  a short return, the same way a shallow clone signals its own floor.
+- An unborn `HEAD` returns an empty commit list, not an error. So does a project
+  with no repository, alongside `repoRoot: None` — the same shape `git_status`
+  established, for the same reason.
+
+`git_commit(project_path, sha) -> Option<GitCommitDetail>` is the detail pane's
+one call: full message, author and committer, parents, and the commit's changed
+files **as `GitChange` rows** so the renderer reuses F13's row component rather
+than growing a second file-row type. A merge diffs against its **first parent**;
+the response names which parent it used, so the label in the UI is not a
+convention the renderer has to remember. `None` when the SHA doesn't resolve —
+a stale row clicked after a force-push is not an error.
+
+`git_blob_at(path, commit, max_bytes) -> Option<FileContents>` is the left side of
+a commit's diff. **A third command rather than widening `GitRev`**: `GitRev` is a
+two-value string union that F13's viewer plumbing already depends on, and turning
+it into a string-or-object union to carry a SHA churns every existing call site
+and both sides of a hand-mirrored type (§ IPC) to serve one new caller. `None`
+follows `git_blob`'s rule — a file absent at that commit is an answer.
 
 ## State management
 

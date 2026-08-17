@@ -11,22 +11,20 @@ entry — an item that has been fixed leaves no trace here.
 
 **Status 2026-08-15:** the first sweep found 22. Seventeen were stale prose
 against correct code and were fixed the same day; one was a claim that turned
-out to be false and was rewritten. The four below are left because each needs a
+out to be false and was rewritten. The four below were left because each needed a
 decision, not an edit.
+
+**Status 2026-08-17:** **C1 is resolved and deleted** — the F18 clarify-needs
+interview amended Q18 to three tabs and recorded the width question it does *not*
+answer as Q22, so nothing about the tab strip is contradictory any more. Three
+left.
 
 ---
 
-## Still open — four decisions
+## Still open — three decisions
 
 Everything else compiled on 2026-08-15 has been resolved and deleted, per the
 rule above. What remains needs a call rather than an edit.
-
-**C1 — The panel's tab strip.** Q18 decided the strip ships *"exactly two
-tabs"* and is *"not a registry or a plugin point"*, after three features
-contested the slot. TODO item 1 puts the git graph in it as a third. → amend
-Q18, or find the graph another home. Entangled with the width question in item
-1: Q18 disqualified project-wide search from this strip *because* it wanted
-more than 288px, and a commit graph wants at least as much.
 
 **C3 — Read-only, except where we plan to write.** ADR-0009 states
 *"Everything is read-only. No staging, no discard, no commit"*. TODO item 19
@@ -39,7 +37,9 @@ from inside factorai) writes a `custom-title` line into a session's JSONL,
 which lives there. Same shape as C3, same remedy.
 
 **E1 — The smoke suite's time budget.** `AGENTS.md § 2d` says the suite *"stays
-under a few seconds"*. It is **75 tests in ~70 seconds**. Either the budget is
+under a few seconds"*. It is **107 tests in ~2 minutes** (measured 2026-08-17;
+it was 75 in ~70s when this entry was written two days earlier, so the drift is
+ongoing and roughly linear in features shipped). Either the budget is
 wrong or the suite has outgrown its lane — § 2d also promises a heavier
 `tests/regression/` lane that was never created, which is probably the real
 answer. See TODO item 10.
