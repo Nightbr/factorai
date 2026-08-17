@@ -14,12 +14,11 @@ built; **items 12–14 are high-priority despite their position** — the `Cmd+P
 `Cmd+G` navigation trio, added 2026-08-14, kept at the end only so the earlier numbers stay
 stable.
 
-Added 2026-08-15: **item 1 is the git graph**, taking the slot the Changes tab freed. It sits at
-the top of the list because that is where the freed slot was, **not** as a claim that it outranks
-M4's remainder. **Its interview happened 2026-08-17** and it now has a spec (F18) and a size, which
-was the condition for re-ordering it: it is a three-to-five-commit build against item 2's smaller
-one, so **item 1 should move below item 2** — left in place here only because numbering is
-append-only and the entry says so itself.
+Added 2026-08-15 and **shipped 2026-08-17**: **item 1 was the git graph**, which took the slot the
+Changes tab freed. It was gated on a clarify-needs interview; that happened, produced F18, and the
+build followed the same day. So the re-ordering question it carried is moot — but the reason it
+carried one is not, and is worth keeping: an item's *position* here is where a slot happened to be
+free, never a claim about priority. **Item 2 is now the top of the list in substance.**
 
 Added 2026-08-16: **item 3 is the file tree's right-click menu**, taking the slot held open on
 2026-08-15 for exactly this — so nothing between 4 and 21 moved. Same caveat as item 1: the slot
@@ -49,48 +48,21 @@ tag-only scheme had settled the other way.
 One thing item 25 leaves for **item 3**: `ContextMenu` now exists in `@factorai/ui`, built for the
 sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
 
-## 1. Git graph — the commit tree, branches and tags
+## 1. Git graph — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
 
-**Specified 2026-08-17, not built.** The clarify-needs interview this item was gated on has
-happened, so the design now lives in [`05-features.md` § F18](../05-features.md) and this entry is
-sequencing again (see [`README.md`](./README.md)). Decisions that needed a record went to
-[Q18](../07-open-questions.md) — amended to three tabs, and honest that the graph took the slot
-without passing the test that awarded it the first time — plus **Q22** (rail first, wide modal
-deferred) and **Q23** (lane assignment runs in Rust), with
-[ADR-0012](../../docs/adr/0012-categorical-colour-tokens.md) for the colour tokens. C1 in
-[`08-inconsistencies.md`](../08-inconsistencies.md) is resolved and deleted. **Nothing about the
-design belongs in this entry any more** — if this entry and F18 disagree, F18 wins.
+Interviewed, specified as **F18** and built the same day. The design is
+[`05-features.md` § F18](../05-features.md); the decisions are Q18 (amended to three tabs), **Q22**
+(rail first, wide modal deferred) and **Q23** (lane assignment in Rust), plus
+[ADR-0012](../../docs/adr/0012-categorical-colour-tokens.md) for the colour tokens.
 
-**Re-order: this should drop below item 2.** It sat at the top because that is where the slot the
-Changes tab freed happened to be, never as a claim that it outranks M4's remainder — and sizing it
-was part of what the interview was for. It is bigger than F13 was: roughly 500–700 lines of Rust
-(lane assignment is most of it), ~60 of types, 600–800 in the renderer, plus one vendored
-primitive. Three to five commits. Item 2 is the smaller and readier piece and goes first.
-
-**What the build is, in the order it should be done.**
-
-- [ ] **Rust first**, because that is where the feature is and where it is testable: `revwalk` +
-      `repo.references()`, then **lane assignment** with `cargo test` over `tempdir` repos —
-      linear, branch-and-merge, octopus, orphan branch, unborn `HEAD`. A bad layout is worse than
-      no graph, so this is green before any pixel exists.
-- [ ] `git_graph` / `git_commit` / `git_blob_at` at the command boundary, plus `GitStatus.head`
-      and the hand-mirrored types in `packages/types`.
-- [ ] `--lane-N` tokens in `globals.css`, both themes, per ADR-0012. Before the rail, so the rail
-      never carries a colour literal.
-- [ ] Vendor shadcn **HoverCard** into `@factorai/ui` (`@radix-ui/react-hover-card`, pinned exact
-      like its twelve siblings).
-- [ ] `PanelResizer` gains a horizontal variant — it is `edge: 'left' | 'right'` and `clientX`-only
-      today.
-- [ ] The rail: `panelStore` gains `'graph'` and a persisted split height, then the row, the SVG
-      lanes, ref chip folding, the hover card, the detail pane, load-more, keyboard.
-- [ ] **One** `@smoke` test — the tab renders, a repo-less project shows the empty state.
-      Selection, the hover card, paging and the split drag go to **item 10**, not into a suite
-      already at 107 tests and ~2 minutes against a documented budget of "a few seconds" (E1).
-
-**Phase 2 becomes its own item when it comes**, not a checkbox here: the same component in a
-near-fullscreen modal at 900–1200px, with the detail pane beside the list rather than below it.
-Q22 says why it is deferred and why it has to stay a hosting change rather than a second layout.
-**Worktrees** are later still — they change what "the repository" means on screen.
+**What it leaves for later, none of it started.** The **wide modal** is Q22's deferred phase and
+should become its own numbered item when it is next: the same component at 900–1200px with the
+detail beside the list, a hosting change rather than a second layout. **Worktrees** change what
+"the repository" means on screen. **Session↔commit linking** is the interesting one and the payload
+already carries what a join needs — full 40-character SHAs and both author and committer
+timestamps. A merge's **parent picker**, so the file list can diff against either side rather than
+only the first. And F18's own note that `+N` is the common case at 288px is the strongest argument
+yet for bringing the wide surface forward.
 
 ## 2. M4 — CLAUDE.md & plans (F9)
 
@@ -112,8 +84,8 @@ it is the load-bearing one, and its position in this list understates it.
 
 **Where does it live? — settled by Q18.** F9 says "side panel tab *Memory*", written when the
 side panel was notional. That slot went to `Changes`: the tab strip is hardcoded and not a
-registry — `Files | Changes` today, `Files | Changes | Graph` once item 1 lands, and Q18 was
-amended 2026-08-17 to say so. Memory is turned away by the same reasoning either way, because it
+registry — `Files | Changes | Graph` as of 2026-08-17, when Q18 was amended for F18. Memory is
+turned away by the same reasoning either way, because it
 takes the cheaper route it should have anyway —
 `CLAUDE.md` is **a file the tree opens**, with editability switched on for that one path, which
 also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
@@ -309,8 +281,7 @@ Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 Was a separate item, merged into item 1 during the design interview and shipped with it. The
 tab-slot contest it flagged is resolved in `07-open-questions.md` Q18: the strip is hardcoded and
 not a registry — Memory (item 2) and search results (item 13) get cheaper homes. It holds
-`Files | Changes` today and `Files | Changes | Graph` once item 1 lands; Q18 was amended
-2026-08-17 to say so.
+`Files | Changes | Graph` as of 2026-08-17, when Q18 was amended for F18.
 
 ## 12. Command palette — `Cmd+P` quick-open by filename
 
