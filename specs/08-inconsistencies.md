@@ -51,11 +51,12 @@ from inside factorai) writes a `custom-title` line into a session's JSONL,
 which lives there. Same shape as C3, same remedy.
 
 **E1 — The smoke suite's time budget.** `AGENTS.md § 2d` says the suite *"stays
-under a few seconds"*. It is **109 tests in ~2 minutes** (measured 2026-08-17;
-it was 75 in ~70s when this entry was written two days earlier, and F18 added the
-last two the same afternoon — the drift is ongoing and roughly linear in features
-shipped). Either the budget is
-wrong or the suite has outgrown its lane — § 2d also promises a heavier
+under a few seconds"*. It is **114 tests in ~2 minutes** (measured 2026-08-17;
+it was 75 in ~70s when this entry was written two days earlier, and F18 added
+seven the same afternoon — the drift is ongoing and roughly linear in features
+shipped). Note the five added in F18's second pass each caught something, two of
+them real bugs: this is an argument for the `tests/regression/` lane, not against
+writing tests. Either the budget is wrong or the suite has outgrown its lane — § 2d also promises a heavier
 `tests/regression/` lane that was never created, which is probably the real
 answer. See TODO item 10.
 
