@@ -24,4 +24,10 @@ export const queryKeys = {
 	gitStatus: (projectPath: string) => ['git-status', projectPath] as const,
 	/** One file at one revision, for a diff side. */
 	gitBlob: (path: string, rev: string) => ['git-blob', path, rev] as const,
+	/** One page of the commit graph (F18). The page index is part of the key so
+	 *  loaded pages stay cached independently, and its own namespace rather than
+	 *  a `gitStatus` variant because the two poll at different cadences. */
+	gitGraph: (projectPath: string, page: number) => ['git-graph', projectPath, page] as const,
+	/** One commit's detail, for the pane below the graph. */
+	gitCommit: (projectPath: string, sha: string) => ['git-commit', projectPath, sha] as const,
 };
