@@ -94,8 +94,17 @@ interface GlobalErrorHooks {
 	onRuntimeError: (text: string) => void;
 }
 
-/** Wire both window listeners. Returns a teardown, for tests. */
+/** Wire both window listeners. Returns a teardown — unused by `main.tsx`, which
+ *  wants them for the process lifetime, but the listeners are removable rather
+ *  than permanent so this is not a leak by construction. */
 export function installGlobalErrorHandlers(hooks: GlobalErrorHooks): () => void {
+	// A reporting failure must never feed itself back in. `showErrorNotice` threw
+	// a SyntaxError on its first implementation, which fired the `error` listener,
+	// which called it again — an error handler that is its own error source is
+	// unfixable from the inside, so the recursion is cut here rather than trusted
+	// not to happen.
+	let reporting = false;
+
 	const handle = (label: string, err: unknown) => {
 		const d = classify(err, hooks.isMounted());
 		if (d.kind === 'ignore') {
@@ -103,9 +112,19 @@ export function installGlobalErrorHandlers(hooks: GlobalErrorHooks): () => void 
 			console.debug(`[factorai] ignored ${label}: ${d.why}`);
 			return;
 		}
+		// console.error first and unguarded: whatever else fails, the error itself
+		// reaches DevTools.
 		console.error(`[factorai] ${label}`, err);
-		if (d.kind === 'boot-failure') hooks.onBootFailure(`[${label}] ${d.text}`);
-		else hooks.onRuntimeError(`[${label}] ${d.text}`);
+		if (reporting) return;
+		reporting = true;
+		try {
+			if (d.kind === 'boot-failure') hooks.onBootFailure(`[${label}] ${d.text}`);
+			else hooks.onRuntimeError(`[${label}] ${d.text}`);
+		} catch (reportErr) {
+			console.error('[factorai] error handler itself failed', reportErr);
+		} finally {
+			reporting = false;
+		}
 	};
 
 	const onError = (e: ErrorEvent) => handle('error', e.error ?? e.message);

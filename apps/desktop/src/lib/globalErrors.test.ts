@@ -47,6 +47,23 @@ describe('classify', () => {
 	it('treats a failure with nothing rendered as a boot failure', () => {
 		expect(classify(new TypeError('boom'), false).kind).toBe('boot-failure');
 	});
+
+	it('ignores an event carrying no error and no message', () => {
+		// A failed resource load fires `error` on window as a plain Event, so
+		// `e.error ?? e.message` is undefined. Reporting it renders a card reading
+		// "undefined", which trains you to dismiss the ones that matter.
+		for (const empty of [undefined, null, '']) {
+			expect(classify(empty, true).kind).toBe('ignore');
+			expect(classify(empty, false).kind).toBe('ignore');
+		}
+	});
+
+	it('still reports a falsy-but-real value', () => {
+		// `0` and `false` are rubbish to reject with, but they are *something* —
+		// swallowing them would be the filter hiding a bug again.
+		expect(classify(0, true).kind).toBe('runtime');
+		expect(classify(false, true).kind).toBe('runtime');
+	});
 });
 
 describe('describeError', () => {
