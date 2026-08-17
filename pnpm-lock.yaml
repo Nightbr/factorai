@@ -102,6 +102,9 @@ importers:
         specifier: 5.0.12
         version: 5.0.12(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
     devDependencies:
+      '@iconify-json/simple-icons':
+        specifier: ^1.2.93
+        version: 1.2.93
       '@iconify-json/vscode-icons':
         specifier: 1.2.72
         version: 1.2.72
@@ -534,6 +537,9 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@iconify-json/simple-icons@1.2.93':
+    resolution: {integrity: sha512-/XhANjfGYOuqvSR3TmUnkQkINvQ4GVjVuukvymRbxtVFBvIq/yiXJqCDycKcQPT401OYT9H2vIY6ihAlz1QIAw==}
 
   '@iconify-json/vscode-icons@1.2.72':
     resolution: {integrity: sha512-IWsfSq21QZtZ8WWNtNm09E9I1PKXNSx9PQnOAD6vWSSNrL4bMDpK5nEbmyNV4XBYuQ/jAc1Foj233C/QtRAQOg==}
@@ -3491,6 +3497,10 @@ snapshots:
       react-dom: 19.2.4(react@19.2.4)
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@iconify-json/simple-icons@1.2.93':
+    dependencies:
+      '@iconify/types': 2.0.0
 
   '@iconify-json/vscode-icons@1.2.72':
     dependencies:

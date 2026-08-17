@@ -24,9 +24,12 @@
 				// `prefsStore` will use (roadmap item 4).
 				"@tauri-apps/plugin-fs",
 				"@tauri-apps/plugin-store",
-				// Icon data. `unplugin-icons` resolves `~icons/vscode-icons/*` out
-				// of this at build time (ADR-0006) — there is no import to find.
+				// Icon data. `unplugin-icons` resolves `~icons/vscode-icons/*` and
+				// `~icons/simple-icons/*` out of these at build time (ADR-0006) —
+				// there is no import to find. simple-icons carries the two forge
+				// marks F18's ref chips wear, which lucide has no brand set for.
 				"@iconify-json/vscode-icons",
+				"@iconify-json/simple-icons",
 				// Loaded by `@svgr/core` at runtime when unplugin-icons compiles
 				// with `compiler: 'jsx'`. A dependency of a dependency's behaviour,
 				// not of our source.

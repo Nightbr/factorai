@@ -198,11 +198,40 @@ export function fitRefs(
 	return { shown, hiddenCount: chips.length - shown.length };
 }
 
-/** Tailwind classes per chip kind. Colour lands on the *label*, never a filled
- *  block behind it — the same reason `IconButton` paints no background. */
+/**
+ * Tailwind classes per chip kind.
+ *
+ * These are **badges** as of 2026-08-17 — a tinted ground and a hairline border,
+ * rather than the bare coloured label this shipped with. A ref is an object on
+ * the row, not an adjective describing the subject beside it, and at 288px the
+ * bare labels ran into the subject text often enough to read as one string. The
+ * tint is 12% so it stays a ground rather than a block: `IconButton`'s no-fill
+ * rule is about controls, and a badge is not one.
+ */
 export const CHIP_CLASSES: Record<GitRefKind, string> = {
-	localBranch: 'text-primary',
-	remoteBranch: 'text-sky-500',
-	tag: 'text-emerald-500',
-	head: 'text-primary',
+	localBranch: 'border-primary/30 bg-primary/12 text-primary',
+	remoteBranch: 'border-sky-500/30 bg-sky-500/12 text-sky-400',
+	tag: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-400',
+	head: 'border-primary/30 bg-primary/12 text-primary',
 };
+
+/** Shared badge geometry: the border, radius, padding and the icon gap. Split
+ *  from the per-kind colour so a new kind cannot accidentally get a different
+ *  shape. */
+export const CHIP_SHAPE =
+	'inline-flex items-center gap-1 rounded border px-1 py-px font-medium text-xs leading-tight';
+
+/**
+ * How wide one chip may get before it truncates.
+ *
+ * A branch called `feature/some-very-long-description` used to push the subject
+ * off the row entirely, because chips were `shrink-0` with nothing capping them.
+ * Capped against the *text* column rather than a constant, so a 600px panel
+ * shows more of the name than a 288px one, and never past 55% — two long
+ * branches on one row still have to leave the subject something. 55 rather than
+ * 40 because the chips grew icons: at 288px a 40% cap cut `HEAD→main ≡origin`
+ * down to `HEAD→…`, which names nothing.
+ */
+export function chipMaxWidth(textWidthPx: number): number {
+	return Math.round(Math.min(220, Math.max(64, textWidthPx * 0.55)));
+}

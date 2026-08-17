@@ -387,6 +387,10 @@ pub struct GitGraphCommit {
 	/// First line of the message, already trimmed.
 	pub subject: String,
 	pub author_name: String,
+	/// Lower-cased and trimmed, because it is an identity key rather than a
+	/// display string: the renderer derives a per-author avatar from it, and
+	/// `Ada@Example.com` and `ada@example.com` are the same person.
+	pub author_email: String,
 	/// Epoch **milliseconds**, per the convention `modified_at` sets — git counts
 	/// in seconds, so this is converted at the boundary.
 	pub author_time: i64,
@@ -421,6 +425,22 @@ pub struct GitGraph {
 	/// render "300 of N" costs a full walk on every poll, which is the one thing
 	/// paging exists to avoid.
 	pub has_more: bool,
+	/// Which forge `origin` points at, so a remote-branch chip can wear the right
+	/// icon. Read from the remote's configured URL — a config read, not a network
+	/// one; ADR-0009 still holds and transport is not linked in.
+	pub remote_host: RemoteHost,
+}
+
+/// The forge a remote URL names. Only what changes an icon — this is not an
+/// integration, and nothing here talks to any of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteHost {
+	GitHub,
+	GitLab,
+	/// A remote exists but is somewhere else, or there is no remote at all. Both
+	/// draw the generic mark, so they do not need telling apart.
+	Other,
 }
 
 /// One file touched by a commit.

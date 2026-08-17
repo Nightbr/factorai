@@ -58,8 +58,10 @@ test.describe('graph tab', () => {
 		// didn't.
 		await expect(tip).toContainText('+1');
 
-		// One SVG per row, which is the rail: lanes are drawn, not described.
-		await expect(tip.locator('svg')).toHaveCount(1);
+		// One rail per row: lanes are drawn, not described. Named rather than
+		// counted as "the row's only svg", which stopped being true once ref chips
+		// grew icons.
+		await expect(tip.getByTestId('graph-rail')).toHaveCount(1);
 
 		// Clicking goes deeper — body and file list, the half the hover card
 		// deliberately doesn't carry.
@@ -137,21 +139,40 @@ test.describe('graph tab — switching, paging and the keyboard', () => {
 		await expect(page.getByTestId('commit-detail')).toHaveCount(0);
 	});
 
-	test('@smoke the dirty HEAD marker follows the project', async ({ page }) => {
+	test('@smoke the working-changes row follows the project', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectGraphs());
 		await page.goto(`/#/projects/${ZULU_ID}`);
 		await openGraph(page);
 
-		// zulu has an uncommitted change, so its HEAD node is drawn hollow — filled
-		// with the card colour rather than its lane's.
-		const zuluNode = page.getByTestId('commit-row').first().locator('circle');
-		await expect(zuluNode).toHaveAttribute('fill', 'var(--card)');
+		// zulu has an uncommitted change, so the working tree gets a row of its own
+		// above HEAD, carrying the count. Its node is dashed, because nothing in it
+		// is a commit yet.
+		const working = page.getByTestId('working-row');
+		await expect(working).toBeVisible();
+		await expect(working).toContainText('Working changes');
+		await expect(working).toContainText('1');
+		await expect(working.locator('circle')).toHaveAttribute('stroke-dasharray', /\d/);
 
-		// alpha is clean, so the same position is a filled node. A marker that
-		// stayed hollow here would be claiming changes that aren't there.
+		// alpha is clean, so there is no such row. One that stayed would be claiming
+		// changes that aren't there.
 		await page.goto(`/#/projects/${ALPHA_ID}`);
-		const alphaNode = page.getByTestId('commit-row').first().locator('circle');
-		await expect(alphaNode).toHaveAttribute('fill', 'var(--lane-0)');
+		await expect(page.getByTestId('commit-row').first()).toBeVisible();
+		await expect(page.getByTestId('working-row')).toHaveCount(0);
+	});
+
+	test('@smoke the working row opens the Changes tab', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectGraphs());
+		await page.goto(`/#/projects/${ZULU_ID}`);
+		await openGraph(page);
+
+		// The row's whole reason for being clickable: the graph says *that* there is
+		// uncommitted work, and the Changes tab is where you find out what.
+		await page.getByTestId('working-row').click();
+		await expect(page.getByRole('tab', { name: 'Changes' })).toHaveAttribute(
+			'aria-selected',
+			'true',
+		);
+		await expect(page.getByTestId('graph-view')).toHaveCount(0);
 	});
 
 	test('@smoke Load more appends the next page and then goes away', async ({ page }) => {

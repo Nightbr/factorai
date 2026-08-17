@@ -1532,6 +1532,27 @@ a later phase.
 the Changes list, because three tabs that scroll at three rhythms read as three
 apps. Left to right: the lane rail, then ref chips, then the subject.
 
+**Refs are badges, and they carry an icon. Changed 2026-08-17 on user
+feedback**, from the bare coloured labels this shipped with. A ref is an object
+sitting on the row, not an adjective describing the subject beside it, and at
+288px the bare labels ran into the subject often enough to read as one string.
+The tint is 12% behind a hairline border, so it stays a ground rather than a
+filled block — `IconButton`'s no-background rule is about controls, and a badge
+is not one.
+
+The icon says **where the ref lives**: a laptop for a local branch, the forge's
+own mark for a remote one, a tag for a tag. The forge comes from `origin`'s
+configured URL, read in Rust — a config read, never a request to the forge, and
+an unrecognised host gets a generic cloud rather than a guess. GitHub and GitLab
+marks come from `@iconify-json/simple-icons` through the same build-time
+compilation the file-type icons use (ADR-0006); lucide has no brand set.
+
+**A chip is capped at 55% of the text column and truncates.** Uncapped, one
+`feature/some-very-long-description` pushed the subject off the row entirely. 55
+rather than something tighter because the icons cost width: at 288px a 40% cap
+cut `HEAD→main ≡origin` down to `HEAD→…`, which names nothing. The full name is
+on the hover card, which is where everything the row cut is supposed to be.
+
 **Refs come before the subject** because they are what you are scanning for, and
 they **fold before they collapse**. Three rules, applied in order, mostly
 dissolve the crowding rather than managing it:
@@ -1559,6 +1580,34 @@ chips rather than four into a `+3` — but the honest statement is that **a tagg
 release on the branch tip needs a wider panel to show both**, and `+N` is the
 common case at 288px rather than the rare one. That is the width constraint Q22
 deferred rather than answered, showing up exactly where the roadmap said it would.
+
+### The node is its author
+
+**Added 2026-08-17 on user feedback.** The commit node is a disc in a colour
+derived from the author's email, carrying their initials. Scanning a history for
+"the ones I did" is a real thing people do to a graph, and it was previously
+impossible without opening every row.
+
+**Derived locally, and that is a decision rather than a shortcut.** Gravatar and
+the GitHub avatar API both work, and both mean the same thing: every repository
+you browse sends that repository's author identities to a third party, from an
+app whose README promises it "reads local files and runs local processes" and
+whose non-goals say no telemetry and no server. Turning that on is an **open
+question with an ADR attached**, not an implementation detail — so the fallback
+*is* the avatar today, and it is drawn well enough to stand on its own. The
+resolver seam is there: a remote lookup would sit in front of `avatarFor`, and
+everything under it stays the offline default.
+
+Colour is one of 12 hues at a fixed lightness and chroma, so no author's dot
+shouts louder than another's and white initials stay legible on all of them. The
+key is the **email**, normalised in Rust, so an author who changes how their name
+is spelled keeps their colour.
+
+**The disc gives way to a plain dot below a 10px lane pitch.** It is 18px wide
+however tight the lanes get, so on a wide history it would cover three lanes and
+the rail would stop being traceable — which is the job the rail exists to do.
+Those repositories read their authors off the hover card instead, the same trade
+the subject makes when it truncates.
 
 ### The rail
 
@@ -1593,6 +1642,16 @@ what makes a 38-character row acceptable.
   is click-triggered, and Tooltip is `role="tooltip"` with content you cannot
   select or click, so neither fits. **400ms open / 150ms close**, so sweeping
   down the list does not fire a cascade of cards.
+
+  **It opens under the row, at the row's own width. Changed 2026-08-17 on user
+  feedback**, from `side="left"` at a fixed `w-80`. Opening leftwards put the
+  card outside the panel and over the terminal — the thing you are working in —
+  and the fixed width made that worse: a card wider than the panel gets shoved
+  left by collision handling to fit a width the panel never had. Taking the
+  width from `--radix-hover-card-trigger-width` makes it exactly the row, so it
+  lands inside the panel by construction. Collision padding is **vertical only**
+  for the same reason — the panel sits on the window's right edge, so a
+  horizontal padding pushes the card straight back out of it.
 - **Click** selects the row and fills a detail pane **docked at the bottom of
   the panel**, split from the list by a horizontal drag handle whose height
   persists in `panelStore`. The pane carries the message body, author, date, the
@@ -1656,21 +1715,44 @@ rather than per row.
 
 ### The working tree
 
-**A dirty marker on the HEAD row, and no pseudo-node.** A graph showing `main`
-on a commit while forty files are uncommitted reads as "clean", and that is a
-lie worth fixing — but not by duplicating the Changes tab one tab over, which is
-the canonical surface for it and models the index in three groups (Q19) in a way
-one graph row cannot. The marker is **free**: the graph tab being open means the
-panel is open, which means `useGitStatus`'s query is already in cache under the
-same key, so this is a cache read and not a second fetch. GitKraken's
-working-tree row was considered and rejected on those grounds — it either
-duplicates F13 or is a row that selects into nothing, and Q18 forbids it solving
-that by switching tabs for you.
+**A working-changes row above HEAD, which opens the Changes tab. Reversed
+2026-08-17 on user feedback**; this section previously specified a hollow dot on
+HEAD's row and rejected the row outright.
+
+A graph showing `main` on a commit while forty files are uncommitted reads as
+"clean", and that is a lie worth fixing. The hollow dot fixed it in a way you had
+to already know how to read: a filled and a hollow 5px circle differ by a few
+pixels at 26px, and nothing on the row said which was which or what to do about
+it. The row carries a label and a count, and — the actual point — it can be
+clicked.
+
+**The Q18 objection was over-read, and that is worth writing down.** This section
+used to say "Q18 forbids it solving that by switching tabs for you". Q18's rule
+is that the strip *never switches itself* — "a tab strip that moves under you
+while you type into the terminal below it is worse than no tab strip". A row the
+user clicks, whose tooltip says where it goes, is navigation and not that. The
+rule is about autonomous movement; nothing here moves on its own.
+
+It still does not duplicate F13: the row says *that* there is uncommitted work
+and how much, and F13 remains the only place that says what, in the three groups
+Q19 models. The count is **free** — the graph tab being open means the panel is
+open, so `useGitStatus`'s query is already in cache under the same key.
+
+**The row leads the list only when HEAD is the newest commit.** Detached, or with
+newer commits on another branch, HEAD sits further down and a row pinned to the
+top would draw an edge into a commit it is not on; those repositories keep the
+hollow node on HEAD's own row. Its node is hollow **and dashed**, because nothing
+in it is a commit and a marker that looked like its neighbours would be claiming
+otherwise.
 
 ### Backend
 
 `git_graph`, `git_commit`, `git_blob_at`, and a new `head` field on `GitStatus`
-— see [`03-backend-rust.md`](./03-backend-rust.md) § `git`. **Lane assignment
+— see [`03-backend-rust.md`](./03-backend-rust.md) § `git`. `GitGraphCommit`
+also carries `authorEmail`, lower-cased because it is an identity key rather
+than a display string, and the page carries `remoteHost` — which forge `origin`
+names, from its configured URL. Both are **config and object reads**; ADR-0009
+is untouched and no transport is linked in. **Lane assignment
 runs in Rust** and the payload carries lane indices and edge segments; the
 renderer draws SVG and never reasons about the DAG. See Q23 for why.
 
