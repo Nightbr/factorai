@@ -2,6 +2,7 @@
 	"name": "@factorai/desktop",
 	"private": true,
 	"version": "0.1.0",
+	"description": "Agentic Development Environment (ADE) for the AI era",
 	"type": "module",
 	"scripts": {
 		"dev": "tauri dev",
