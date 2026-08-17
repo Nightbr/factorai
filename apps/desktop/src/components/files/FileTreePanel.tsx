@@ -26,8 +26,8 @@ export function FileTreePanel() {
 	return (
 		<>
 			<PanelResizer
-				width={width}
-				onWidth={setWidth}
+				size={width}
+				onSize={setWidth}
 				edge="left"
 				label="Resize file tree"
 				clamp={clampPanelWidth}

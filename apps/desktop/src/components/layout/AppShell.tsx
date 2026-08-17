@@ -48,8 +48,8 @@ export function AppShell({ children }: AppShellProps) {
 				{/* Mirror of the file panel's handle: this one is on the sidebar's
 				    right edge, so dragging right widens it. */}
 				<PanelResizer
-					width={sidebarWidth}
-					onWidth={setSidebarWidth}
+					size={sidebarWidth}
+					onSize={setSidebarWidth}
 					edge="right"
 					label="Resize sidebar"
 					clamp={clampSidebarWidth}
