@@ -214,6 +214,13 @@ override — which made it fair to ask whether the Rust half should wait for a s
 that second caller, so **it ships with this item** rather than later. The renderer-side surface is
 still what everything is actually blocked on.
 
+**Neither dependent is blocked whole, and that is worth knowing before sequencing this.** Item 22
+is one switch and item 31's channel *picker* is one row — the rest of item 31 (the process work,
+the alpha manifest, the automatic builds) needs no settings surface and can land before this item
+does. So what item 4 gates is small in both cases and large only in aggregate: it is the **third
+time** a feature has arrived needing somewhere to put a preference and found nowhere. That is the
+argument for its clarify-needs pass, not the individual toggles.
+
 **The surface itself is not settled, and that is what is actually blocking them** (noted
 2026-08-16). F11 names four sections and this entry says "`/settings` route", but neither says
 **where you click to get there**, and the modal-versus-route choice was never argued — it was
@@ -1008,10 +1015,21 @@ Plausible answers, to be chosen rather than assumed:
 
 Consequences to settle:
 
-- [ ] **Where does the channel live?** If it is a preference, that is **item 4's settings route** —
-      and it is a `get_setting`/`set_setting` customer, which matters because item 20's
-      disqualification left the Rust-readable half with only one caller. This item would restore
-      the argument for building it.
+- [x] **Where does the channel live? — settled 2026-08-17: it is a preference, so the picker is
+      ⛔ blocked on item 4.** The channel is a `get_setting`/`set_setting` customer, since the
+      updater endpoint is chosen in Rust at runtime — which also restores the argument for building
+      item 4's Rust half, left with a single caller when item 20 was disqualified.
+
+      **Only the picker is blocked, and that distinction is the useful part of this item.**
+      Everything in 31a, the alpha manifest, the automatic builds and the versioning scheme need no
+      UI at all and can land first. What waits is the row that lets you *choose* — so sequence this
+      as: process work and alpha builds now, channel switch when item 4 lands. Do **not** invent a
+      one-off settings surface to unblock it; that is precisely the mess item 4 exists to prevent,
+      and item 22 has been waiting patiently for the same reason.
+
+      Until the picker exists, an alpha build is one someone installed deliberately — which is a
+      fine first state, and an argument for shipping the channel *plumbing* early so the picker is
+      a row rather than a project when it can finally be built.
 - [ ] **Alpha versioning.** The manifest `version` must be valid SemVer. `0.9.1-alpha.3` sorts
       correctly above `0.9.0`; a date-based scheme needs checking against the comparator, not
       assumed. Whatever is picked has to keep alpha ahead of production without ever overtaking the
