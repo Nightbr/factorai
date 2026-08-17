@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
+import { stitchPages } from '@lib/gitGraph';
 import { usePanelStore } from '@store/panelStore';
 
 /** Commits per page, matching `GRAPH_PAGE` in `services/git.rs`. */
@@ -50,12 +51,9 @@ export function useGitGraph(): {
 	const enabled = Boolean(root) && open && tab === 'graph';
 	const queryClient = useQueryClient();
 
-	// Paging carries the project it belongs to, so a different project starts at
-	// one page by derivation rather than by an effect that resets it a render
-	// later — keep the extra pages and the new project opens scrolled into
-	// someone else's commits.
-	const [paging, setPaging] = useState<{ root: string; pages: number }>({ root: '', pages: 1 });
-	const pageCount = paging.root === (root ?? '') ? paging.pages : 1;
+	// Plain state: `GraphView` remounts this whole subtree when the project
+	// changes, so the page count cannot outlive the history it counts pages of.
+	const [pageCount, setPageCount] = useState(1);
 
 	const pages = useQueries({
 		queries: Array.from({ length: pageCount }, (_unused, page) => ({
@@ -68,36 +66,28 @@ export function useGitGraph(): {
 	});
 
 	const first = pages[0]?.data;
-	const loaded = pages.filter((page) => page.data).map((page) => page.data as GitGraph);
+	// Joining pages is pure and has the interesting edge cases, so it lives in
+	// `lib/gitGraph` with tests rather than inline here.
+	const { commits, laneCount, hasMore, stale } = stitchPages(pages.map((page) => page.data));
 
-	// Refs moving mid-paging means the later pages were walked against a different
-	// set than the first, and splicing those together would draw a history that
-	// never existed. Drop back to one page and let it refetch — cheap, and the only
-	// answer that cannot be subtly wrong.
-	const digest = first?.refsDigest;
-	const stale = digest !== undefined && loaded.some((page) => page.refsDigest !== digest);
+	// Refs moved mid-paging. Drop back to one page and let it refetch — cheap, and
+	// the only answer that cannot be subtly wrong.
 	useEffect(() => {
 		if (!stale) return;
-		setPaging({ root: root ?? '', pages: 1 });
+		setPageCount(1);
 		void queryClient.invalidateQueries({ queryKey: ['git-graph', root ?? ''] });
 	}, [stale, root, queryClient]);
 
-	const contiguous = stale ? loaded.slice(0, 1) : loaded;
-	const commits = contiguous.flatMap((page) => page.commits);
-	const last = contiguous.at(-1);
-
 	const loadMore = useCallback(() => {
-		setPaging({ root: root ?? '', pages: pageCount + 1 });
-	}, [root, pageCount]);
+		setPageCount((count) => count + 1);
+	}, []);
 
 	return {
 		commits,
-		// Lanes live anywhere in the prefix walked, so the newest page knows about
-		// the most lanes. Taking the max keeps one pitch for the whole list.
-		laneCount: contiguous.reduce((widest, page) => Math.max(widest, page.laneCount), 0),
+		laneCount,
 		graph: first,
 		isPending: pages[0]?.isPending ?? true,
-		hasMore: Boolean(last?.hasMore),
+		hasMore,
 		isLoadingMore: pages.length > 1 && pages[pages.length - 1].isPending,
 		loadMore,
 		root,

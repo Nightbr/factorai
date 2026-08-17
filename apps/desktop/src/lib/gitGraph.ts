@@ -1,4 +1,4 @@
-import type { GitRef, GitRefKind } from '@factorai/types';
+import type { GitGraph, GitGraphCommit, GitRef, GitRefKind } from '@factorai/types';
 
 /**
  * The rail's geometry and the row's ref-chip folding (specs/05-features.md F18).
@@ -68,6 +68,51 @@ export function lanePitch(laneCount: number, panelWidth: number): number {
  *  leftmost and rightmost nodes aren't flush against the edge. */
 export function railWidth(laneCount: number, pitch: number): number {
 	return Math.max(1, laneCount) * pitch + pitch;
+}
+
+/** Loaded pages, joined into one list. */
+interface StitchedGraph {
+	commits: GitGraphCommit[];
+	laneCount: number;
+	hasMore: boolean;
+	/** A later page was walked against a different set of refs than the first, so
+	 *  the caller should drop back to one page and refetch rather than splice. */
+	stale: boolean;
+}
+
+/**
+ * Join the loaded pages into one list.
+ *
+ * **Only the contiguous prefix counts.** Filtering out the pages that have no
+ * data yet would silently promote page 2 to the top of the list while page 1 is
+ * refetching — the rows would be in order and simply be the wrong rows, which is
+ * the worst kind of wrong for a history viewer. Stopping at the first gap shows a
+ * shorter list instead, which is honest.
+ *
+ * **A digest mismatch collapses to page 1.** Refs moving mid-paging means the
+ * later pages were walked against a different set than the first, and splicing
+ * those would draw a history that never existed.
+ */
+export function stitchPages(pages: (GitGraph | undefined)[]): StitchedGraph {
+	const contiguous: GitGraph[] = [];
+	for (const page of pages) {
+		if (!page) break;
+		contiguous.push(page);
+	}
+
+	const digest = contiguous[0]?.refsDigest;
+	const stale = contiguous.some((page) => page.refsDigest !== digest);
+	const usable = stale ? contiguous.slice(0, 1) : contiguous;
+
+	return {
+		commits: usable.flatMap((page) => page.commits),
+		// Lanes live anywhere in the prefix walked, so the newest page knows about
+		// the most. The max keeps one pitch for the whole list, and it only ever
+		// grows as you load more, so the rows above never reflow.
+		laneCount: usable.reduce((widest, page) => Math.max(widest, page.laneCount), 0),
+		hasMore: Boolean(usable.at(-1)?.hasMore),
+		stale,
+	};
 }
 
 /** A ref as the row draws it, after folding. */

@@ -1,4 +1,4 @@
-import type { GitRef } from '@factorai/types';
+import type { GitGraph, GitGraphCommit, GitRef } from '@factorai/types';
 import { describe, expect, it } from 'vitest';
 import {
 	fitRefs,
@@ -9,6 +9,7 @@ import {
 	laneColour,
 	lanePitch,
 	railWidth,
+	stitchPages,
 } from './gitGraph';
 
 function ref(partial: Partial<GitRef> & Pick<GitRef, 'name' | 'kind'>): GitRef {
@@ -182,5 +183,102 @@ describe('fitRefs', () => {
 
 	it('reports nothing for a commit with no refs at all, which is most of them', () => {
 		expect(fitRefs([], 288)).toEqual({ shown: [], hiddenCount: 0 });
+	});
+});
+
+/** A page whose commits are named by SHA alone — `Omit` because the real field
+ *  is `GitGraphCommit[]` and taking strings here is the whole point. */
+function page(over: Omit<Partial<GitGraph>, 'commits'> & { commits: string[] }): GitGraph {
+	const commits: GitGraphCommit[] = over.commits.map((sha) => ({
+		sha,
+		shortSha: sha.slice(0, 7),
+		subject: sha,
+		authorName: 'a',
+		authorTime: 0,
+		commitTime: 0,
+		parents: [],
+		refs: [],
+		lane: 0,
+		edges: [],
+	}));
+	return {
+		repoRoot: '/repo',
+		laneCount: 1,
+		refsDigest: 'aaaa',
+		hasMore: false,
+		...over,
+		commits,
+	};
+}
+
+describe('stitchPages', () => {
+	it('joins loaded pages in order', () => {
+		const { commits, hasMore, stale } = stitchPages([
+			page({ commits: ['a', 'b'], hasMore: true }),
+			page({ commits: ['c', 'd'] }),
+		]);
+
+		expect(commits.map((c) => c.sha)).toEqual(['a', 'b', 'c', 'd']);
+		expect(hasMore).toBe(false);
+		expect(stale).toBe(false);
+	});
+
+	it('reports nothing while the first page is still in flight', () => {
+		const { commits, hasMore } = stitchPages([undefined]);
+
+		expect(commits).toEqual([]);
+		expect(hasMore).toBe(false);
+	});
+
+	it('stops at the first gap rather than promoting a later page to the top', () => {
+		// The bug this function exists to prevent. Filtering out the pending page
+		// would put page 2's commits at the top of the list — in order, and the
+		// wrong rows, which for a history viewer is the worst kind of wrong.
+		const { commits } = stitchPages([undefined, page({ commits: ['c', 'd'] })]);
+
+		expect(commits).toEqual([]);
+	});
+
+	it('takes the widest lane count, so one pitch covers the whole list', () => {
+		const { laneCount } = stitchPages([
+			page({ commits: ['a'], laneCount: 2, hasMore: true }),
+			page({ commits: ['b'], laneCount: 5 }),
+		]);
+
+		expect(laneCount).toBe(5);
+	});
+
+	it('follows the last loaded page for hasMore, not the first', () => {
+		const { hasMore } = stitchPages([
+			page({ commits: ['a'], hasMore: true }),
+			page({ commits: ['b'], hasMore: true }),
+		]);
+
+		expect(hasMore).toBe(true);
+	});
+
+	it('collapses to the first page when a later one was walked against other refs', () => {
+		// Refs moved mid-paging: splicing these would draw a history that never
+		// existed, so the caller is told to refetch instead.
+		const { commits, stale, hasMore } = stitchPages([
+			page({ commits: ['a', 'b'], hasMore: true, refsDigest: 'aaaa' }),
+			page({ commits: ['x', 'y'], refsDigest: 'bbbb' }),
+		]);
+
+		expect(stale).toBe(true);
+		expect(commits.map((c) => c.sha)).toEqual(['a', 'b']);
+		// The surviving page still had more, so the button stays — the refetch
+		// replaces the list, it does not end it.
+		expect(hasMore).toBe(true);
+	});
+
+	it('is not fooled by a single page, whatever its digest', () => {
+		const { stale } = stitchPages([page({ commits: ['a'], refsDigest: 'zzzz' })]);
+
+		expect(stale).toBe(false);
+	});
+
+	it('handles being asked about no pages at all', () => {
+		expect(stitchPages([])).toEqual({ commits: [], laneCount: 0, hasMore: false, stale: false });
 	});
 });
