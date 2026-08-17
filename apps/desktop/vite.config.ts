@@ -3,8 +3,16 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vite';
+import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
+	// Stamped in at build time so the crash screen can name the build it came
+	// from (components/layout/ErrorBoundary.tsx). A build-time constant rather
+	// than a `getVersion()` call because the crash path must not depend on the
+	// Tauri bridge still working. Declared in src/vite-env.d.ts.
+	define: {
+		__APP_VERSION__: JSON.stringify(pkg.version),
+	},
 	// `Icons` compiles the `~icons/<collection>/<name>` imports in
 	// lib/fileIcon.ts into React components at build time (ADR-0006). Only the
 	// icons we import statically end up in the bundle — nothing is fetched at
