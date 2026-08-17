@@ -667,3 +667,185 @@ export function fixtureWithGraph(): TestFixture {
 		},
 	};
 }
+
+/**
+ * Two projects, each with its own history, for the switching path (F18).
+ *
+ * The blind spot this covers: page count, selection and the lane pitch are all
+ * keyed on the active project, and a graph that kept the previous project's
+ * commits — or its selection — would be showing someone else's history under the
+ * right name. `zulu` and `alpha` share no SHAs, so a leak is unambiguous.
+ */
+export function fixtureTwoProjectGraphs(): TestFixture {
+	const base = fixtureTwoProjectsManySessions();
+	const [zulu, alpha] = base.projects ?? [];
+
+	const graph = (prefix: string, count: number, laneCount: number, root: string): GitGraph => ({
+		repoRoot: root,
+		commits: Array.from({ length: count }, (_unused, i) =>
+			commit({
+				sha: `${prefix}${String(i).padStart(2, '0')}`.padEnd(40, '0'),
+				subject: `${prefix} commit ${i}`,
+			}),
+		),
+		laneCount,
+		refsDigest: `${prefix}-digest`,
+		hasMore: false,
+	});
+
+	return {
+		...base,
+		gitStatuses: {
+			// Only zulu is dirty, so the hollow HEAD marker has to move with the
+			// project rather than staying wherever it was first drawn.
+			[zulu.realPath]: {
+				repoRoot: zulu.realPath,
+				branch: 'main',
+				head: `aa${'00'}`.padEnd(40, '0'),
+				changes: [change('dirty.ts', zulu.realPath, {})],
+				total: 1,
+				truncated: false,
+			},
+			[alpha.realPath]: {
+				repoRoot: alpha.realPath,
+				branch: 'main',
+				head: `bb${'00'}`.padEnd(40, '0'),
+				changes: [],
+				total: 0,
+				truncated: false,
+			},
+		},
+		gitGraphs: {
+			[zulu.realPath]: graph('aa', 3, 2, zulu.realPath),
+			[alpha.realPath]: graph('bb', 2, 1, alpha.realPath),
+		},
+		// One detail per project, worded so the pane's contents name which project
+		// it came from — the assertion that a restored selection is *this* history's
+		// and not the other one's.
+		gitCommits: {
+			[`aa00`.padEnd(40, '0')]: detail(`aa00`.padEnd(40, '0'), 'zulu', zulu.realPath),
+			[`bb00`.padEnd(40, '0')]: detail(`bb00`.padEnd(40, '0'), 'alpha', alpha.realPath),
+		},
+	};
+}
+
+function detail(sha: string, project: string, root: string): GitCommitDetail {
+	return {
+		sha,
+		shortSha: sha.slice(0, 7),
+		subject: `${project} commit 0`,
+		body: `Belongs to ${project}.`,
+		authorName: 'Titouan',
+		authorEmail: 'titouan@example.invalid',
+		authorTime: 1_760_000_000_000,
+		committerName: 'Titouan',
+		commitTime: 1_760_000_000_000,
+		parents: [],
+		diffParent: null,
+		files: [
+			{
+				path: `${root}/only-in-${project}.ts`,
+				relPath: `only-in-${project}.ts`,
+				kind: 'added',
+				oldRelPath: null,
+				additions: 1,
+				deletions: 0,
+				isBinary: false,
+			},
+		],
+		total: 1,
+		truncated: false,
+	};
+}
+
+/**
+ * More commits than one page holds, for the paging path (F18).
+ *
+ * Worth its cost: `GRAPH_PAGE` is 300 and this repo has fewer commits than that,
+ * so **"Load more" had never run once** — not in a test and not in the app. The
+ * mock pages by slicing and derives `hasMore`, so one fixture drives both pages.
+ */
+export function fixtureLongHistory(): TestFixture {
+	const base = fixtureWithChanges();
+	const root = base.projects?.[0]?.realPath ?? '';
+	const TOTAL = 430;
+
+	return {
+		...base,
+		gitGraphs: {
+			[root]: {
+				repoRoot: root,
+				commits: Array.from({ length: TOTAL }, (_unused, i) =>
+					commit({
+						sha: `cc${String(i).padStart(4, '0')}`.padEnd(40, '0'),
+						subject: `commit ${i}`,
+					}),
+				),
+				laneCount: 1,
+				refsDigest: 'long-digest',
+				hasMore: true,
+			},
+		},
+	};
+}
+
+/**
+ * A repository whose only commit is its root, for the no-parent path (F18).
+ *
+ * `diffParent: null` is the one branch of the detail pane that a normal commit
+ * never reaches: the heading changes, the parents line is absent entirely, and
+ * the diff URL's left side is empty because the comparison is against the empty
+ * tree.
+ */
+export function fixtureRootCommit(): TestFixture {
+	const base = fixtureWithChanges();
+	const root = base.projects?.[0]?.realPath ?? '';
+	const first = 'ff'.padEnd(40, '0');
+
+	return {
+		...base,
+		gitGraphs: {
+			[root]: {
+				repoRoot: root,
+				commits: [
+					commit({
+						sha: first,
+						subject: 'chore: the first commit',
+						refs: [ref('main', 'localBranch', { isHead: true })],
+					}),
+				],
+				laneCount: 1,
+				refsDigest: 'root-digest',
+				hasMore: false,
+			},
+		},
+		gitCommits: {
+			[first]: {
+				sha: first,
+				shortSha: first.slice(0, 7),
+				subject: 'chore: the first commit',
+				body: '',
+				authorName: 'Titouan',
+				authorEmail: 'titouan@example.invalid',
+				authorTime: 1_760_000_000_000,
+				committerName: 'Titouan',
+				commitTime: 1_760_000_000_000,
+				parents: [],
+				diffParent: null,
+				files: [
+					{
+						path: `${root}/README.md`,
+						relPath: 'README.md',
+						kind: 'added',
+						oldRelPath: null,
+						additions: 12,
+						deletions: 0,
+						isBinary: false,
+					},
+				],
+				total: 1,
+				truncated: false,
+			},
+		},
+	};
+}

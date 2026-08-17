@@ -1,11 +1,16 @@
 import { expect, test } from '@playwright/test';
 import {
+	ALPHA_ID,
 	FOO_ID,
+	fixtureLongHistory,
 	fixtureOneProjectOneSession,
+	fixtureRootCommit,
+	fixtureTwoProjectGraphs,
 	fixtureWithGraph,
 	installMockBridge,
 	SHA_MAIN,
 	SHA_SIDE,
+	ZULU_ID,
 } from './fixtures';
 
 /**
@@ -86,5 +91,134 @@ test.describe('graph tab', () => {
 		await expect(page.getByText('Not a git repository.')).toBeVisible();
 		// The strip must not reflow as you move between projects.
 		await expect(page.getByRole('tab', { name: 'Graph' })).toBeVisible();
+	});
+});
+
+test.describe('graph tab — switching, paging and the keyboard', () => {
+	test('@smoke switching project swaps the history and drops the selection', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectGraphs());
+		await page.goto(`/#/projects/${ZULU_ID}`);
+		await openGraph(page);
+
+		// zulu's three commits, and nothing of alpha's.
+		await expect(page.getByTestId('commit-row')).toHaveCount(3);
+		await expect(page.getByText('aa commit 0')).toBeVisible();
+		await expect(page.getByText('bb commit 0')).toHaveCount(0);
+
+		// Select one, so there is something that must not survive the switch.
+		await page.getByTestId('commit-row').first().click();
+		await expect(page.getByTestId('commit-detail')).toContainText('Belongs to zulu.');
+
+		await page.goto(`/#/projects/${ALPHA_ID}`);
+
+		// alpha's two commits, and — the actual blind spot — **no** detail pane,
+		// because a SHA from zulu would open a pane for a commit that isn't on
+		// screen. The selection carries its project for exactly this.
+		await expect(page.getByTestId('commit-row')).toHaveCount(2);
+		await expect(page.getByText('bb commit 0')).toBeVisible();
+		await expect(page.getByText('aa commit 0')).toHaveCount(0);
+		await expect(page.getByTestId('commit-detail')).toHaveCount(0);
+
+		await page.getByTestId('commit-row').first().click();
+		await expect(page.getByTestId('commit-detail')).toContainText('Belongs to alpha.');
+
+		// And back to zulu: its history again, and **no** pane. Arriving at a clean
+		// graph is the predictable default — the pane costs 200px of the thing you
+		// switched to look at, and re-selecting is one click.
+		//
+		// This is the assertion that pinned down a real bug. The first version kept
+		// the selection alongside the project it belonged to and compared the two,
+		// which meant zulu's selection came *back* on return — but only if you
+		// hadn't selected anything in alpha meanwhile. Keying the subtree on the
+		// project makes the reset unconditional.
+		await page.goto(`/#/projects/${ZULU_ID}`);
+		await expect(page.getByTestId('commit-row')).toHaveCount(3);
+		await expect(page.getByText('aa commit 0')).toBeVisible();
+		await expect(page.getByTestId('commit-detail')).toHaveCount(0);
+	});
+
+	test('@smoke the dirty HEAD marker follows the project', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectGraphs());
+		await page.goto(`/#/projects/${ZULU_ID}`);
+		await openGraph(page);
+
+		// zulu has an uncommitted change, so its HEAD node is drawn hollow — filled
+		// with the card colour rather than its lane's.
+		const zuluNode = page.getByTestId('commit-row').first().locator('circle');
+		await expect(zuluNode).toHaveAttribute('fill', 'var(--card)');
+
+		// alpha is clean, so the same position is a filled node. A marker that
+		// stayed hollow here would be claiming changes that aren't there.
+		await page.goto(`/#/projects/${ALPHA_ID}`);
+		const alphaNode = page.getByTestId('commit-row').first().locator('circle');
+		await expect(alphaNode).toHaveAttribute('fill', 'var(--lane-0)');
+	});
+
+	test('@smoke Load more appends the next page and then goes away', async ({ page }) => {
+		await installMockBridge(page, fixtureLongHistory());
+		await page.goto(PROJECT);
+		await openGraph(page);
+
+		// One page is 300 commits, and 430 exist.
+		await expect(page.getByTestId('commit-row')).toHaveCount(300);
+		const loadMore = page.getByRole('button', { name: 'Load more' });
+		await expect(loadMore).toBeVisible();
+
+		await loadMore.click();
+
+		// Appended, not replaced: the first page's rows are still at the top.
+		await expect(page.getByTestId('commit-row')).toHaveCount(430);
+		await expect(page.getByTestId('commit-row').first()).toContainText('commit 0');
+		await expect(page.getByTestId('commit-row').nth(429)).toContainText('commit 429');
+		// Nothing further to load, so the affordance stops claiming there is.
+		await expect(loadMore).toHaveCount(0);
+	});
+
+	test('@smoke arrows walk the list and Enter is not needed to open a commit', async ({ page }) => {
+		await installMockBridge(page, fixtureWithGraph());
+		await page.goto(PROJECT);
+		await openGraph(page);
+
+		// Tab reaches the list at the first row — one tab stop, not 300.
+		await page.getByTestId('commit-row').first().focus();
+		await page.keyboard.press('ArrowDown');
+
+		// Selection moves and takes focus with it, since the roving tabindex makes
+		// the focused row the cursor.
+		const second = page.getByTestId('commit-row').nth(1);
+		await expect(second).toHaveAttribute('aria-current', 'true');
+		await expect(second).toBeFocused();
+		// Moving the selection *is* opening the commit — there is no separate
+		// confirm step, which is what makes arrowing through history useful.
+		await expect(page.getByTestId('commit-detail')).toBeVisible();
+
+		await page.keyboard.press('End');
+		const last = page.getByTestId('commit-row').nth(4);
+		await expect(last).toHaveAttribute('aria-current', 'true');
+		await expect(last).toBeFocused();
+
+		await page.keyboard.press('Home');
+		await expect(page.getByTestId('commit-row').first()).toHaveAttribute('aria-current', 'true');
+
+		// Up from the top stays put rather than wrapping to the oldest commit.
+		await page.keyboard.press('ArrowUp');
+		await expect(page.getByTestId('commit-row').first()).toHaveAttribute('aria-current', 'true');
+	});
+
+	test('@smoke a root commit says its files are additions and offers no parent', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureRootCommit());
+		await page.goto(PROJECT);
+		await openGraph(page);
+
+		await page.getByTestId('commit-row').first().click();
+		const detail = page.getByTestId('commit-detail');
+
+		// `diffParent: null` — there is nothing to diff against, so the heading says
+		// what the files are rather than implying a comparison.
+		await expect(detail).toContainText('Added in this commit');
+		await expect(detail).not.toContainText('Parent');
+		await expect(detail).toContainText('README.md');
 	});
 });

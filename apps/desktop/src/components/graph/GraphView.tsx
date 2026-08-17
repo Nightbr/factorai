@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { CommitDetail } from '@components/graph/CommitDetail';
 import { CommitRow } from '@components/graph/CommitRow';
 import { PanelResizer } from '@components/layout/PanelResizer';
+import { useActiveProject } from '@hooks/useActiveProject';
 import { useGitGraph } from '@hooks/useGitGraph';
 import { useGitStatus } from '@hooks/useGitStatus';
 import { lanePitch, railWidth } from '@lib/gitGraph';
@@ -18,19 +19,27 @@ import { clampDetailHeight, usePanelStore } from '@store/panelStore';
  * linked in.
  */
 export function GraphView() {
+	const { root } = useActiveProject();
+
+	// **Keyed on the project, which is the whole of how per-project state is kept
+	// honest here.** Selection and page count both belong to one history, and
+	// deriving "is this still mine?" from a stored project id got it subtly wrong:
+	// a selection made in project A survived a trip to B and back, but only if you
+	// hadn't selected anything in B — arbitrary, and the opposite of what the code
+	// claimed. A remount resets everything inside unconditionally, and it keeps
+	// doing so for any state added later.
+	return <GraphBody key={root ?? 'no-project'} />;
+}
+
+function GraphBody() {
 	const { commits, laneCount, graph, isPending, hasMore, isLoadingMore, loadMore, root } =
 		useGitGraph();
 	const width = usePanelStore((s) => s.width);
 	const detailHeight = usePanelStore((s) => s.detailHeight);
 	const setDetailHeight = usePanelStore((s) => s.setDetailHeight);
 
-	// The selection carries the project it belongs to, so switching project drops
-	// it by derivation rather than by an effect that resets it a render later — a
-	// SHA from the old history would open a detail pane for a commit that isn't on
-	// screen.
-	const [selection, setSelection] = useState<{ root: string; sha: string } | null>(null);
-	const selected = selection && selection.root === root ? selection.sha : null;
-	const select = useCallback((sha: string) => setSelection(root ? { root, sha } : null), [root]);
+	// Plain state, because the remount above guarantees it belongs to this project.
+	const [selected, select] = useState<string | null>(null);
 	const listRef = useRef<HTMLUListElement>(null);
 
 	// Uncommitted changes sit on top of HEAD, and a graph that showed `main` on a
@@ -46,7 +55,13 @@ export function GraphView() {
 			if (!keys.includes(event.key) || commits.length === 0) return;
 			event.preventDefault();
 
-			const current = commits.findIndex((commit) => commit.sha === selected);
+			// Anchor on the selection, or — before anything is selected — on the row
+			// that actually has focus. Tabbing into the list puts focus on a row
+			// without selecting it, and arrowing from there has to move *from* that
+			// row; anchoring on the selection alone made the first ArrowDown land back
+			// on the row you were already standing on.
+			const focused = (event.target as HTMLElement).closest<HTMLElement>('[data-sha]')?.dataset.sha;
+			const current = commits.findIndex((commit) => commit.sha === (selected ?? focused));
 			const next =
 				event.key === 'Home'
 					? 0
@@ -54,7 +69,7 @@ export function GraphView() {
 						? commits.length - 1
 						: event.key === 'ArrowDown'
 							? Math.min(commits.length - 1, current + 1)
-							: // From nothing selected, Up starts at the top rather than
+							: // From nowhere at all, Up starts at the top rather than
 								// wrapping to the oldest commit in the page.
 								Math.max(0, current <= 0 ? 0 : current - 1);
 
@@ -67,7 +82,10 @@ export function GraphView() {
 			row?.focus();
 			row?.scrollIntoView({ block: 'nearest' });
 		},
-		[commits, selected, select],
+		// `select` is a `useState` setter and therefore stable, so it is not a
+		// dependency — which is one small benefit of the remount replacing the
+		// project-tagged `useCallback` that used to live here.
+		[commits, selected],
 	);
 
 	if (!root) return <Empty>Select a project to see its history.</Empty>;
@@ -132,7 +150,14 @@ export function GraphView() {
 						label="Resize commit detail"
 						clamp={clampDetailHeight}
 					/>
-					<div style={{ height: detailHeight }} className="shrink-0 overflow-hidden">
+					{/* The testid is on the container, not on `CommitDetail`'s success
+					    branch: "the pane is open" and "the commit resolved" are different
+					    questions, and a stale SHA has to be assertable too. */}
+					<div
+						data-testid="commit-detail"
+						style={{ height: detailHeight }}
+						className="shrink-0 overflow-hidden"
+					>
 						<CommitDetail projectPath={root} sha={selected} onSelectSha={select} />
 					</div>
 				</>

@@ -40,7 +40,7 @@ export function CommitDetail({ projectPath, sha, onSelectSha }: CommitDetailProp
 	const detail = query.data;
 
 	return (
-		<div data-testid="commit-detail" className="flex h-full flex-col overflow-y-auto">
+		<div className="flex h-full flex-col overflow-y-auto">
 			<div className="flex items-start gap-1 px-3 pt-2">
 				<p className="min-w-0 flex-1 font-medium text-sm">
 					{detail.subject || <em className="text-muted-foreground">no message</em>}
