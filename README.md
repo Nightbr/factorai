@@ -1,3 +1,5 @@
+<img src="docs/brand/factorai-icon-256.png" alt="" width="88" align="right">
+
 # factorai
 
 > **IDE is dead. Long live the ADE** — the Agentic Development Environment.
@@ -44,10 +46,11 @@ the terminal, not in place of it.
 
 M0–M3 are done (browser, terminal + session lifecycle, search) and M4 is nearly
 there — files, the viewer and the git panel have landed; an in-app `CLAUDE.md`
-editor is the piece still missing. M5 — settings, keyboard shortcuts, a custom
-titlebar and real icons — has not started, so expect rough edges: the icon is a
-placeholder, there are no keyboard shortcuts, and the window still wears its OS
-decorations.
+editor is the piece still missing. M5 — settings, keyboard shortcuts and a
+custom titlebar — has barely started, so expect rough edges: there are no
+keyboard shortcuts, and the window still wears its OS decorations. The app does
+at least have a real icon now, and the in-app brand row still shows a stand-in
+glyph rather than the mark.
 
 macOS and Linux only. Windows is explicitly out of scope for v1: `portable-pty`
 would probably cope, but nothing about the path encoding or the signing story
@@ -165,5 +168,8 @@ every IPC type are hand-mirrored on purpose, so drift shows up in review).
   dated log of what shipped with the gotchas found on the way.
 - [`docs/adr/`](docs/adr/) — decisions and why, including the ones that were
   superseded.
+- [`docs/brand/`](docs/brand/) — the mark and its raster masters;
+  [`specs/09-branding.md`](specs/09-branding.md) has the construction, the
+  palette and the one command that regenerates every app icon.
 - [`AGENTS.md`](AGENTS.md) — how coding agents are expected to work in this
   repo. `CLAUDE.md` is a symlink to it.

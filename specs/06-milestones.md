@@ -143,7 +143,10 @@ toolchain wired up.
   `Ctrl+B` is unavailable (readline / tmux collision inside the embedded
   terminal), so this needs a real binding scheme, not one `useEffect`.
 - Empty states, error toasts, friendly indexing UI.
-- Icons (use placeholder for now, real icon set by release).
+- Icons — **done**, see [`09-branding.md`](./09-branding.md). Generated from
+  `docs/brand/factorai-icon.svg`, which `tauri icon` takes directly; the
+  "feed it a 1024px master" note this file used to carry was wrong, since
+  rasterising each size from vector beats downsampling one bitmap.
 - README with install instructions.
 - GitHub Action: `tauri build` on tag push, attach artifacts to release.
 - Manual smoke test pass on macOS arm64 and Ubuntu 24. (Windows is out

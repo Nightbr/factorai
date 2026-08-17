@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>factorai</title>
+  <mask id="ports-mono"><rect width="512" height="512" rx="112" fill="#fff"/><g fill="#000"><rect x="0" y="96" width="41.6" height="64"/><rect x="470.4" y="96" width="41.6" height="64"/><rect x="0" y="224" width="41.6" height="64"/><rect x="470.4" y="224" width="41.6" height="64"/><rect x="0" y="352" width="41.6" height="64"/><rect x="470.4" y="352" width="41.6" height="64"/></g></mask>
+  <g mask="url(#ports-mono)">
+    <path fill="currentColor" fill-rule="evenodd" d="M0 0H512V512H0ZM153.6 136H377.6V198.4H233.6V232H332.8L273.6 291.2H233.6V379.2H153.6Z"/>
+  </g>
+</svg>
