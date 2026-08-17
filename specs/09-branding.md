@@ -260,8 +260,16 @@ dev build show it, because they share a `WM_CLASS`.
 
 So: shipping an icon in the bundle is not sufficient for the dock. The
 `.desktop` entry and the `hicolor` theme files are the thing the shell reads,
-and they are what roadmap item 18 still has open. That entry also names the app
-`FactorAI`, which is not how the product is spelled.
+and they are what roadmap item 18 still has open.
+
+**This machine was fixed by hand on 2026-08-17** — the theme files regenerated
+from the master at 16/24/32/48/64/128/256/512 plus a `scalable` SVG, the entry's
+`Name` corrected from `FactorAI` to `factorai`, and `gtk-update-icon-cache` run.
+The panel picked it up without a restart. That is a repair, **not the fix**: it
+touched `~/.local/share`, so it holds for one user on one machine and a fresh
+install still gets whatever the bundler writes. Note also that `256x256@2`
+carried a 256px file — an `@2` directory means twice the nominal size, so it
+should be 512, and the bundler should not repeat that.
 
 **The dark housing recedes on dark grounds.** At 16px in a dark file manager,
 `#272B31` sits close enough to the surrounding chrome that the notched
