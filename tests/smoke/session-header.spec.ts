@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { ZULU_ID, fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
+import {
+	ZULU_ID,
+	fixtureOneProjectOneSession,
+	fixtureTwoProjectsManySessions,
+	fixtureWithChanges,
+	installMockBridge,
+} from './fixtures';
 
 /**
  * The session header's close control (specs/05-features.md F3).
@@ -80,5 +86,53 @@ test.describe('session header', () => {
 
 		await fromTab.click();
 		expect(await page.getByRole('dialog').innerText()).toBe(headerText);
+	});
+});
+
+/**
+ * The git branch badge (specs/05-features.md F3).
+ *
+ * The branch comes from the same `git_status` the Changes tab reads, but on a
+ * separate observer that is **not** gated on the right panel being open — see
+ * hooks/useGitBranch.ts. That gate is the thing worth pinning down here: the
+ * badge has to be there with the panel shut.
+ */
+test.describe('session header branch badge', () => {
+	async function openTheOneSession(page: Page) {
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+	}
+
+	test('@smoke names the branch the project is on', async ({ page }) => {
+		await installMockBridge(page, fixtureWithChanges());
+		await page.goto('/');
+		await openTheOneSession(page);
+
+		await expect(page.getByTestId('session-branch')).toHaveText('main');
+	});
+
+	test('@smoke shows nothing at all when the project is not a repository', async ({ page }) => {
+		// No `gitStatuses` in this fixture, so the mock resolves `repoRoot: null`
+		// exactly as the real command does. Absent, not an error and not an empty
+		// badge — a non-git project's header must look untouched.
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+		await openTheOneSession(page);
+
+		// The header itself is there and named — it is only the badge that isn't.
+		await expect(page.locator('header').last().getByTitle('session-uuid-001')).toBeVisible();
+		await expect(page.getByTestId('session-branch')).toHaveCount(0);
+	});
+
+	test('@smoke survives the panel being closed', async ({ page }) => {
+		await installMockBridge(page, fixtureWithChanges());
+		await page.goto('/');
+		await openTheOneSession(page);
+		await expect(page.getByTestId('session-branch')).toHaveText('main');
+
+		// Reusing `useGitStatus` would have tied the badge to the panel, and this
+		// is the assertion that would have caught it.
+		await page.getByRole('button', { name: 'Toggle file tree' }).click();
+		await expect(page.getByTestId('session-branch')).toHaveText('main');
 	});
 });

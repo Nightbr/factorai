@@ -2,12 +2,13 @@ import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { BookOpen, Play, X } from 'lucide-react';
+import { BookOpen, GitBranch, Play, X } from 'lucide-react';
 import { useState } from 'react';
 import { CloseSessionConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
 import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, Terminal } from '@components/terminal/Terminal';
+import { useGitBranch } from '@hooks/useGitBranch';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { useTerminalStore } from '@store/terminalStore';
@@ -37,6 +38,10 @@ function SessionView() {
 	});
 	const project = projectsQ.data?.find((p) => p.id === projectId);
 	const projectCwd = project?.realPath ?? null;
+
+	// The header's branch badge. `projectCwd` rather than the active project, so
+	// the badge always names this session's repository (F3).
+	const branch = useGitBranch(projectCwd);
 
 	// Shares the project route's cache entry, so arriving from the session list
 	// costs nothing. Refetched on `sessions:changed`-driven invalidation, which
@@ -120,6 +125,22 @@ function SessionView() {
 				<span className="truncate text-foreground text-sm">
 					{project?.displayName ?? projectId}
 				</span>
+				{/* Quiet by design: muted, no border, no background — it says where you
+				    are, it is not a control. Absent entirely when the project is not a
+				    repository, so a non-git project's header looks exactly as it did.
+				    `max-w-[12rem]` so a long branch name truncates instead of pushing
+				    the Close button around; the full name is on hover, following the
+				    session id below it. */}
+				{branch && (
+					<span
+						className="flex min-w-0 max-w-[12rem] shrink-0 items-center gap-1 text-muted-foreground text-xs"
+						title={`On branch ${branch}`}
+						data-testid="session-branch"
+					>
+						<GitBranch className="size-3 shrink-0" aria-hidden />
+						<span className="truncate">{branch}</span>
+					</span>
+				)}
 				{/* The full id is one hover away rather than spending header width on
 				    36 characters nobody reads. */}
 				<span className="min-w-0 flex-1 truncate text-muted-foreground text-xs" title={sessionId}>

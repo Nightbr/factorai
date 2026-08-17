@@ -317,6 +317,31 @@ fails still navigates away and **keeps** the session in `terminalStore`, so
 the project page's status dot goes on telling the truth about a PTY that may
 still be running.
 
+**A git branch badge sits between the project name and the session title**
+(added 2026-08-17) — the `GitBranch` glyph plus the branch name, muted, no
+border and no background. It says where you are; it is not a control, and
+nothing about it is clickable. A long name truncates at `12rem` rather than
+pushing the close button around, with the full name on hover, following the
+session id beside it.
+
+It is **absent entirely** in all three of the states that are not "on a
+branch", none of which is an error: the project has no repository
+(`git_status` resolves `repoRoot: null` rather than rejecting — see F13), the
+status has not loaded yet, or the repository has no branch to name. That last
+case covers both a detached `HEAD` and an unborn branch, and `GitStatus`
+carries no head SHA to tell them apart — so the badge stays quiet rather than
+guessing "detached". Showing the SHA would need a new field on `GitStatus`.
+
+**It does not reuse `useGitStatus`.** That hook is gated on the right panel
+being open, because the Changes tab and the tree's decorations are its only
+consumers and closing the panel should stop its 3s working-tree walk dead. The
+badge is visible whether or not the panel is, so it has its own observer
+(`useGitBranch`) on the **same query key** — one cache entry and one request
+per project, two cadences. The badge polls at 30s and on window focus: a branch
+changes when someone runs `git checkout`, not on every keystroke the agent
+makes. It takes the project path as an argument rather than reading the active
+project, so a session opened from search still names its own repository.
+
 **Sub-agent sessions are the exception, and read-only.** A sub-agent
 transcript can never be resumed — `claude --resume` probes for a top-level
 `<id>.jsonl` and an agent id has none, so "opening" one as a terminal would
