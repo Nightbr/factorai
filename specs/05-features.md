@@ -1359,6 +1359,45 @@ the render phase. Those belong to the toast path under "Error UX" below. Keep
 the two apart: a toast is useless once the tree is gone, and this screen is far
 too much for a command that returned an `AppError`.
 
+### The window-level half (fixed 2026-08-17)
+
+The sentence above is why a boundary was never going to be enough on its own,
+and until 0.10.0 the other half was a **scaffold from M0 that destroyed the app
+on any unhandled rejection**: `main.tsx` set `root.innerHTML` to a red `<pre>`,
+which unmounts the React tree and every live xterm in it. It predated the
+boundary, sat outside React, and won.
+
+What made it visible was the Graph tab. `DiffView` disposes its diff editor
+whenever the commit, file or side-by-side mode changes, `createDiffEditor`
+computes the diff in a **worker**, and disposing cancels that in-flight request
+— so Monaco rejects with a `CancellationError`. Clicking through commits blanked
+the app. Monaco's own `onUnexpectedError` drops these deliberately ("ignore
+errors from cancelled promises"), so the app was treating as fatal something the
+library that produced it does not consider an error at all.
+
+`lib/globalErrors` now classifies before reacting, and the three outcomes are
+the design:
+
+- **Cancellation → ignored.** Matched by shape (`Error`, `name` and `message`
+  both `Canceled`) rather than by importing Monaco, which would drag the editor
+  into the main bundle (ADR-0007 keeps it behind the lazy chunk). All three
+  fields are required: an unrelated error merely *named* `Canceled` must still
+  surface, or this stops being a filter and becomes a place bugs hide.
+  `console.debug` keeps it findable in DevTools.
+- **Anything else, app already rendered → non-destructive.** A dismissible
+  bottom-right card outside `#root` (`lib/errorNotice`), plus `console.error`.
+  Whether the app is up is asked of the **DOM** — `root.childElementCount > 0` —
+  rather than tracked with a flag, because the flag is the thing that would go
+  stale in exactly the situation this handles.
+- **Anything else, nothing rendered → full-screen.** Only here is replacing the
+  document right: there is nothing to preserve and no other way to say anything.
+
+`lib/errorNotice` is explicitly a **stopgap**, and item 7 should delete it: once
+`@factorai/ui` has a toast and `AppError` has a routing story, a mounted app
+should surface these through that. It exists because the alternative today is
+`console.error` alone, and an invisible unhandled rejection is precisely how
+this survived three releases.
+
 **The screen shows the error rather than hiding it.** Name, message and
 component stack in a scrollable block, because the person using this app is a
 developer and a redacted "something went wrong" wastes the one moment the
