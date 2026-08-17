@@ -5,13 +5,24 @@ import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vite';
 import pkg from './package.json' with { type: 'json' };
 
+// Stamped into the bundle so the crash screen can name the build it came from
+// (components/layout/ErrorBoundary.tsx). A build-time constant rather than a
+// `getVersion()` call because the crash path must not depend on the Tauri
+// bridge still working. Declared in src/vite-env.d.ts.
+//
+// **The version in this repo is deliberately never bumped.** The tag is the
+// only source of truth: `release.yml`'s "Set version from tag" rewrites
+// `package.json` before `beforeBuildCommand` runs, so a release build reads the
+// real version here. Which means the untouched placeholder is precisely the
+// signal for "nobody tagged this" — so say so, rather than letting every dev
+// crash report claim to be 0.1.0.
+const PLACEHOLDER = '0.1.0';
+const APP_VERSION =
+	pkg.version === PLACEHOLDER ? `${PLACEHOLDER} (untagged dev build)` : pkg.version;
+
 export default defineConfig({
-	// Stamped in at build time so the crash screen can name the build it came
-	// from (components/layout/ErrorBoundary.tsx). A build-time constant rather
-	// than a `getVersion()` call because the crash path must not depend on the
-	// Tauri bridge still working. Declared in src/vite-env.d.ts.
 	define: {
-		__APP_VERSION__: JSON.stringify(pkg.version),
+		__APP_VERSION__: JSON.stringify(APP_VERSION),
 	},
 	// `Icons` compiles the `~icons/<collection>/<name>` imports in
 	// lib/fileIcon.ts into React components at build time (ADR-0006). Only the
