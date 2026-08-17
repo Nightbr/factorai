@@ -35,9 +35,25 @@ What was actually done with plain `xdotool`, in one session: clicked the sidebar
 
 | Script | Status |
 | --- | --- |
-| `click.sh X Y` | ✓ reaches React |
+| `click.sh X Y` | ✓ reaches React — but its origin is **not** the content area, see below |
 | `key.sh KEYS` | ✓ — but focus the window first (`wmctrl -ia`) and send **without** `--window`. `xdotool key --window <id>` uses XSendEvent, which *is* filtered; plain `xdotool key` uses XTest, which isn't. That distinction is probably what the original claim was really about. |
 | `type.sh "text"` | ✓ same rule as `key.sh` |
+
+**`click.sh`'s coordinates are frame-relative, not content-relative** (measured 2026-08-17). Its doc comment says "relative to the top-left of the factorai content area". That is wrong: `_resolve_wid.sh` reports the origin `wmctrl -lG` gives for the **decoration** window, while `xwininfo -id <wid>` reports the client area, and on X11 + Mutter here those differ by **(47, 73)**. Two consequences:
+
+- everything lands 47px right and 73px below where you aimed — enough to hit the row under the one you meant, which is exactly how a click meant for `factorai` selected `zack-health-planner`;
+- the **top 73 rows of the content area are unreachable**, since reaching them needs a negative argument. The session header and the panel's tab strip both live there.
+
+Until the script is fixed, click those by absolute coordinate off `xwininfo`:
+
+```bash
+read -r WID DEC _ _ _ _ < <(scripts/qa/_resolve_wid.sh)
+CX=$(xwininfo -id $WID | awk '/Absolute upper-left X/{print $4}')
+CY=$(xwininfo -id $WID | awk '/Absolute upper-left Y/{print $4}')
+xdotool mousemove --sync $((CX + X)) $((CY + Y)); xdotool click 1
+```
+
+To convert a full-window screenshot to those `X`/`Y`: the client area starts at **(48, 72)** in the capture, so subtract that from what you measured.
 
 **Do not read this as "synthetic input is fine".** It is sharp in a way that has already cost something real: a stale window origin once sent a click into the user's Slack and opened an emoji picker on a live conversation. Before every click, in the same shell invocation:
 
