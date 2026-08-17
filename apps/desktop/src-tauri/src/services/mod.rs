@@ -5,5 +5,6 @@ pub mod git;
 pub mod indexer;
 pub mod jsonl;
 pub mod search;
+pub mod shell_path;
 pub mod terminal;
 pub mod watcher;

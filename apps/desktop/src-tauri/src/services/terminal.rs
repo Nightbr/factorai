@@ -276,11 +276,13 @@ impl TerminalManager {
 		}
 		cmd.cwd(&cwd_path);
 		// `CommandBuilder::new` already seeded the child with our environment, so
-		// PATH / HOME / SSH_AUTH_SOCK are present. What is left is to take back
-		// whatever the AppImage runtime pushed in front of it, which belongs to
-		// this process and not to a shell in the user's project — as removals,
-		// because an omitted key keeps its inherited value. See
-		// `services::child_env`; outside an AppImage this is empty.
+		// HOME / SSH_AUTH_SOCK / LANG and the rest are present, and this is a
+		// diff over that rather than a hand-built environment. Two things about
+		// ours are wrong for a session: `PATH` is a GUI process's, with no
+		// Homebrew and no version-manager shims in it, and under an AppImage the
+		// runtime's private directories are in front of everything. Both are
+		// fixed here, in the one place a child is spawned — see
+		// `services::child_env`.
 		crate::services::child_env::changes_for_current_env().apply_to(&mut cmd);
 		// xterm.js renders best as xterm-256color.
 		cmd.env("TERM", "xterm-256color");
@@ -628,6 +630,47 @@ mod tests {
 		let merged = chunks.join("");
 		assert!(merged.contains("HELLO_PTY"), "expected HELLO_PTY in stream, got: {merged}");
 		assert!(exit.lock().unwrap().iter().any(|e| e.id == id), "expected exit event");
+	}
+
+	/// The end of the chain `services::shell_path` starts: a session's `PATH` is
+	/// the login shell's, and it survives all the way into a real PTY child.
+	///
+	/// Asserting on the child rather than on `EnvChanges` is the point, for the
+	/// same reason `child_env`'s own regression test drives a `CommandBuilder`:
+	/// the bug being guarded against is not a wrong rule, it is a right rule
+	/// that never reaches the process. Drop the `changes_for_current_env` call
+	/// above and this is the test that notices — a hook's bare `bash` and an MCP
+	/// server's `npx` become unresolvable, and nothing else here fails.
+	#[test]
+	fn a_child_runs_with_the_login_shell_path() {
+		let (mgr, data, exit) = make_manager();
+		let id = mgr
+			.spawn_with_argv(
+				opts(80, 24),
+				// A marker, because the PTY stream also carries whatever the
+				// shell itself decides to say.
+				Some(vec!["/bin/sh".into(), "-c".into(), "printf 'PATH_IS[%s]' \"$PATH\"".into()]),
+			)
+			.expect("spawn");
+		for _ in 0..50 {
+			std::thread::sleep(Duration::from_millis(50));
+			if exit.lock().unwrap().iter().any(|e| e.id == id) {
+				break;
+			}
+		}
+		let merged: String = data
+			.lock()
+			.unwrap()
+			.iter()
+			.filter(|e| e.id == id)
+			.map(|e| {
+				String::from_utf8_lossy(&B64.decode(&e.bytes_b64).unwrap_or_default()).into_owned()
+			})
+			.collect();
+
+		let expected =
+			format!("PATH_IS[{}]", crate::services::shell_path::child_path().to_string_lossy());
+		assert!(merged.contains(&expected), "expected {expected} in stream, got: {merged}");
 	}
 
 	#[test]

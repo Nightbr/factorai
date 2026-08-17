@@ -254,7 +254,11 @@ The last mile before the app is something a teammate installs rather than runs f
 - [ ] Manual smoke pass on **macOS arm64** and **Ubuntu 24**. macOS is the untested platform:
       every gotcha in `DONE.md` so far is WebKitGTK-flavoured, and the login-shell PATH fallback
       in the claude probe (Q2) exists specifically for GUI launches on macOS and has never been
-      exercised there.
+      exercised there. **Two surfaces now, not one** — as of 2026-08-17 the *session's own* PATH
+      is resolved from the login shell too, which is a much wider blast radius than the probe
+      (hooks, stdio MCP servers, the statusline, everything the agent runs from `Bash`). Run the
+      verification list in `DONE.md`'s entry for it, and run it from a **Finder-launched** build:
+      `pnpm dev` from a terminal inherits a healthy PATH and hides this whole class of bug.
 
 **Exit criterion for M5** (`06-milestones.md`): a teammate installs the `.dmg` or `.AppImage` and uses
 factorai for an hour without hitting a flow-breaking bug.

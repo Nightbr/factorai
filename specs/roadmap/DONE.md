@@ -3,6 +3,57 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A session's `PATH` comes from the login shell now, not from this GUI process — spec
+  `03-backend-rust.md` § `TerminalManager`, `05-features.md` § F4 edge cases** — 2026-08-17, user
+  report. The symptom was three unrelated-looking failures at once in an app-launched session:
+  `SessionStart:startup hook error … /bin/sh: bash: command not found`, `/mcp` reporting `Failed to
+  reconnect to github: -32000`, and a statusline that rendered nothing. One cause. A GUI
+  application inherits launchd's (or the session manager's) environment and has never sourced an rc
+  file, so Homebrew and every version-manager shim are missing from its `PATH` — and a hook is run
+  as `/bin/sh -c "<command>"`, where `/bin/sh` is found by absolute path but the bare `bash`
+  *inside* the command is not. The plugin invoking `bash` by name was correct and was the messenger.
+
+  **`services/shell_path` asks a shell**: `$SHELL -ilc 'printf "%s" "<sentinel>${PATH}<sentinel>"'`,
+  once, on a thread off `setup()`, cached in a `OnceLock`. This is the `fix-path-for-mac` pattern VS
+  Code and most Electron dev tools use, and it was taken as prior art rather than reinvented — the
+  five details that make it work on real machines (both flags, sentinels, `/dev/null` stdin, a
+  timeout, reading `$SHELL`) are in the module docs and the spec.
+
+  **The reason it lands in `child_env` rather than at the spawn site** is that there is one
+  env-construction helper and it must stay that way; `changes_for_current_env()` returns a diff over
+  the inherited environment and never builds one, so `HOME`, `SSH_AUTH_SOCK`, `LANG` and the rest are
+  untouched. There is no `env_clear` and no hardcoded environment on this path — the original bug
+  report guessed there was one, and there wasn't. What there was, was an honest inheritance of a
+  `PATH` that was already wrong before we touched it.
+
+  **Two things found while doing it, both now pinned by tests.** First, the `$APPDIR` rule and this
+  one meet on the same key: `with_path` has the last word and has to *remove* `PATH` from the
+  AppImage diff first, or `apply_to`'s `env_remove` pass unsets the variable it just set. Second,
+  the login shell's answer needs the `$APPDIR` strip applied to it too — zsh and bash extend the
+  `PATH` they inherit rather than building a fresh one, and on this machine `$SHELL -ilc` demonstrably
+  came back with `$APPDIR/usr/bin` still on the front, twice over, from two nested AppImages.
+
+  **The test that matters is at the PTY, not at `EnvChanges`.** Every unit test in `child_env` still
+  passes with the `changes_for_current_env()` call deleted from the spawn site; `terminal::tests::
+  a_child_runs_with_the_login_shell_path` spawns a real child running `printf '%s' "$PATH"` and does
+  not. That was checked by breaking it on purpose — the same lesson v0.5.0 taught one layer down, and
+  the reason that layer's regression test drives a real `CommandBuilder`.
+
+  **Still to verify, and it needs a human on a Mac** (folded into the M5 smoke item in `TODO.md`):
+  from a **Finder-launched** build, `echo $PATH` contains `/bin` and the host's Homebrew prefix,
+  `command -v bash node npx git` all resolve, no hook-error banner on startup or on prompt submit,
+  `/mcp` connects its stdio servers, a `statusLine` renders, and `node --version` matches the
+  terminal's. On macOS, `pnpm dev` from a terminal inherits a healthy `PATH` and will hide all of it
+  — that is the single most likely way to produce a false pass there.
+
+  **But the cheap repro is on Linux, under `pnpm dev`**, which is worth knowing before booking a
+  Mac. Turborepo's strict env mode (the `XDG_DATA_DIRS` gotcha in `AGENTS.md`) strips `PATH`
+  additions on the way in, so the dev app's own `PATH` is thin for a different reason and to much
+  the same effect: measured here, it was missing 15 entries the login shell has — nvm, pyenv's
+  shims, `~/.local/share/pnpm`, `~/.yarn/bin`, `~/.local/bin`, `~/.cargo/bin`, gcloud. Compare
+  `/proc/<claude-pid>/environ` against `/proc/<app-pid>/environ` after starting a session; with the
+  fix the child matches the logged `resolved login shell PATH` byte for byte and not the app's own.
+
 - **The brand row — part of roadmap item 18, spec `09-branding.md` § B8** — 2026-08-17, user ask.
   `TopBar` drops `FolderGit2` for the real mark, and the name is now set one way everywhere:
   `factor` in the text colour, `ai` in `--primary`, from a `BrandWordmark` component rather than a
