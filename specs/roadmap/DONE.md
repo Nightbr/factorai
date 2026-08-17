@@ -3,6 +3,92 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **JSON is highlighted in the file viewer** — 2026-08-17, user ask. It rendered as unhighlighted
+  plain text with `Plain Text` in the footer, and the cause is worth keeping because the obvious
+  fix is a trap. `basic-languages` carries ~80 Monarch grammars and **JSON is the one common
+  language missing from it** — css, html, javascript and typescript are all there, but JSON ships
+  solely as a language *service*. So `.json` was absent from Monaco's registry entirely and
+  `languageForFile` fell through to `plaintext`.
+
+  Importing the feature's `register` fixes detection and **breaks the viewer**: it installs the
+  full mode, whose `jsonMode` statically imports the code-action, hover and completion providers,
+  which pull editor contributions `editor.api` carries no services for. The viewer then dies on
+  open with `[createInstance] CodeActionController depends on UNKNOWN service actionWidgetService`.
+  `setModeConfiguration` does **not** save you — ESM imports are static, so the modules load
+  whether or not their providers are used.
+
+  The fix is to register the language by hand and attach only `createTokenizationSupport`, the one
+  piece free of the editor's DI graph: it imports nothing but `jsonc-parser` and returns a plain
+  `TokensProvider`. No worker, no IntelliSense, no squiggles on a read-only file. Registered with
+  `supportComments: true` and with `.jsonc` / `.json5` added to Monaco's extension list, so
+  `knip.jsonc` and a commented `tsconfig` tokenise their comments as comments.
+
+  **`tsc` and all 103 smoke tests were green with the broken version** — the DI failure only
+  happens when Monaco actually instantiates an editor for that language, in the real app. Found by
+  opening a `.json` file under `scripts/qa/launch.sh`, which is the entire argument for that loop
+  existing. There is a smoke test now. Two smaller things: the untyped internal path needs an
+  ambient `declare module` (upstream ships a `.d.ts` only for `register`, the one thing we must not
+  import), and it goes in `optimizeDeps.include` like its two siblings or Vite reloads the page the
+  first time a `.json` is opened.
+
+- **A git branch badge in the session header** — 2026-08-17, user ask. `GitBranch` glyph plus the
+  branch name, muted, no border, no background, between the project name and the session title.
+  `git_status` already returned `branch`, so the data was free — the fetch was not.
+
+  `useGitStatus` is gated on the right panel being open, deliberately: its only consumers were the
+  Changes tab and the tree's decorations, and closing the panel should stop its 3s working-tree
+  walk dead. A header badge is visible whether or not the panel is, so widening that gate would
+  have run a 3s walk for every open session forever. It gets its own observer on the **same query
+  key** instead — one cache entry, one request, two cadences — polling at 30s and on focus, since a
+  branch changes on `git checkout`, not on every keystroke the agent makes. There is a smoke test
+  asserting the badge survives the panel being closed, which is the assertion that would have
+  caught the lazy version.
+
+  Absent, never empty, in all three non-branch states: no repository, not yet loaded, and no branch
+  to name. That last one covers **both** a detached `HEAD` and an unborn branch and `GitStatus`
+  carries no head SHA to tell them apart, so it stays quiet rather than guessing "detached" — a
+  short SHA would need a new field.
+
+- **A root error boundary, and a crash screen you can act on** — 2026-08-17, user ask. There was no
+  `ErrorBoundary` and no `componentDidCatch` anywhere in the repo, and no `errorComponent` on the
+  root route: a throw during render unmounted the tree and left an **empty window** — no message,
+  and in a desktop app no address bar to reload from.
+
+  One boundary, at the root, mounted **outside** the query client and the router, since a crash
+  while constructing either is exactly what it has to catch. Root-only is a deliberate first cut
+  (decided with the user); per-surface boundaries are the next step and are in `TODO.md` rather
+  than half-built. The screen shows name, message and component stack rather than a redacted
+  "something went wrong", with Reload, Report an issue, and Copy details.
+
+  Two things worth keeping. **Reload is cheaper than it looks and costs more than it says**: the
+  webview reloads but not the process, so PTYs survive and `terminalStore` re-syncs from
+  `terminal_list()` — but nothing snapshots xterm's scrollback, so the panes come back empty. The
+  screen says so rather than letting it be discovered. And **`encodeURIComponent` on the issue URL
+  is load-bearing**: the shell open scope is `https?://\w[^\s]*`, so a URL carrying a raw space or
+  newline — which every stack trace has — fails regex validation and the button silently does
+  nothing. Guarded on both sides, `lib/crashReport.test.ts` and `tests/shell_open_scope.rs`.
+
+  The report is a prefilled GitHub link, not a reporting service: nothing is sent, the user reads
+  and edits the body first, and § 8's "no telemetry" is untouched. Version comes from a Vite
+  `define` rather than `getVersion()`, so the crash path doesn't depend on the Tauri bridge still
+  working.
+
+- **`Button`'s size scale is a desktop scale now** — 2026-08-17, TODO item 23, user ask. `default`
+  `h-10 → h-8`, `sm` `h-9 → h-7`, `lg` `h-11 → h-9`, `icon` `10 → 8`, and the base `[&_svg]:size-4
+  → size-3.5`. The numbers are not invented: they are what the app's dense surfaces were already
+  overriding to by hand, which was the diagnosis — six inline overrides fighting one default.
+
+  **`Input` and `Select` moved with it** (`h-10 → h-8`, and `Input`'s `text-base`/`md:text-sm` →
+  `text-sm`), because they pair with buttons in a row and shrinking one alone misaligns both. Both
+  `Input` call sites were already hand-setting exactly `h-8 text-sm`, so the trio decision made
+  itself.
+
+  Four overrides deleted (`session.tsx`'s `h-7`, `project.tsx`'s and `SubAgentTranscript`'s
+  `size-3.5`, both `Input`s' `h-8 text-sm`). The viewer's `h-6 text-xs` toolbar buttons stay: they
+  are a step below `sm` and re-cutting the scale to reach them would have dragged everything else
+  down with them. Verified in the running app — the `+ New session` button measures 33px at 120%
+  zoom, i.e. `h-7`.
+
 - **Sub-agents fold under the session that spawned them** — 2026-08-16, user ask, shipped in
   v0.8.0. A session that ran six agents put seven rows on the project page, so its real sessions
   were buried under runs you open once, if ever. Groups collapse by default behind a disclosure

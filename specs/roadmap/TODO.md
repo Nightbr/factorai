@@ -25,8 +25,13 @@ is where it landed, not a statement that it outranks M4's remainder.
 
 Also added 2026-08-16, appended as **items 22–25** because numbering here is append-only.
 **Item 25 shipped the same day** — see [`DONE.md`](./DONE.md); it redefined what a project is,
-which is what unblocked removing one and left the seam a second agent will need. 22–24 remain and
-are small (a confirm dialog, a button scale, a `DESIGN.md`).
+which is what unblocked removing one and left the seam a second agent will need. **Item 23 shipped
+2026-08-17.** 22 and 24 remain: a confirm preference (blocked on item 4) and a `DESIGN.md` — and
+24 is now the readier of the two, since 23 produced the concrete numbers it should start from.
+
+Added 2026-08-17 as **items 29–30**, both user asks, **both shipped the same day**. What each
+leaves behind is in its entry: per-surface error boundaries under 29, and a `head` field on
+`GitStatus` under 30 that item 1 wants anyway.
 
 One thing item 25 leaves for **item 3**: `ContextMenu` now exists in `@factorai/ui`, built for the
 sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
@@ -311,9 +316,16 @@ a full restart.
 
 - [x] Cover the flows `scripts/qa` cannot reach — opening a file from the tree, the viewer's
       markdown toggle, search-hit navigation, the quit-confirm dialog — 2026-08-15.
-- [ ] Open the `tests/regression/` lane. The smoke suite is at ~70s against a stated budget of
+- [ ] Open the `tests/regression/` lane. The smoke suite is at ~110s against a stated budget of
       "a few seconds"; one of the two has to give, and that is inconsistency **E1**.
 - [ ] Fixtures stay one-factory-per-shape in `tests/smoke/fixtures.ts`.
+- [ ] **Fix `click.sh`'s origin.** Found 2026-08-17: it resolves the *decoration* window's origin
+      from `wmctrl -lG` while its doc comment promises content-relative coordinates, and on X11 +
+      Mutter the two differ by (47, 73). So every click lands a row low, and the **top 73px of the
+      content area cannot be clicked at all** — which is the session header and the panel's tab
+      strip. `scripts/qa/README.md` documents the workaround; the fix is for `_resolve_wid.sh` to
+      report `xwininfo -id <wid>`'s absolute upper-left instead. Cheap, and it silently corrupts
+      every QA click until someone does it.
 
 Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 `gnome-screenshot` for `swaymsg` / `grim`). X11-only is fine while the dev box is X11.
@@ -714,7 +726,19 @@ What to get right when it lands:
   of packages already in the workspace. Item 4's settings route wants it regardless, so add it
   there.
 
-## 23. `Button`'s size scale is a web scale, not a desktop one
+## 23. `Button`'s size scale — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
+
+`default h-8 · sm h-7 · lg h-9 · icon 8`, base icon `size-3.5`, and `Input` / `Select` moved to
+`h-8` with it so a row holding both still lines up. Four of the six inline overrides are gone.
+
+**Two things this leaves.** The viewer's toolbar buttons keep `h-6 text-xs` (`FileView`,
+`DiffView`) — they are a step below `sm` on purpose, and an `xs` variant is the obvious way to
+retire them if a third call site ever wants one; don't add it for two. And the numbers this
+produced are the concrete thing **item 24**'s `DESIGN.md` should start from, which is the argument
+for doing 24 next rather than from principles.
+
+<details>
+<summary>The original entry, kept for the reasoning</summary>
 
 **User ask, 2026-08-16:** `+ New session` is too big — shrink the default button in the UI
 package. It is `size="sm"` already (`routes/project.tsx:77`), which is the point: the scale
@@ -752,6 +776,8 @@ means, not a thing to change alongside. The other caution used to say `button.ts
 shadcn in a foreign style, so don't reformat it or `pnpm format` buries your change — **gone as of
 2026-08-16**: every vendored file is in house style, formatting is gated (`pnpm format:check`), and
 `pnpm format` is safe to run on anything.
+
+</details>
 
 ## 24. `DESIGN.md` — one home for the design rules
 
@@ -874,3 +900,45 @@ either.
 **Not a general project ordering.** This is the pinned block only. `rest` stays sorted, because a
 hand-ordered list of every project the workspace has ever seen is a thing to maintain rather than
 a feature.
+
+## 29. Error boundaries — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
+
+The root boundary and the crash screen landed; F17 describes them. The `(to clarify)` half of the
+ask is settled too — the issue button is **always** shown, and a prefilled GitHub link is not a
+reporting service, so § 8's "no telemetry" is untouched.
+
+**What is deliberately left, and it is the interesting half: per-surface boundaries.** Root-only
+means a crash in the file tree still takes a running terminal's pane down with it. The shape when
+someone picks this up:
+
+- Boundaries around the **panel**, the **viewer**, and **each session pane** — the last one is the
+  one that matters, since a live agent is the only thing in this app that is expensive to lose.
+- A failed surface should degrade to a message **inside its own box**, not a full-screen takeover.
+  That is a different component from `CrashScreen`, not a prop on it — the full-screen one owns
+  Reload, and reloading the whole webview is exactly what a contained failure should not offer.
+- **Check what TanStack Router already covers first.** Routes take an `errorComponent`, so the
+  per-route case may want no hand-rolled boundary at all. Establish what it catches (render errors
+  in the route, loader rejections) versus what it doesn't, rather than shipping a second mechanism
+  that overlaps it.
+- Still true at every level, and worth restating so nobody expects otherwise: **no** React boundary
+  catches event handlers, `setTimeout`, or unhandled rejections. Those are item 7's toast path, and
+  the two should stay separate surfaces.
+
+A smaller one: the crash screen has no test that actually renders it — `crashReport`/`issueUrl` are
+unit-tested, but nothing throws inside a mounted tree. A `@smoke` case needs a deliberate way to
+make the mock app throw; worth adding when the per-surface work lands, since that is when the
+boundary logic stops being trivial.
+
+## 30. Git branch badge — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
+
+F3 describes it. Two things it leaves:
+
+- **A detached `HEAD` and an unborn branch are indistinguishable** to the renderer — `GitStatus`
+  has `branch: null` for both and no head SHA — so the badge shows nothing for either. Showing
+  `detached` for what might be a fresh repo would be a lie. Adding a `head: string | null` to
+  `GitStatus` is the fix, and it is **item 1's problem too**: a graph that cannot say where `HEAD`
+  is has a hole in it. Do it there rather than twice.
+- **This is the first thing outside the right panel to read the repository**, and the pattern it
+  set — a second observer on the same query key, at its own cadence, taking the project path as an
+  argument rather than reading the active project — is what item 1 should inherit rather than
+  re-decide.
