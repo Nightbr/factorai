@@ -426,10 +426,20 @@ destination, and this item must not quietly relax it.
 
 **The fork to settle first — and it is cheap to settle.** Two ways for a path to become a link:
 
-- **True OSC 8.** The CLI emits `ESC ] 8 ; ; file:///path ESC \` and xterm renders it; we do
-  almost nothing. Depends entirely on Claude Code emitting them, which we don't control and
-  haven't verified. **Check before designing anything**: PTY output already arrives as raw bytes
-  (base64, `terminal:data`), so a one-off grep for `\x1b]8;` in a live session answers it.
+- **True OSC 8 — answered 2026-08-17: the CLI does emit them, and the wiring already exists.**
+  This was to be checked by grepping a live session for `\x1b]8;`; it got answered the expensive
+  way instead, by an OSC 8 login link crashing the macOS app, then confirmed properly in the CLI
+  binary (v2.1.233) which carries a `link(url)` helper whose whole body is an OSC 8 sequence. Note
+  `claude --help` emits none, so a casual check says the opposite — the login screen is a different
+  code path. xterm routes OSC 8 to
+  `options.linkHandler`, **not** through `WebLinksAddon`, and that handler is now set and points at
+  the same `onLinkActivated` gate as a regex link (F5). So for `https:` this half is done.
+
+  What that leaves for this item is the **`file:`** half, which is the half it actually cares
+  about: whether Claude Code marks up *paths* as OSC 8 as well as URLs, and if so, routing those to
+  the viewer rather than the browser. `onLinkActivated` sends everything to the shell today, so a
+  file link would open externally — the wrong destination per this item's own argument. The grep is
+  still worth running, just for `file://` rather than for OSC 8 at all.
 - **A link provider.** `registerLinkProvider` over the buffer, matching path-like text — works no
   matter what the CLI emits, and covers `src/foo.ts:42` line references, which OSC 8 alone
   wouldn't give us. Cost is false positives, and a regex over every frame of a busy TUI needs a

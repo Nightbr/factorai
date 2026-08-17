@@ -32,7 +32,11 @@
 			"style": {
 				"noNonNullAssertion": "warn",
 				"useConst": "error",
-				"useTemplate": "error"
+				"useTemplate": "error",
+				"noRestrictedGlobals": {
+					"level": "error",
+					"options": { "deniedGlobals": ["confirm", "prompt"] }
+				}
 			},
 			"suspicious": {
 				"noExplicitAny": "error"
