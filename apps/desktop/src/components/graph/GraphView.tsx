@@ -2,6 +2,7 @@ import { Button } from '@factorai/ui';
 import { useCallback, useRef, useState } from 'react';
 import { CommitDetail } from '@components/graph/CommitDetail';
 import { CommitRow } from '@components/graph/CommitRow';
+import { WorkingRow } from '@components/graph/WorkingRow';
 import { PanelResizer } from '@components/layout/PanelResizer';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { useGitGraph } from '@hooks/useGitGraph';
@@ -37,6 +38,7 @@ function GraphBody() {
 	const width = usePanelStore((s) => s.width);
 	const detailHeight = usePanelStore((s) => s.detailHeight);
 	const setDetailHeight = usePanelStore((s) => s.setDetailHeight);
+	const setTab = usePanelStore((s) => s.setTab);
 
 	// Plain state, because the remount above guarantees it belongs to this project.
 	const [selected, select] = useState<string | null>(null);
@@ -47,7 +49,8 @@ function GraphBody() {
 	// being open means the panel is open, so this query is already in cache under
 	// the key the Changes tab and the tree's decorations share.
 	const { status } = useGitStatus();
-	const dirtyHead = status?.changes.length ? status.head : null;
+	const dirtyCount = status?.changes.length ?? 0;
+	const dirtyHead = dirtyCount ? (status?.head ?? null) : null;
 
 	const onKeyDown = useCallback(
 		(event: React.KeyboardEvent) => {
@@ -97,6 +100,11 @@ function GraphBody() {
 
 	const pitch = lanePitch(laneCount, width);
 	const rail = railWidth(laneCount, pitch);
+	// The working row leads the list only when HEAD *is* the newest row. Detached,
+	// or with newer commits on another branch, HEAD sits somewhere further down and
+	// a row pinned to the top would draw an edge into a commit it is not on — so
+	// those repositories keep the hollow node on HEAD's own row instead.
+	const headLeads = dirtyHead !== null && commits[0]?.sha === dirtyHead;
 	// What is left for refs and subject, which is what decides how many chips fit
 	// before the rest becomes `+N`. The 24px covers the row's own right padding
 	// and the gaps between its parts.
@@ -114,6 +122,15 @@ function GraphBody() {
 				    the focused row is inside it, so the event bubbles here and one
 				    handler owns movement for all 300. */}
 				<ul ref={listRef} aria-label="Commits" onKeyDown={onKeyDown}>
+					{headLeads && (
+						<WorkingRow
+							lane={commits[0].lane}
+							pitch={pitch}
+							railWidth={rail}
+							count={dirtyCount}
+							onOpenChanges={() => setTab('changes')}
+						/>
+					)}
 					{commits.map((commit, index) => (
 						<CommitRow
 							key={commit.sha}
@@ -125,7 +142,9 @@ function GraphBody() {
 							// Tab reaches the list at whichever row you left it on, or the
 							// first one before you have chosen anything.
 							tabbable={selected ? commit.sha === selected : index === 0}
-							dirty={commit.sha === dirtyHead}
+							remoteHost={graph.remoteHost}
+							// Only when the working row is not already saying it above.
+							dirty={!headLeads && commit.sha === dirtyHead}
 							onSelect={() => select(commit.sha)}
 						/>
 					))}

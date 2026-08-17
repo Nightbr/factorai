@@ -10,17 +10,40 @@ export const ROW_HEIGHT = 26;
  *  touching its neighbour. */
 const NODE_RADIUS = 2.75;
 
+/** Radius of the avatar node. 9 gives an 18px disc inside a 26px row — the
+ *  largest that still leaves air above and below. */
+const AVATAR_RADIUS = 9;
+
+/**
+ * The pitch below which the node stays a plain dot.
+ *
+ * An avatar is 18px wide however tight the lanes get, so at a 6px pitch it
+ * covers three of them and the rail stops being traceable — and tracing is the
+ * job the rail exists to do (F18 § The rail). Wide repositories therefore keep
+ * dots and read their authors off the hover card, which is the same trade the
+ * subject makes when it truncates.
+ */
+const AVATAR_MIN_PITCH = 10;
+
 /** Stroke width for lane lines. Under 1.5 the colour reads washed out at these
  *  sizes, which defeats the point of having colours. */
 const STROKE = 1.5;
+
+/** What the node at this row's lane is. */
+type RailNode =
+	/** An ordinary commit, drawn as its author. */
+	| { kind: 'commit'; colour: string; initials: string }
+	/** HEAD, with uncommitted changes sitting on top of it. */
+	| { kind: 'dirty' }
+	/** The synthetic working-changes row above HEAD. */
+	| { kind: 'working' };
 
 interface GraphRailProps {
 	lane: number;
 	edges: GitGraphEdge[];
 	pitch: number;
 	width: number;
-	/** Draw the node hollow, to mark uncommitted changes sitting on top of it. */
-	dirty: boolean;
+	node: RailNode;
 }
 
 /**
@@ -34,15 +57,19 @@ interface GraphRailProps {
  * Lane assignment is not here — it arrives in the payload from Rust (Q23). This
  * turns lane indices into pixels and nothing else.
  */
-export function GraphRail({ lane, edges, pitch, width, dirty }: GraphRailProps) {
+export function GraphRail({ lane, edges, pitch, width, node }: GraphRailProps) {
 	const centre = (index: number) => pitch / 2 + index * pitch;
 	const mid = ROW_HEIGHT / 2;
+	const cx = centre(lane);
+	const colour = laneColour(lane);
+	const showAvatar = node.kind === 'commit' && pitch >= AVATAR_MIN_PITCH;
 
 	return (
 		<svg
 			width={width}
 			height={ROW_HEIGHT}
 			viewBox={`0 0 ${width} ${ROW_HEIGHT}`}
+			data-testid="graph-rail"
 			className="shrink-0"
 			// The rail is decoration for the refs and subject beside it, which carry
 			// the same information in text. Announcing 20 unlabelled paths per row
@@ -61,16 +88,48 @@ export function GraphRail({ lane, edges, pitch, width, dirty }: GraphRailProps) 
 					strokeLinecap="round"
 				/>
 			))}
-			<circle
-				cx={centre(lane)}
-				cy={mid}
-				r={NODE_RADIUS}
-				// A hollow node is the dirty marker: the commit is there, but what is
-				// on disk has moved past it. Filled is the ordinary case.
-				fill={dirty ? 'var(--card)' : laneColour(lane)}
-				stroke={laneColour(lane)}
-				strokeWidth={STROKE}
-			/>
+
+			{showAvatar && node.kind === 'commit' ? (
+				<g>
+					{/* A ring in the row's own background, so the lines running behind the
+					    disc are cut rather than appearing to touch it. Drawn as a fat
+					    stroke rather than a second circle: one shape, no seam. */}
+					<circle
+						cx={cx}
+						cy={mid}
+						r={AVATAR_RADIUS}
+						fill={node.colour}
+						stroke="var(--card)"
+						strokeWidth={2}
+					/>
+					<text
+						x={cx}
+						y={mid}
+						textAnchor="middle"
+						dominantBaseline="central"
+						// 9px is below our type scale on purpose: this is a glyph pair
+						// inside an 18px disc, not text anyone reads as text.
+						fontSize={9}
+						fontWeight={600}
+						fill="var(--card)"
+					>
+						{node.initials}
+					</text>
+				</g>
+			) : (
+				<circle
+					cx={cx}
+					cy={mid}
+					r={NODE_RADIUS}
+					// Hollow marks a commit that what is on disk has moved past; the
+					// working row's node is hollow and dashed, since it is not a commit
+					// at all and should not look like one.
+					fill={node.kind === 'commit' ? colour : 'var(--card)'}
+					stroke={colour}
+					strokeWidth={STROKE}
+					strokeDasharray={node.kind === 'working' ? '2 1.5' : undefined}
+				/>
+			)}
 		</svg>
 	);
 }

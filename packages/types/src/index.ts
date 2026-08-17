@@ -370,6 +370,9 @@ export interface GitGraphCommit {
 	/** First line of the message. Empty for a commit with an empty message. */
 	subject: string;
 	authorName: string;
+	/** Lower-cased and trimmed in Rust: an identity key rather than a display
+	 *  string, since the row derives one avatar per distinct value. */
+	authorEmail: string;
 	/** Epoch milliseconds — git counts seconds, converted in Rust. */
 	authorTime: number;
 	commitTime: number;
@@ -398,7 +401,14 @@ export interface GitGraph {
 	 *  Deliberately not a total: counting a 200 000-commit repository to render
 	 *  "300 of N" costs a full walk on every poll. */
 	hasMore: boolean;
+	/** Which forge `origin` points at, so a remote-branch chip can wear the right
+	 *  icon. Read from the remote's configured URL — a config read, not a network
+	 *  one; nothing here contacts any forge. */
+	remoteHost: RemoteHost;
 }
+
+/** The forge a remote URL names. Only ever picks an icon. */
+export type RemoteHost = 'gitHub' | 'gitLab' | 'other';
 
 /** One file touched by a commit.
  *

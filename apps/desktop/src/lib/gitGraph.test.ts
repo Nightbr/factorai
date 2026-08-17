@@ -194,6 +194,7 @@ function page(over: Omit<Partial<GitGraph>, 'commits'> & { commits: string[] }):
 		shortSha: sha.slice(0, 7),
 		subject: sha,
 		authorName: 'a',
+		authorEmail: 'a@example.com',
 		authorTime: 0,
 		commitTime: 0,
 		parents: [],
@@ -206,6 +207,7 @@ function page(over: Omit<Partial<GitGraph>, 'commits'> & { commits: string[] }):
 		laneCount: 1,
 		refsDigest: 'aaaa',
 		hasMore: false,
+		remoteHost: 'other',
 		...over,
 		commits,
 	};

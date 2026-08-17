@@ -28,7 +28,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{
 	FileContents, GitChange, GitChangeKind, GitCommitDetail, GitCommitFile, GitGraph,
 	GitGraphCommit, GitGraphEdge, GitGraphEdgeKind, GitGroup, GitRef, GitRefKind, GitRev,
-	GitStatus,
+	GitStatus, RemoteHost,
 };
 use crate::services::files;
 
@@ -235,6 +235,7 @@ pub fn graph(project_path: &str, offset: usize, limit: usize) -> AppResult<GitGr
 			short_sha: short_sha(oid),
 			subject: subject_of(&commit),
 			author_name: author.name().unwrap_or("unknown").to_string(),
+			author_email: normalise_email(author.email().unwrap_or_default()),
 			author_time: ms(author.when().seconds()),
 			commit_time: ms(commit.time().seconds()),
 			parents: parents.iter().map(|parent| parent.to_string()).collect(),
@@ -250,7 +251,56 @@ pub fn graph(project_path: &str, offset: usize, limit: usize) -> AppResult<GitGr
 		lane_count: lanes.width(),
 		refs_digest: refs.digest,
 		has_more,
+		remote_host: remote_host(&repo),
 	})
+}
+
+/// An author email as an identity key: trimmed and lower-cased, because
+/// `Ada@Example.com` and `ada@example.com` are one person and the renderer
+/// derives one avatar per distinct value.
+fn normalise_email(email: &str) -> String {
+	email.trim().to_lowercase()
+}
+
+/// Which forge `origin` points at, from its configured URL.
+///
+/// A **config read**, not a network one — ADR-0009's read-only clause is intact
+/// and `git2` still has no transport linked in. Falls back to the first remote
+/// when there is no `origin`, since a clone renamed to `upstream` is still a
+/// clone of something.
+fn remote_host(repo: &Repository) -> RemoteHost {
+	/// `Remote::url()` is a `Result` in git2 0.21, and a remote can exist with no
+	/// URL at all, so both have to collapse to "nothing to go on".
+	fn url_of(repo: &Repository, name: &str) -> Option<String> {
+		let remote = repo.find_remote(name).ok()?;
+		remote.url().ok().map(str::to_lowercase)
+	}
+
+	// `origin` first; otherwise the first remote that has a URL, since a clone
+	// whose remote was renamed to `upstream` is still a clone of something.
+	let mut url = url_of(repo, "origin");
+	if url.is_none() {
+		if let Ok(names) = repo.remotes() {
+			// `StringArray::iter()` yields `Result<Option<&str>>`: an entry can fail
+			// to decode, and a decoded entry can still be absent.
+			for name in names.iter() {
+				let Ok(Some(name)) = name else { continue };
+				if let Some(found) = url_of(repo, name) {
+					url = Some(found);
+					break;
+				}
+			}
+		}
+	}
+
+	match url.as_deref() {
+		// Substring rather than host parsing: both `git@github.com:o/r.git` and
+		// `https://github.com/o/r` have to match, and they are not the same URL
+		// grammar. This only ever picks an icon, so a false positive is cosmetic.
+		Some(url) if url.contains("github.com") => RemoteHost::GitHub,
+		Some(url) if url.contains("gitlab") => RemoteHost::GitLab,
+		_ => RemoteHost::Other,
+	}
 }
 
 /// Everything the detail pane shows for one commit, or `None` if the SHA doesn't
@@ -664,6 +714,7 @@ fn empty_graph() -> GitGraph {
 		commits: Vec::new(),
 		lane_count: 0,
 		refs_digest: String::new(),
+		remote_host: RemoteHost::Other,
 		has_more: false,
 	}
 }
