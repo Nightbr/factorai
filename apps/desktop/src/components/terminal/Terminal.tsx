@@ -22,6 +22,10 @@ import { useTerminalStore } from '@store/terminalStore';
  * Claude Code is a TUI: a bare click lands on interactive output often enough
  * that opening a browser on one would be an ambush.
  *
+ * **Both kinds of link come through here** — see `linkHandler` at the terminal's
+ * construction for why that took a second wiring, and what it cost not to have
+ * it.
+ *
  * Exported so the gate is testable — the addon itself can't be driven from the
  * browser-only test lane.
  */
@@ -32,6 +36,24 @@ export function onLinkActivated(
 ): void {
 	if (!event.ctrlKey && !event.metaKey) return;
 	open(uri);
+}
+
+/**
+ * xterm's `ILinkHandler` for **OSC 8** hyperlinks — a link the program declared,
+ * rather than one `WebLinksAddon` found by regex. The two paths are separate in
+ * xterm and this one has to be wired explicitly; see the note at the terminal's
+ * construction for what leaving it unset did.
+ *
+ * Deliberately the *same* gate as a regex link: two kinds of link in one
+ * terminal behaving differently would be worse than either rule on its own, and
+ * the ambush argument does not weaken just because the program marked the text.
+ *
+ * A factory so a test can inject `open`, matching `onLinkActivated`.
+ */
+export function createOscLinkHandler(open: (uri: string) => void = openExternally): {
+	activate: (event: MouseEvent, uri: string) => void;
+} {
+	return { activate: (event, uri) => onLinkActivated(event, uri, open) };
 }
 
 // ── Persistent xterm pool ──────────────────────────────────────────────────
@@ -80,6 +102,21 @@ function getOrCreateTerm(sessionId: string): PooledTerm {
 		allowProposedApi: true,
 		scrollback: 10_000,
 		theme: { background: '#0c0e12', foreground: '#d4d4d8', cursor: '#e5b455' },
+		// **OSC 8 hyperlinks are a second, separate link path, and leaving this
+		// unset crashed the app.** `WebLinksAddon` only handles URLs it finds by
+		// regex; a link the program *declared* with OSC 8 goes to
+		// `options.linkHandler` instead. Unset, xterm falls back to its own
+		// default, which calls `window.confirm` — and the dialog plugin's init
+		// script replaces `window.confirm` with `invoke('plugin:dialog|confirm')`,
+		// a command plugin-dialog 2.7.1 does not register (only open/save/message).
+		// So it rejected with "not allowed by ACL", which the old window-level
+		// handler turned into a blanked window (F17). Even had it resolved, the
+		// default then calls `window.open`, which is the wrong destination here.
+		//
+		// Claude Code emits OSC 8 for its login URL — which is how this was found,
+		// and which answers the question roadmap item 15 had left open about
+		// whether the CLI emits them at all. It does.
+		linkHandler: createOscLinkHandler(),
 	});
 	const fit = new FitAddon();
 	term.loadAddon(fit);

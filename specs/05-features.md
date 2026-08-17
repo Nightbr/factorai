@@ -453,6 +453,52 @@ detect waiting-for-input.
   always kills all live children (SIGTERM → 500ms → SIGKILL). No orphan
   zombies, ever. The user can cancel the close.
 
+**Links in terminal output — there are two kinds, and both go through one
+gate** (the second wired 2026-08-17).
+
+- **Regex-detected URLs**, found in the text by `WebLinksAddon`.
+- **OSC 8 hyperlinks**, which the program *declares* by wrapping text in an
+  escape sequence. These do **not** go through `WebLinksAddon` at all; xterm
+  routes them to `options.linkHandler`, which is a separate wiring.
+
+Both resolve to `onLinkActivated`: **modifier-click only** — Claude Code is a
+TUI, and a bare click lands on interactive output often enough that opening a
+browser on one would be an ambush — and then out through the shell plugin, never
+`window.open`. The same gate for both deliberately: two kinds of link in one
+terminal disagreeing about what a click means is worse than either rule alone,
+and the ambush argument does not weaken because the program marked the text.
+
+**Leaving `linkHandler` unset was a crash, not a gap.** xterm's own default for
+OSC 8 calls `window.confirm` — and `tauri-plugin-dialog`'s injected init script
+unconditionally replaces `window.confirm` with
+`invoke('plugin:dialog|confirm')`, a command **plugin-dialog 2.7.1 does not
+register** (it registers only `open`, `save`, `message`; `dialog:allow-confirm`
+survives as a deprecated alias to `allow-message`). So it rejected with *"not
+allowed by ACL"*, and before F17's window-level fix that rejection blanked the
+whole app. Had it somehow resolved, the default then calls `window.open`, which
+is the wrong destination in a webview anyway.
+
+Two consequences worth keeping:
+
+- **`window.confirm` and `window.prompt` are unusable in this app**, from our
+  code or anyone's. Biome's `noRestrictedGlobals` denies both, so ours cannot
+  come back; a dependency's cannot be stopped that way, only survived — which is
+  what F17's classification now does. Use a `Dialog` from `@factorai/ui`
+  (`components/dialog/CloseSessionConfirm` is the pattern).
+- **Claude Code emits OSC 8**, which was an open question in roadmap item 15.
+  Confirmed from the CLI binary itself (v2.1.233) rather than deduced from the
+  crash — it carries a helper that is nothing but an OSC 8 emitter:
+
+  ```js
+  function link(url) {
+    if (enableANSIColors)
+      return `\x1B[1m\x1B]8;;${url}\x1B\\${url}\x1B]8;;\x1B\\\x1B[22m`;
+  ```
+
+  Note `claude --help` emits none, so a casual check says the opposite; the
+  login screen is a different code path. So the "true OSC 8" half of item 15 is
+  answered and wired, and what remains there is the *file*-link half.
+
 **The prior app ref.** `main.js` (PTY spawning), `terminal-manager.js`,
 `session-transitions.js`.
 
