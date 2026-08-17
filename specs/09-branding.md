@@ -124,8 +124,14 @@ it adopted the one that was there.
 | `factorai-icon-1024.png` | raster master, for release art and anywhere a PNG is required |
 | `factorai-icon-256.png` | the README header |
 
-`factorai-mark.svg` is the one to use in the app UI, where it inherits the
-surrounding text colour. It is also the print / favicon / single-fill answer.
+`factorai-mark.svg` is the reference for the one-colour cut — the renderer draws
+it from a component rather than loading this file (B8), and print / stencil /
+single-fill contexts use it directly.
+
+There is one deliberate copy: **`apps/desktop/public/favicon.svg` is
+byte-identical to the master.** Vite only serves `public/`, and a build step to
+copy one file across is more machinery than the copy is worth;
+`src/components/brand/geometry.test.ts` fails the moment the two diverge.
 
 An amber-dominant colourway — amber housing, dark F — was drawn and rejected as
 the default. It wins the dock but fights every UI it sits next to, and factorai
@@ -167,3 +173,41 @@ That is harmless and not worth deleting — the next run puts them back.
 The command overwrites; it does not merge. Anything hand-edited in that
 directory is lost, which is the intended behaviour: the SVG is the source of
 truth and nothing in `src-tauri/icons/` should ever be edited directly.
+
+---
+
+## B8 — The mark inside the app
+
+`components/brand/Brand.tsx` exports two things:
+
+| Export | What it draws |
+|---|---|
+| `Brand` | the header lockup: the mark in `text-primary`, then the wordmark |
+| `BrandWordmark` | `factor` + `ai`, the `ai` in `text-primary` |
+
+The mark itself is a module-private component. A full-colour variant — the
+icon's own dark housing and amber F, rather than `currentColor` — was written
+and then deleted: nothing needed it, `deps:unused` said so, and an export kept
+alive for a future caller is the kind of thing that is still there and still
+wrong two years later. Add it back when a second surface actually wants it.
+
+**The geometry is mirrored by hand** in `components/brand/geometry.ts`, for the
+reason `CLAUDE.md` § 4 gives for the IPC types: the renderer gets a real
+component that inherits `currentColor` and needs no asset plumbing, and
+`geometry.test.ts` fails the moment the mirror and the master disagree. Change
+the master first, always.
+
+**The ports mask needs a unique id per instance.** Two marks on one screen
+sharing a mask id means the second renders unmasked — no notches, a plain
+rounded square. `usePortsMaskId` derives one from `useId` and strips its colons,
+which a `url(#…)` reference is better off without.
+
+**Wordmark rule: the name is set one way in this app.** `factor` in the
+surrounding text colour, `ai` in `--primary`. It reads, selects and copies as
+one word. Anywhere the product is named in chrome — header, empty state, about
+box — uses `BrandWordmark` rather than spelling the string out, so there is
+exactly one place to change it.
+
+The header lockup was checked against a full tab strip, which was the open
+question when this was scoped: mark, wordmark and dev badge hold the left end
+and the tabs take the middle without crowding it.

@@ -513,21 +513,18 @@ Options, none free:
 Worth doing — the user manages names with `/rename` today and has a hook proposing names from the
 issue/PR — but it wants the ADR-0004 question answered first.
 
-## 18. UI / branding: the two pieces the icon pass didn't cover
+## 18. UI / branding: desktop integration assets
 
-**The mark, the app icon set and the README landed on 2026-08-17** — see `DONE.md` and
-[`09-branding.md`](../09-branding.md). Two sub-items were always separable and are still open,
-neither blocking a release:
+**The mark, the app icon set, the README and the in-app brand row all landed on 2026-08-17** —
+see `DONE.md` and [`09-branding.md`](../09-branding.md). One sub-item is left, and it does not
+block a release:
 
 - **Desktop integration assets.** The AppImage needs a `.desktop` entry with the right categories
   and a scalable icon; macOS wants the `.icns` to look right on a dark dock and in Spotlight.
   Neither is exercised by our builds because nobody has installed one on a fresh machine, so this
   is a *test on a clean box* task as much as an asset task — and the mark's ports cut to
-  transparency, which is exactly the kind of thing a badly-composited dock renders wrong.
-- **The in-app brand row.** `TopBar` still shows `FolderGit2` + "factorai" in text. The mark
-  replaces the glyph — `docs/brand/factorai-mark.svg` is drawn for this, one colour via
-  `currentColor` — and the open question is whether the wordmark survives beside it once session
-  tabs take the row. Do this *after* tabs land, or do it twice.
+  transparency, which is exactly the kind of thing a badly-composited dock renders wrong. That is
+  the only part of the identity still unverified anywhere.
 
 ## 19. IDE emulation — the MCP server Claude opens files and diffs through
 
