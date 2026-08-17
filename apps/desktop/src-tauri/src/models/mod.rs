@@ -293,8 +293,178 @@ pub struct GitStatus {
 	pub repo_root: Option<String>,
 	/// Current branch, or `None` on a detached HEAD / an empty repository.
 	pub branch: Option<String>,
+	/// Full SHA that HEAD resolves to, `None` on an unborn branch.
+	///
+	/// Added by F18, and not because the graph needs it — the graph walks HEAD
+	/// itself. `branch: None` conflated two states the session header's badge has
+	/// to tell apart: a detached HEAD, where there *is* a commit to name, and an
+	/// unborn branch, where there isn't. With this the badge shows a short SHA in
+	/// the first case and stays quiet in the second.
+	pub head: Option<String>,
 	pub changes: Vec<GitChange>,
 	/// Rows found before the cap, so the UI can say how many it isn't showing.
+	pub total: usize,
+	pub truncated: bool,
+}
+
+// ── The graph (F18) ────────────────────────────────────────────────────────
+
+/// What kind of ref points at a commit, which is what decides its chip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitRefKind {
+	/// `refs/heads/*`.
+	LocalBranch,
+	/// `refs/remotes/*`, minus each remote's own `HEAD` — that is a symbolic ref
+	/// duplicating one we already return, so it is dropped in the service rather
+	/// than left for every consumer to know to ignore.
+	RemoteBranch,
+	/// `refs/tags/*`, peeled through annotated tag objects to a commit.
+	Tag,
+	/// A detached HEAD. A HEAD that is on a branch sets `is_head` on that branch
+	/// instead, so the renderer can fold it into one `HEAD→main` chip.
+	Head,
+}
+
+/// One ref pointing at a commit in the graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRef {
+	/// Short name: `main`, `origin/main`, `v0.3.0`.
+	pub name: String,
+	pub kind: GitRefKind,
+	/// HEAD points here. Lets the renderer draw `HEAD→main` as one chip.
+	pub is_head: bool,
+	/// For a local branch whose upstream is on this same commit, that upstream's
+	/// short name — so the renderer can collapse the pair into `main ≡origin`
+	/// instead of spending two slots saying the same thing. `None` when there is
+	/// no upstream or it has diverged, in which case the two refs are on
+	/// different rows anyway and there is nothing to collapse.
+	pub upstream_in_sync: Option<String>,
+}
+
+/// How one lane line is drawn through a row.
+///
+/// Split by geometry rather than by git meaning, because geometry is what the
+/// renderer needs: a `Through` line spans the row, an `Incoming` one stops at the
+/// node, an `Outgoing` one starts there. Naming them for merges and branches
+/// instead would invert in a newest-first walk — a lane *converging* on a commit
+/// from below is where a branch forked off, not where it merged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitGraphEdgeKind {
+	/// Neither starts nor ends here: top edge to bottom edge.
+	Through,
+	/// Converges on this row's commit: top edge to the node.
+	Incoming,
+	/// Leaves this row's commit: the node to the bottom edge.
+	Outgoing,
+}
+
+/// One line segment in a row's slice of the rail.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitGraphEdge {
+	pub from_lane: usize,
+	pub to_lane: usize,
+	/// Whose colour this segment takes. A converging branch keeps its own lane's
+	/// colour all the way into the node, which is what makes it traceable.
+	pub lane: usize,
+	pub kind: GitGraphEdgeKind,
+}
+
+/// One commit in the graph, laid out.
+///
+/// No message body: at 300 commits a page that would be the bulk of the payload
+/// for something only the detail pane reads, and `git_commit` serves that.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitGraphCommit {
+	/// Full 40-character SHA. Full rather than short because a later
+	/// session↔commit join needs it and truncating now would mean re-walking.
+	pub sha: String,
+	pub short_sha: String,
+	/// First line of the message, already trimmed.
+	pub subject: String,
+	pub author_name: String,
+	/// Epoch **milliseconds**, per the convention `modified_at` sets — git counts
+	/// in seconds, so this is converted at the boundary.
+	pub author_time: i64,
+	pub commit_time: i64,
+	/// Full SHAs, first parent first. More than one means a merge.
+	pub parents: Vec<String>,
+	pub refs: Vec<GitRef>,
+	pub lane: usize,
+	pub edges: Vec<GitGraphEdge>,
+}
+
+/// One page of the graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitGraph {
+	/// Absolute path of the repository's working directory, `None` when the
+	/// project isn't in one — the same shape `GitStatus` uses, for the same
+	/// reason: the panel renders "not versioned", it does not toast it.
+	pub repo_root: Option<String>,
+	pub commits: Vec<GitGraphCommit>,
+	/// Lanes live anywhere in the prefix walked so far, so the renderer can pick
+	/// one pitch for the whole list. Computed over the prefix rather than the
+	/// returned page so it only ever grows as you load more — a pitch that
+	/// shrank and grew per page would reflow the rows above.
+	pub lane_count: usize,
+	/// A digest of the refs this page was walked against. If it changes between
+	/// pages the renderer refetches from the first page rather than splicing a
+	/// page walked against different refs onto one that wasn't.
+	pub refs_digest: String,
+	/// False when the walk ended before `limit` was reached — there is no further
+	/// page. Deliberately not a total: counting a 200 000-commit repository to
+	/// render "300 of N" costs a full walk on every poll, which is the one thing
+	/// paging exists to avoid.
+	pub has_more: bool,
+}
+
+/// One file touched by a commit.
+///
+/// `GitChange` minus `group`: a commit's diff is not staged, unstaged or
+/// conflicted, and giving it one of those labels to reuse the type would be a
+/// lie in the payload to save a struct. The *row component* is shared instead.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitFile {
+	/// Absolute path on disk.
+	pub path: String,
+	/// Relative to the *project* root, like `GitChange::rel_path`.
+	pub rel_path: String,
+	pub kind: GitChangeKind,
+	pub old_rel_path: Option<String>,
+	pub additions: Option<usize>,
+	pub deletions: Option<usize>,
+	pub is_binary: bool,
+}
+
+/// Everything the detail pane shows for one commit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitDetail {
+	pub sha: String,
+	pub short_sha: String,
+	pub subject: String,
+	/// Everything after the subject, trimmed. Empty when there is no body.
+	pub body: String,
+	pub author_name: String,
+	pub author_email: String,
+	/// Epoch milliseconds, like `GitGraphCommit`.
+	pub author_time: i64,
+	pub committer_name: String,
+	pub commit_time: i64,
+	pub parents: Vec<String>,
+	/// The parent `files` is diffed against — the first parent, named here so the
+	/// UI can label it rather than re-deriving a convention. `None` for a root
+	/// commit, whose files are all additions against the empty tree.
+	pub diff_parent: Option<String>,
+	pub files: Vec<GitCommitFile>,
+	/// Files found before the cap, and whether it bit — same contract as
+	/// `GitStatus`, because a merge can legitimately touch thousands.
 	pub total: usize,
 	pub truncated: bool,
 }

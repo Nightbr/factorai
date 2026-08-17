@@ -301,8 +301,140 @@ export interface GitStatus {
 	repoRoot: string | null;
 	/** Null on a detached HEAD or an unborn branch. */
 	branch: string | null;
+	/** Full SHA that HEAD resolves to, null on an unborn branch (F18).
+	 *
+	 *  `branch: null` conflated two states the header badge has to tell apart: a
+	 *  detached HEAD, where there *is* a commit to name, and an unborn branch,
+	 *  where there isn't. With this the badge shows a short SHA in the first case
+	 *  and stays quiet in the second. */
+	head: string | null;
 	changes: GitChange[];
 	/** Rows found before the cap, so the UI can say how many it isn't showing. */
+	total: number;
+	truncated: boolean;
+}
+
+// ── Git graph (F18) ────────────────────────────────────────────────────────
+
+/** What kind of ref points at a commit, which is what decides its chip.
+ *
+ *  No `origin/HEAD`: it is a symbolic ref duplicating one we already return and
+ *  the commonest cause of a row overflowing its chips, so it is dropped in the
+ *  service rather than left for every consumer to know to ignore. */
+export type GitRefKind = 'localBranch' | 'remoteBranch' | 'tag' | 'head';
+
+export interface GitRef {
+	/** Short name: `main`, `origin/main`, `v0.3.0`. */
+	name: string;
+	kind: GitRefKind;
+	/** HEAD points here — lets the row draw `HEAD→main` as one chip. */
+	isHead: boolean;
+	/** For a local branch whose upstream is on this same commit, that upstream's
+	 *  short name, so the pair collapses to `main ≡origin` instead of spending two
+	 *  slots saying the same thing. Null when there is no upstream or it has
+	 *  diverged — in which case the two refs are on different rows anyway and
+	 *  there is nothing to crowd. */
+	upstreamInSync: string | null;
+}
+
+/** How one lane line is drawn through a row.
+ *
+ *  Split by geometry rather than git meaning, because geometry is what the
+ *  renderer needs. Naming them for merges and branches would invert in a
+ *  newest-first walk: a lane converging on a commit from below is where a branch
+ *  forked off, not where it merged. */
+export type GitGraphEdgeKind =
+	/** Neither starts nor ends here: top edge to bottom edge. */
+	| 'through'
+	/** Converges on this row's commit: top edge to the node. */
+	| 'incoming'
+	/** Leaves this row's commit: the node to the bottom edge. */
+	| 'outgoing';
+
+export interface GitGraphEdge {
+	fromLane: number;
+	toLane: number;
+	/** Whose colour this segment takes. A converging branch keeps its own lane's
+	 *  colour into the node, which is what makes it traceable back up the rail. */
+	lane: number;
+	kind: GitGraphEdgeKind;
+}
+
+/** One commit in the graph, laid out. No message body: at 300 commits a page
+ *  that would be the bulk of the payload for something only the detail pane
+ *  reads, and `gitCommit` serves that. */
+export interface GitGraphCommit {
+	/** Full 40-character SHA. */
+	sha: string;
+	shortSha: string;
+	/** First line of the message. Empty for a commit with an empty message. */
+	subject: string;
+	authorName: string;
+	/** Epoch milliseconds — git counts seconds, converted in Rust. */
+	authorTime: number;
+	commitTime: number;
+	/** Full SHAs, first parent first. More than one means a merge. */
+	parents: string[];
+	refs: GitRef[];
+	lane: number;
+	edges: GitGraphEdge[];
+}
+
+/** One page of the graph. */
+export interface GitGraph {
+	/** Null when the project isn't in a repository — the same shape `GitStatus`
+	 *  uses, for the same reason. */
+	repoRoot: string | null;
+	commits: GitGraphCommit[];
+	/** Lanes live anywhere in the prefix walked so far, so one pitch can be
+	 *  chosen for the whole list. Computed over the prefix rather than the page,
+	 *  so it only ever grows as you load more and the rows above never reflow. */
+	laneCount: number;
+	/** Digest of the refs this page was walked against. If it changes between
+	 *  pages, refetch from the first page rather than splicing a page walked
+	 *  against different refs onto one that wasn't. */
+	refsDigest: string;
+	/** False when the walk ended before the limit — there is no further page.
+	 *  Deliberately not a total: counting a 200 000-commit repository to render
+	 *  "300 of N" costs a full walk on every poll. */
+	hasMore: boolean;
+}
+
+/** One file touched by a commit.
+ *
+ *  `GitChange` minus `group`: a commit's diff is not staged, unstaged or
+ *  conflicted, and labelling it one of those to reuse the type would be a lie in
+ *  the payload to save an interface. The row *component* is shared instead. */
+export interface GitCommitFile {
+	path: string;
+	relPath: string;
+	kind: GitChangeKind;
+	oldRelPath: string | null;
+	additions: number | null;
+	deletions: number | null;
+	isBinary: boolean;
+}
+
+/** Everything the detail pane shows for one commit. */
+export interface GitCommitDetail {
+	sha: string;
+	shortSha: string;
+	subject: string;
+	/** Everything after the subject, trimmed. Empty when there is no body. */
+	body: string;
+	authorName: string;
+	authorEmail: string;
+	authorTime: number;
+	committerName: string;
+	commitTime: number;
+	parents: string[];
+	/** The parent `files` is diffed against — the first parent, named here so the
+	 *  UI can label it rather than re-deriving the convention. Null for a root
+	 *  commit, whose files are all additions against the empty tree. */
+	diffParent: string | null;
+	files: GitCommitFile[];
+	/** Files found before the cap, and whether it bit — a merge can legitimately
+	 *  touch thousands. */
 	total: number;
 	truncated: boolean;
 }

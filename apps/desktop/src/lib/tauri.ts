@@ -2,6 +2,8 @@ import type {
 	ClaudeCliStatus,
 	DirListing,
 	FileContents,
+	GitCommitDetail,
+	GitGraph,
 	GitRev,
 	GitStatus,
 	ImageContents,
@@ -87,6 +89,20 @@ export const cmd = {
 	 *  HEAD side, and that is a row in the list, not an error. */
 	gitBlob: (path: string, rev: GitRev, maxBytes?: number | null) =>
 		invoke<FileContents | null>('git_blob', { path, rev, maxBytes }),
+	/** One page of the commit graph, lanes already assigned in Rust (F18).
+	 *  `offset` pages through a full re-walk rather than resuming a cursor, so
+	 *  page 4's lanes cannot disagree with page 1's. */
+	gitGraph: (projectPath: string, offset: number, limit: number) =>
+		invoke<GitGraph>('git_graph', { projectPath, offset, limit }),
+	/** One commit's message, parents and changed files. Resolves null when the
+	 *  SHA doesn't resolve — a row clicked after a force-push is stale, not an
+	 *  error worth a toast. */
+	gitCommit: (projectPath: string, sha: string) =>
+		invoke<GitCommitDetail | null>('git_commit', { projectPath, sha }),
+	/** One file at an arbitrary commit — the left side of a commit's diff.
+	 *  Separate from `gitBlob` rather than widening `GitRev` to carry a SHA. */
+	gitBlobAt: (path: string, commit: string, maxBytes?: number | null) =>
+		invoke<FileContents | null>('git_blob_at', { path, commit, maxBytes }),
 
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
 	/** The session id to open for a "new session" in this project — a fresh
@@ -292,8 +308,14 @@ interface TestFixture {
 	images?: Record<string, ImageContents>;
 	/** Repository state keyed by project path, for the F13 Changes tab. */
 	gitStatuses?: Record<string, GitStatus>;
-	/** Blobs keyed by `<rev>:<absolute path>`, for diff fixtures. */
+	/** Blobs keyed by `<rev>:<absolute path>`, for diff fixtures. `<rev>` is
+	 *  `head`, `index`, or a commit SHA for `git_blob_at` (F18). */
 	gitBlobs?: Record<string, FileContents>;
+	/** Commit graph keyed by project path, for the F18 Graph tab. The mock pages
+	 *  it by slicing `commits`, so one fixture exercises "Load more" too. */
+	gitGraphs?: Record<string, GitGraph>;
+	/** Commit details keyed by SHA, for the F18 detail pane. */
+	gitCommits?: Record<string, GitCommitDetail>;
 	/** Version to report as downloaded and staged, for the F14 update badge.
 	 *  The real updater is a Tauri plugin and inert in the browser, so this is
 	 *  the only way to reach the `ready` state from a test. */
@@ -436,6 +458,7 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return (fx?.gitStatuses?.[projectPath] ?? {
 				repoRoot: null,
 				branch: null,
+				head: null,
 				changes: [],
 				total: 0,
 				truncated: false,
@@ -446,6 +469,42 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// Absent means "the file doesn't exist at that revision", which is an
 			// added or deleted file — null, never a rejection.
 			return (fx?.gitBlobs?.[key] ?? null) as unknown as T;
+		}
+		case 'git_blob_at': {
+			// Same store as `git_blob`, keyed by SHA instead of `head`/`index`.
+			const key = `${String(args?.commit ?? '')}:${String(args?.path ?? '')}`;
+			return (fx?.gitBlobs?.[key] ?? null) as unknown as T;
+		}
+		case 'git_graph': {
+			const projectPath = String(args?.projectPath ?? '');
+			const graph = fx?.gitGraphs?.[projectPath];
+			// An undeclared project has no repository — the tab's "Not a git
+			// repository" state, reachable without a fixture.
+			if (!graph) {
+				return {
+					repoRoot: null,
+					commits: [],
+					laneCount: 0,
+					refsDigest: '',
+					hasMore: false,
+				} as unknown as T;
+			}
+			// Page by slicing, so one fixture covers paging as well as the first
+			// screen — and `hasMore` is derived rather than declared, which stops a
+			// fixture claiming a page that doesn't exist.
+			const offset = Number(args?.offset ?? 0);
+			const limit = Number(args?.limit ?? graph.commits.length);
+			const commits = graph.commits.slice(offset, offset + limit);
+			return {
+				...graph,
+				commits,
+				hasMore: offset + commits.length < graph.commits.length,
+			} as unknown as T;
+		}
+		case 'git_commit': {
+			const sha = String(args?.sha ?? '');
+			// Absent means the SHA no longer resolves, which is a stale row.
+			return (fx?.gitCommits?.[sha] ?? null) as unknown as T;
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;
