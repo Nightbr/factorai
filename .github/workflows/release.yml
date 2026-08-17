@@ -10,6 +10,16 @@ name: Release
 # The release is created as a DRAFT so a half-finished matrix can never publish
 # a release missing one platform's assets — review, then publish by hand.
 #
+# **The draft is created once, by its own job, and the matrix uploads into it by
+# id** (fixed 2026-08-17). It used to be created by whichever matrix job got
+# there first, with the other finding it and joining — which is a race, and on
+# v0.10.1 both jobs lost it: two draft releases for one tag, Linux's assets in
+# one and macOS's in the other. Each also carried its own `latest.json`, so
+# neither manifest listed both platforms and the app would have seen a
+# single-platform release. The failure is silent — both jobs report success, and
+# `gh release view <tag>` shows whichever draft it happens to pick, complete on
+# its own terms.
+#
 # Note this workflow does NOT run the test gate. Tagging an unverified commit
 # ships an unverified build; CLAUDE.md § 2c is the gate, and it runs locally.
 
@@ -28,8 +38,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Exactly one draft, before any platform builds. Every asset and both halves
+  # of `latest.json` then land in the same release, because there is only one to
+  # land in.
+  create-release:
+    name: Create the draft release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.draft.outputs.result }}
+    steps:
+      - uses: actions/github-script@v7
+        id: draft
+        with:
+          # `result-encoding: string` because the id is consumed as a workflow
+          # output, and the default JSON encoding would quote it.
+          result-encoding: string
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            // Reuse rather than create if a draft for this tag already exists:
+            // re-running this job must not produce the second draft the whole
+            // job exists to prevent. Note draft releases are NOT returned by
+            // the releases/tags/{tag} endpoint, so this has to list and match.
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const existing = releases.find((r) => r.tag_name === tag);
+            if (existing) {
+              core.info(`reusing existing release ${existing.id} for ${tag}`);
+              return existing.id;
+            }
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `factorai ${tag}`,
+              draft: true,
+              // NOT a prerelease, despite 0.x — see the note on the build job.
+              prerelease: false,
+              generate_release_notes: true,
+            });
+            core.info(`created release ${data.id} for ${tag}`);
+            return data.id;
+
   build:
     name: ${{ matrix.name }}
+    needs: create-release
     strategy:
       # One platform failing must not cancel the other: its assets still join
       # the draft, and the failed job can be re-run on its own.
@@ -138,17 +193,21 @@ jobs:
         with:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: factorai ${{ github.ref_name }}
-          releaseDraft: true
-          # NOT a prerelease, despite 0.x: GitHub's /releases/latest — which the
-          # updater endpoint resolves through — skips prereleases entirely, so
+          # Upload into the one draft `create-release` made, rather than each job
+          # creating-or-finding its own. `tagName` / `releaseName` /
+          # `releaseDraft` / `prerelease` / `generateReleaseNotes` are creation
+          # inputs and deliberately absent: with `releaseId` set they have
+          # nothing to do, and leaving them would suggest this step still
+          # decides those things. `create-release` owns them now, including the
+          # "not a prerelease despite 0.x" rule — GitHub's /releases/latest,
+          # which the updater resolves through, skips prereleases entirely, so
           # marking them would leave every installed app polling a 404 forever.
-          # Draft still gates it: nothing is visible to the updater until you
-          # publish the draft by hand.
-          prerelease: false
-          generateReleaseNotes: true
-          # latest.json is the manifest the app polls (F14, ADR-0010). The
+          # Draft still gates it: nothing reaches the updater until you publish.
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          # latest.json is the manifest the app polls (F14, ADR-0010). Both jobs
+          # write it and the second **merges into** the first's — which is only
+          # true because they now share one release; when v0.10.1 raced into two,
+          # each manifest listed only its own platform. The
           # .sig files that prove an update came from us need no input — they
           # are bundle artifacts and upload with the rest.
           #

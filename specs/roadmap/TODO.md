@@ -869,6 +869,17 @@ The pipeline works — `release.yml` is tag-driven, rewrites the three version f
 and drafts a release with signed bundles plus `latest.json`. What it does not do is anything about
 the steps *around* it:
 
+- [x] **The matrix raced on creating the release — fixed 2026-08-17 while cutting v0.10.1.** Both
+      jobs created a draft for the same tag, so Linux's assets landed in one and macOS's in the
+      other, each with a `latest.json` listing only its own platform. Publishing either would have
+      shipped a single-platform release whose manifest told every other platform there was nothing
+      to update to. **Both jobs reported success**, and `gh release view <tag>` shows whichever
+      draft it picks — complete on its own terms — so nothing about the failure is visible without
+      counting assets. Four earlier releases won the same race by luck.
+      `create-release` now makes exactly one draft before the matrix and the builds upload into it
+      by `releaseId`. That this was found by hand, on the release where the dice went the other way,
+      is the argument for the rest of this item.
+
 - [ ] **Nothing enforces "tag a commit Quality has passed".** `release.yml` says so in its own
       header and `quality.yml` says it "deliberately does NOT gate the release". So the guarantee
       is a human remembering to look — cutting v0.9.0 meant polling `gh run list` and waiting
