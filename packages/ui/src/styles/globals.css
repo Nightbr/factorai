@@ -109,6 +109,14 @@
 	--color-ring: var(--ring);
 	--color-dev: var(--dev);
 	--color-dev-foreground: var(--dev-foreground);
+	--color-lane-0: var(--lane-0);
+	--color-lane-1: var(--lane-1);
+	--color-lane-2: var(--lane-2);
+	--color-lane-3: var(--lane-3);
+	--color-lane-4: var(--lane-4);
+	--color-lane-5: var(--lane-5);
+	--color-lane-6: var(--lane-6);
+	--color-lane-7: var(--lane-7);
 	--radius-lg: var(--radius);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-sm: calc(var(--radius) - 4px);
@@ -141,6 +149,40 @@
 	   release one at a glance rather than read. */
 	--dev: oklch(68% 0.19 300);
 	--dev-foreground: oklch(16% 0.008 250);
+
+	/* Categorical scale — see docs/adr/0012-categorical-colour-tokens.md.
+	   Everything above is *semantic*: there is one right answer for any given
+	   element. These carry no meaning beyond "not the same as my neighbour",
+	   which the semantic palette cannot express, and their first consumer is
+	   F18's lane rail.
+
+	   Three things they are chosen for, in this order:
+
+	   1. Legibility against `--background` at a 6px pitch, which is a harder
+	      constraint than looking distinct as swatches side by side.
+	   2. Adjacent-pair contrast, including the wrap from lane 7 back to lane 0 —
+	      lanes are allocated left-first and recycled, so neighbours are what you
+	      actually have to tell apart.
+	   3. Hue spacing wide enough to survive both themes, since the light values
+	      are darker and lower-chroma and gaps close as chroma drops.
+
+	   They deliberately reuse hues the semantic tokens hold (25 is near
+	   `--destructive`, 65 near `--primary`, 300 is `--dev`). That is not a
+	   collision: the rail is not a signal surface, nothing in it means "danger"
+	   or "act here", and spacing eight hues around the wheel while avoiding
+	   three of them would cost more legibility than the overlap does.
+
+	   **Eight of them, and `LANE_COUNT` in `graph/lanes.ts` must match** — the
+	   renderer cycles `index % LANE_COUNT`, so a ninth token here without that
+	   constant would never be drawn. */
+	--lane-0: oklch(70% 0.15 255);
+	--lane-1: oklch(72% 0.16 145);
+	--lane-2: oklch(68% 0.19 25);
+	--lane-3: oklch(70% 0.17 300);
+	--lane-4: oklch(74% 0.13 195);
+	--lane-5: oklch(78% 0.15 65);
+	--lane-6: oklch(72% 0.17 340);
+	--lane-7: oklch(76% 0.16 115);
 }
 
 /* Light theme — applied via [data-theme="light"] on <html> */
@@ -165,6 +207,20 @@
 	--ring: oklch(58% 0.17 75);
 	--dev: oklch(52% 0.21 300);
 	--dev-foreground: oklch(98% 0.004 250);
+
+	/* The categorical scale again, against a 98% background instead of a 16% one.
+	   Not a tint of the dark values: lightness drops by ~20 points and chroma
+	   moves per hue, because a hue that reads on near-black washes out on
+	   near-white — which is the normal way a palette picked once in one theme
+	   fails in the other. */
+	--lane-0: oklch(52% 0.18 255);
+	--lane-1: oklch(50% 0.15 145);
+	--lane-2: oklch(54% 0.21 25);
+	--lane-3: oklch(50% 0.2 300);
+	--lane-4: oklch(52% 0.12 195);
+	--lane-5: oklch(58% 0.14 65);
+	--lane-6: oklch(54% 0.19 340);
+	--lane-7: oklch(52% 0.14 115);
 }
 
 @layer base {
