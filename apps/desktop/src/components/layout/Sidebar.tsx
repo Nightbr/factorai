@@ -138,7 +138,7 @@ export function Sidebar() {
 						value={term}
 						onChange={(e) => setTerm(e.target.value)}
 						placeholder="Search sessions…"
-						className="h-8 pl-7 text-sm"
+						className="pl-7"
 					/>
 				</div>
 			</div>

@@ -165,7 +165,7 @@ function SessionView() {
 					<Button
 						size="sm"
 						variant="outline"
-						className="h-7 gap-1.5"
+						className="gap-1.5"
 						onClick={() => {
 							// Drop the dead pooled terminal, then remount to spawn fresh.
 							disposeTerminal(sessionId);
