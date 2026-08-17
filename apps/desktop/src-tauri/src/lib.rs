@@ -55,6 +55,14 @@ pub fn run() {
 			let cd = claude_dir();
 			info!(?cd, ?data_dir, "factorai booting");
 
+			// Ask the user's login shell what their PATH is, on its own thread.
+			// A GUI process has never run an rc file, so ours has no Homebrew and
+			// no version-manager shims in it, and a session handed that PATH
+			// cannot run a hook, an stdio MCP server or a statusline command. Off
+			// the main thread because the answer costs a shell startup and the
+			// window must not wait on `~/.zshrc`. See `services::shell_path`.
+			services::shell_path::warm();
+
 			// Terminals first: the indexer's reap pass asks them what is live
 			// before it deletes the row of a session whose transcript is gone.
 			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone());

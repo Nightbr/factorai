@@ -26,7 +26,8 @@ services/
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
   files.rs            # list_dir, read_file, read_image
-  child_env.rs        # strip the AppImage runtime out of a child's env
+  child_env.rs        # the env diff a spawned child gets — PATH, and the AppImage strip
+  shell_path.rs       # ask the login shell what the user's PATH really is
   git.rs              # repository status + blob reads (ADR-0009)
 db/
   mod.rs              # open(), migrate(), Pool wrapper
@@ -185,13 +186,87 @@ Owns the `DashMap<TerminalId, Terminal>`. On `terminal_spawn`:
    tokio mpsc, fan out as `terminal:data` events.
 5. Status heuristics run on a separate tokio task (200ms tick).
 
-**The child's environment is ours minus the AppImage's** (`services/child_env`).
-A session inherits our env, because `PATH`, `HOME` and `SSH_AUTH_SOCK` are what
-a shell in a project needs — but under an AppImage "ours" is the user's
-environment with `linuxdeploy`'s private runtime pushed in front of it, and
-handing that on means every session, and everything it runs, resolves libraries
-and data files out of a squashfs mount belonging to a different program.
-Observed: `PYTHONHOME=$APPDIR/usr/` kills any `python3` with
+**The child's environment is ours, as a diff** (`services/child_env`). A session
+inherits our env, because `HOME`, `USER`, `SHELL`, `SSH_AUTH_SOCK`, `LANG`, the
+proxy variables and `NODE_EXTRA_CA_CERTS` are exactly what a shell in a project
+needs. A minimal environment built by hand is a long tail of subtler bugs — git
+over SSH stops working, output stops being UTF-8, a corporate CA bundle goes
+missing — so `changes_for_current_env()` never constructs one; there is no
+`env_clear` and no hardcoded environment anywhere on this path. Two things about
+"ours" are nonetheless wrong for a child, and both are fixed in that one helper,
+at the one place a child is spawned.
+
+#### `PATH` comes from the login shell, not from us
+
+A GUI application does not have the user's `PATH`. Launched from Finder, the
+Dock, LaunchServices or a `.desktop` file it inherits launchd's / the session
+manager's environment, and no rc file has ever run in the process — so Homebrew
+(`/opt/homebrew/bin` on Apple Silicon, `/usr/local/bin` on Intel) is absent, and
+so is every version-manager shim (nvm, mise, asdf, fnm, volta). A session handed
+that `PATH` breaks in everything that resolves a program by name, and none of
+the breakage names the cause:
+
+- A hook runs as `/bin/sh -c "<command>"`. `/bin/sh` is found because it is
+  invoked absolutely; the bare `bash` *inside* the command goes through `PATH`
+  and isn't — `SessionStart:startup hook error … /bin/sh: bash: command not
+  found`. The plugin invoking `bash` by name is correct and is the messenger,
+  not the bug; rewriting hook commands to use absolute paths is not the fix.
+- A stdio MCP server is launched as `npx` / `node` / `uvx` / `docker` and fails
+  its JSON-RPC handshake — `Failed to reconnect to <server>: -32000`. (A server
+  listed as "needs authentication" is unrelated: that is OAuth awaiting login.)
+- A `statusLine` command fails silently, with no banner at all.
+- `git`, `gh`, `pnpm`, `uv` and everything else the agent runs from `Bash`.
+
+The tell is that the same config works when `claude` is started from a terminal.
+That difference *is* the diagnosis.
+
+So `services/shell_path` **asks a shell** — the `fix-path-for-mac` pattern VS
+Code and most Electron developer tools use, treated as prior art rather than
+reinvented. `$SHELL -ilc 'printf "%s" "<START>${PATH}<END>"'`, once, on a thread
+spawned from `setup()` so the window never waits on `~/.zshrc`, cached in a
+`OnceLock` for the app's lifetime. Five details are what make it work on real
+machines rather than in principle:
+
+- **Both flags.** `-l` sources `~/.zprofile`, where Homebrew's `shellenv`
+  usually lands; `-i` sources `~/.zshrc`, where nvm / mise / asdf usually land.
+  Either alone misses half of them.
+- **Sentinels, not raw stdout.** An interactive shell talks — MOTD,
+  powerlevel10k's instant prompt, `direnv`, version-manager banners.
+- **Stdin from `/dev/null`, and a 5s timeout**, because an interactive shell may
+  block waiting to be typed at. Stdout is drained on its own thread (reading on
+  the waiting thread would be the hang the timeout exists to prevent) and the
+  child is killed unconditionally afterwards, which reaps it on the happy path
+  and is the only thing that stops a stuck shell outliving the app on the other.
+- **`$SHELL`, not an assumption of zsh.** `/bin/zsh` is only the guess for when
+  `$SHELL` is unset, and no further shells are tried after it: a `$SHELL` that
+  cannot be run is pathological, and the fallback floor is a better answer than
+  a cascade that quietly consults rc files the user does not use.
+- **A floor when that fails**, exercised whenever resolution errors or times
+  out: `/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
+  Both Homebrew prefixes, because one of them is wrong on half of macOS.
+
+Empty entries are dropped from whatever comes back, and a `PATH` with nothing
+left in it is refused: an empty entry means the current directory, and a
+session's cwd is a project checkout someone else may have written to. The value
+is handled as bytes throughout, since a `PATH` is not required to be UTF-8 and
+lossy conversion corrupts an entry rather than failing.
+
+At startup, `warm()` also checks that `bash` and `node` resolve against the
+`PATH` it settled on, and warns with both if not. A clear "could not resolve
+your shell environment" line in the log beats `/bin/sh: bash: command not found`
+surfacing three layers down as a hook error.
+
+Note what is *not* the fix: patching `env.PATH` in `~/.claude/settings.json`.
+That is a per-machine workaround which fixes nothing for anyone else and masks
+this during testing.
+
+#### And the AppImage runtime comes back out
+
+Under an AppImage "ours" is the user's environment with `linuxdeploy`'s private
+runtime pushed in front of it, and handing that on means every session, and
+everything it runs, resolves libraries and data files out of a squashfs mount
+belonging to a different program. Observed: `PYTHONHOME=$APPDIR/usr/` kills any
+`python3` with
 `ModuleNotFoundError: No module named 'encodings'`, and
 `LD_LIBRARY_PATH=$APPDIR/usr/lib/…` makes another GTK binary load *our*
 WebKitGTK, which then can't find its own helper processes.
@@ -219,6 +294,23 @@ v0.5.0 shipped that bug: the rule was right, unit-tested nine ways, and applied
 nothing. The regression test drives a real `CommandBuilder` and asserts
 `get_env("APPDIR")` is `None` — reintroduce the fault and it is the only test
 that fails, which is precisely why the others weren't enough.
+
+**The two rules meet on `PATH`, and the order matters.** `with_path` has the last
+word on that key, so it first takes `PATH` out of whatever the `$APPDIR` rule
+decided about it — a stale `remove` left behind would have `apply_to` unset the
+variable we are there to set. The value then goes through the strip anyway,
+because the shell we asked inherited *our* `PATH` and both zsh and bash extend
+the one they are given rather than build a fresh one: on a machine running the
+AppImage, `$SHELL -ilc` demonstrably answers with `$APPDIR/usr/bin` still on the
+front. If the strip empties it, the floor is used.
+
+**And the same lesson applies one level out**, which is why
+`terminal::tests::a_child_runs_with_the_login_shell_path` spawns a real PTY
+running `printf '%s' "$PATH"` and compares it to `shell_path::child_path()`.
+Every test at the `EnvChanges` layer still passes with the
+`changes_for_current_env()` call deleted from the spawn site; that one does not.
+A right rule that never reaches the process is the failure mode this module has
+already shipped once.
 
 Outside an AppImage (dev build, `.deb`, `.app`) `APPDIR` is unset and this is a
 no-op. Note this is a *second*, independent source of the `XDG_DATA_DIRS`

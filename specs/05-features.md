@@ -446,6 +446,16 @@ detect waiting-for-input.
 - `claude` not in PATH → three-tier discovery (PATH → login shell →
   candidate probe) per `03-backend-rust.md`. Only fail if all three miss;
   surface the error with a "Set claude path" override hint.
+- **`claude` found but nothing *it* runs is** → the session's own `PATH` is
+  resolved from the login shell, not inherited from this GUI process, because a
+  GUI process has never sourced an rc file and so has neither Homebrew nor any
+  version-manager shim in it. Without that, hooks fail with `/bin/sh: bash:
+  command not found`, stdio MCP servers fail their handshake with `-32000`, and
+  a `statusLine` command fails with no banner at all. See
+  `03-backend-rust.md` § `TerminalManager`. **Verify this from a
+  Finder-/launcher-started build**: `pnpm dev` from a terminal inherits a healthy
+  `PATH` and hides the bug entirely, which is the likeliest way to get a false
+  pass on it.
 - Process dies → `terminal:exit` event flips status to Stopped; UI shows
   "Process exited (code 1)".
 - Window resize during high output → fit + resize requests are coalesced.
