@@ -17,24 +17,29 @@
 
 const HOST_ID = 'factorai-error-notice';
 
-/** Coalesce repeats rather than stacking: one cancelled diff per click adds up
- *  fast, and twenty identical cards is worse than a count. */
-const seen = new Map<string, number>();
+/**
+ * Message text → its card, so repeats become a count instead of a stack.
+ *
+ * A `Map` rather than looking the card up in the DOM by its text: the text is a
+ * multi-line stack trace, and `querySelector('[data-msg="…"]')` on it throws
+ * `SyntaxError` — which, in a function called *from the error handler*, fed
+ * itself straight back in through the `error` listener. Caught by
+ * `tests/smoke/global-errors.spec.ts` before it shipped.
+ */
+const cards = new Map<string, { card: HTMLElement; badge: HTMLElement; count: number }>();
 
 export function showErrorNotice(text: string): void {
-	const count = (seen.get(text) ?? 0) + 1;
-	seen.set(text, count);
-
-	const host = ensureHost();
-	const existing = host.querySelector<HTMLElement>(`[data-msg="${cssEscape(text)}"]`);
+	const existing = cards.get(text);
 	if (existing) {
-		const badge = existing.querySelector<HTMLElement>('[data-count]');
-		if (badge) badge.textContent = `×${count}`;
+		existing.count += 1;
+		existing.badge.textContent = `×${existing.count}`;
 		return;
 	}
 
+	const host = ensureHost();
+
 	const card = document.createElement('div');
-	card.dataset.msg = text;
+	card.dataset.notice = '';
 	card.style.cssText = [
 		'pointer-events:auto',
 		'max-width:min(520px,90vw)',
@@ -60,7 +65,7 @@ export function showErrorNotice(text: string): void {
 
 	const badge = document.createElement('span');
 	badge.dataset.count = '';
-	badge.textContent = `×${count}`;
+	badge.textContent = '×1';
 	badge.style.cssText = 'color:#8b919c;font-weight:400';
 
 	const close = document.createElement('button');
@@ -69,16 +74,19 @@ export function showErrorNotice(text: string): void {
 	close.style.cssText =
 		'background:none;border:0;color:#8b919c;cursor:pointer;font:12px/1 monospace;padding:2px';
 	close.onclick = () => {
-		seen.delete(text);
+		cards.delete(text);
 		card.remove();
 		if (!host.firstChild) host.remove();
 	};
 
 	bar.append(title, badge, close);
 	const body = document.createElement('div');
+	// textContent, never innerHTML: the text is an error message and may contain
+	// anything, including a path or a payload with markup in it.
 	body.textContent = text;
 	card.append(bar, body);
 	host.append(card);
+	cards.set(text, { card, badge, count: 1 });
 }
 
 function ensureHost(): HTMLElement {
@@ -101,11 +109,4 @@ function ensureHost(): HTMLElement {
 	].join(';');
 	document.body.append(host);
 	return host;
-}
-
-/** `CSS.escape` is not in WebKitGTK's older builds' typings path here, and the
- *  only characters that matter for an attribute selector are quotes and
- *  backslashes. */
-function cssEscape(s: string): string {
-	return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
