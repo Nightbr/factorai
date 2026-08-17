@@ -156,7 +156,7 @@ export function ImportProjects({ open, onOpenChange }: ImportProjectsProps) {
 						value={needle}
 						onChange={(e) => setNeedle(e.target.value)}
 						placeholder="Filter by path…"
-						className="h-8 pl-7 text-sm"
+						className="pl-7"
 						data-testid="import-filter"
 					/>
 				</div>

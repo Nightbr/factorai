@@ -149,7 +149,7 @@ function ProjectView() {
 						disabled={!canStart}
 						onClick={() => void startSession(id)}
 					>
-						<Plus className="size-3.5" /> New session
+						<Plus /> New session
 					</Button>
 				</span>
 			</header>
