@@ -1275,10 +1275,19 @@ dissolve the crowding rather than managing it:
    rows and there is nothing to crowd.
 
 So the four-chip worst case — `main`, `origin/main`, `origin/HEAD`, `v0.3.0` —
-becomes `HEAD→main ≡origin  v0.3.0`, which fits. What still overflows collapses
-to a `+N` chip, ordered local branch → remote branch → tag; the chip is itself
-hoverable and opens the same card. **`+N` is meant to be rare**, which is the
-only condition under which hiding a ref behind it is acceptable.
+becomes two chips, `HEAD→main ≡origin` and `v0.3.0`. What still overflows
+collapses to a `+N` chip, ordered local branch → remote branch → tag; the chip is
+itself hoverable and opens the same card.
+
+**Measured 2026-08-17, and it corrects an earlier claim here.** This section used
+to say that pair "fits". It does not, at the default 288px: refs get half the
+text column, which is ~17 characters, and `HEAD→main ≡origin` alone is 17. So the
+tag collapses to `+1` on a default-width panel and both chips show from roughly
+400px up. The folding is still what earns its keep — it turns three refs into two
+chips rather than four into a `+3` — but the honest statement is that **a tagged
+release on the branch tip needs a wider panel to show both**, and `+N` is the
+common case at 288px rather than the rare one. That is the width constraint Q22
+deferred rather than answered, showing up exactly where the roadmap said it would.
 
 ### The rail
 

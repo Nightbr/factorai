@@ -1,0 +1,186 @@
+import type { GitRef } from '@factorai/types';
+import { describe, expect, it } from 'vitest';
+import {
+	fitRefs,
+	foldRefs,
+	LANE_COUNT,
+	LANE_PITCH_MAX,
+	LANE_PITCH_MIN,
+	laneColour,
+	lanePitch,
+	railWidth,
+} from './gitGraph';
+
+function ref(partial: Partial<GitRef> & Pick<GitRef, 'name' | 'kind'>): GitRef {
+	return { isHead: false, upstreamInSync: null, ...partial };
+}
+
+describe('laneColour', () => {
+	it('maps each lane to its own token and cycles past the last one', () => {
+		expect(laneColour(0)).toBe('var(--lane-0)');
+		expect(laneColour(LANE_COUNT - 1)).toBe(`var(--lane-${LANE_COUNT - 1})`);
+		expect(laneColour(LANE_COUNT)).toBe('var(--lane-0)');
+		expect(laneColour(LANE_COUNT + 3)).toBe('var(--lane-3)');
+	});
+
+	it('never produces a negative token, whatever it is handed', () => {
+		// A missing custom property paints nothing at all, so a `--lane--1` would
+		// be an invisible line rather than a wrong-coloured one.
+		expect(laneColour(-1)).toBe(`var(--lane-${LANE_COUNT - 1})`);
+	});
+});
+
+describe('lanePitch', () => {
+	it('gives a single lane the full pitch, however narrow the panel', () => {
+		expect(lanePitch(1, 200)).toBe(LANE_PITCH_MAX);
+		expect(lanePitch(0, 200)).toBe(LANE_PITCH_MAX);
+	});
+
+	it('keeps the full pitch while the rail fits its budget', () => {
+		// 4 lanes at 12px is 48px, well inside 35% of 288.
+		expect(lanePitch(4, 288)).toBe(LANE_PITCH_MAX);
+	});
+
+	it('compresses as lanes multiply rather than eating the subject', () => {
+		const pitch = lanePitch(14, 288);
+		expect(pitch).toBeLessThan(LANE_PITCH_MAX);
+		expect(pitch).toBeGreaterThanOrEqual(LANE_PITCH_MIN);
+	});
+
+	it('stops compressing at the floor, so the rail grows instead', () => {
+		// Below the floor adjacent lanes stop being separable however good the
+		// colours are; a rail over its budget is the lesser failure.
+		expect(lanePitch(40, 288)).toBe(LANE_PITCH_MIN);
+		expect(lanePitch(200, 200)).toBe(LANE_PITCH_MIN);
+	});
+
+	it('is monotonic in lane count — more lanes never means a wider pitch', () => {
+		let previous = Number.POSITIVE_INFINITY;
+		for (let lanes = 1; lanes <= 30; lanes += 1) {
+			const pitch = lanePitch(lanes, 288);
+			expect(pitch).toBeLessThanOrEqual(previous);
+			previous = pitch;
+		}
+	});
+});
+
+describe('railWidth', () => {
+	it('leaves air either side so the outer nodes are not flush', () => {
+		expect(railWidth(1, 12)).toBeGreaterThan(12);
+		expect(railWidth(3, 12)).toBe(48);
+	});
+
+	it('never collapses to nothing when there are no lanes to draw', () => {
+		expect(railWidth(0, 12)).toBeGreaterThan(0);
+	});
+});
+
+describe('foldRefs', () => {
+	it('folds HEAD into its branch instead of spending a slot on it', () => {
+		const chips = foldRefs([ref({ name: 'main', kind: 'localBranch', isHead: true })]);
+
+		expect(chips).toHaveLength(1);
+		expect(chips[0].label).toBe('HEAD→main');
+	});
+
+	it('collapses a branch and its in-sync remote into one chip', () => {
+		// The load-bearing folding: these two crowd a row only when they agree.
+		const chips = foldRefs([
+			ref({ name: 'main', kind: 'localBranch', isHead: true, upstreamInSync: 'origin/main' }),
+			ref({ name: 'origin/main', kind: 'remoteBranch' }),
+			ref({ name: 'v0.3.0', kind: 'tag' }),
+		]);
+
+		expect(chips.map((c) => c.label)).toEqual(['HEAD→main ≡origin', 'v0.3.0']);
+	});
+
+	it('keeps both chips when the remote has diverged', () => {
+		// Nothing to collapse: they are on different rows, so this only happens if
+		// two unrelated refs share a commit, and then both deserve saying.
+		const chips = foldRefs([
+			ref({ name: 'main', kind: 'localBranch' }),
+			ref({ name: 'origin/main', kind: 'remoteBranch' }),
+		]);
+
+		expect(chips.map((c) => c.label)).toEqual(['main', 'origin/main']);
+	});
+
+	it('finds the remote name when the branch itself contains slashes', () => {
+		// `origin/feature/x` for branch `feature/x` — the remote is not simply the
+		// first path segment of the branch name.
+		const chips = foldRefs([
+			ref({ name: 'feature/x', kind: 'localBranch', upstreamInSync: 'origin/feature/x' }),
+		]);
+
+		expect(chips[0].label).toBe('feature/x ≡origin');
+	});
+
+	it('leaves a detached HEAD as its own chip, with no branch to fold into', () => {
+		const chips = foldRefs([ref({ name: 'HEAD', kind: 'head', isHead: true })]);
+
+		expect(chips.map((c) => c.label)).toEqual(['HEAD']);
+	});
+
+	it('preserves the order it was given, which Rust already sorted', () => {
+		const chips = foldRefs([
+			ref({ name: 'main', kind: 'localBranch', isHead: true }),
+			ref({ name: 'origin/other', kind: 'remoteBranch' }),
+			ref({ name: 'v1', kind: 'tag' }),
+		]);
+
+		expect(chips.map((c) => c.kind)).toEqual(['localBranch', 'remoteBranch', 'tag']);
+	});
+
+	it('gives every chip a key that survives a poll', () => {
+		const refs = [ref({ name: 'main', kind: 'localBranch' }), ref({ name: 'main', kind: 'tag' })];
+
+		const keys = foldRefs(refs).map((c) => c.key);
+
+		expect(new Set(keys).size).toBe(2);
+		expect(foldRefs(refs).map((c) => c.key)).toEqual(keys);
+	});
+});
+
+describe('fitRefs', () => {
+	const chips = foldRefs([
+		ref({ name: 'main', kind: 'localBranch', isHead: true }),
+		ref({ name: 'origin/other-branch', kind: 'remoteBranch' }),
+		ref({ name: 'v0.3.0', kind: 'tag' }),
+		ref({ name: 'v0.3.0-rc1', kind: 'tag' }),
+	]);
+
+	it('shows everything when there is room', () => {
+		const { shown, hiddenCount } = fitRefs(chips, 2000);
+
+		expect(shown).toHaveLength(chips.length);
+		expect(hiddenCount).toBe(0);
+	});
+
+	it('collapses the overflow to a count', () => {
+		const { shown, hiddenCount } = fitRefs(chips, 240);
+
+		expect(shown.length).toBeLessThan(chips.length);
+		expect(hiddenCount).toBe(chips.length - shown.length);
+	});
+
+	it('always shows the first chip, even when it alone exceeds the budget', () => {
+		// A row whose only content is `+1` tells you a ref is here and refuses to
+		// say which, which is worse than a label that truncates.
+		const { shown, hiddenCount } = fitRefs(chips, 0);
+
+		expect(shown).toHaveLength(1);
+		expect(shown[0].label).toBe('HEAD→main');
+		expect(hiddenCount).toBe(chips.length - 1);
+	});
+
+	it('never loses a chip — shown plus hidden is always the whole list', () => {
+		for (const width of [0, 40, 80, 120, 200, 400, 900]) {
+			const { shown, hiddenCount } = fitRefs(chips, width);
+			expect(shown.length + hiddenCount).toBe(chips.length);
+		}
+	});
+
+	it('reports nothing for a commit with no refs at all, which is most of them', () => {
+		expect(fitRefs([], 288)).toEqual({ shown: [], hiddenCount: 0 });
+	});
+});

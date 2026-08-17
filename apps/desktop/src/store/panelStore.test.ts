@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+	clampDetailHeight,
 	clampPanelWidth,
+	DEFAULT_DETAIL_HEIGHT,
 	DEFAULT_PANEL_WIDTH,
+	MAX_DETAIL_HEIGHT,
 	MAX_PANEL_WIDTH,
+	MIN_DETAIL_HEIGHT,
 	MIN_PANEL_WIDTH,
 } from './panelStore';
 
@@ -29,5 +33,31 @@ describe('clampPanelWidth', () => {
 		// the panel to zero.
 		expect(clampPanelWidth(Number.NaN)).toBe(DEFAULT_PANEL_WIDTH);
 		expect(clampPanelWidth(Number.POSITIVE_INFINITY)).toBe(DEFAULT_PANEL_WIDTH);
+	});
+});
+
+describe('clampDetailHeight', () => {
+	it('passes through heights inside the range', () => {
+		expect(clampDetailHeight(240)).toBe(240);
+		expect(clampDetailHeight(MIN_DETAIL_HEIGHT)).toBe(MIN_DETAIL_HEIGHT);
+		expect(clampDetailHeight(MAX_DETAIL_HEIGHT)).toBe(MAX_DETAIL_HEIGHT);
+	});
+
+	it('clamps a drag past either end', () => {
+		// The floor matters more here than for width: dragged to nothing, the
+		// commit detail would still be mounted and fetching, just invisible.
+		expect(clampDetailHeight(0)).toBe(MIN_DETAIL_HEIGHT);
+		expect(clampDetailHeight(-200)).toBe(MIN_DETAIL_HEIGHT);
+		expect(clampDetailHeight(5000)).toBe(MAX_DETAIL_HEIGHT);
+	});
+
+	it('rounds sub-pixel drag deltas', () => {
+		expect(clampDetailHeight(200.4)).toBe(200);
+		expect(clampDetailHeight(200.6)).toBe(201);
+	});
+
+	it('falls back to the default for a non-finite height', () => {
+		expect(clampDetailHeight(Number.NaN)).toBe(DEFAULT_DETAIL_HEIGHT);
+		expect(clampDetailHeight(Number.POSITIVE_INFINITY)).toBe(DEFAULT_DETAIL_HEIGHT);
 	});
 });

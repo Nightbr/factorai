@@ -12,6 +12,10 @@ import type {
 	DirListing,
 	FileContents,
 	GitChange,
+	GitCommitDetail,
+	GitGraph,
+	GitGraphCommit,
+	GitRef,
 	GitStatus,
 	ImageContents,
 	ImportCandidate,
@@ -47,6 +51,8 @@ export interface TestFixture {
 	/** Blobs keyed by `<rev>:<absolute path>`. Absent means the file doesn't
 	 *  exist at that revision, which is an added or deleted file. */
 	gitBlobs?: Record<string, FileContents>;
+	gitGraphs?: Record<string, GitGraph>;
+	gitCommits?: Record<string, GitCommitDetail>;
 	/** Version to report as downloaded and staged, for the F14 update badge. */
 	updateReady?: string;
 	/** Path the folder picker returns for "Add project" (F1). Omit to have the
@@ -397,6 +403,7 @@ export function fixtureWithChanges(): TestFixture {
 			[root]: {
 				repoRoot: root,
 				branch: 'main',
+				head: SHA_TIP,
 				changes,
 				total: changes.length,
 				truncated: false,
@@ -513,5 +520,150 @@ export function fixtureImportCandidates(): TestFixture {
 			// only starting a session in it is impossible.
 			candidate('/home/alice/code/vanished', 9, { missing: true }),
 		],
+	};
+}
+
+/** Forty hex characters, so a SHA passes the `?diff=<a>..<b>` URL validation
+ *  that guards a hand-edited link. The last two digits identify the commit. */
+function sha(n: number): string {
+	return `${String(n).padStart(2, '0').repeat(2)}`.padEnd(40, 'abcdef0123456789');
+}
+
+export const SHA_TIP = sha(1);
+export const SHA_MERGE = sha(2);
+export const SHA_SIDE = sha(3);
+export const SHA_MAIN = sha(4);
+export const SHA_BASE = sha(5);
+
+function ref(name: string, kind: GitRef['kind'], over: Partial<GitRef> = {}): GitRef {
+	return { name, kind, isHead: false, upstreamInSync: null, ...over };
+}
+
+function commit(
+	over: Partial<GitGraphCommit> & Pick<GitGraphCommit, 'sha' | 'subject'>,
+): GitGraphCommit {
+	return {
+		shortSha: over.sha.slice(0, 7),
+		authorName: 'Titouan',
+		authorTime: 1_760_000_000_000,
+		commitTime: 1_760_000_000_000,
+		parents: [],
+		refs: [],
+		lane: 0,
+		edges: [],
+		...over,
+	};
+}
+
+/**
+ * A history with a merge in it, so the rail has two lanes and something to draw
+ * (specs/05-features.md F18).
+ *
+ * Lanes and edges are spelled out rather than computed: the layout is Rust's job
+ * and has its own tests in `services/git.rs`, so what these exercise is the
+ * renderer's half — chip folding, the `+N` cut, selection and the detail pane.
+ *
+ * The tip carries the four-ref case F18 is designed around: HEAD on a branch
+ * that is in sync with its upstream, plus a tag. It should fold to
+ * `HEAD→main ≡origin` and `v0.3.0` rather than spending four slots.
+ */
+export function fixtureWithGraph(): TestFixture {
+	const base = fixtureWithChanges();
+	const root = base.projects?.[0]?.realPath ?? '';
+
+	const commits: GitGraphCommit[] = [
+		commit({
+			sha: SHA_TIP,
+			subject: 'fix: an untagged build says so in its crash report',
+			parents: [SHA_MERGE],
+			refs: [
+				ref('main', 'localBranch', { isHead: true, upstreamInSync: 'origin/main' }),
+				ref('origin/main', 'remoteBranch'),
+				ref('v0.3.0', 'tag'),
+			],
+			edges: [{ fromLane: 0, toLane: 0, lane: 0, kind: 'outgoing' }],
+		}),
+		commit({
+			sha: SHA_MERGE,
+			subject: 'merge: the side branch',
+			parents: [SHA_MAIN, SHA_SIDE],
+			edges: [
+				{ fromLane: 0, toLane: 0, lane: 0, kind: 'incoming' },
+				{ fromLane: 0, toLane: 0, lane: 0, kind: 'outgoing' },
+				{ fromLane: 0, toLane: 1, lane: 1, kind: 'outgoing' },
+			],
+		}),
+		commit({
+			sha: SHA_MAIN,
+			subject: 'docs: log the four items that landed',
+			parents: [SHA_BASE],
+			edges: [
+				{ fromLane: 0, toLane: 0, lane: 0, kind: 'incoming' },
+				{ fromLane: 0, toLane: 0, lane: 0, kind: 'outgoing' },
+				{ fromLane: 1, toLane: 1, lane: 1, kind: 'through' },
+			],
+		}),
+		commit({
+			sha: SHA_SIDE,
+			subject: 'feat: work done on the side branch',
+			parents: [SHA_BASE],
+			lane: 1,
+			refs: [ref('side', 'localBranch')],
+			edges: [
+				{ fromLane: 0, toLane: 0, lane: 0, kind: 'through' },
+				{ fromLane: 1, toLane: 1, lane: 1, kind: 'incoming' },
+				{ fromLane: 1, toLane: 1, lane: 1, kind: 'outgoing' },
+			],
+		}),
+		commit({
+			sha: SHA_BASE,
+			subject: 'chore: where the two branches parted',
+			edges: [
+				{ fromLane: 0, toLane: 0, lane: 0, kind: 'incoming' },
+				{ fromLane: 1, toLane: 0, lane: 1, kind: 'incoming' },
+			],
+		}),
+	];
+
+	return {
+		...base,
+		gitGraphs: {
+			[root]: {
+				repoRoot: root,
+				commits,
+				laneCount: 2,
+				refsDigest: 'deadbeefdeadbeef',
+				hasMore: false,
+			},
+		},
+		gitCommits: {
+			[SHA_MERGE]: {
+				sha: SHA_MERGE,
+				shortSha: SHA_MERGE.slice(0, 7),
+				subject: 'merge: the side branch',
+				body: 'A body paragraph, which the row had no room for.',
+				authorName: 'Titouan',
+				authorEmail: 'titouan@example.invalid',
+				authorTime: 1_760_000_000_000,
+				committerName: 'Titouan',
+				commitTime: 1_760_000_000_000,
+				// Two parents, so the pane has to say which one the diff is against.
+				parents: [SHA_MAIN, SHA_SIDE],
+				diffParent: SHA_MAIN,
+				files: [
+					{
+						path: `${root}/src/index.ts`,
+						relPath: 'src/index.ts',
+						kind: 'modified',
+						oldRelPath: null,
+						additions: 7,
+						deletions: 2,
+						isBinary: false,
+					},
+				],
+				total: 1,
+				truncated: false,
+			},
+		},
 	};
 }

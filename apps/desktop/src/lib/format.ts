@@ -15,6 +15,26 @@ export function formatRelative(ms: number, now: number = Date.now()): string {
 	return new Date(ms).toLocaleDateString();
 }
 
+/**
+ * Date and time to the minute, in the user's locale.
+ *
+ * The companion to `formatRelative` rather than a replacement: the graph's hover
+ * card shows both, because relative is what you scan a list for and absolute is
+ * what you need the moment "3 months ago" stops being precise enough (F18).
+ * Seconds are dropped — no commit is distinguished by them, and they add width to
+ * a card that is already the widest thing on screen.
+ */
+export function formatAbsolute(ms: number): string {
+	if (!Number.isFinite(ms)) return '—';
+	return new Date(ms).toLocaleString(undefined, {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit',
+	});
+}
+
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
 /**
