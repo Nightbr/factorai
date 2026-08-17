@@ -821,8 +821,7 @@ project it shows follows the route (`/projects/$id` or
   Open state and width persist (see below). No keyboard shortcut yet:
   `Ctrl+B` is readline's back-a-char and tmux's prefix, so binding it would
   break typing in the embedded claude terminal.
-- Panel header: a `Files | Changes` tab strip (F13) — `Files | Changes | Graph`
-  once F18 lands — then collapse-all,
+- Panel header: a `Files | Changes | Graph` tab strip (F13, F18), then collapse-all,
   refresh, close. The tree keeps its layout, spacing, icons and indentation
   exactly as they are — no indent guides, no folder icons, no compact folders,
   no hover actions. The only thing git adds to the tree is **paint**:
@@ -918,8 +917,8 @@ factorai shows you what the agent did, it does not stage, discard or commit —
 the terminal beside it already does that better. See ADR-0009.
 
 **UI.** A `Files | Changes` tab strip in the panel header (the slot F12 left for
-it) — **`Files | Changes | Graph` once F18 lands**, which appends rather than
-reorders, so Changes keeps its position. Files is the default; the last tab
+it), which **F18 appended `Graph` to** rather than reordering, so Changes keeps
+its position. Files is the default; the last tab
 chosen persists app-wide in `panelStore`, alongside `open` and `width`. The strip
 **never** switches itself because a file changed — the panel sits next to a
 terminal you are typing into.

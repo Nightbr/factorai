@@ -3,6 +3,64 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The git graph — roadmap item 1, spec F18** — 2026-08-17, user ask. Interviewed, specified and
+  built the same day, in four commits: the spec, then the Rust half, then the primitives, then the
+  rail. The tab strip is now `Files | Changes | Graph`, which amends Q18.
+
+  **The interview was the load-bearing part**, and its record is Q22: GitLens gives a lane graph a
+  *wide* surface and puts a tree in a narrow sidebar, and our panel is 200–600px, narrower than
+  either. The call was the rail first, with a wide modal deferred as a *hosting* change rather than
+  a second layout — and Q18 records honestly that the graph took the tab slot without passing the
+  test that awarded it, since a graph is a glance rather than a terminal companion.
+
+  **Lane assignment runs in Rust** (Q23) and the payload carries lane indices plus per-row edges;
+  the renderer draws SVG and never holds the DAG. That put the algorithm where `cargo test` can
+  build `tempdir` repositories and assert a merge, an octopus, an orphan branch and lane reuse
+  directly — the leverage ADR-0009 credits `git2` with for the status matrix, and worth twice as
+  much for a layout. Paging is an offset with a full re-walk and lanes recomputed over the whole
+  prefix, with a test that splices two pages and asserts they equal one walk; the alternative,
+  threading the open-lane frontier through a cursor, trades microseconds of libgit2 for lane
+  instability that is visible and permanent.
+
+  Edges are split by **geometry** — through / incoming / outgoing — not by git meaning. Naming them
+  for merges and branches inverts in a newest-first walk: a lane converging on a commit from below
+  is where a branch *forked*, and a renderer told "merge" would draw it upside down.
+
+  Three chip foldings mostly dissolve the crowding a 288px row has: `HEAD` merges into its branch,
+  `origin/HEAD` is dropped in the service (a symbolic ref duplicating one we already return, and
+  the commonest cause of overflow), and a branch in sync with its upstream absorbs it as
+  `main ≡origin`. That third one works *because* the pair only crowds a row when they agree —
+  diverged, they are on different rows with nothing to crowd.
+
+  **Two things only the running app found**, and both are in the spec now rather than in a
+  bug list. A commit body pushed the author line, the parents and a 22-file list below the fold of
+  the default 200px pane, so clicking a commit appeared to show only prose — the body is capped and
+  scrolls itself, because it is context and the files are what you clicked for. And F18's claim
+  that `HEAD→main ≡origin` and `v0.3.0` both fit was **wrong**: refs get half the text column,
+  ~17 characters, and the first chip is 17 alone, so `+N` is the *common* case at 288px and both
+  chips appear from ~400px. That is exactly the width constraint Q22 deferred rather than answered.
+
+  ADR-0012 came out of it: every colour in the app was semantic — `primary`, `destructive` — and a
+  lane needs categorical colour, which that palette cannot express. Eight `--lane-N` tokens named
+  for the role rather than the caller, both themes, chosen against the background at a 6px pitch
+  and for adjacent-pair contrast including the wrap from lane 7 back to lane 0.
+
+  Three smaller things it left behind: `GitStatus.head` closes the detached-vs-unborn gap the
+  branch badge flagged when it shipped; `PanelResizer` does both axes (`width` renamed to `size`,
+  because a prop called width controlling a height is a lie); and F13's change row is extracted as
+  `FileChangeRow`, taking fields rather than a `GitChange` — reusing that type would have meant
+  labelling a commit's diff "staged".
+
+  Two gotchas for whoever is next. **git2 0.21 returns `Result` from `Reference::name`/`shorthand`
+  and `Result<Option<_>>` from `Commit::summary`**, which is a change from earlier versions and why
+  the existing code was already littered with `.ok()`. And **`Branch::set_upstream` needs the
+  remote to exist in `.git/config`** — creating `refs/remotes/origin/x` alone fails with "could not
+  determine remote" — so the test helper writes a config remote, no network involved.
+
+  Deferred, deliberately: the wide modal (Q22), worktrees, session↔commit linking (the payload
+  already carries full 40-character SHAs and both timestamps for it), and a merge's parent
+  *picker*. Interaction-level coverage beyond two `@smoke` tests is recorded against item 10.
+
 - **JSON is highlighted in the file viewer** — 2026-08-17, user ask, shipped in v0.9.0. It rendered as unhighlighted
   plain text with `Plain Text` in the footer, and the cause is worth keeping because the obvious
   fix is a trap. `basic-languages` carries ~80 Monarch grammars and **JSON is the one common

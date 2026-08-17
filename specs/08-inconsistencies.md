@@ -16,15 +16,29 @@ decision, not an edit.
 
 **Status 2026-08-17:** **C1 is resolved and deleted** — the F18 clarify-needs
 interview amended Q18 to three tabs and recorded the width question it does *not*
-answer as Q22, so nothing about the tab strip is contradictory any more. Three
-left.
+answer as Q22, so nothing about the tab strip is contradictory any more. Building
+F18 then added **C5**, and re-measured E1's numbers. Four left.
 
 ---
 
-## Still open — three decisions
+## Still open — four decisions
 
 Everything else compiled on 2026-08-15 has been resolved and deleted, per the
 rule above. What remains needs a call rather than an edit.
+
+**C5 — `tests/` is not type-checked, in a repo whose types are hand-mirrored.**
+Found 2026-08-17 while building F18. `apps/desktop/tsconfig.json` has
+`"include": ["src"]`, so `pnpm typecheck` never looks at `tests/smoke/` — and
+that is where `fixtures.ts` builds `GitStatus`, `DirListing`, `SessionPage` and a
+dozen other cross-boundary objects by hand. Adding a required field to one of
+them leaves every fixture silently invalid: F18's `GitStatus.head` did exactly
+that, and only a Playwright assertion happening to touch the value would have
+caught it. The IPC contract has **no codegen by design** (§ IPC), which makes
+`tsc` the only thing standing between the two hand-written halves, and it isn't
+looking at half the callers. → probably a `tsconfig.tests.json` plus a
+`typecheck:tests` task in `turbo.json` and CI; needs a call on whether that runs
+as its own task or the app's `include` grows, and on how many existing errors it
+surfaces (not yet measured).
 
 **C3 — Read-only, except where we plan to write.** ADR-0009 states
 *"Everything is read-only. No staging, no discard, no commit"*. TODO item 19
@@ -37,9 +51,10 @@ from inside factorai) writes a `custom-title` line into a session's JSONL,
 which lives there. Same shape as C3, same remedy.
 
 **E1 — The smoke suite's time budget.** `AGENTS.md § 2d` says the suite *"stays
-under a few seconds"*. It is **107 tests in ~2 minutes** (measured 2026-08-17;
-it was 75 in ~70s when this entry was written two days earlier, so the drift is
-ongoing and roughly linear in features shipped). Either the budget is
+under a few seconds"*. It is **109 tests in ~2 minutes** (measured 2026-08-17;
+it was 75 in ~70s when this entry was written two days earlier, and F18 added the
+last two the same afternoon — the drift is ongoing and roughly linear in features
+shipped). Either the budget is
 wrong or the suite has outgrown its lane — § 2d also promises a heavier
 `tests/regression/` lane that was never created, which is probably the real
 answer. See TODO item 10.
