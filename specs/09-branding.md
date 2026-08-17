@@ -277,3 +277,37 @@ silhouette stops registering and the mark reads as a bare amber F. It is still
 identifiable — the F is doing the work — but the silhouette argument in B1 holds
 only where there is contrast behind the icon. Worth knowing before assuming the
 outline carries everywhere.
+
+---
+
+## B10 — The tagline
+
+> **Agentic Development Environment (ADE) for the AI era**
+
+Set 2026-08-17. One string, and it is the *description* — the line that goes in
+metadata fields, where something machine-read and self-explanatory is wanted.
+
+It is deliberately not the README's opening, which is **"IDE is dead. Long live
+the ADE"**. That is a hook: it is better at making someone read the next
+sentence and worse at telling a package manager or an application menu what this
+program is. Keeping both, with each in the place it works, is the point — do not
+"unify" them.
+
+Every place the tagline is repeated, and they must match:
+
+| Where | Field |
+|---|---|
+| `package.json` (root) | `description` |
+| `apps/desktop/package.json` | `description` |
+| `apps/desktop/src-tauri/Cargo.toml` | `description` |
+| `apps/desktop/src-tauri/tauri.conf.json` | `bundle.shortDescription` |
+| GitHub repository | About → description |
+
+`bundle.shortDescription` is the load-bearing one: it is what the bundler writes
+into the generated `.desktop` entry's `Comment`, so it is the line that shows
+under the name in an application launcher. `bundle.longDescription` carries the
+paragraph version for the same metadata, and nothing else uses it yet.
+
+The AppImage installed before this existed carried `Comment=Command center for
+Claude Code sessions` and `Name=FactorAI`. Both are wrong now; both are fixed by
+a fresh install once the bundler work in roadmap item 18 lands.

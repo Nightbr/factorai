@@ -72,6 +72,7 @@ full spec.
 Run, in this order, all green:
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -81,6 +82,16 @@ pnpm deps:check
 pnpm deps:unused
 cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
+
+**`--frozen-lockfile` leads because it is the one CI runs first and the one
+nothing local reproduces**, added 2026-08-17 after it broke `main`. `pnpm
+deps:fix` rewrites `package.json` to the exact version this repo pins to and
+does **not** touch `pnpm-lock.yaml`, so the two disagree and a frozen install
+refuses the tree. Neither of the checks below catches it: `deps:check` compares
+`package.json` files to each other and is satisfied by the pin, and a developer
+who already has `node_modules` never does a frozen install at all. It costs a
+second when nothing has changed. If it fails, `pnpm install` is the fix, and the
+lockfile it rewrites is part of the commit.
 
 `deps:check` is in that list because it wasn't: a `@tauri-apps/plugin-updater`
 caret drifted in with F14 and sat there failing for a day, in a repo that

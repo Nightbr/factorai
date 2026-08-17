@@ -26,6 +26,8 @@
 	},
 	"bundle": {
 		"active": true,
+		"shortDescription": "Agentic Development Environment (ADE) for the AI era",
+		"longDescription": "One place to build software with agents, rather than an editor with an agent bolted into a pane. The unit of work is a session, not a file: launch, watch, resume and kill Claude Code sessions, search everything they have ever said, and review what they changed in git.",
 		"targets": [
 			"app",
 			"dmg",
