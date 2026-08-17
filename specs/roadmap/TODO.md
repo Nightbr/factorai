@@ -39,6 +39,11 @@ too risky for now. It is the first item to travel *back* to
 the last: an item that has stopped being the next thing to do belongs there, not sitting in this
 list looking queued. Item 20 is a stub saying where it went and why.
 
+Added 2026-08-17 as **item 31**: rework the release process, plus alpha / production channels.
+Written straight after cutting v0.9.0 by hand, so its list of gaps is observed rather than
+imagined — and it puts the **version bump** question back on the table, which `release.yml`'s
+tag-only scheme had settled the other way.
+
 One thing item 25 leaves for **item 3**: `ContextMenu` now exists in `@factorai/ui`, built for the
 sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
 
@@ -196,17 +201,18 @@ unused.
       setting for MVP; don't quietly add it, supersede Q3 if you want it.
 - [ ] Theme + font size reach xterm through the palette→theme mapper (Q8: two themes, no picker).
 
-**Two items wait on this one** (three until 2026-08-17, when item 20's keep-awake toggle was
-disqualified): item 22's confirm-before-killing-a-session toggle needs the route (renderer-only —
-no Rust read-back), and the preferences other items keep wanting have still got nowhere to live.
+**Two items wait on this one**, and they want different halves of it:
 
-**Losing item 20 changes the shape of this one, not just the count.** It was the *only* queued
-customer for `get_setting` / `set_setting` — the Rust-readable half. What is left in that bullet
-is the claude-binary-path override, which the three-tier probe's failure message already promises,
-and nothing else. So the Rust half is now justified by one escape hatch rather than by a queue,
-and it is worth asking whether it ships with this item or waits for a second caller. The
-**renderer-side surface is untouched** by that and is still what everything is actually blocked
-on.
+- **item 22**'s confirm-before-killing-a-session toggle needs the **route only** — renderer-side,
+  `prefsStore`, no Rust read-back;
+- **item 31**'s alpha/production channel switch needs the **Rust-readable half**, since the updater
+  endpoint is chosen in Rust at runtime.
+
+That pairing settled a question this entry was carrying (both noted 2026-08-17). Item 20's
+disqualification had left `get_setting`/`set_setting` with a single caller — the claude-binary-path
+override — which made it fair to ask whether the Rust half should wait for a second one. Item 31 is
+that second caller, so **it ships with this item** rather than later. The renderer-side surface is
+still what everything is actually blocked on.
 
 **The surface itself is not settled, and that is what is actually blocking them** (noted
 2026-08-16). F11 names four sections and this entry says "`/settings` route", but neither says
@@ -663,9 +669,9 @@ it**: the settings surface is undecided beyond F11 naming four sections. Where i
 lives, and whether it is a modal or a route, are open (see item 4) — and a preference whose home
 is unknown cannot be specced, only guessed at. This one is **renderer-only** — no
 `get_setting`/`set_setting`, just `prefsStore` — so item 4's *surface* is the whole of the
-dependency; none of its Rust half matters here. That distinction now matters more than it did:
-with item 20 disqualified (2026-08-17) this is the **only** item still waiting on item 4, and it
-needs the cheaper half of it.
+dependency; none of its Rust half matters here. That distinction is what makes this the cheaper of
+item 4's two dependents: item 31's channel switch needs the Rust-readable half, this needs only the
+route.
 
 What to get right when it lands:
 
@@ -929,3 +935,98 @@ F3 describes it. Two things it leaves:
   set — a second observer on the same query key, at its own cadence, taking the project path as an
   argument rather than reading the active project — is what item 1 should inherit rather than
   re-decide.
+
+## 31. Rework the release process — smooth, gapless, and two channels
+
+**User ask, 2026-08-17**, immediately after cutting v0.9.0 by hand. Two halves: make the existing
+process leave nothing to remember, and add an **alpha** channel beside **production** that builds
+often and on its own.
+
+Written from having just done it end to end, so the gaps below are observed rather than imagined.
+
+### 31a. What the current process actually leaves to a human
+
+The pipeline works — `release.yml` is tag-driven, rewrites the three version fields from the tag,
+and drafts a release with signed bundles plus `latest.json`. What it does not do is anything about
+the steps *around* it:
+
+- [ ] **Nothing enforces "tag a commit Quality has passed".** `release.yml` says so in its own
+      header and `quality.yml` says it "deliberately does NOT gate the release". So the guarantee
+      is a human remembering to look — cutting v0.9.0 meant polling `gh run list` and waiting
+      before tagging. A tag push should **verify the commit has a green Quality run and fail loudly
+      if not**, rather than building an unverified commit and finding out later.
+- [ ] **The version fields are never bumped, and something in the repo now reads them.** All three
+      sit at `0.1.0`; the tag rewrites them at build time. `release.yml` argues for that
+      deliberately — "no bump commit to forget, no chance of a tag disagreeing with a file" — and
+      that reasoning still holds. **But the cost landed the same day it was written about**: the
+      crash screen (F17) reads the version through a Vite `define`, so every dev build claimed to
+      be `0.1.0` until it was taught to say `(untagged dev build)`. Decide it properly rather than
+      per-consumer: either the tag stays the only truth and *anything* reading the version handles
+      the placeholder, or a real bump lands (with the "forgot to bump" failure automated away).
+      **The user asked for the bump**, so the burden is now on the tag-only scheme to justify
+      itself.
+- [ ] **There is no `CHANGELOG.md`.** `DONE.md` is the de facto source and the GitHub release body
+      is hand-written after the fact each time — `generateReleaseNotes: true` produces notes that
+      then get replaced. Either derive the notes from `DONE.md` or keep a changelog; writing them
+      twice is the current state.
+- [ ] **Publishing is manual, and should stay manual for production.** The draft exists so a
+      half-finished matrix cannot publish a release missing a platform. Keep that. It interacts
+      with channels below — alpha is exactly the case where you do *not* want a human in the loop.
+- [ ] **`gh release edit --notes-file` reports a stale `untagged-…` URL** on a draft. Harmless, but
+      it looks like it edited the wrong thing; worth a note wherever this gets written down so the
+      next person doesn't chase it.
+- [ ] **The macOS smoke pass has still never happened** — that is item 8, not this item, but a
+      release process that has never once been exercised on one of its two target platforms is the
+      real gap and this item should not pretend to close it.
+
+### 31b. Channels — and the constraint that decides the whole design
+
+**⛔ The obvious implementation is broken, and it is written down in `release.yml` already.** The
+action sets `prerelease: false` *deliberately*, because GitHub's `/releases/latest` — which the
+updater endpoint resolves through — **skips prereleases entirely**. So "mark alpha releases as
+prerelease" would leave every alpha user polling a 404 forever. Alpha cannot live at
+`/releases/latest/download/latest.json`. That is the first thing to solve, not a detail.
+
+Plausible answers, to be chosen rather than assumed:
+
+- a **moving `alpha` tag** with a fixed asset URL (`/releases/download/alpha/latest.json`), which
+  sidesteps `latest` entirely and lets alpha releases be marked prerelease honestly;
+- a manifest hosted outside releases (GitHub Pages / a branch), decoupling the channel from
+  GitHub's release semantics.
+
+**Verified about Tauri's updater (2026-08-17, v2 docs) so nobody designs against the wrong model:**
+
+- There is **no built-in channel concept**. The endpoint's dynamic variables are exactly
+  `{{current_version}}`, `{{target}}` and `{{arch}}` — there is no `{{channel}}`.
+- Endpoints can be set **at runtime** via `updater_builder().endpoints(...)`, and the docs give
+  channel-switching as the example use. **This is the good news and it should shape the design:**
+  one build can serve both channels, with the channel a *preference* rather than a separate
+  artifact. That avoids two build matrices and two download pages.
+- Default comparison is `update.version > current`. So **leaving alpha for production is a
+  downgrade and will not happen by itself** — it needs `version_comparator` overridden, or the user
+  reinstalling. Decide what "switch back to stable" means before shipping the switch.
+
+Consequences to settle:
+
+- [ ] **Where does the channel live?** If it is a preference, that is **item 4's settings route** —
+      and it is a `get_setting`/`set_setting` customer, which matters because item 20's
+      disqualification left the Rust-readable half with only one caller. This item would restore
+      the argument for building it.
+- [ ] **Alpha versioning.** The manifest `version` must be valid SemVer. `0.9.1-alpha.3` sorts
+      correctly above `0.9.0`; a date-based scheme needs checking against the comparator, not
+      assumed. Whatever is picked has to keep alpha ahead of production without ever overtaking the
+      *next* production release.
+- [ ] **"Builds more often and automatically" — how often?** Every push to `main` is the literal
+      reading and means a ~12-minute two-platform build per commit (seven commits landed today
+      alone). A nightly cron that skips when nothing changed is far cheaper and probably what is
+      actually wanted. Decide, and state it, because this is the line item that costs CI minutes.
+- [ ] **Does alpha gate on Quality?** It should — an automatic channel that ships red commits is
+      worse than no channel. Same mechanism as 31a's first bullet.
+- [ ] **The app should say which channel it is on.** An alpha build that looks identical to a
+      production one produces bug reports nobody can place. The `DEV` pill in `TopBar` is the
+      existing precedent for this kind of marker, and the crash report (F17) already carries the
+      version — it should carry the channel too.
+
+**Not in scope, deliberately:** macOS code signing / notarisation. It is a real gap (the `.dmg` is
+unsigned and Gatekeeper blocks it until quarantine is cleared) but it is an Apple-account problem,
+not a process one, and folding it in here would stall everything else.

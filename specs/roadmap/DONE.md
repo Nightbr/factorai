@@ -3,7 +3,7 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
-- **JSON is highlighted in the file viewer** — 2026-08-17, user ask. It rendered as unhighlighted
+- **JSON is highlighted in the file viewer** — 2026-08-17, user ask, shipped in v0.9.0. It rendered as unhighlighted
   plain text with `Plain Text` in the footer, and the cause is worth keeping because the obvious
   fix is a trap. `basic-languages` carries ~80 Monarch grammars and **JSON is the one common
   language missing from it** — css, html, javascript and typescript are all there, but JSON ships
@@ -31,7 +31,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   import), and it goes in `optimizeDeps.include` like its two siblings or Vite reloads the page the
   first time a `.json` is opened.
 
-- **A git branch badge in the session header** — 2026-08-17, user ask. `GitBranch` glyph plus the
+- **A git branch badge in the session header** — 2026-08-17, user ask, shipped in v0.9.0. `GitBranch` glyph plus the
   branch name, muted, no border, no background, between the project name and the session title.
   `git_status` already returned `branch`, so the data was free — the fetch was not.
 
@@ -49,7 +49,8 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   carries no head SHA to tell them apart, so it stays quiet rather than guessing "detached" — a
   short SHA would need a new field.
 
-- **A root error boundary, and a crash screen you can act on** — 2026-08-17, user ask. There was no
+- **A root error boundary, and a crash screen you can act on** — 2026-08-17, user ask, shipped
+  in v0.9.0. There was no
   `ErrorBoundary` and no `componentDidCatch` anywhere in the repo, and no `errorComponent` on the
   root route: a throw during render unmounted the tree and left an **empty window** — no message,
   and in a desktop app no address bar to reload from.
@@ -73,7 +74,8 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   `define` rather than `getVersion()`, so the crash path doesn't depend on the Tauri bridge still
   working.
 
-- **`Button`'s size scale is a desktop scale now** — 2026-08-17, TODO item 23, user ask. `default`
+- **`Button`'s size scale is a desktop scale now** — 2026-08-17, TODO item 23, user ask, shipped
+  in v0.9.0. `default`
   `h-10 → h-8`, `sm` `h-9 → h-7`, `lg` `h-11 → h-9`, `icon` `10 → 8`, and the base `[&_svg]:size-4
   → size-3.5`. The numbers are not invented: they are what the app's dense surfaces were already
   overriding to by hand, which was the diagnosis — six inline overrides fighting one default.
