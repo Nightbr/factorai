@@ -55,7 +55,7 @@ same tooling versions.
 | --------------------- | --------------------------------------------------------------- |
 | Shell                 | `tauri = "2"` with `devtools` feature                           |
 | Async runtime         | `tokio` (full)                                                  |
-| Plugins               | `tauri-plugin-shell`, `tauri-plugin-dialog`, `tauri-plugin-fs`, `tauri-plugin-process`, `tauri-plugin-store`, `tauri-plugin-updater`, `tauri-plugin-clipboard-manager` |
+| Plugins               | `tauri-plugin-shell`, `tauri-plugin-dialog`, `tauri-plugin-fs`, `tauri-plugin-process`, `tauri-plugin-updater`, `tauri-plugin-clipboard-manager` |
 | DB                    | `rusqlite` (bundled SQLite, FTS5 feature)                       |
 | PTY                   | `portable-pty` (cross-platform)                                 |
 | File watching         | `notify = "6"` (debounced)                                      |
@@ -134,10 +134,15 @@ action.
 
 ## Configuration boundaries
 
-- **Per-user store** (`tauri-plugin-store`): UI prefs — theme, diff mode,
-  sidebar width, last-opened project, font size.
+- **localStorage**, through zustand's `persist`: **layout state** in
+  `panelStore` / `sidebarStore` / `zoomStore` (widths, open/closed, which tab,
+  zoom) and **user preferences** in `prefsStore`. Synchronous, so nothing paints
+  a default first and corrects itself. `tauri-plugin-store` was the documented
+  answer here and is **removed** — see
+  [ADR-0013](../docs/adr/0013-preferences-storage-split.md).
 - **SQLite** (`~/.local/share/dev.factorai/factorai.db` on Linux,
   equivalent on mac/win via `app_data_dir`): session index, FTS, derived
-  metadata.
+  metadata — and the `settings` table, which holds **the settings Rust reads**
+  (F11). "Who reads this?" is what decides between the two.
 - **Read-only mirrors of `~/.claude/`**: never written to. CLAUDE.md edits
   are an explicit exception (see `05-features.md`).

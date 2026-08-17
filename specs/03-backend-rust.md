@@ -127,9 +127,10 @@ write_claude_md(project_path: String, contents: String) -> ()
 list_plans(project_path: String) -> Vec<PlanRef>
 read_plan(path: String) -> String
 
-// settings — PLANNED, not registered yet (roadmap item 4).
-get_setting(key: String) -> Option<JsonValue>
-set_setting(key: String, value: JsonValue) -> ()
+// settings (F11) — PLANNED, not registered yet (roadmap item 4). The key is a
+// mirrored union, not a free string; the value is a String the caller parses.
+get_setting(key: SettingKey) -> Option<String>
+set_setting(key: SettingKey, value: Option<String>) -> ()
 ```
 
 ## Tauri events (Rust → JS only)
@@ -516,6 +517,54 @@ two-value string union that F13's viewer plumbing already depends on, and turnin
 it into a string-or-object union to carry a SHA churns every existing call site
 and both sides of a hand-mirrored type (§ IPC) to serve one new caller. `None`
 follows `git_blob`'s rule — a file absent at that commit is an answer.
+
+### `settings`
+
+Two commands over the `settings` table migration `0001` created, backing F11's
+Rust-readable half. Preferences the renderer alone reads do **not** come through
+here — they live in `prefsStore` on localStorage (ADR-0013).
+
+`get_setting(key) -> Option<String>` and `set_setting(key, value)`.
+
+**The key is a mirrored union, not a `String`.** `SettingKey` is a Rust enum with
+`#[serde(rename_all = "camelCase")]` and a hand-written TS union beside it, the same
+pattern `GitRev`, `GitGroup` and `GitRefKind` follow (§ IPC). A free-form string key
+is `any` wearing a different hat: nothing catches a typo, a misspelled key silently
+reads as "unset", and "what settings exist?" becomes a grep instead of a type. Two
+commands still scale to any number of keys — which is the reason not to write one
+typed command per setting.
+
+**The value is a `String`, and `None` means unset.** Not a JSON value: every key so
+far is a scalar, and the one thing a JSON column would buy — a structured
+preference — is exactly what should live in `prefsStore` instead. `set_setting(key,
+None)` deletes the row, which is how the F11 Claude section clears an override and
+returns to auto-detection. That distinction matters: an empty string is a *set*
+value that happens to be empty, and would break the probe.
+
+Keys, as of F11:
+
+| `SettingKey` | Read by | Notes |
+| --- | --- | --- |
+| `claudeBinaryPath` | `find_claude_binary` | Absolute path. Unset → the three-tier probe |
+
+Roadmap item 31's release channel is the second key and the reason this half ships
+now rather than waiting for a second caller.
+
+**`find_claude_binary` takes the override as a parameter.** Its signature becomes
+`find_claude_binary(override: Option<&Path>) -> AppResult<PathBuf>`, checked before
+the three tiers, and `check_cli(override)` takes it too. Two things follow, and both
+are the point:
+
+- **Every** caller honours the override, so the F11 Claude section cannot report
+  "not installed" while spawning works. Reusing `TerminalManager`'s existing
+  `binary_override` field would have done exactly that, since `check_cli` calls the
+  finder directly.
+- `claude_cli.rs` gains **no** database dependency — the caller resolves the setting
+  and passes a path, so the module stays a pure function of its input and its tests
+  stay as they are.
+
+`TerminalManager::binary_override` keeps its current meaning (a test seam) and is
+not overloaded to carry a user setting.
 
 ## State management
 

@@ -44,7 +44,7 @@ apps/desktop/src/
 │   ├── projectsStore.ts
 │   ├── sessionStore.ts      # active session + side-panel state
 │   ├── terminalStore.ts     # terminal handle ↔ session mapping
-│   └── prefsStore.ts        # persisted via tauri-plugin-store
+│   └── prefsStore.ts        # user preferences, localStorage (ADR-0013)
 ├── hooks/
 │   ├── useActiveProject.ts  # project the current route is about
 │   └── useFileViewer.ts     # ?file= — which file the viewer shows
@@ -207,10 +207,14 @@ type PanelState = {
 };
 ```
 
-`open` and `width` round-trip through zustand's `persist` middleware into
-localStorage — not `tauri-plugin-store` — so browser-only dev and the
-Playwright suite exercise the same code path. They move behind `prefsStore`
-when that lands (`sidePanelWidth` below is the same preference).
+`open`, `width` and the tab round-trip through zustand's `persist` middleware
+into localStorage, so browser-only dev and the Playwright suite exercise the same
+code path.
+
+**They do not move to `prefsStore`** — corrected 2026-08-17. This used to say they
+migrate "when that lands", and F11 drew the line differently: a width you *dragged*
+is layout, not something you set in a settings page (ADR-0013). What leaves is
+`diffInline`, which is a genuine preference that was parked here.
 
 Expanded paths are per project and deliberately not persisted: a path that
 existed last session may be gone, and rehydrating a tree of stale paths is
@@ -220,12 +224,25 @@ a project's tree renders, distinguishing "never seeded" (`undefined`) from
 
 ### `prefsStore`
 
-Persisted via `tauri-plugin-store` (`prefs.json`). Keys:
-- `theme`: 'system' | 'light' | 'dark'
-- `diffMode`: 'inline' | 'split'
-- `fontFamily`, `fontSize`
-- `lastProjectId`
-- `sidebarWidth`, `sidePanelWidth`
+**User preferences only**, persisted to localStorage as `factorai.prefs` — the
+things a human chose in the settings modal, as opposed to layout they dragged
+(ADR-0013, F11).
+
+Rewritten 2026-08-17. The earlier key list was written before any of it existed and
+has not survived contact: `theme` is deferred to its own roadmap item (nothing sets
+`data-theme` yet), `fontFamily`/`fontSize` were never specced anywhere else,
+`lastProjectId` is not a preference and no feature asked for it, and the two widths
+stay in their layout stores.
+
+Keys, as of F11:
+
+- `diffInline: boolean` — the diff viewer's default, arriving from `panelStore`
+  with a one-time read-across.
+- `confirmCloseSession: boolean` — default `true` (roadmap item 22).
+- `confirmMiddleClickTab: boolean` — default `true` (roadmap item 22).
+
+Settings Rust must read are **not** here; they go through `get_setting` /
+`set_setting` into the SQLite `settings` table.
 
 ## TanStack Query usage
 

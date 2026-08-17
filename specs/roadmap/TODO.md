@@ -27,8 +27,10 @@ is where it landed, not a statement that it outranks M4's remainder.
 Also added 2026-08-16, appended as **items 22–25** because numbering here is append-only.
 **Item 25 shipped the same day** — see [`DONE.md`](./DONE.md); it redefined what a project is,
 which is what unblocked removing one and left the seam a second agent will need. **Item 23 shipped
-2026-08-17.** 22 and 24 remain: a confirm preference (blocked on item 4) and a `DESIGN.md` — and
-24 is now the readier of the two, since 23 produced the concrete numbers it should start from.
+2026-08-17**, and **item 22 was folded into item 4** the same day: its confirm switches are F11's
+Confirmations section, since it was blocked on that surface and nothing else. So of those four only
+**24** (`DESIGN.md`) remains, and it is ready — item 23 produced the concrete numbers it should
+start from.
 
 Added 2026-08-17 as **items 29–30**, both user asks, **both shipped the same day**. What each
 leaves behind is in its entry: per-surface error boundaries under 29, and a `head` field on
@@ -44,6 +46,12 @@ Added 2026-08-17 as **item 31**: rework the release process, plus alpha / produc
 Written straight after cutting v0.9.0 by hand, so its list of gaps is observed rather than
 imagined — and it puts the **version bump** question back on the table, which `release.yml`'s
 tag-only scheme had settled the other way.
+
+Added 2026-08-17 as **item 32**, split out of item 4 during F11's interview: the **light theme**.
+It came out because it is three unbuilt things rather than a settings row — nothing sets
+`data-theme`, Monaco has one theme, and Q8's xterm mapper was specced and never built — and burying
+that inside item 4 is how item 4 never lands. Item 4 owns the place to put the control; 32 owns the
+theme.
 
 One thing item 25 leaves for **item 3**: `ContextMenu` now exists in `@factorai/ui`, built for the
 sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
@@ -105,65 +113,71 @@ unanswered question item 19 has: *which* session, when a project can have severa
 none running. Don't ship the floor as if it were the feature; if it ships at all it ships as a
 stopgap that says so.
 
-## 4. M5 — Settings route (F11) and a real `prefsStore`
+## 4. M5 — Settings (F11) and a real `prefsStore`
 
-Several items above want somewhere to put a preference, and there is nowhere: `panelStore` is
-zustand-over-localStorage, and `tauri-plugin-store` is installed on both sides (JS + Cargo) but
-unused.
+**Specified 2026-08-17, not built.** The clarify-needs pass this entry called for has happened, so
+the design is [`05-features.md` § F11](../05-features.md) and this entry is sequencing again.
+Decisions went to **Q24** (URL-driven modal, medium, explicit Save, `Cmd+,` idempotent, the entry
+point) and [ADR-0013](../../docs/adr/0013-preferences-storage-split.md) (the storage split, and
+`tauri-plugin-store` removed). **If this entry and F11 disagree, F11 wins.**
 
-- [ ] `prefsStore` on `tauri-plugin-store`, and migrate `panelStore`'s `open`/`width` onto it
-      (F12 says it migrates "when F11 lands" — this is that). Expanded tree paths stay
-      unpersisted, deliberately.
-- [ ] `/settings` route with the four sections F11 names: Appearance, Editor, Claude, Advanced.
-- [ ] `get_setting` / `set_setting` for the values Rust needs to read back — the claude binary
-      path override (the escape hatch the three-tier probe's failure message already promises)
-      and, if it ships, the projects-dir override. Note Q3 decided *against* a projects-dir
-      setting for MVP; don't quietly add it, supersede Q3 if you want it.
-- [ ] Theme + font size reach xterm through the palette→theme mapper (Q8: two themes, no picker).
+**What the interview changed, since three of these were not what the entry assumed.**
 
-**Two items wait on this one**, and they want different halves of it:
+- **Not a route — a modal, with its state in the URL.** The route's real advantages were deep
+  links, reload survival and back-closes, and all three come from the URL rather than from being a
+  route. `FileViewerModal` already proves it with `?file=`.
+- **`tauri-plugin-store` is removed, not finally used.** It is async, so it would flash default
+  widths and zoom on every launch; and once Rust-readable settings go to SQLite nothing wants a
+  JSON file. This entry's first checkbox said "`prefsStore` on `tauri-plugin-store`" — that is the
+  line that changed.
+- **`panelStore`'s `open`/`width` do not migrate.** The line is layout versus preference. Only
+  `diffInline` moves.
+- **Three sections, not four.** Appearance holds nothing until theme lands (item 32) and Advanced
+  holds nothing until item 31's channel exists.
+- **Item 22 folds into this item** rather than following it — see below.
 
-- **item 22**'s confirm-before-killing-a-session toggle needs the **route only** — renderer-side,
-  `prefsStore`, no Rust read-back;
-- **item 31**'s alpha/production channel switch needs the **Rust-readable half**, since the updater
-  endpoint is chosen in Rust at runtime.
+**What the build is, in the order it should be done.**
 
-That pairing settled a question this entry was carrying (both noted 2026-08-17). Item 20's
-disqualification had left `get_setting`/`set_setting` with a single caller — the claude-binary-path
-override — which made it fair to ask whether the Rust half should wait for a second one. Item 31 is
-that second caller, so **it ships with this item** rather than later. The renderer-side surface is
-still what everything is actually blocked on.
+- [ ] **Rust first.** `SettingKey` as a mirrored union, `get_setting`/`set_setting` over the
+      `settings` table migration `0001` already created, and `find_claude_binary(override)` +
+      `check_cli(override)` so **every** caller honours the override. Tests: round-trip, `None`
+      deleting the row, the override winning over the probe, and the probe still working when it is
+      absent.
+- [ ] Types in `packages/types`, plus the `cmd` wrappers and `mockInvoke` cases.
+- [ ] **Remove `tauri-plugin-store`**: both manifests and the `lib.rs` registration.
+- [ ] `prefsStore` (`factorai.prefs`), with the one-time `diffInline` read-across out of
+      `factorai.panel`, and `panelStore` to v2 dropping the key.
+- [ ] Vendor shadcn **Switch** (`@radix-ui/react-switch`, pinned exact) and add **`SettingRow`** to
+      `@factorai/ui` — label / description / control, built once so no future preference invents
+      its own row.
+- [ ] **`settingsDraft`**, pure: diff a draft against saved preferences, report which sections are
+      dirty. This is where the interesting logic goes so it is testable in vitest rather than a
+      browser.
+- [ ] The modal: `?settings=` on the root route's `validateSearch`, left nav, Save/Cancel,
+      click-outside disabled while dirty, per-section dirty dots.
+- [ ] The three sections — Claude (detected + override, validating on blur), Editor (diff default),
+      Confirmations (item 22's two switches).
+- [ ] The gear in `TopBar`, right of the tabs and left of the panel toggle.
+- [ ] **Two** `@smoke` tests: the gear opens and `?settings=editor` deep-links; Save persists and
+      Cancel discards. Everything else goes to item 10 rather than a suite already at 114 (E1).
+- [ ] **The `UpdateBadge` overflow fix** — user ask, 2026-08-17, and a real bug rather than a
+      preference: in its `ready` state it returns a flex button with three children and no
+      `min-w-0`, so it clips `ZoomControls` instead of degrading. `⟳ Update ready` with the version
+      in the tooltip, plus `min-w-0` + `truncate`. F14 has the measurements. Its own commit; it is
+      F14, not F11, and only rides along because the footer is what ruled itself out as the entry
+      point.
 
-**Neither dependent is blocked whole, and that is worth knowing before sequencing this.** Item 22
-is one switch and item 31's channel *picker* is one row — the rest of item 31 (the process work,
-the alpha manifest, the automatic builds) needs no settings surface and can land before this item
-does. So what item 4 gates is small in both cases and large only in aggregate: it is the **third
-time** a feature has arrived needing somewhere to put a preference and found nowhere. That is the
-argument for its clarify-needs pass, not the individual toggles.
+**Item 22 ships with this item.** Its two switches are the Confirmations section, and it was
+blocked on this item's *surface* and nothing else — so shipping them apart would leave a decided
+preference queued behind a page with one text field in it. It is also what proves `SettingRow`
+against a real group. Item 22's entry is now a pointer here.
 
-**The surface itself is not settled, and that is what is actually blocking them** (noted
-2026-08-16). F11 names four sections and this entry says "`/settings` route", but neither says
-**where you click to get there**, and the modal-versus-route choice was never argued — it was
-inherited. Both are cheap to decide and expensive to guess wrong, so this item wants a
-**clarify-needs pass first**, the way item 1 does. What it has to answer:
+**Item 31 is still not blocked whole.** Its channel *picker* is one row in a section that does not
+exist yet; the rest of that item — the process work, the alpha manifest, the automatic builds —
+needs no settings surface and can land in either order.
 
-- **The entry point.** Nothing in the app opens settings today. `TopBar` is the obvious home and
-  is already contested — brand, session tabs, panel toggle, and item 6 is about to put window
-  controls there. A gear in the sidebar footer (VS Code's answer) costs no top-bar width. The
-  palette (item 12) is a third route in, and a fine *additional* one, but a surface reachable only
-  by a keystroke is unfindable.
-- **Modal or route.** A route deep-links (`#/settings`), survives a reload, and holds four
-  sections without cramping — and it is cheaper here than it looks, because terminals live in
-  `terminalStore` and survive navigation, so opening settings costs you nothing you were watching.
-  A modal keeps the session visible behind it and matches `FileViewerModal`, but has no URL and
-  gets tight fast. Decide it, then say so in F11 rather than leaving the next reader to infer it
-  from a route file.
-- **`Cmd/Ctrl+,` is already in item 5's table**, which quietly assumes the answer: a binding that
-  toggles a modal and a binding that navigates to a route behave differently when you press it
-  twice. Land the two decisions together.
-- **What a section looks like** — a label / description / control row is the unit, and the
-  Confirmations group in item 22 is the first real customer for it. Building the row primitive
-  once here is what stops every future preference inventing its own layout.
+**Size:** roughly 250–350 lines of Rust, ~40 of types, ~100 in `@factorai/ui`, ~650 in the
+renderer, plus the docs. Two to four commits, smaller than F18.
 
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 
@@ -176,7 +190,11 @@ swallows a keystroke breaks typing to Claude.
 - [ ] `Cmd/Ctrl + N` → new session in the active project. F6 shipped the buttons and explicitly
       left this unwired; it's the cheapest win in the table.
 - [ ] `Cmd/Ctrl + K` (focus search), `Cmd/Ctrl + W` (kill active terminal),
-      `Cmd/Ctrl + ,` (settings — needs item 4).
+      `Cmd/Ctrl + ,` (settings). **Item 4 deliberately does not wire this one** and leaves it here:
+      adding a seventh one-off `useEffect` that this pass would immediately delete is the churn this
+      item exists to end, and it would have to get the terminal-focus rule right on its own. Per
+      Q24 the binding **opens and focuses, and does nothing when settings is already open** — both
+      target platforms treat that key as idempotent, and the modal already has two dismissals.
 - [ ] A binding for the file-tree toggle. **`Ctrl+B` is unavailable** — readline's back-a-char
       and tmux's prefix (Q15). Pick something that survives a terminal-focused window, or accept
       that the toggle stays mouse-only and say so in F12.
@@ -581,70 +599,29 @@ because F7 already commits to them:
   because its path scope is static and ours is "whatever project you opened". SVG is still
   source-only, deliberately.
 
-## 22. Session header — the confirm preference (F3 / F5)
+## 22. Session header — the confirm preference — folded into item 4 (2026-08-17)
 
-**The `X` + shared-dialog half shipped 2026-08-16** — see [`DONE.md`](./DONE.md). The header's
-`Stop` is now an `IconButton` + `X` opening `components/dialog/CloseSessionConfirm`, the same
-component a tab's `×` opens. F3, F5 and F16 describe it. What is left is the preference below,
-which was already split out as blocked and stays that way.
+**The `X` + shared-dialog half shipped 2026-08-16** — see [`DONE.md`](./DONE.md). The preference
+half **is now item 4's Confirmations section**, not a separate item: it was blocked on item 4's
+surface and nothing else, and shipping the two apart would leave a decided preference queued behind
+a settings page with one text field in it. It is also the group that proves `SettingRow` against
+something real. Behaviour is specced in [`05-features.md` § F11](../05-features.md); everything
+this entry had decided is carried there.
 
-**A preference to turn the confirm off — decided 2026-08-16. ⛔ Blocked on item 4.** Whether
-killing a session asks becomes the user's call, **on by default**.
+What must not be lost in the move, since it is reasoning rather than design:
 
-What blocks them is not the toggle logic, which is trivial, but that **there is nowhere to put
-it**: the settings surface is undecided beyond F11 naming four sections. Where its entry point
-lives, and whether it is a modal or a route, are open (see item 4) — and a preference whose home
-is unknown cannot be specced, only guessed at. This one is **renderer-only** — no
-`get_setting`/`set_setting`, just `prefsStore` — so item 4's *surface* is the whole of the
-dependency; none of its Rust half matters here. That distinction is what makes this the cheaper of
-item 4's two dependents: item 31's channel switch needs the Rust-readable half, this needs only the
-route.
-
-What to get right when it lands:
-
-- **It does not contradict § 1**, and the entry should say why rather than leave the next reader
-  to wonder. "Every irreversible action keeps its confirmation" binds *the app* — it forbids
-  factorai deciding on its own that an ask isn't worth it. A human turning it off is the fourth
-  verb in `00-overview.md` § "The operating model": setting the rules agents run under. The rule
-  stands; the human is allowed to set it.
-- **The quit dialog is not covered by it.** F5 calls the window-close confirm **mandatory** and
+- **It does not contradict § 1 of `AGENTS.md`.** "Every irreversible action keeps its confirmation"
+  binds *the app* — it forbids factorai deciding on its own that an ask isn't worth it. A human
+  turning it off is the fourth verb in `00-overview.md` § "The operating model": setting the rules
+  agents run under. The rule stands; the human is allowed to set it.
+- **The quit dialog is not covered by it.** F5 calls the window-close confirm mandatory and
   ADR-0005 makes kill-on-quit non-optional; that dialog is about losing *every* live session at
-  once and stays regardless of this toggle. Wire the preference to the per-session path only.
-- **Middle-click is the accident case, and it gets its own row** (refined 2026-08-16). The tab
-  strip routes middle-click through the confirm deliberately — *"a shortcut to the action, not a
-  way around the question"* — and unlike the `×` it has no aim to it: you can hit a tab you
-  weren't pointing at. Someone who finds the confirm tedious on a deliberate `×` may still want
-  the question on a stray wheel-click, so collapsing the two into one switch takes that answer
-  away.
-- **So it is a settings group — and exactly two switches in it** (simplified 2026-08-16), both
-  **on by default**:
-  - **closing a session with the `X`** — the header's and a tab's `×` are one row, not two. They
-    are the same gesture: a deliberate click on a close affordance you aimed at. Someone who
-    wants that question in one place wants it in the other, and splitting them buys a row of
-    settings for a distinction nobody holds.
-  - **closing a tab by middle-click** — a different gesture, per the point above.
-- **No master switch above the group.** A general "ask before killing" plus per-action overrides
-  produces a matrix with a dead cell (general on → the per-action rows do nothing) and a UI that
-  has to grey rows out to explain itself. Two peers, no hierarchy, and the group heading is the
-  only grouping there is.
-- **Quit belongs in the list as an un-switchable row.** F5 calls the window-close confirm
-  **mandatory** and ADR-0005 makes kill-on-quit non-optional, so it is not configurable — but a
-  Confirmations group that silently omits the app's most consequential confirm reads as an
-  oversight. Show it, disabled, saying it always asks.
-- **Store it as one keyed object, render it from a table.** `prefsStore` gets a `confirmations`
-  record keyed by action id, and the section renders from a `{ id, label, description, default }`
-  table so a future confirm is a row rather than a code change. **The table needs an entry rule
-  or it becomes a junk drawer**: only actions whose cost is recoverable may appear — anything an
-  ADR calls mandatory (quit) is listed and locked, and anything that writes to disk or to another
-  process is not listed at all.
-- **The `X` switch governs both call sites**, which is now one line of work rather than two: the
-  dialog is already the shared `CloseSessionConfirm`, so the preference is read once. A preference
-  that silenced the header but left the tab strip asking would be a bug wearing a setting's
-  clothes.
-- **`@factorai/ui` has no `Switch`.** The last of the three primitives these items wanted —
-  checkbox (item 25) and context menu (item 3) both landed — and like them a `@radix-ui/*` sibling
-  of packages already in the workspace. Item 4's settings route wants it regardless, so add it
-  there.
+  once. The preference wires to the per-session path only.
+- **Two switches, no master switch, both on by default.** The `X` and a tab's `×` are one row —
+  the same deliberate gesture on a close affordance you aimed at. Middle-click is the second,
+  because it has no aim to it and someone who finds the confirm tedious on a deliberate `×` may
+  still want the question on a stray wheel-click. A general switch plus per-action overrides would
+  produce a matrix with a dead cell and a UI that greys rows out to explain itself.
 
 ## 23. `Button`'s size scale — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
 
@@ -968,3 +945,29 @@ Consequences to settle:
 **Not in scope, deliberately:** macOS code signing / notarisation. It is a real gap (the `.dmg` is
 unsigned and Gatekeeper blocks it until quarantine is cleared) but it is an Apple-account problem,
 not a process one, and folding it in here would stall everything else.
+
+## 32. Light theme — make the palette that already exists actually render
+
+**Split out of item 4 on 2026-08-17**, during F11's interview, because it is a feature and not a
+row in a settings page. Nothing sets `data-theme` anywhere, so **the light palette in
+`packages/ui/src/styles/globals.css` has never rendered** — it is dead CSS that has been maintained
+in every token change since.
+
+Three unbuilt things, and the CSS is the part that is already done:
+
+- [ ] Something that sets `data-theme` — a preference in `prefsStore` (`system` / `light` / `dark`),
+      applied to `<html>`, defaulting to following `prefers-color-scheme`.
+- [ ] **A second Monaco theme.** `components/viewer/monaco.ts` defines exactly one,
+      `factorai-dark`, behind a `themeDefined` latch that assumes there will only ever be one.
+- [ ] **Q8's palette→xterm mapper, which was specced and never built.** `Terminal.tsx` hardcodes
+      `{ background: '#0c0e12', foreground: '#d4d4d8', cursor: '#e5b455' }`. Q8 decided "two themes
+      synced to the app theme via a small mapper"; the mapper does not exist, so the terminal would
+      stay dark inside a light app.
+
+**And a pass over every surface**, because a token existing is not the same as a surface being
+judged in it. F18's lane colours are the sharpest case: eight categorical hues chosen against a 16%
+background, with light values written but never once looked at. Expect real corrections there.
+
+**Where the control goes is already decided** — F11's Appearance section, which exists as a heading
+the moment this lands and is deliberately absent until then. So this item owns the theme; item 4
+owns the place to put it.
