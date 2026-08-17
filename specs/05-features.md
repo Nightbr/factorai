@@ -792,16 +792,174 @@ rate is a christmas tree, not a signal.
 
 ## F11 — Settings
 
-**Behavior.** Theme, font, claude binary path, claude projects dir
-override, font size, diff mode default.
+**Rewritten 2026-08-17** from the clarify-needs interview roadmap item 4 was
+gated on. Not built yet. The previous version of this section named a
+`/settings` route, four sections and `tauri-plugin-store`; all three are
+changed, and the reasoning is below rather than in a commit message.
 
-**UI.** Dedicated `/settings` route. Sections: Appearance, Editor, Claude,
-Advanced. All values flow into `prefsStore`, written to the plugin store.
+**The problem it solves is not "the app needs settings".** It is that **three
+features in a row have arrived needing somewhere to put a preference and found
+nowhere** — item 22's confirm toggles, item 31's release channel, and the diff
+mode default that had to be parked in `panelStore` with a comment apologising for
+it. That is what makes this worth a surface rather than three one-off toggles.
 
-**Backend.** `get_setting` / `set_setting` for anything that needs to
-influence Rust (claude binary path, projects dir override).
+### Where preferences live — three places, on purpose
 
-**Switchboard ref.** `settings-panel.js`.
+| What | Where | Why |
+| --- | --- | --- |
+| Layout state — widths, open/closed, which tab, expanded paths | `panelStore` / `sidebarStore` / `zoomStore`, localStorage | Nobody sets a panel width in a settings page; they drag it |
+| User preferences the renderer alone reads | **`prefsStore`** (`factorai.prefs`), localStorage | Synchronous, so no hydration flash |
+| Anything **Rust** must read | the SQLite `settings` table | Rust already has the pool, and it is ACID |
+
+See [ADR-0013](../docs/adr/0013-preferences-storage-split.md), which also records
+why **`tauri-plugin-store` is removed** rather than finally used.
+
+**`prefsStore` is a fourth store, not a merger of the other three.** The line is
+layout versus preference, and it is worth stating because F12 currently promises
+the opposite: its `open`/`width` were going to migrate "when F11 lands", written
+when `prefsStore` was going to be the only persisted store. They don't. A dragged
+width in a preferences file buys nothing and costs a migration.
+
+**One thing does move:** `diffInline`, which is a genuine preference that ended
+up in a layout store. It migrates with a **one-time read-across** — `prefsStore`
+adopts the value out of `factorai.panel` on first hydration, then `panelStore`
+bumps to v2 and drops the key. A boolean is small, but silently resetting a choice
+someone made is not the kind of small that is fine.
+
+### The surface
+
+**A medium modal, driven by the URL.** `?settings=claude|editor|confirmations`,
+validated on the root route exactly as `?file=` already is. That is deliberately
+both things: the modal keeps the session visible behind it and dismisses on Esc,
+and the URL gives deep links, reload/HMR survival and browser-back-closes — which
+were the only real arguments for a route.
+
+**Medium, not near-fullscreen.** `FileViewerModal` is that size because Monaco
+needs the room. Three short sections in a full-window sheet is settings floating
+in empty space.
+
+**Nav in a left column**, so Appearance and Advanced drop in later without
+reflowing a horizontal strip. Not `Tabs`: the panel's strip is three peers you
+switch between constantly, this is a table of contents.
+
+**A gear in `TopBar`**, right side, left of the panel toggle. Not the sidebar
+footer — that is already over-full (see F14), and settings is app-level chrome
+rather than session or project chrome. Item 6's window controls sit at the
+window's outer edge on both platforms, so the gear moves once by a fixed offset
+when that lands rather than competing for the same pixels.
+
+**`Cmd/Ctrl+,` is listed in § "Keyboard shortcuts" and is deliberately not wired
+by this feature.** Roadmap item 5 replaces the per-shortcut `useEffect` pattern
+with a scheme, and adding a seventh one-off that item 5 would immediately delete
+is the churn that item exists to end — it would also have to get the
+terminal-focus rule right on its own, which is item 5's hard half. The gear is the
+discoverable way in, which is the one that matters; the binding arrives with item 5.
+
+### Save, and what that makes load-bearing
+
+**An explicit Save for the whole modal, with Cancel discarding.** Nothing is
+written until you press it.
+
+- **Save is disabled until something changes**, so the button *is* the
+  unsaved-changes indicator.
+- **A dot marks any nav section holding an edit.** With three sections and two
+  coming, "something is unsaved" without "where" makes you click through the nav
+  to find it — that is the specific failure a multi-section form with one Save
+  button invites.
+- **Esc and Cancel discard silently.** Both are deliberate gestures that already
+  mean "back out", and a confirm-to-discard on top of Cancel is a small absurdity.
+- **Click-outside does nothing while dirty.** It is the one dismissal you trigger
+  by accident, reaching for the terminal behind the modal.
+
+**An honest wrinkle:** a `Switch` that flips but does not apply until Save is
+making a promise it has not kept. That is common in save-based settings and
+workable, but it is *why* the two affordances above are not decoration — they are
+what keeps the control from lying.
+
+**Save writes SQLite first**, then `prefsStore`. The fallible store gates the
+infallible one, so a failed write is a clean no-op with the draft still on screen
+and the reason attached — rather than a half-apply where the renderer's
+preferences took and the Rust-readable one didn't, with no way to tell which.
+
+### Sections — three, not four
+
+**Claude.**
+
+- The detected binary and version as read-only text, from `check_claude_cli` —
+  which has been on the bridge since M0 **with no callers at all**, so this is its
+  first consumer.
+- An override field, **empty, with the detected path as placeholder**. This is the
+  one trap in the feature: **prefilling it with the detected path would silently
+  convert "auto-detect" into a pinned path** the first time Save was pressed for
+  any unrelated reason. Then the day `claude` moves — an npm update, a version
+  manager switch — the app points at a path that no longer exists while the
+  three-tier probe that would have found it is being overridden by a value nobody
+  chose. Unset is a real state and it means "keep probing".
+- **Validates on blur** with the same `version_for()` probe the detector uses,
+  showing the version or the failure inline. An invalid path **disables Save** with
+  the reason: the point of validating before you depend on it is not writing it.
+- **Running sessions are unaffected** and the row says so. The binary is resolved
+  at spawn, so there is nothing to restart, and offering to kill live Claude
+  sessions as a side effect of editing a text field would be a strange place to put
+  that question.
+
+**Editor.** The diff-mode default (inline vs side-by-side), arriving out of
+`panelStore`.
+
+**Confirmations.** Roadmap item 22's two switches, both **on by default**: closing
+a session with the `X`, and closing a tab by middle-click. That item is blocked on
+*this* item's surface and nothing else, so the two ship together — which is also
+what gives this modal enough content to be worth opening, and what proves
+`SettingRow` against a real group rather than one text field.
+
+**Appearance and Advanced are dropped until they have content**, and F11 no longer
+claims four sections. Appearance would hold theme, which is deferred to its own
+roadmap item (below); Advanced would hold item 31's release channel, which does not
+exist yet. An empty section reads as a bug.
+
+**Theme is not here, and that is a scope decision rather than an omission.**
+Nothing in the app sets `data-theme` today, so the light palette in
+`packages/ui/src/styles/globals.css` has never rendered. A theme control is three
+unbuilt things — something to set the attribute, a second Monaco theme (only
+`factorai-dark` is defined), and Q8's palette→xterm mapper that `Terminal.tsx`
+currently hardcodes as three hex values — plus a light-mode pass over every
+surface, including F18's lane colours, which have only ever been judged on a dark
+background. That is a feature, and burying it in this one is how this one never
+lands.
+
+**Q3 still stands:** no projects-dir override. `CLAUDE_HOME` is the escape hatch,
+and adding a setting for it means superseding Q3 rather than quietly filling in the
+Advanced section.
+
+### Backend
+
+`get_setting` / `set_setting`, keyed by a **mirrored `SettingKey` union** — see
+[`03-backend-rust.md`](./03-backend-rust.md) § `settings`. Today's only key is the
+claude binary path; item 31's channel is the second.
+
+The override is read by **`find_claude_binary(override)`** rather than
+`TerminalManager`'s existing `binary_override` field. That field is documented for
+tests, and `check_cli()` calls the finder directly — reusing it would leave the
+Claude section reporting "not installed" while spawning worked fine, which is the
+one inconsistency this section must not ship with.
+
+### Edge cases
+
+- **No override set, detection failing** → the detected line says so, and the
+  field's placeholder falls back to a plain hint. This is the state the section
+  exists for.
+- **An override pointing at something that is not Claude** → rejected on blur, Save
+  disabled. It cannot be persisted.
+- **An override that was valid and later stops being** → sessions fail to spawn with
+  the existing error. The section shows the probe failing next time it is opened;
+  clearing the field restores auto-detection.
+- **A hand-edited `?settings=nonsense`** → falls back to the first section rather
+  than rendering an empty pane, the same rule `?diff=` follows for an unknown mode.
+- **Reload with unsaved changes** → the draft is gone, because the draft is not in
+  the URL. Consistent with Cancel, and the alternative is persisting state the user
+  had not committed.
+- **First run** → every preference is at its default and Save is disabled. Opening
+  and closing settings writes nothing.
 
 ---
 
@@ -885,11 +1043,19 @@ project it shows follows the route (`/projects/$id` or
 **Backend.** `list_dir(path, root?)` — see specs/03-backend-rust.md
 § `files` for the sorting, `.git` exclusion, entry cap and symlink rules.
 
-**State.** `panelStore` (zustand). `open` and `width` persist to
+**State.** `panelStore` (zustand). `open`, `width` and the tab persist to
 localStorage; expanded paths are per-project and deliberately **not**
 persisted — a path that existed last session may be gone, and rehydrating
-a tree of stale paths is worse than starting collapsed. Migrates behind
-`prefsStore` / `tauri-plugin-store` when F11 lands.
+a tree of stale paths is worse than starting collapsed.
+
+**Corrected 2026-08-17.** This used to say the store "migrates behind
+`prefsStore` / `tauri-plugin-store` when F11 lands". It doesn't, on both counts:
+`tauri-plugin-store` is removed entirely (ADR-0013), and F11 draws the line at
+layout versus preference — a width you dragged is not something you set in a
+settings page, so it stays here. What *does* leave is `diffInline`, which was
+parked here for want of anywhere better and is a real preference; it moves to
+`prefsStore` with a one-time read-across, and this store bumps to v2 to drop the
+key.
 
 **Freshness.** No watcher. Each directory query has a 15s staleTime and
 opts into refetch-on-window-focus (the app default is off), plus the
@@ -1013,7 +1179,18 @@ the session tabs took that space, F16). At rest it is a quiet, clickable
 "Checking…", then either the badge below or "Up to date" for a few seconds
 before settling back. Only a staged version earns the accent:
 
-> `⟳ v0.2.0 ready · Restart`
+> `⟳ Update ready`
+
+**The label was shortened 2026-08-17, and the reason is a bug rather than a
+preference.** It read `⟳ v0.2.0 ready · Restart`, and in that state the component
+returns a flex button with three children and no `min-w-0` — so its content sets a
+min-content width the footer cannot shrink. It wants roughly 175px beside
+`ZoomControls`, has about 156px at a 288px sidebar, and about 48px at the 180px
+floor, so it **clipped the zoom controls instead of degrading**. Now: the version
+moves into the tooltip (which also stops the label growing when item 31's channels
+make `v0.10.0-alpha.2` a plausible version), `· Restart` goes since the tooltip and
+a glowing button both already say it, and `min-w-0` plus `truncate` let it degrade
+to the icon at the narrow end rather than pushing its neighbour out.
 
 Checking and downloading are silent by design. An announcement you can't act on
 yet ("downloading 43%…") is noise beside a running agent, and the useful moment

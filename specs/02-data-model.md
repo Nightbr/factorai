@@ -292,8 +292,18 @@ nothing else — it exists so a migration runs once.
 | key   | TEXT PK |                             |
 | value | TEXT    | JSON-encoded scalar / blob  |
 
-For things that need ACID and queries. UI prefs go in `tauri-plugin-store`
-instead (file-backed JSON, simpler).
+For things that need ACID and queries — and, since F11, **specifically for the
+settings Rust reads**. Written through `get_setting` / `set_setting` keyed by a
+mirrored `SettingKey` union, not a free string (`03-backend-rust.md` § `settings`).
+
+**Corrected 2026-08-17.** This used to end "UI prefs go in `tauri-plugin-store`
+instead (file-backed JSON, simpler)". That plugin is **removed** — it was a
+dependency in both manifests and a registered plugin with no callers on either
+side, and its async API would have hydrated a tick after first paint, flashing
+default widths and zoom on every launch. UI preferences live in `prefsStore` on
+localStorage, which is synchronous. See
+[ADR-0013](../docs/adr/0013-preferences-storage-split.md) for the full reasoning
+and for what "who reads this?" now decides.
 
 ### Indexes
 

@@ -17,11 +17,18 @@ decision, not an edit.
 **Status 2026-08-17:** **C1 is resolved and deleted** — the F18 clarify-needs
 interview amended Q18 to three tabs and recorded the width question it does *not*
 answer as Q22, so nothing about the tab strip is contradictory any more. Building
-F18 then added **C5**, and re-measured E1's numbers. Four left.
+F18 then added **C5** and re-measured E1's numbers, and F11's interview added
+**C6**. Five left.
+
+Worth noting what those two have in common: **both were found by reading the code a
+spec described, not by reading specs against each other.** C5 and C6 are each a
+claim that was true when written and quietly stopped being true, and neither would
+have surfaced from a doc-only sweep. That is an argument for compiling this file
+during feature work rather than in scheduled passes.
 
 ---
 
-## Still open — four decisions
+## Still open — five decisions
 
 Everything else compiled on 2026-08-15 has been resolved and deleted, per the
 rule above. What remains needs a call rather than an edit.
@@ -39,6 +46,26 @@ looking at half the callers. → probably a `tsconfig.tests.json` plus a
 `typecheck:tests` task in `turbo.json` and CI; needs a call on whether that runs
 as its own task or the app's `include` grows, and on how many existing errors it
 surfaces (not yet measured).
+
+**C6 — Two claims about the claude-binary escape hatch that the code does not
+make.** Found 2026-08-17 during F11's interview.
+
+- Roadmap item 4 described the path override as *"the escape hatch the three-tier
+  probe's failure message already promises"*. It promises nothing:
+  `find_claude_binary` fails with a bare `AppError::NotFound("claude CLI not
+  found")`, with no mention of a setting, and there is **no settings tier at all**
+  in the probe — F11 adds one.
+- Q2 says the probe result is *"cached in the `settings` table"*. Nothing writes
+  that table, and `check_cli()` re-probes on every call. The `claude.version` the
+  migration's own comment names has never been stored.
+
+Neither is load-bearing today, and F11 makes the first one true. → decide whether
+Q2's caching claim is a **plan that was dropped** (then say so where Q2 can be
+read, since ADRs and settled questions are what agents trust) or a **plan still
+wanted** (then it is a second `SettingKey` and belongs on item 4's list). Not
+folded into F11 unasked, because caching a probe result has its own
+invalidation question — when does a cached path get re-probed? — and that is a
+decision, not an edit.
 
 **C3 — Read-only, except where we plan to write.** ADR-0009 states
 *"Everything is read-only. No staging, no discard, no commit"*. TODO item 19

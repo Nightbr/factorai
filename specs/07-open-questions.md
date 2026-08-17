@@ -396,3 +396,56 @@ the *pitch* and not the *assignment* — the same lane indices render at 6px or
 12px. If phase 2 ever wants a genuinely different topology on screen, that is the
 point to revisit this, and it would be a new question rather than an edit to
 this one.
+
+## Q24 — What shape is the settings surface? → **URL-driven modal, medium, explicit Save**
+
+**Decision (2026-08-17, from the F11 interview).** A **modal**, not a route, with
+its open state and section in the **URL** as `?settings=claude|editor|confirmations`.
+Medium width with the section nav in a left column. Changes are committed by an
+explicit **Save**; Cancel discards.
+
+This question existed because F11 named a `/settings` route and nobody had ever
+argued for it — the roadmap's word was "inherited". Four things were decided, and
+the reasoning matters more than the answers because each one has a cheaper-looking
+alternative.
+
+**Modal *and* URL, rather than modal or route.** The route's real advantages were
+never about being a route: they were deep links, surviving a reload, and
+browser-back closing the thing. All three come from the URL, and `FileViewerModal`
+already proves the pattern with `?file=`. So the modal keeps the session visible
+behind it and dismisses on Esc, and none of the route's benefits are given up. The
+root route already has `validateSearch`, so the second param is nearly free.
+
+**Medium, not near-fullscreen.** `FileViewerModal` is near-fullscreen because Monaco
+needs the room. Three short sections in a full-window sheet is settings floating in
+empty space.
+
+**An explicit Save, which was the contested one.** A settings *page* conventionally
+applies immediately, and that was the recommendation; the call went the other way,
+and the consequences were then designed rather than discovered:
+
+- Save is disabled until something changes, so the button is the dirty indicator.
+- A dot marks any nav section holding an edit — with three sections and two more
+  planned, "something is unsaved" without "where" makes you hunt through the nav.
+- Esc and Cancel discard silently; **click-outside does nothing while dirty**,
+  because it is the only dismissal you trigger by accident.
+- Save writes the SQLite half **first**, so a failure is a clean no-op rather than a
+  half-apply nobody can diagnose.
+
+The accepted wrinkle: a `Switch` that flips without applying is making a promise it
+has not kept until Save. Common in save-based settings, and the two affordances
+above are what keep it honest rather than being decoration.
+
+**`Cmd/Ctrl+,` opens and focuses; pressing it again does nothing.** Both target
+platforms treat that key as idempotent for preferences, and the modal already has
+two dismissals — a third gesture that also closes would give one key two meanings
+depending on state you may not be looking at. **The binding is not wired by F11**:
+roadmap item 5 replaces the per-shortcut `useEffect` pattern, and a seventh one-off
+that item 5 would immediately delete is the churn that item exists to end.
+
+**The entry point is a gear in `TopBar`**, not the sidebar footer. The footer was the
+first recommendation (it is where the app's other app-level controls live) and was
+rejected as already over-full — which turned out to be literally true and a bug: see
+F14's note on the update badge clipping `ZoomControls`. Settings is app-level chrome
+rather than session or project chrome, and item 6's window controls sit at the
+window's outer edge, so the gear moves once by a fixed offset rather than competing.
