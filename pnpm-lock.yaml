@@ -103,7 +103,7 @@ importers:
         version: 5.0.12(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
     devDependencies:
       '@iconify-json/simple-icons':
-        specifier: ^1.2.93
+        specifier: 1.2.93
         version: 1.2.93
       '@iconify-json/vscode-icons':
         specifier: 1.2.72
