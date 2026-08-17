@@ -3,6 +3,38 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The mark, and every app icon — part of roadmap item 18, spec `09-branding.md`** — 2026-08-17,
+  user ask. A notched dark housing with an amber F cut into it. The housing reads as a machine
+  from above and as a chip package, which is the two halves of the name without either being
+  spelled out; three glyphs never fit a 16px square. Construction discipline from Linear (one flat
+  colour per element, no outline, no gradient, no bevel), motif and palette from Factorio.
+
+  **The ports are the load-bearing part.** Three notches on each side, none top or bottom, and
+  they cut to *transparency* rather than to a colour. That is what makes the outline unmistakable
+  at 16px, because a dock icon is judged as a silhouette before it is judged as a drawing — and it
+  is why B6 forbids painting anything behind them. It also means the mark is untested against a
+  badly-composited dock, which is now the interesting half of what item 18 still has open.
+
+  **The F is drawn, not set.** Every installed face was tried inside the housing, matched on cap
+  height rather than point size — the only fair comparison, since every face sets its own ratio —
+  and they all lost the same way: a text face is drawn to sit in a line with neighbours on both
+  sides, so alone in a square it leaves air and reads as an F in a font. Inter Black came closest
+  by being the widest. Drawing it also retires the font-licensing question.
+
+  Three of the numbers in B2 are eye corrections and will read as errors to anyone with a ruler:
+  bars lighter than the stem (1.95/1.85 against 2.5, because a horizontal always reads heavier
+  than a vertical), the mid bar lighter than the top bar, and the whole letter nudged 0.3 cells
+  right of box centre because an F is left-heavy. The single 45° cut on the mid-arm terminal is
+  the mark's one piece of character, borrowed from the primitive Linear builds its whole identity
+  from; at 16px it degrades to a taper, which is the right failure mode.
+
+  **Two things worth keeping.** `tauri icon` takes the **SVG** directly, and should — item 18 and
+  `06-milestones.md` both said to feed it a 1024px PNG, but it rasterises each size natively from
+  vector instead of downsampling one bitmap, and on a grid-aligned mark that is visible at 32px.
+  And the first cut of the ports was asymmetric — 1.1 cells deep on the left, 1.5 on the right,
+  from an off-canvas offset trick — which nobody notices until they do, and then cannot stop
+  noticing. Both are recorded in `09-branding.md`.
+
 - **The git graph — roadmap item 1, spec F18** — 2026-08-17, user ask. Interviewed, specified and
   built the same day, in four commits: the spec, then the Rust half, then the primitives, then the
   rail. The tab strip is now `Files | Changes | Graph`, which amends Q18.
