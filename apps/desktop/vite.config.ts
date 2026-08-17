@@ -18,6 +18,11 @@ export default defineConfig({
 		include: [
 			'monaco-editor/editor/editor.api',
 			'monaco-editor/basic-languages/monaco.contribution',
+			// JSON's tokenizer, which the basic set leaves out — see the note in
+			// components/viewer/monaco.ts. Same prebundle reasoning as the two
+			// above: discovered lazily, it would reload the page the first time
+			// someone opened a .json file.
+			'monaco-editor/languages/features/json/tokenization',
 		],
 	},
 	server: {

@@ -532,6 +532,37 @@ first host.
   `automaticLayout: true` — Monaco measures its container on create, and
   inside a dialog that is mid-open-animation that measures zero.
 
+**Language detection resolves through Monaco's own registry** — extension,
+then exact filename (`Dockerfile`, `Makefile`) — rather than a second
+hand-written table beside `lib/fileIcon.ts`. The footer's label is Monaco's
+own alias, so `rust` reads `Rust`.
+
+**JSON is registered by hand, and the reason is worth keeping** (fixed
+2026-08-17). `basic-languages` carries ~80 Monarch grammars and JSON is the one
+common language missing from it — css, html, javascript and typescript are all
+there, but JSON ships solely as a language *service*. So `.json` was absent
+from the registry entirely, fell through to `plaintext`, and every JSON file
+rendered unhighlighted with `Plain Text` in the footer.
+
+The obvious fix does not work: importing the JSON feature's `register` installs
+the full mode, whose `jsonMode` statically imports the code-action, hover and
+completion providers, which pull editor contributions `editor.api` carries no
+services for — the viewer then dies on open with `[createInstance]
+CodeActionController depends on UNKNOWN service actionWidgetService`. Turning
+the features off via `setModeConfiguration` does **not** help, because ESM
+imports are static: the modules load whether or not their providers are used.
+
+So `monaco.ts` registers the language itself and attaches only
+`createTokenizationSupport`, the one piece free of the editor's DI graph — it
+imports nothing but `jsonc-parser` and returns a plain `TokensProvider`. That
+is exactly the syntax highlighting wanted and nothing else: no worker, no
+IntelliSense, no red squiggles on a file the reader cannot edit anyway. It is
+registered with `supportComments: true` and with `.jsonc` / `.json5` added to
+Monaco's extension list, so a commented config tokenises its comments as
+comments. **This was invisible to both `tsc` and the smoke suite** and was
+found by opening a `.json` file in the dev app; `tests/smoke/file-viewer.spec.ts`
+now guards it.
+
 **Markdown.** A `.md` file opens **rendered** (`react-markdown` +
 `remark-gfm`, so GFM tables work), with a footer toggle to "View source" and
 back. Raw HTML in the document is *not* rendered — react-markdown's default —

@@ -338,4 +338,24 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByText(/File not found/i)).toBeVisible();
 		await expect(viewer.getByText(/tree may be out of date/i)).toBeVisible();
 	});
+
+	/**
+	 * JSON is the one common language `basic-languages` does not register, so
+	 * before this it resolved to `plaintext` and the footer said `Plain Text` —
+	 * a whole file type silently unhighlighted. `components/viewer/monaco.ts`
+	 * registers it by hand; this is the guard that it stays registered, and that
+	 * the two dialect extensions we add on top of Monaco's list keep working.
+	 */
+	test('@smoke a .jsonc file is recognised as JSON, not plain text', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'knip.jsonc' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+		await expect(viewer.getByText('JSON', { exact: true })).toBeVisible();
+		await expect(viewer.getByText('Plain Text')).toHaveCount(0);
+	});
 });

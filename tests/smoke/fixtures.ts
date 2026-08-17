@@ -253,6 +253,10 @@ export function fixtureWithFileTree(): TestFixture {
 				entry(root, 'vendor', { isDir: true, isSymlink: true, symlinkOutsideRoot: true }),
 				entry(root, 'Cargo.toml'),
 				entry(root, 'README.md'),
+				// `.jsonc`, not `.json`, so it covers both halves at once: JSON is
+				// the one language `basic-languages` omits, and the two dialect
+				// extensions are ours rather than Monaco's.
+				entry(root, 'knip.jsonc'),
 				entry(root, 'logo.png'),
 				entry(root, 'mark.svg'),
 				entry(root, 'broken.png'),
@@ -286,6 +290,10 @@ export function fixtureWithFileTree(): TestFixture {
 				].join('\n'),
 			),
 			[`${root}/docs/guide.md`]: contents(`${root}/docs/guide.md`, '# Guide\n\nDeeper docs.\n'),
+			[`${root}/knip.jsonc`]: contents(
+				`${root}/knip.jsonc`,
+				'{\n\t// a comment, which strict JSON would not allow\n\t"entry": ["src/main.tsx"]\n}\n',
+			),
 			// Text, not bytes — so it reaches the viewer through read_file like any
 			// source file, and gets markdown's rendered/source treatment. The
 			// non-ASCII label is deliberate: it is what rules out `btoa`.
