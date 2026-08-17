@@ -124,9 +124,15 @@ it adopted the one that was there.
 | `factorai-icon-1024.png` | raster master, for release art and anywhere a PNG is required |
 | `factorai-icon-256.png` | the README header |
 
-`factorai-mark.svg` is the reference for the one-colour cut — the renderer draws
-it from a component rather than loading this file (B8), and print / stencil /
-single-fill contexts use it directly.
+`factorai-mark.svg` is the reference for the one-colour cut; the renderer draws
+it from a component rather than loading this file (B8).
+
+**It is an inline-only asset.** `currentColor` has nothing to inherit when the
+SVG is the document — opened as a file, set as a favicon, or used as an `<img
+src>` it resolves to the initial colour and renders as a **black** block. A file
+manager listing it proves the point. Anything standalone and single-fill has to
+set an explicit `fill`; do not reach for this file and expect it to pick a
+sensible colour on its own.
 
 There is one deliberate copy: **`apps/desktop/public/favicon.svg` is
 byte-identical to the master.** Vite only serves `public/`, and a build step to
@@ -174,6 +180,20 @@ The command overwrites; it does not merge. Anything hand-edited in that
 directory is lost, which is the intended behaviour: the SVG is the source of
 truth and nothing in `src-tauri/icons/` should ever be edited directly.
 
+**Regenerating the icons does not rebuild the app.** `tauri-build` does not
+declare the icon files as `rerun-if-changed`, so `cargo build` after a
+`tauri icon` run finishes in a fraction of a second and the binary keeps the
+*old* window icon — verified, and silent. Touch the config to force it:
+
+```bash
+touch apps/desktop/src-tauri/tauri.conf.json && cargo build
+```
+
+Do not try to confirm the result by grepping the binary for the PNG bytes: the
+window icon is decoded to raw RGBA at build time, so a verbatim search always
+fails and proves nothing. Read `_NET_WM_ICON` off the running window instead
+(B9).
+
 ---
 
 ## B8 — The mark inside the app
@@ -211,3 +231,41 @@ exactly one place to change it.
 The header lockup was checked against a full tab strip, which was the open
 question when this was scoped: mark, wordmark and dev badge hold the left end
 and the tabs take the middle without crowding it.
+
+---
+
+## B9 — What the desktop actually shows
+
+Verified on X11 + Cinnamon, 2026-08-17, against a running dev build.
+
+**The window icon is correct and can be checked directly.** The binary publishes
+it as `_NET_WM_ICON`; read it off the live window rather than trusting the
+build:
+
+```bash
+WID=$(wmctrl -lp | awk '/factorai DEV/{print $1}')
+xprop -id "$WID" -notype 32c _NET_WM_ICON     # w, h, then w*h ARGB pixels
+```
+
+That returns one 32×32 image, and it is the mark: dark housing, amber F, ports
+transparent.
+
+**The panel does not use it.** A window is matched to a `.desktop` entry by
+`WM_CLASS` — ours is `factorai` — and the entry's `Icon=` key wins over
+`_NET_WM_ICON`. On this machine `~/.local/share/applications/factorai.desktop`
+(installed by the AppImage, not by this repo) points at `Icon=factorai`, which
+resolves to `~/.local/share/icons/hicolor/*/apps/factorai.png` — **a stale
+circular mark from before this identity existed**. Both the release app and the
+dev build show it, because they share a `WM_CLASS`.
+
+So: shipping an icon in the bundle is not sufficient for the dock. The
+`.desktop` entry and the `hicolor` theme files are the thing the shell reads,
+and they are what roadmap item 18 still has open. That entry also names the app
+`FactorAI`, which is not how the product is spelled.
+
+**The dark housing recedes on dark grounds.** At 16px in a dark file manager,
+`#272B31` sits close enough to the surrounding chrome that the notched
+silhouette stops registering and the mark reads as a bare amber F. It is still
+identifiable — the F is doing the work — but the silhouette argument in B1 holds
+only where there is contrast behind the icon. Worth knowing before assuming the
+outline carries everywhere.

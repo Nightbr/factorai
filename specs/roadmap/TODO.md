@@ -519,12 +519,18 @@ issue/PR — but it wants the ADR-0004 question answered first.
 see `DONE.md` and [`09-branding.md`](../09-branding.md). One sub-item is left, and it does not
 block a release:
 
-- **Desktop integration assets.** The AppImage needs a `.desktop` entry with the right categories
-  and a scalable icon; macOS wants the `.icns` to look right on a dark dock and in Spotlight.
-  Neither is exercised by our builds because nobody has installed one on a fresh machine, so this
-  is a *test on a clean box* task as much as an asset task — and the mark's ports cut to
-  transparency, which is exactly the kind of thing a badly-composited dock renders wrong. That is
-  the only part of the identity still unverified anywhere.
+- **Desktop integration assets.** No longer speculative — **checked on 2026-08-17 against a
+  running dev build, and the dock is wrong today.** `09-branding.md` § B9 has the detail. The
+  window itself publishes the right icon (`_NET_WM_ICON` reads back as the mark), but the panel
+  never looks at it: it matches the window's `WM_CLASS` (`factorai`) to a `.desktop` entry and
+  takes that entry's `Icon=`. On this machine that resolves to
+  `~/.local/share/icons/hicolor/*/apps/factorai.png` — a stale circular mark predating this
+  identity — and both the release app and the dev build show it, since they share a `WM_CLASS`.
+
+  So the work is the `.desktop` entry plus `hicolor` theme files shipped and installed by the
+  bundle, not just an icon inside it. The installed entry also names the app `FactorAI`, which is
+  not how the product is spelled. macOS is still untested: nobody has run the `.icns` past a real
+  dock or Spotlight.
 
 ## 19. IDE emulation — the MCP server Claude opens files and diffs through
 
