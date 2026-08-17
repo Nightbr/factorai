@@ -57,6 +57,29 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   remote to exist in `.git/config`** — creating `refs/remotes/origin/x` alone fails with "could not
   determine remote" — so the test helper writes a config remote, no network involved.
 
+  **A second test pass, on the user's prompt that there were blind spots, found two real bugs in
+  code already called done.** Both are worth keeping because they share a shape: *state derived from
+  a stored copy of its own scope.*
+
+  The selection was held as `{ project, sha }` and compared against the active project on render,
+  which reads as "clears on switch" and isn't: the entry survived while you were elsewhere, so
+  returning to a project brought its selection back — but **only if you hadn't selected anything in
+  the other project meanwhile**, since that overwrote the one slot. Arbitrary, and the opposite of
+  the comment sitting beside it. The fix is to key the subtree on the project so React remounts it,
+  which makes the reset unconditional, removes the tagging from both the selection *and* the page
+  count, and keeps working for state added later. **The lesson: "reset when X changes" is a remount,
+  not a comparison** — a comparison leaves the old value alive and reachable.
+
+  Page joining used `pages.filter(p => p.data)`, which *drops* a pending page instead of stopping at
+  it — so while page 1 refetched, page 2's commits were promoted to the top of the list. In order,
+  and the wrong rows, which for a history viewer is the worst available kind of wrong. Now
+  `stitchPages`, pure and tested, taking the contiguous prefix.
+
+  Also: **"Load more" had never executed once**, in a test or in the app, because `GRAPH_PAGE` is 300
+  and this repo has fewer commits than that. A whole path was dead code as far as any evidence went,
+  and it took a 430-commit fixture to find out it worked. Worth remembering when a cap is set above
+  what the dev repo can reach — the fixture is the only thing that will ever exercise it.
+
   Deferred, deliberately: the wide modal (Q22), worktrees, session↔commit linking (the payload
   already carries full 40-character SHAs and both timestamps for it), and a merge's parent
   *picker*. Interaction-level coverage beyond two `@smoke` tests is recorded against item 10.
