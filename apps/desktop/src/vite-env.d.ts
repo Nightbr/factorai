@@ -3,6 +3,10 @@
 
 declare module '*.css';
 
+/** The app version, stamped in by Vite's `define` from package.json. Used by
+ *  the crash screen; see vite.config.ts. */
+declare const __APP_VERSION__: string;
+
 /**
  * JSON's standalone tokenizer. monaco-editor ships a `.d.ts` only for the
  * feature's `register` entry point, not for this module — and `register` is

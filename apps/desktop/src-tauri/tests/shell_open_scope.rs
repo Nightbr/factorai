@@ -55,6 +55,21 @@ fn still_accepts_the_urls_the_default_regex_covered() {
 	}
 }
 
+/// The crash screen's `Report an issue` button builds a prefilled GitHub URL
+/// (`lib/crashReport.ts`). Its query string carries a stack trace, so it is the
+/// longest and most punctuation-heavy URL the app ever opens — and if
+/// percent-encoding were ever dropped there, the failure is a button that
+/// silently does nothing. The TS side has its own copy of this regex; this test
+/// is the half that reads the real config.
+#[test]
+fn accepts_the_prefilled_issue_url_the_crash_screen_opens() {
+	let re = scope_regex();
+	let url = "https://github.com/Nightbr/factorai/issues/new\
+		?title=Crash%3A%20TypeError%3A%20boom\
+		&body=%2A%2AWhat%20happened%2A%2A%0A%0A%60%60%60%0ATypeError%3A%20boom%0A%60%60%60";
+	assert!(re.is_match(url), "should allow the prefilled issue url: {url}");
+}
+
 #[test]
 fn rejects_flag_like_arguments() {
 	let re = scope_regex();

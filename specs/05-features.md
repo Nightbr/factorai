@@ -1132,6 +1132,52 @@ tab, since the PTY may well still be running.
 - A session that exits on its own takes its tab with it, with no dialog — you
   didn't ask for it to close, so there is nothing to confirm.
 
+## F17 — Error boundary
+
+**Added 2026-08-17.** A throw during render used to unmount the tree and leave
+an empty window: no message, and in a desktop app no address bar to reload
+from. `components/layout/ErrorBoundary` is the floor under that.
+
+**One boundary, at the root**, mounted in `App.tsx` **outside** the query
+client and the router — a crash while constructing either is exactly the kind
+it has to catch, and a boundary nested under them would go down with them.
+
+**Root-only is a deliberate first cut.** Per-surface boundaries — so a broken
+file tree cannot take a running terminal's pane down with it — are the obvious
+next step, and are recorded in the roadmap rather than half-built.
+
+**What it does not catch, because no React boundary does:** errors in event
+handlers, in `setTimeout`, in unhandled promise rejections — anything outside
+the render phase. Those belong to the toast path under "Error UX" below. Keep
+the two apart: a toast is useless once the tree is gone, and this screen is far
+too much for a command that returned an `AppError`.
+
+**The screen shows the error rather than hiding it.** Name, message and
+component stack in a scrollable block, because the person using this app is a
+developer and a redacted "something went wrong" wastes the one moment the
+information exists. Three actions:
+
+- **Reload** — `window.location.reload()`. The webview reloads, not the
+  process, so the PTYs survive: they live in Rust state and `terminalStore`
+  re-syncs from `terminal_list()`. What does **not** survive is xterm's
+  scrollback, since nothing snapshots or replays it. The screen says so
+  underneath rather than letting it be discovered.
+- **Report an issue** — opens a prefilled GitHub issue in the browser. It is a
+  link, not a reporting service: nothing is sent, the user reads and edits the
+  whole body first, and § "No telemetry" is untouched. The body carries the
+  message, the component stack, the app version (a Vite `define` from
+  `package.json`, so the crash path does not depend on the Tauri bridge still
+  working) and the user agent — enough to tell a WebKitGTK bug from a macOS
+  one.
+- **Copy details** — the same report to the clipboard.
+
+**The URL must be percent-encoded, and that is load-bearing rather than
+tidiness.** The shell open scope in `tauri.conf.json` is `https?://\w[^\s]*`,
+so a URL carrying a raw space or newline — which every stack trace has — fails
+the plugin's regex validation and the click silently does nothing. Both halves
+are guarded: `lib/crashReport.test.ts` on the building side and
+`src-tauri/tests/shell_open_scope.rs` on the scope itself.
+
 ---
 
 ## Cross-cutting concerns
