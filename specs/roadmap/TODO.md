@@ -532,9 +532,20 @@ block a release:
   identity — and both the release app and the dev build show it, since they share a `WM_CLASS`.
 
   So the work is the `.desktop` entry plus `hicolor` theme files shipped and installed by the
-  bundle, not just an icon inside it. The installed entry also names the app `FactorAI`, which is
-  not how the product is spelled. macOS is still untested: nobody has run the `.icns` past a real
-  dock or Spotlight.
+  bundle, not just an icon inside it.
+
+  **The author's machine was repaired by hand on 2026-08-17**, which settles the design question
+  and none of the delivery one. The `hicolor` tree was regenerated from the master at
+  16/24/32/48/64/128/256/512 plus a `scalable` SVG, `Name` corrected, and the icon cache rebuilt;
+  the panel picked it up without a restart, and **the notched silhouette renders correctly in a
+  real panel at ~22px** — the one thing about this mark nobody had yet seen outside a screenshot.
+  But it edited `~/.local/share`, so it holds for one user on one machine and a fresh install
+  still gets whatever the bundler writes.
+
+  Two details for whoever does the bundler work: the entry should name the app `factorai`, not
+  `FactorAI`, and a `256x256@2` directory takes a **512px** file — the AppImage's own integration
+  put 256 there. macOS is still untested: nobody has run the `.icns` past a real dock or
+  Spotlight.
 
 ## 19. IDE emulation — the MCP server Claude opens files and diffs through
 
