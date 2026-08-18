@@ -7,7 +7,7 @@ import { PanelResizer } from '@components/layout/PanelResizer';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { useGitGraph } from '@hooks/useGitGraph';
 import { useGitStatus } from '@hooks/useGitStatus';
-import { lanePitch, railWidth } from '@lib/gitGraph';
+import { lanePitch, railWidth, ROW_PAD_LEFT } from '@lib/gitGraph';
 import { clampDetailHeight, usePanelStore } from '@store/panelStore';
 
 /**
@@ -107,8 +107,9 @@ function GraphBody() {
 	const headLeads = dirtyHead !== null && commits[0]?.sha === dirtyHead;
 	// What is left for refs and subject, which is what decides how many chips fit
 	// before the rest becomes `+N`. The 24px covers the row's own right padding
-	// and the gaps between its parts.
-	const textWidth = Math.max(0, width - rail - 24);
+	// and the gaps between its parts; `ROW_PAD_LEFT` is the indent in front of the
+	// rail, and it comes off here or the budget quietly overspends by 12px.
+	const textWidth = Math.max(0, width - rail - ROW_PAD_LEFT - 24);
 
 	return (
 		<div data-testid="graph-view" className="flex min-h-0 flex-1 flex-col">
@@ -117,7 +118,9 @@ function GraphBody() {
 			    separable however good the colours are. The whole row scrolls, rail and
 			    text together — one scroll container rather than two that have to be
 			    kept in sync. */}
-			<div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+			{/* `py-1` matches the wrapper Files and Changes share, so switching tabs
+			    doesn't shift the first row by 4px. */}
+			<div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto py-1">
 				{/* The keydown sits on the list, not on each row: with a roving tabindex
 				    the focused row is inside it, so the event bubbles here and one
 				    handler owns movement for all 300. */}

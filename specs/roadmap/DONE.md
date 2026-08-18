@@ -3,6 +3,36 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The graph's rows are indented like every other row, and the author disc is dark — specs
+  `05-features.md` § F18** — 2026-08-18, user ask, the third pass on the same screenshot.
+
+  **The indent.** `laneInset` reserves exactly enough rail for the outermost disc to be drawn
+  *whole*, and "whole" is not "with air around it": lane 0's avatar sat with its left edge on x=0,
+  against the panel border, while Files indents 6px and Changes 12px. `ROW_PAD_LEFT` is 12 — the
+  number Changes and the graph's own `Empty` / Load-more already agreed on — and the scroller gained
+  the `py-1` the other two tabs share, so switching tabs no longer shifts the first row by 4px.
+
+  It is a constant applied as an inline style, not a `pl-3` class, because `fitRefs` has to subtract
+  it from the text budget: a class would leave the indent and the budget free to drift, and the
+  symptom of that drift is chips that fit on paper and truncate on screen. `WorkingRow` takes the
+  same inset — it sits directly above HEAD's row, so 12px of disagreement between them reads as the
+  rail bending.
+
+  **The disc, tuned twice in one conversation.** `oklch(62% 0.14 h)` → `oklch(80% 0.07 h)` →
+  `oklch(45% 0.09 h)`. The first was too saturated, the second traded loud for *bright* — a
+  near-white disc is the lightest thing in the panel, so it still won the row it was supposed to sit
+  quietly in. The third is dark enough to sit under the lane ring around it and still tinted enough
+  that twelve hues are tellable apart. Four candidates were rendered rather than argued about, and
+  `32%` was rejected from the render: the disc dissolves into the background and only the ring and
+  the initials read, which costs the one thing the avatar exists for.
+
+  **The ink flipped, which is the part worth keeping.** It was darker than the fill while the disc
+  was pastel and is near-white now the disc is dark — both correct, and neither derivable from the
+  other without knowing the fill. That is why `avatarInk` lives in the same file as `avatarColour`
+  rather than at the call sites, and why the test asserts the **absolute** 50-point lightness gap: a
+  signed assertion would need rewriting on every retune, which is the same trap as pinning the ink
+  to `--card`.
+
 - **The bar grew 2px, the commit subject stopped shouting, and the author discs went pastel — specs
   `05-features.md` § F16 and § F18, `04-frontend.md`, `AGENTS.md` § 4** — 2026-08-18, user ask, the
   follow-up to the entry below after seeing it rendered. Three unrelated things in one pass because

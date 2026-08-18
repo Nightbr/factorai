@@ -37,6 +37,22 @@ const REF_BUDGET_RATIO = 0.5;
  *  being one chip out costs a `+1` rather than a broken layout. */
 const CHAR_PX = 6.5;
 
+/**
+ * The row's left padding, in px.
+ *
+ * **Added 2026-08-18 on user feedback: the avatars were flush against the panel
+ * edge.** `laneInset` reserves exactly enough rail for the outermost disc to be
+ * drawn *whole*, which is not the same as drawn with air around it — lane 0's
+ * disc came out with its left edge on x=0, touching the border. The Changes tab
+ * indents its rows 12px and the graph's own `Empty` and Load-more are already
+ * `px-3`, so this is the number those agree on rather than a new one.
+ *
+ * A constant applied as an inline style rather than a `pl-3` class, for the same
+ * reason `FileTreeNode` keeps `INDENT` in code: `fitRefs` has to subtract it
+ * from the text budget, and a Tailwind class would leave the two free to drift.
+ */
+export const ROW_PAD_LEFT = 12;
+
 /** Padding, border and gap a chip costs beyond its label, in characters. */
 const CHIP_OVERHEAD = 2;
 

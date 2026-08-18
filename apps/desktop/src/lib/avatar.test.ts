@@ -14,7 +14,7 @@ describe('avatarColour', () => {
 
 	it('stays inside the one lightness and chroma the set is drawn at', () => {
 		for (const email of ['a@b.c', 'ada@example.com', '', 'x'.repeat(200)]) {
-			expect(avatarColour(email)).toMatch(/^oklch\(80% 0\.07 \d+(\.\d+)?\)$/);
+			expect(avatarColour(email)).toMatch(/^oklch\(45% 0\.09 \d+(\.\d+)?\)$/);
 		}
 	});
 });
@@ -27,16 +27,20 @@ describe('avatarInk', () => {
 		}
 	});
 
-	it('is dark enough against the fill to carry initials in either theme', () => {
+	it('is far enough from the fill to carry initials in either theme', () => {
 		// The point of not using `--card`: the contrast between disc and initials
-		// has to be a property of this file, not of whichever theme is mounted.
-		// 50 points of oklch lightness is the floor that survives both, and the
-		// pair sits exactly on it — 80 against 30.
+		// has to be a property of `avatar.ts`, not of whichever theme is mounted.
+		//
+		// **Absolute distance, not a signed one.** The ink was darker than the fill
+		// while the disc was pastel and is lighter now that it is dark, and both
+		// are correct — what the drawing needs is 50 points of oklch lightness
+		// between them, whichever side they fall on. A signed assertion would have
+		// to be rewritten every time the disc is retuned, which is the same trap
+		// as pinning the ink to a theme token.
 		const lightness = (c: string) => Number(c.match(/^oklch\((\d+(?:\.\d+)?)%/)?.[1]);
 		for (const email of ['a@b.c', 'ada@example.com', '', 'x'.repeat(200)]) {
-			expect(lightness(avatarColour(email)) - lightness(avatarInk(email))).toBeGreaterThanOrEqual(
-				50,
-			);
+			const gap = Math.abs(lightness(avatarColour(email)) - lightness(avatarInk(email)));
+			expect(gap).toBeGreaterThanOrEqual(50);
 		}
 	});
 });
