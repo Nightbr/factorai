@@ -17,13 +17,13 @@ import {
 	Input,
 } from '@factorai/ui';
 import { useActiveProject } from '@hooks/useActiveProject';
+import { useOpenSessions } from '@hooks/useOpenSessions';
 import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
 import { projectStatus } from '@lib/sessionGroups';
 import { cmd, pickFolder } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
-import { useTerminalStore } from '@store/terminalStore';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, FolderPlus, Search } from 'lucide-react';
@@ -70,14 +70,17 @@ export function Sidebar() {
 		refetchInterval: 2000,
 	});
 	const progress = useIndexerStore((s) => s.progress);
-	const bySession = useTerminalStore((s) => s.bySession);
-	// One dot per project, worst-status-wins over its live sessions (F10). Was a
-	// Set of "has anything live", which is all the dot could say when a live PTY
-	// was one state.
+	// One dot per project, worst-status-wins over its **open** sessions (F10,
+	// F16). Was a Set of "has anything live", which is all the dot could say when
+	// a live PTY was one state; then it was the live sessions, until a tab could
+	// outlive its process. A project holding open tabs with nothing running now
+	// shows grey — `STATUS_RANK` puts `stopped` last, so one waiting session
+	// still wins the row.
+	const open = useOpenSessions();
 	const statusByProject = useMemo(() => {
-		const ids = new Set(Object.values(bySession).map((t) => t.projectId));
-		return new Map([...ids].map((id) => [id, projectStatus(bySession, id)]));
-	}, [bySession]);
+		const ids = new Set(Object.values(open).map((t) => t.projectId));
+		return new Map([...ids].map((id) => [id, projectStatus(open, id)]));
+	}, [open]);
 	const { projectId: activeProjectId } = useActiveProject();
 
 	const sort = useSidebarStore((s) => s.sort);

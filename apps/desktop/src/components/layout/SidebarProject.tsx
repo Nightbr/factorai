@@ -16,13 +16,14 @@ import {
 	DialogTitle,
 	IconButton,
 } from '@factorai/ui';
+import { useOpenSessions } from '@hooks/useOpenSessions';
 import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
 import { pendingSessions } from '@lib/sessionGroups';
 import { cmd, openExternally } from '@lib/tauri';
 import { useSidebarStore } from '@store/sidebarStore';
-import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
+import { useTerminalStore } from '@store/terminalStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, ChevronRight, FolderOpen, Pin, PinOff, Plus, Trash2 } from 'lucide-react';
@@ -44,15 +45,15 @@ export const SIDEBAR_SESSION_LIMIT = 10;
  */
 export function orderSessions(
 	sessions: SessionSummary[],
-	bySession: Record<string, LiveTerminal>,
+	open: Record<string, unknown>,
 	limit = SIDEBAR_SESSION_LIMIT,
 ): SessionSummary[] {
 	return sessions
 		.filter((s) => s.subagentOf === null)
 		.sort((a, b) => {
-			const aLive = a.id in bySession ? 1 : 0;
-			const bLive = b.id in bySession ? 1 : 0;
-			if (aLive !== bLive) return bLive - aLive;
+			const aOpen = a.id in open ? 1 : 0;
+			const bOpen = b.id in open ? 1 : 0;
+			if (aOpen !== bOpen) return bOpen - aOpen;
 			return b.updatedAt - a.updatedAt;
 		})
 		.slice(0, limit);
@@ -305,6 +306,11 @@ function usePinProject(project: Project): () => void {
 }
 
 function SessionList({ project }: { project: Project }) {
+	// `open` for what you have on the strip, `bySession` for what is running.
+	// `pendingSessions` needs the latter: a never-messaged session that is not
+	// running has no transcript and no process, so a permanent "New session" row
+	// for it would be a ghost no reindex ever clears (F16).
+	const open = useOpenSessions();
 	const bySession = useTerminalStore((s) => s.bySession);
 
 	// Shares the project route's cache entry, so expanding a project you then
@@ -317,10 +323,7 @@ function SessionList({ project }: { project: Project }) {
 		refetchInterval: 5000,
 	});
 
-	const sessions = useMemo(
-		() => orderSessions(sessionsQ.data ?? [], bySession),
-		[sessionsQ.data, bySession],
-	);
+	const sessions = useMemo(() => orderSessions(sessionsQ.data ?? [], open), [sessionsQ.data, open]);
 	// A session you started ten seconds ago has no index row yet, and this list
 	// is where you look for it (F6). Same union the project page does — without
 	// it the row you clicked `+` on reads "No sessions yet".
@@ -364,12 +367,12 @@ function SessionList({ project }: { project: Project }) {
 						<span className="min-w-0 flex-1 truncate">
 							{session.title.trim() || session.id.slice(0, 8)}
 						</span>
-						{bySession[session.id] && (
+						{open[session.id] && (
 							// Smaller than the standalone dot: down a column of nested rows the
 							// full-size dot is the loudest thing on screen. It stayed at 6px when
-							// the rows went to 14px — it marks which session is live, and a mark
+							// the rows went to 14px — it marks which session is open, and a mark
 							// that grows with its label starts competing with it.
-							<StatusDot status={bySession[session.id].status} className="size-1.5" />
+							<StatusDot status={open[session.id].status} className="size-1.5" />
 						)}
 					</Link>
 				</li>

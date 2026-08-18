@@ -44,7 +44,7 @@ export function useRemoveProject(): (projectId: string) => Promise<void> {
 			// Read at call time rather than subscribing: this runs from a menu
 			// selection, and a stale closure over `bySession` would miss a session
 			// that started while the menu was open.
-			const { bySession, detach } = useTerminalStore.getState();
+			const { bySession, detach, closeProject } = useTerminalStore.getState();
 			const live = liveSessionsIn(bySession, projectId);
 
 			for (const sessionId of live) {
@@ -66,6 +66,14 @@ export function useRemoveProject(): (projectId: string) => Promise<void> {
 				detach(sessionId);
 				disposeTerminal(sessionId);
 			}
+
+			// Any tab this project still has is stopped — a live one was killed and
+			// detached above. It has to go too: a tab is only removed by closing, and
+			// removing the project *is* closing every session in it. Leaving them
+			// would put grey tabs on the strip pointing at a project that is no
+			// longer in `list_projects`, which the strip would then filter out on the
+			// next launch anyway — silently, and one launch too late.
+			closeProject(projectId);
 
 			await cmd.removeProject(projectId);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
