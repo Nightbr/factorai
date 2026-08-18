@@ -1,7 +1,14 @@
 import type { GitGraphCommit, GitRefKind, RemoteHost } from '@factorai/types';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@factorai/ui';
 import type { RefChip } from '@lib/gitGraph';
-import { CHIP_CLASSES, CHIP_SHAPE, chipMaxWidth, fitRefs, foldRefs } from '@lib/gitGraph';
+import {
+	CHIP_CLASSES,
+	CHIP_SHAPE,
+	chipMaxWidth,
+	fitRefs,
+	foldRefs,
+	ROW_PAD_LEFT,
+} from '@lib/gitGraph';
 import { formatAbsolute, formatRelative } from '@lib/format';
 import { avatarFor } from '@lib/avatar';
 import { GraphRail, ROW_HEIGHT } from '@components/graph/GraphRail';
@@ -152,7 +159,7 @@ export function CommitRow({
 						tabIndex={tabbable ? 0 : -1}
 						data-testid="commit-row"
 						data-sha={commit.sha}
-						style={{ height: ROW_HEIGHT }}
+						style={{ height: ROW_HEIGHT, paddingLeft: ROW_PAD_LEFT }}
 						className={`group flex w-full items-center gap-1.5 pr-2 text-left text-sm transition-colors ${
 							selected ? 'bg-secondary' : 'hover:bg-secondary/50'
 						}`}

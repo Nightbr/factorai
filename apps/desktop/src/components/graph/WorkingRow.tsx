@@ -1,5 +1,6 @@
 import type { GitGraphEdge } from '@factorai/types';
 import { GraphRail, ROW_HEIGHT } from '@components/graph/GraphRail';
+import { ROW_PAD_LEFT } from '@lib/gitGraph';
 
 interface WorkingRowProps {
 	/** HEAD's lane — the working tree sits directly on top of it. */
@@ -34,7 +35,10 @@ export function WorkingRow({ lane, pitch, railWidth, count, onOpenChanges }: Wor
 			<button
 				type="button"
 				data-testid="working-row"
-				style={{ height: ROW_HEIGHT }}
+				// Indented with the commit rows, not on its own: this row sits directly
+				// above HEAD's and a 12px disagreement between the two reads as the
+				// rail bending.
+				style={{ height: ROW_HEIGHT, paddingLeft: ROW_PAD_LEFT }}
 				className="flex w-full items-center gap-1.5 pr-2 text-left text-sm transition-colors hover:bg-secondary/50"
 				// Says where it goes, because a row that navigates elsewhere in the app
 				// should say so before it is clicked rather than after.

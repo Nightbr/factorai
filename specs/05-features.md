@@ -1693,20 +1693,28 @@ Colour is one of 12 hues at a fixed lightness and chroma, so no author's dot
 shouts louder than another's. The key is the **email**, normalised in Rust, so an
 author who changes how their name is spelled keeps their colour.
 
-**Pastel, and the initials come with the fill. Changed 2026-08-18 on user
-feedback**, from `oklch(62% 0.14 h)` to `oklch(80% 0.07 h)`. At the old chroma a
-dozen authors down one rail read as a strip of saturated dots competing with the
-lane colours beside them, and the lanes are what the rail is drawn to show.
+**A dark tinted disc with near-white initials. Tuned twice on 2026-08-18, in one
+conversation, and both moves are worth recording** because the second one is what
+the first one taught. It shipped `oklch(62% 0.14 h)` — too saturated, a strip of
+loud dots down a rail whose *lane* colours are the thing it exists to show. The
+first fix halved chroma and lifted lightness to `oklch(80% 0.07 h)`, which traded
+loud for bright: a near-white disc is the lightest thing in the panel, so it
+still won the row. `oklch(45% 0.09 h)` is the third try — dark enough to sit
+*under* the lane ring around it, tinted enough that twelve hues stay tellable
+apart. **Darker still was rendered and rejected**: at `32%` the disc dissolves
+into the background and only the ring and the initials read, which costs the one
+thing the avatar is for.
 
-The initials moved with it, and that half is not cosmetic: they were painted
-`--card`, which is near-black in the dark theme and **white in the light one**,
-so dark-on-pastel would have inverted into white-on-pastel the day item 32 lands.
-`avatarInk` returns a dark tone of the disc's own hue instead, from the same
-function as the fill — so the contrast between disc and initials is a property of
-`lib/avatar.ts` rather than of whichever theme is mounted, and a unit test pins
-the 50-point lightness gap. This is the mirror-image bug caught before it
-renders, which is the lesson `color-scheme` in `globals.css` records the hard
-way.
+The initials move with the fill, and that half is not cosmetic. They were painted
+`--card` — a theme token: near-black in the dark theme, **white in the light
+one**. That happened to work while the disc was mid-tone, and it would have meant
+a pair that only renders correctly in the theme we can currently see, since item
+32 has not shipped. `avatarInk` returns a tone of the disc's own hue from the same
+function as the fill, so the contrast is a property of `lib/avatar.ts` rather than
+of whichever theme is mounted. It **flipped from dark to light** when the fill
+went `80%` → `45%`, which is precisely the coupling that gets missed when the two
+values live apart; the unit test asserts the *absolute* 50-point lightness gap
+for the same reason.
 
 **The disc gives way to a plain dot below a 10px lane pitch.** It is 18px wide
 however tight the lanes get, so on a wide history it would cover three lanes and
@@ -1725,6 +1733,21 @@ line runs into the node and still nothing behind it shows through.
 questions a node is asked: which lane, and who. Making the disc itself the lane
 colour was the other reading of that feedback and was rejected — it would cost
 "scan for the ones I did", which is the entire reason the node became an avatar.
+
+**The rows are indented 12px, and were not. Added 2026-08-18 on user feedback:**
+`laneInset` reserves exactly enough rail for the outermost disc to be drawn
+*whole*, which is not the same as drawn with air around it — lane 0's avatar came
+out with its left edge on x=0, touching the panel border, while every row in
+Files and Changes is indented. `ROW_PAD_LEFT` is 12px, the number the Changes tab
+and the graph's own `Empty` / Load-more (`px-3`) already agreed on, and the
+scroller gained the `py-1` those two share so switching tabs doesn't shift the
+first row.
+
+It is a constant in `lib/gitGraph.ts` applied as an inline style rather than a
+`pl-3` class, for the same reason `FileTreeNode` keeps `INDENT` in code: `fitRefs`
+subtracts it from the text budget, and a Tailwind class would leave the indent and
+the budget free to drift. The working row takes the same inset — it sits directly
+above HEAD's row, so a 12px disagreement between them reads as the rail bending.
 
 **The rail reserves room for the disc, and did not always.** Fixed the same day:
 lane 0's centre sat at half a pitch — 6px — against a disc of radius 9 plus a 1px

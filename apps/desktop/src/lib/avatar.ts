@@ -40,33 +40,42 @@ const HUE_STEPS = 12;
  * Fixed lightness and chroma, hue varying: the whole set then sits at one
  * weight, so no author's dot shouts louder than another's.
  *
- * **Pastel since 2026-08-18, from `oklch(62% 0.14 h)`, on user feedback.** At
- * 0.14 chroma a dozen authors down one rail read as a strip of saturated dots
- * competing with the lane colours beside them — and the lanes are the thing the
- * rail exists to show. Lifting lightness and halving chroma keeps every author
- * distinguishable while letting the disc sit behind its own initials rather
- * than in front of them.
+ * **Tuned twice on 2026-08-18, in one conversation, and the pair of moves is
+ * the useful record.** It shipped at `oklch(62% 0.14 h)`: too saturated, a strip
+ * of loud dots down a rail whose *lane* colours are the thing it exists to show.
+ * The first fix halved chroma and lifted lightness to `oklch(80% 0.07 h)`, which
+ * traded loud for bright — a near-white disc is the lightest thing in the panel,
+ * so it still won the row. `oklch(45% 0.09 h)` is the third try and the one that
+ * holds: dark enough to sit *under* the lane ring around it, tinted enough that
+ * twelve hues stay tellable apart.
+ *
+ * **Going darker still was tried and rejected.** At `32%` the disc dissolves
+ * into the background and only the ring and the initials read, which costs the
+ * one thing the avatar is for — scanning a history for the commits you wrote.
  */
 export function avatarColour(email: string): string {
-	return `oklch(80% 0.07 ${avatarHue(email)})`;
+	return `oklch(45% 0.09 ${avatarHue(email)})`;
 }
 
 /**
- * The initials' colour for that fill: the same hue, dark.
+ * The initials' colour for that fill: the same hue, near-white.
  *
  * **Not `--card`, which is what both call sites used to paint them.** That
- * works in the dark theme by coincidence — `--card` there is near-black, so
- * dark-on-pastel comes out legible — and inverts in the light theme, where
- * `--card` is white and the same pair becomes white-on-pastel. Item 32 has not
- * shipped, so this is the mirror-image bug caught *before* it renders rather
- * than after, which is the same lesson `color-scheme` in `globals.css` records.
+ * happened to work while the disc was mid-tone, and it is a theme token: white
+ * in the light theme, near-black in the dark one. Since item 32 has not shipped,
+ * relying on it would have meant a pair that only renders correctly in the theme
+ * we can currently see — the mirror-image bug caught *before* it renders rather
+ * than after, which is the lesson `color-scheme` in `globals.css` records having
+ * learned the other way round.
  *
  * Tying the ink to the fill in one function is what makes the pair
  * theme-independent: neither value is a token, so neither moves when the theme
- * does, and the contrast between them is a property of this file.
+ * does, and the contrast between them is a property of this file. It flipped
+ * from dark to light when the fill went from `80%` to `45%`, which is exactly
+ * the kind of coupling that would have been missed if the two lived apart.
  */
 export function avatarInk(email: string): string {
-	return `oklch(30% 0.08 ${avatarHue(email)})`;
+	return `oklch(97% 0.015 ${avatarHue(email)})`;
 }
 
 /** The hue both halves share. */
