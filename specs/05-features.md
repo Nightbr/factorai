@@ -473,8 +473,9 @@ Each site carries the full reasoning — the two CSS files and the sizing sectio
 of `Terminal.tsx`.
 
 **Backend.** `terminal_spawn`, `terminal_write`, `terminal_resize`,
-`terminal_kill`. `terminal:data` events stream output. Status heuristics
-detect waiting-for-input.
+`terminal_kill`. `terminal:data` events stream output. The same reader parses
+`OSC 0` titles out of that stream to tell working from waiting-for-input — see
+F10, which owns the rule.
 
 **Edge cases.**
 - `claude` not in PATH → three-tier discovery (PATH → login shell →
@@ -863,28 +864,178 @@ Edits to CLAUDE.md trigger an explicit Save action with a dirty indicator.
 
 ## F10 — Status indicators
 
-**Behavior.** For any session that has a live PTY, show one of:
-running, idle, waiting-input, stopped. Bubble up to sidebar.
+**Rewritten 2026-08-18** from the clarify-needs interview, on user feedback that
+the green dot only means "connected" and cannot tell working from finished. The
+previous version of this section described four states derived from "output flow
++ prompt detection" on a 200ms tick. All of that is changed: two of its four
+states were never emitted by any code, and the mechanism it named is not the one
+that works. The reasoning is here rather than in a commit message; the decision
+is [ADR-0015](../docs/adr/0015-session-status-from-the-terminal-title.md).
 
-**UI.** Colored dot next to the session row; same dot on the project row
-(aggregating any live session). Tooltip: "Waiting for input · 12s ago".
+**What it solves.** A live PTY is not one state. Claude is either doing
+something, or it has handed back and is waiting for you, and the whole point of
+supervising several sessions is knowing which is which without opening each one.
+Today every live session is one green dot, which is why closing a session that
+finished ten minutes ago still warns you that "any work in progress is lost".
 
-**Backend.** In-memory `TerminalManager` state, derived from output flow +
-prompt detection. Emits `terminal:status` events.
+### Behaviour
 
-**Only one dot animates.** The running pulse is opt-in (`<StatusDot pulse />`)
-and used in exactly one place: the session header, where there is a single dot
-describing what you are looking at. Sidebar projects, sidebar sessions and tabs
-show the same colours without motion — a dozen things breathing at their own
-rate is a christmas tree, not a signal.
+Three states, for sessions with a live PTY only:
 
-**Edge cases.**
-- False positive on "waiting for input" (some interactive curl output looks
-  like a prompt) → fine; the user can see the terminal and react.
-- App closed with live terminals → on next launch, no in-memory state, so
-  all sessions show as idle until launched again.
+| State           | Means                                        | Colour |
+| --------------- | -------------------------------------------- | ------ |
+| `working`       | Claude is doing something                    | green  |
+| `waiting_input` | Claude has stopped; it is your turn          | amber  |
+| `stopped`       | the process is gone                          | grey   |
 
-**Switchboard ref.** `session-transitions.js`.
+There is no `idle`: nothing distinguishes "alive with nothing pending" from
+"stopped and waiting for you", so the enum does not pretend otherwise. There is
+no `running` either — the name is now `working`, because its *meaning* changed
+and a silent redefinition is worse than a rename. A live PTY sitting at the
+prompt used to be `running`; it is `waiting_input`.
+
+### Backend — the terminal title, not the output
+
+Claude Code sets the terminal title through `OSC 0` and encodes its own state in
+the first character:
+
+```
+ESC ] 0 ; ✳ Claude Code   BEL      idle
+ESC ] 0 ; ◐ Claude Code   BEL      working    (◐ ◑ alternating, 960ms)
+ESC ] 0 ; ✳ Date command  BEL      idle again, title now names the turn
+```
+
+So the rule, in `TerminalManager`'s reader as bytes arrive — no polling, no tick:
+
+- first char is `✳` (U+2733) → `waiting_input`
+- any other non-empty first char → `working`
+- no title yet, or a payload we cannot parse → **hold the previous state**
+- from `terminal_spawn` until the first title (~300ms) → `working`
+- `terminal:exit` → `stopped`
+
+**The rule is inverted on purpose: enumerate the idle marker, treat everything
+else as working.** Only `✳` is load-bearing, so any spinner glyph — present or
+future — reads correctly. Enumerating the *spinner* instead is exactly how
+switchboard's detector died: it matches braille frames (U+2800–U+28FF), and
+Claude Code has not used braille in the title for some time. Against 2.1.234 not
+one braille codepoint exists in the binary and their busy state never fires.
+Don't re-derive their version.
+
+**Two spinners exist and they are different.** The title animates `◐ ◑`
+(U+25D0/U+25D1); the TUI *body* spinner is `· ✢ ✳ ✶ ✻ ✽`. Note that `✳` appears
+in the body set, so a rule written against the body spinner would read idle
+mid-spin. This rule reads the title and nothing else.
+
+**Nothing has to be configured, and nothing is written anywhere.** No hooks, no
+settings file, no environment changes, no cooperation from the CLI beyond what it
+already does — which is what makes this safe under
+[ADR-0004](../docs/adr/0004-claude-dir-is-read-only.md).
+
+### UI
+
+- Sidebar session rows, and sidebar project rows aggregating their sessions
+  **worst-status-wins** — `working > waiting_input > stopped` — the same
+  precomputed-lookup shape as F13's folder dots.
+- The session header, with `<StatusDot pulse />`.
+- **Tab avatars, badged** on the corner, reusing `ProjectIcon`'s existing badge.
+  This retires F16's "the avatar, not a status dot" reasoning, which rested on
+  every tab being a live PTY and so a row of identical green; that is no longer
+  what a live PTY means.
+
+**Only one dot animates.** The pulse is opt-in and used in exactly one place:
+the session header, where there is a single dot describing what you are looking
+at. Sidebar projects, sidebar sessions and tabs show the same colours without
+motion — a dozen things breathing at their own rate is a christmas tree, not a
+signal.
+
+**Tooltip.** The state plus relative last activity: `Waiting for input · 12s
+ago`.
+
+### What it unblocks
+
+`CloseSessionConfirm` is shown **only** when the session is `working`.
+`waiting_input` and `stopped` close without a dialog, which is the ask this
+feature came from. `QuitConfirm` is untouched and stays mandatory — losing every
+live session at once is a different act, and ADR-0005 decided it.
+
+**Known consequence, accepted 2026-08-18.** While a permission prompt is open the
+title reads `✳`, so a session blocked on one reports `waiting_input` and closes
+without a confirm. The state that would have caught it is `needs_permission`,
+which was considered and dropped (below). What is lost is a dialog, not the
+transcript.
+
+### Edge cases
+
+- **A title we don't recognise holds the previous state**, so a Claude release
+  that changes the marker degrades to whatever the session last was — and a
+  session that never emits a title stays `working`, which is exactly today's
+  behaviour. This feature cannot regress the dot to something false; it can only
+  stop improving it.
+- App closed with live terminals → kill-on-quit means there are none to restore,
+  so nothing is stale on next launch.
+- Sub-agent transcripts (`subagentOf`) have no PTY and no status dot.
+
+### Verification
+
+Byte fixtures captured from a real session pin the parser: the working→idle
+edge, an unknown glyph holding state, and no title staying `working`. Fixtures
+are platform-independent by construction, so they prove the parser on both
+macOS and Linux CI. `scripts/qa/osc-probe.sh` re-checks the *CLI* — run it after
+a Claude update, or on a platform we haven't tried, and read the OSC timeline it
+prints.
+
+**Why this is not platform-specific.** factorai pins `TERM=xterm-256color`
+itself, so Claude Code's view of its terminal is identical on macOS and Linux and
+never reflects the host OS. In the CLI, the title's glyphs are module constants
+selected by `isAnimating` with no platform branch, and the writer emits
+`SET_TITLE_AND_ICON` with no `TERM`, `isTTY` or platform guard. Elsewhere in that
+same file glyphs *are* chosen per platform (`macos ? "⏺" : "●"`), so the absence
+here is informative rather than lucky.
+
+### Considered and not built
+
+Kept because each is a thing the next reader will otherwise investigate again.
+
+- **`needs_permission`, via `OSC 777`.** Verified working: `claude --settings
+  '{"preferredNotifChannel":"ghostty"}'` makes the CLI emit
+  `ESC ] 777 ; notify ; Claude Code ; <message> BEL`, and the messages are
+  `Claude needs your permission to use <tool>` (6s after the prompt opens),
+  `Claude Code needs your approval for the plan`, `Claude Code wants to enter
+  plan mode` and `Claude is waiting for your input`. Dropped by choice: it is a
+  fourth state, a settings file to inject, and `CLAUDE_CODE_DISABLE_NOTIFICATION_PRESENCE_CHECK=1`
+  in the child env to defeat the CLI's "are you away from the terminal" gate.
+  Reinstating it is additive.
+- **`OSC 9;4` progress.** `terminalProgressBarEnabled` (default on) is documented
+  in the CLI's own settings schema as "Emit OSC 9;4 progress sequences during
+  long operations", and `4;3;` / `4;0;` do bracket a turn exactly. But they only
+  appear when the CLI believes it is talking to iTerm2, which means spoofing
+  `TERM_PROGRAM` — lying to every child process about its terminal — to learn
+  what the title already says.
+- **`OSC 21337 TAB_STATUS`.** The CLI has a *structured* status protocol:
+  `indicator=#rrggbb;status=Working…;status-color=#rrggbb`, with three states
+  `idle | busy | waiting`. It is gated on a function compiled to
+  `return !1`, so it is dead code in 2.1.234. **This is the upgrade to take when
+  it ships** — it removes the glyph rule entirely and hands us `waiting` as a
+  first-class state.
+- **Claude Code hooks.** `PermissionRequest`, `Notification` and `Stop` give
+  typed events instead of English message text, and would work for sessions run
+  outside factorai. But hooks cannot be defined through `--settings`, so it means
+  writing into `~/.claude/settings.json` or a project's
+  `.claude/settings.local.json`, plus an inbound IPC channel from hook process to
+  app. Not worth it for three states the title already provides.
+- **Transcript tailing.** Would separate "finished a turn" from "asked you a
+  question and stopped" — a pending `AskUserQuestion` with no `tool_result` is
+  visible in the JSONL and invisible in the title. Deferred with the unread axis
+  below.
+- **The unread / never-opened axis** (`viewed_at` per session, compared against
+  `updated_at`) — the third thing the feedback asked for. Deferred: it is durable
+  state and a migration, orthogonal to the live PTY states here, and it is what a
+  `finished` state would need to mean anything.
+
+**Switchboard ref.** `main.js` `ptyProcess.onData` (OSC parsing) and `public/app.js`
+`setActivity`. Read them for the shape, not the constants — see the braille note
+above, and note that the "noise-filtered output" fallback its comments describe
+does not exist in the code.
 
 ---
 
@@ -1405,11 +1556,17 @@ running app, not asserted — 42 / 18 / 30 — because Tailwind's fractional spa
 steps are derived rather than enumerated, and a class that does not exist fails
 silently by rendering the default.
 
-**The avatar, not a status dot.** Every tab is a live PTY by definition, so a
-dot on each would be a row of green saying nothing; the avatar answers the
-question you actually have with several open — which project is this one? The
-project's name joins the title in the tooltip. A session too new to be indexed shows its short id, matching the
-session header.
+**The avatar, badged with the status dot.** The avatar answers the question you
+actually have with several tabs open — which project is this one? The project's
+name joins the title in the tooltip. A session too new to be indexed shows its
+short id, matching the session header.
+
+The badge was added 2026-08-18, and this paragraph used to argue against it:
+"every tab is a live PTY by definition, so a dot on each would be a row of green
+saying nothing". That was true while a live PTY was one state. F10 made it three,
+so the row of dots now says which session wants you — which is the most useful
+thing the tab strip can tell you, since it is the surface you are already looking
+at. Same corner badge as `ProjectIcon`, not a second mechanism.
 
 - **Reorder** by dragging, using native HTML5 drag-and-drop rather than a
   library: ~40 lines against a ~30KB dependency for one horizontal strip.
