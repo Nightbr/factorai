@@ -7,8 +7,20 @@ name: Release
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
-# The release is created as a DRAFT so a half-finished matrix can never publish
-# a release missing one platform's assets — review, then publish by hand.
+# The release is created as a DRAFT so a half-finished matrix can never publish a
+# release missing one platform's assets, and **the `publish` job at the end flips
+# it live once the matrix is green** (2026-08-18, while factorai is alpha). What
+# changed is who holds the gate, not whether there is one: `needs: build` means a
+# failed platform skips publication entirely, and the job re-counts the assets
+# and re-reads `latest.json` before it publishes. See ADR-0014, which amends
+# ADR-0010's consequence 2 — that ADR leans on "drafts until published by hand"
+# as the thing gating a rollout, and this replaces the hand with the check.
+#
+# **The check is not decoration.** The failure this guards against is silent: on
+# v0.10.1 both matrix jobs reported success and produced a release whose
+# `latest.json` listed one platform, telling every other platform there was
+# nothing to update to. A human counting assets caught it. Nothing else would
+# have.
 #
 # **The draft is created once, by its own job, and the matrix uploads into it by
 # id** (fixed 2026-08-17). It used to be created by whichever matrix job got
@@ -202,7 +214,8 @@ jobs:
           # "not a prerelease despite 0.x" rule — GitHub's /releases/latest,
           # which the updater resolves through, skips prereleases entirely, so
           # marking them would leave every installed app polling a 404 forever.
-          # Draft still gates it: nothing reaches the updater until you publish.
+          # The `publish` job is what un-drafts this, after checking the matrix
+          # actually produced both platforms' assets.
           releaseId: ${{ needs.create-release.outputs.release_id }}
           # latest.json is the manifest the app polls (F14, ADR-0010). Both jobs
           # write it and the second **merges into** the first's — which is only
@@ -220,3 +233,87 @@ jobs:
           #   gh api repos/tauri-apps/tauri-action/contents/action.yml?ref=<sha>
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+  # Flip the draft live. Separate job rather than a step on `build`, because
+  # `build` is a matrix: a step there would run twice and each copy would only
+  # know about its own platform, which is precisely the blind spot that shipped a
+  # one-platform manifest on v0.10.1.
+  #
+  # `needs: build` is the first half of the gate and the cheap half — a matrix job
+  # that fails or is cancelled skips this job entirely, so a half-finished release
+  # stays a draft exactly as it did when a human published it.
+  publish:
+    name: Publish the release
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const release_id = Number('${{ needs.create-release.outputs.release_id }}');
+            const { owner, repo } = context.repo;
+
+            const { data: assets } = await github.rest.repos.listReleaseAssets({
+              owner, repo, release_id, per_page: 100,
+            });
+            const names = assets.map((a) => a.name);
+            core.info(`assets: ${names.join(', ') || '(none)'}`);
+
+            // The second half of the gate, and the half that catches what green
+            // matrix jobs do not say. Each platform's installer plus the manifest
+            // the app polls — checked by suffix rather than exact name, because
+            // the version is in most of them and the tag is not this job's
+            // business.
+            const required = [
+              ['a macOS installer', (n) => n.endsWith('.dmg')],
+              ['a macOS updater bundle', (n) => n.endsWith('.app.tar.gz')],
+              ['a Linux installer', (n) => n.endsWith('.AppImage')],
+              ['the updater manifest', (n) => n === 'latest.json'],
+            ];
+            const missing = required.filter(([, match]) => !names.some(match)).map(([what]) => what);
+            if (missing.length) {
+              core.setFailed(
+                `Refusing to publish ${release_id}: missing ${missing.join(', ')}. ` +
+                  `The release stays a draft — re-run the failed matrix job, then re-run this one.`,
+              );
+              return;
+            }
+
+            // And the manifest's own contents, which is where v0.10.1 actually
+            // went wrong: both platforms' jobs succeeded, and the file still
+            // named one of them. `latest.json` is fetched through the API rather
+            // than its browser URL because a draft's assets are not public yet.
+            const manifest = assets.find((a) => a.name === 'latest.json');
+            const res = await github.request({
+              method: 'GET',
+              url: manifest.url,
+              headers: { accept: 'application/octet-stream' },
+            });
+            let platforms;
+            try {
+              platforms = Object.keys(JSON.parse(Buffer.from(res.data).toString('utf8')).platforms);
+            } catch (e) {
+              core.setFailed(`Refusing to publish ${release_id}: latest.json is unreadable (${e}).`);
+              return;
+            }
+            core.info(`latest.json platforms: ${platforms.join(', ') || '(none)'}`);
+
+            const unlisted = ['darwin', 'linux'].filter(
+              (os) => !platforms.some((key) => key.startsWith(os)),
+            );
+            if (unlisted.length) {
+              core.setFailed(
+                `Refusing to publish ${release_id}: latest.json lists no ${unlisted.join(' or ')} ` +
+                  `platform, so those installs would see no update. The release stays a draft.`,
+              );
+              return;
+            }
+
+            // Still not a prerelease, and this is load-bearing rather than
+            // inherited: GitHub's /releases/latest skips prereleases, and that
+            // endpoint is what the updater resolves through (ADR-0010). Marking
+            // an alpha as a prerelease would leave every installed copy polling a
+            // 404 — which is why "alpha" here changes who publishes, not how the
+            // release is labelled.
+            await github.rest.repos.updateRelease({ owner, repo, release_id, draft: false });
+            core.info(`published release ${release_id}`);
