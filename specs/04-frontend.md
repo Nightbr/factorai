@@ -44,7 +44,7 @@ apps/desktop/src/
 ├── store/
 │   ├── projectsStore.ts
 │   ├── sessionStore.ts      # active session + side-panel state
-│   ├── terminalStore.ts     # terminal handle ↔ session mapping
+│   ├── terminalStore.ts     # open tabs (persisted) + live PTYs per session
 │   └── prefsStore.ts        # user preferences, localStorage (ADR-0013)
 ├── hooks/
 │   ├── useActiveProject.ts  # project the current route is about
@@ -193,10 +193,32 @@ type SessionState = {
 
 ### `terminalStore`
 
-Owns the mapping of (sessionId → terminalId). When the user navigates to a
-session that already has a live PTY, the Terminal component reattaches by
-listening to its `terminal:data` event and writing to xterm. On unmount we
-do **not** kill the PTY — only an explicit "close terminal" action does.
+Two fields with different jobs, and keeping them apart is load-bearing (F16).
+
+```ts
+type TerminalState = {
+  tabs: Array<{ sessionId: string; projectId: string }>;  // persisted, tab order
+  bySession: Record<string, LiveTerminal>;                // NOT persisted
+  attach / detach / reorder / setStatus / removeByTerminal: …
+};
+```
+
+`tabs` is **what you have open**; `bySession` is **what is running**. A tab
+outlives its process — it survives an exit and a quit, and only closing removes
+it — so `tabs` is always a superset of `bySession`'s keys. Nine surfaces read
+`bySession` to mean "running" and go on meaning exactly that; F16 §
+"Where 'open' shows outside the strip" lists which of them moved to the derived
+open record and which did not.
+
+Persisted as `factorai.terminals` v1, `partialize`d down to `tabs` alone. A
+`terminalId` from a previous run names nothing, and a persisted status would be a
+claim about a process that is gone; restored entries come back with neither, which
+is what makes them `stopped` by construction rather than by a rule someone has to
+remember.
+
+When the user navigates to a session that already has a live PTY, the Terminal
+component reattaches by listening to its `terminal:data` event and writing to
+xterm. On unmount we do **not** kill the PTY — only an explicit close does.
 
 ### `panelStore`
 

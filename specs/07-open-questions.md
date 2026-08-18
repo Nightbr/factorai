@@ -401,7 +401,9 @@ this one.
 
 **Decision (2026-08-17, from the F11 interview).** A **modal**, not a route, with
 its open state and section in the **URL** as `?settings=claude|editor|confirmations`.
-Medium width with the section nav in a left column. Changes are committed by an
+Medium width with the section nav in a left column. (`sessions` joined that list
+2026-08-18 with F16's restore switch. What this question decided is the shape;
+the section list is F11's, and F11 is where it stays current.) Changes are committed by an
 explicit **Save**; Cancel discards.
 
 This question existed because F11 named a `/settings` route and nobody had ever
