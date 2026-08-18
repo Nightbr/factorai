@@ -13,6 +13,44 @@ osascript wrappers), ported to Linux/X11 + GNOME.
 | `geometry.sh` | Prints `WIDTH HEIGHT X Y` of the content window | ✓ |
 | `kill.sh` | Descends pgrep tree from launcher pid, kills children deepest-first; sweeps stray dev factorai subtrees | ✓ exit 0, no survivors |
 | `_resolve_wid.sh` | Internal helper: picks the right factorai window from `wmctrl -lG` (skips the 10×10 phantom + outer frame) | — |
+| `osc-probe.sh` | Boots a real `claude` in a PTY and prints the OSC sequences it writes — the re-check for F10's status rule | ✓ both modes, macOS 2026-08-18 |
+
+## `osc-probe.sh` — the one script that tests Claude, not factorai
+
+Everything else here drives our app. This one interrogates the **CLI**, because
+F10 reads session status out of the terminal title Claude Code writes (`✳` =
+idle, any other glyph = working) and ADR-0015 accepts that undocumented
+dependency only on the condition that re-checking it stays cheap.
+
+```bash
+scripts/qa/osc-probe.sh                       # boot only — no API call
+scripts/qa/osc-probe.sh --prompt 'say hi'     # one real turn, so costs tokens
+```
+
+Booting is enough to see the idle marker. Seeing the *working* glyph needs a
+turn, which is why that mode is opt-in and says so before it runs. Output is a
+timeline plus a verdict, and it exits non-zero when the CLI stops matching what
+F10 assumes:
+
+```
+t=  1.8  OSC 0  idle     '✳ Claude Code'
+t=  6.1  OSC 0  working  '◐ Claude Code'
+t= 10.0  OSC 0  idle     '✳ Session'
+```
+
+**Run it after a Claude update**, or on a platform we have not tried. It is the
+Linux answer in particular: the Rust tests are fixture-only by design, which
+proves the parser on every platform and proves nothing about the CLI on any of
+them.
+
+It runs in a throwaway directory so it never adds a transcript to a session list
+you care about, and it strips `CLAUDE_CODE_*` from the child — an inherited
+bypass-permissions mode changes what a turn does, and `CLAUDE_CODE_CHILD_SESSION`
+switches transcript saving off, so a probe that inherits this machine's agent
+environment is measuring something other than what the app does.
+
+Unlike its neighbours it needs no X11, so it is the only script here that works
+on macOS and under Wayland.
 
 ## Never the release app
 
