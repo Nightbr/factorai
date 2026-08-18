@@ -5,6 +5,7 @@ import { AppShell } from '@components/layout/AppShell';
 import { FileViewerModal } from '@components/viewer/FileViewerModal';
 import { type DiffMode, isDiffMode, useFileViewer } from '@hooks/useFileViewer';
 import { useNativeContextMenu } from '@hooks/useNativeContextMenu';
+import { useSessionsSync } from '@hooks/useSessionsSync';
 import { events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { useTerminalStore } from '@store/terminalStore';
@@ -15,6 +16,10 @@ function RootLayout() {
 
 	// The WebView's own menu is a browser's, and this is not a browser.
 	useNativeContextMenu();
+
+	// `sessions:changed` → refetch the session lists, app-wide. See the hook for
+	// why this can't live on a route.
+	useSessionsSync();
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;

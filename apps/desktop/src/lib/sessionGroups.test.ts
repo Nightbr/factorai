@@ -1,6 +1,6 @@
 import type { SessionSummary } from '@factorai/types';
 import { describe, expect, it } from 'vitest';
-import { groupSessions } from './sessionGroups';
+import { groupSessions, pendingSessions } from './sessionGroups';
 
 function session(id: string, subagentOf: string | null = null): SessionSummary {
 	return {
@@ -55,5 +55,39 @@ describe('groupSessions', () => {
 
 	it('handles an empty list', () => {
 		expect(groupSessions([])).toEqual([]);
+	});
+});
+
+describe('pendingSessions', () => {
+	const live = {
+		'live-1': { projectId: 'p1', status: 'running' as const },
+		'live-2': { projectId: 'p2', status: 'idle' as const },
+	};
+
+	it('returns the live sessions this project has no row for', () => {
+		expect(pendingSessions(live, 'p1', [])).toEqual([{ sessionId: 'live-1', status: 'running' }]);
+	});
+
+	it('drops a live session once the index has caught up with it', () => {
+		// The watcher indexed the transcript, so the real row is about to render
+		// with its title — showing both would be the same session twice.
+		expect(pendingSessions(live, 'p1', [session('live-1')])).toEqual([]);
+	});
+
+	it('ignores live sessions in other projects', () => {
+		expect(pendingSessions(live, 'p3', [])).toEqual([]);
+	});
+
+	it('says nothing while the list is still loading', () => {
+		// `undefined` is "not fetched yet", not "nothing indexed": treating them
+		// alike flashes every live session as a new one on first paint.
+		expect(pendingSessions(live, 'p1', undefined)).toEqual([]);
+	});
+
+	it('carries the status through, so the row can show its dot', () => {
+		const stopped = { 'live-3': { projectId: 'p1', status: 'stopped' as const } };
+		expect(pendingSessions(stopped, 'p1', [])).toEqual([
+			{ sessionId: 'live-3', status: 'stopped' },
+		]);
 	});
 });

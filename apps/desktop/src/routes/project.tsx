@@ -4,7 +4,7 @@ import type { SessionSummary } from '@factorai/types';
 import { useStartSession } from '@hooks/useStartSession';
 import { formatRelative } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
-import { type SessionGroup, groupSessions } from '@lib/sessionGroups';
+import { type SessionGroup, groupSessions, pendingSessions } from '@lib/sessionGroups';
 import { cmd } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
@@ -99,20 +99,14 @@ function ProjectView() {
 
 	const groups = useMemo(() => groupSessions(sessionsQ.data ?? []), [sessionsQ.data]);
 
-	// Live sessions this project has that the index hasn't seen. A session gets
-	// no `sessions` row until claude writes its transcript and the watcher
-	// reindexes, which for a brand-new one is only after the first message —
-	// without these rows the session you just started vanishes from the list the
-	// moment you navigate away, even though its PTY is very much alive.
-	const pending = useMemo(() => {
-		// Wait for the real list: treating "not loaded yet" as "not indexed" would
-		// flash every live session as a new one.
-		if (!sessionsQ.data) return [];
-		const indexed = new Set(sessionsQ.data.map((s) => s.id));
-		return Object.entries(bySession)
-			.filter(([sessionId, t]) => t.projectId === id && !indexed.has(sessionId))
-			.map(([sessionId, t]) => ({ sessionId, status: t.status }));
-	}, [bySession, sessionsQ.data, id]);
+	// Live sessions this project has that the index hasn't seen — without these
+	// rows the session you just started vanishes from the list the moment you
+	// navigate away, even though its PTY is very much alive. Shared with the
+	// sidebar's list, which shows the same rows for the same reason.
+	const pending = useMemo(
+		() => pendingSessions(bySession, id, sessionsQ.data),
+		[bySession, sessionsQ.data, id],
+	);
 
 	const isEmpty = sessionsQ.data?.length === 0 && pending.length === 0;
 

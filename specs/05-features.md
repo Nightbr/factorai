@@ -559,11 +559,19 @@ rather than a session in the wrong project.
 
 **Reachability before indexing.** A new session has no `sessions` row until
 `claude` writes its transcript and the watcher reindexes, so the project view
-unions `list_sessions` with the live terminals for that project that have no
-row yet, showing them at the top as `New session` with a status dot. Without
-that union a session you navigate away from is unreachable until you type in
-it. The sidebar's per-project count stays index-derived. The session header
-shows `New session` until a title exists rather than a bare UUID.
+**and the sidebar's expanded session list** union `list_sessions` with the live
+terminals for that project that have no row yet, showing them at the top as
+`New session` with a status dot (`pendingSessions` in `lib/sessionGroups.ts`,
+shared by both). Without that union a session you navigate away from is
+unreachable until you type in it — and the sidebar, which is where you look for
+a session *under its project*, said `No sessions yet` about a project with a
+running PTY. The sidebar's per-project count stays index-derived. The session
+header shows `New session` until a title exists rather than a bare UUID.
+
+Once the transcript is indexed, `sessions:changed` is what replaces the
+pseudo-row with the real one and puts the derived title on the tab — see
+`specs/04-frontend.md` § "Projects and sessions: no store". Nothing here may
+rely on a poll to notice: the tab strip has none.
 
 **Edge cases.**
 - Clicking `+` twice: the second click returns the still-unmessaged session

@@ -153,18 +153,24 @@ The file *preview / diff* panel (F7, F8) is a separate surface, opened from
 
 ## State stores (Zustand)
 
-### `projectsStore`
+### Projects and sessions: no store
 
-```ts
-type ProjectsState = {
-  list: Project[];
-  activeId: string | null;
-  setActive: (id: string) => void;
-  refresh: () => Promise<void>;
-};
-```
+Both are **server state**, so they live in TanStack Query under
+`queryKeys.projects()` / `queryKeys.sessions(projectId)` rather than in a
+`projectsStore` this spec used to describe. Which project the route is about is
+a route param, read through `useActiveProject`.
 
-Subscribes to `sessions:changed` events and bumps a counter to refetch.
+Freshness is event-driven. `useSessionsSync`, mounted once in `__root.tsx`,
+listens for `sessions:changed` and invalidates that project's session list plus
+`projects` — whose `sessionCount` and `lastSessionAt` are aggregates over the
+same rows, and the sidebar's default sort. It is mounted at the root and not per
+route on purpose: the lists that most need the refetch are the ones *not*
+currently mounted and polling.
+
+The `refetchInterval`s the sidebar sets (2s projects, 5s sessions) are the net
+under a missed event, not the mechanism. They are also only half a net — they
+cover an expanded project row and nothing else, which is why the tab strip's
+titles went stale for a whole session before the listener existed.
 
 ### `sessionStore`
 
