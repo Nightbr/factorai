@@ -17,7 +17,23 @@ export function clampPanelWidth(width: number): number {
  *  row; taller and the graph it belongs to stops being a graph. */
 export const MIN_DETAIL_HEIGHT = 96;
 export const MAX_DETAIL_HEIGHT = 600;
-export const DEFAULT_DETAIL_HEIGHT = 200;
+
+/**
+ * **Raised from 200 on 2026-08-18, with the pane's tabs** (F18). At 200 the
+ * chrome — subject, body, author, parents, the Changes heading — could fill the
+ * pane on its own, so clicking a commit showed everything about it except the
+ * thing you clicked for. Tabs fixed the cause; this fixes the symptom, and the
+ * two are worth keeping separate because a 280px pane full of prose would still
+ * have been wrong.
+ *
+ * 280 is about eight file rows once the ~54px of header and tab strip are taken
+ * out. Deliberately not more: the graph above it is the reason the pane exists.
+ */
+export const DEFAULT_DETAIL_HEIGHT = 280;
+
+/** What `DEFAULT_DETAIL_HEIGHT` used to be, kept only for the v1→v2 migration
+ *  below. Do not use it for anything else. */
+const LEGACY_DEFAULT_DETAIL_HEIGHT = 200;
 
 export function clampDetailHeight(height: number): number {
 	if (!Number.isFinite(height)) return DEFAULT_DETAIL_HEIGHT;
@@ -68,6 +84,14 @@ interface PanelState {
 	select: (path: string | null) => void;
 }
 
+/** Exactly what `partialize` writes, and therefore what `migrate` is handed and
+ *  must hand back. Named so the two cannot drift: a field added to one and not
+ *  the other is a migration that silently drops a preference. */
+type PersistedPanelState = Pick<
+	PanelState,
+	'open' | 'width' | 'tab' | 'diffInline' | 'detailHeight'
+>;
+
 export const usePanelStore = create<PanelState>()(
 	persist(
 		(set) => ({
@@ -114,10 +138,30 @@ export const usePanelStore = create<PanelState>()(
 		}),
 		{
 			name: 'factorai.panel',
-			version: 1,
+			version: 2,
+			/**
+			 * v1 → v2: `DEFAULT_DETAIL_HEIGHT` went 200 → 280.
+			 *
+			 * A raised default reaches nobody on its own — this value has persisted
+			 * since F18 shipped, so every existing install would have kept the 200
+			 * the change exists to get away from, and the fix would have looked like
+			 * it did nothing.
+			 *
+			 * **Only a height that is exactly the old default moves.** Any other
+			 * number is one somebody dragged to, and overwriting a deliberate choice
+			 * to deliver a new default is the worse failure of the two — it is also
+			 * unrecoverable, since nothing records what they had.
+			 */
+			migrate: (persisted, version) => {
+				const state = persisted as PersistedPanelState | undefined;
+				if (state && version < 2 && state.detailHeight === LEGACY_DEFAULT_DETAIL_HEIGHT) {
+					return { ...state, detailHeight: DEFAULT_DETAIL_HEIGHT };
+				}
+				return state;
+			},
 			// Only the preferences round-trip to storage. Sets aren't
 			// JSON-serialisable anyway, and see `expandedByProject` above.
-			partialize: (s) => ({
+			partialize: (s): PersistedPanelState => ({
 				open: s.open,
 				width: s.width,
 				tab: s.tab,
