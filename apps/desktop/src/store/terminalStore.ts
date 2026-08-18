@@ -1,4 +1,4 @@
-import type { TerminalId, TerminalStatus } from '@factorai/types';
+import type { TerminalId, TerminalStatus, TerminalStatusDto } from '@factorai/types';
 import { create } from 'zustand';
 
 /** A PTY that is (or was) live for a session. Present in the store iff the
@@ -20,6 +20,19 @@ interface TerminalState {
 	 *  to restore, and a renderer reload rebuilds from `terminal_list()`. */
 	order: string[];
 	attach: (sessionId: string, terminalId: TerminalId, projectId: string) => void;
+	/** Adopt the PTYs Rust already holds, from `terminal_list` at boot.
+	 *
+	 *  A renderer reload keeps every PTY alive — they live in Rust state, not
+	 *  here — but throws this store away, so without this the tabs vanish off
+	 *  processes that are still running and the only way back to them is the
+	 *  sidebar. Both this file and `ErrorBoundary` claimed the re-sync existed
+	 *  for months; the command had no caller on this side at all.
+	 *
+	 *  **Merges, never replaces.** The call is async and a `Terminal` can mount
+	 *  and spawn while it is in flight, so replacing the map would drop a PTY
+	 *  younger than the request. Adopting each entry is also idempotent, which
+	 *  is what makes it safe under StrictMode's double-invoke. */
+	adoptLive: (live: TerminalStatusDto[]) => void;
 	/** Move a tab, by session id, to the index of another. */
 	reorder: (sessionId: string, toIndex: number) => void;
 	/** Update status for the terminal with this id (`terminal:status`). */
@@ -53,6 +66,20 @@ export const useTerminalStore = create<TerminalState>((set) => ({
 			// terminal_list) must not move its tab.
 			order: s.order.includes(sessionId) ? s.order : [...s.order, sessionId],
 		})),
+	adoptLive: (live) =>
+		set((s) => {
+			const bySession = { ...s.bySession };
+			const order = [...s.order];
+			for (const t of live) {
+				bySession[t.sessionId] = {
+					terminalId: t.id,
+					projectId: t.projectId,
+					status: t.status,
+				};
+				if (!order.includes(t.sessionId)) order.push(t.sessionId);
+			}
+			return { bySession, order };
+		}),
 	reorder: (sessionId, toIndex) =>
 		set((s) => {
 			const from = s.order.indexOf(sessionId);
