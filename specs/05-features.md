@@ -1840,9 +1840,18 @@ checked out (HEAD) · in sync with origin/main`. That is the condition on the
 trade: a mark is faster to scan and worse to learn, so it is only an improvement
 while the sentence it replaced is one hover away.
 
-**Hovering a chip also releases its width cap**, so a name the row truncated
-becomes readable in place without opening the card. The cap is an inline style
-computed from the panel width, so the hover rule carries `!` to outrank it.
+**The cap used to lift on the chip's own hover, and no longer does. Changed
+2026-08-18 on user feedback** about chips overflowing. Releasing it in place did
+not make a long name readable, because at 288px it does not fit uncapped either:
+the chip grew past the panel's edge, pushed the subject off the row on its way,
+and did both under the pointer while you were sweeping across. Un-truncating is
+the hover card's job — one pointer-rest away, with room to wrap.
+
+**The card bounds its chips too**, which is the other half of the same report: a
+chip there is uncapped by a number but capped by the card (`max-w-full`), and its
+label **wraps** rather than truncating. Unbounded, a flex item sized by a
+56-character ref overflowed the card and printed the name across the graph beside
+it.
 
 `+N` is still the common case at 288px for a tagged release on the branch tip —
 the chips got shorter, not free, and the icons cost width of their own, which
@@ -1983,12 +1992,24 @@ what makes a 38-character row acceptable.
   sweep down the list firing a cascade of cards. In use the cascade never arrived
   and the wait did: this card *is* what un-truncates a row, so pointing at a row
   you cannot read and waiting is the whole interaction, and 400ms of nothing
-  reads as the app failing to respond. Radix already keeps the sweep tolerable —
-  one card is open at a time, and crossing to another trigger swaps the content
-  rather than opening a second. The close delay stays, because it is what lets
-  the pointer travel from the row onto the card without it vanishing underneath,
-  and it costs nothing on the way in. Measured after the change: 45ms from hover
-  to visible card.
+  reads as the app failing to respond. The close delay stays, because it is what
+  lets the pointer travel from the row onto the card without it vanishing
+  underneath, and it costs nothing on the way in. Measured after the change: 45ms
+  from hover to visible card.
+
+  **One card is open at a time, and the list owns which one. Added 2026-08-18 on
+  user feedback**, which reported commits that persist while you move the pointer
+  quickly. They did. This spec previously credited Radix with keeping the sweep
+  tolerable; that was wrong, and removing the open delay is what exposed it. Every
+  row is its own `HoverCard` root and roots know nothing of each other, so
+  crossing five rows opened five cards, each then sitting out its own 150ms close
+  delay stacked over the session pane — five entrance animations at five different
+  offsets, which is what "glitchy" was. `GraphView` holds the carded sha for the
+  whole list and passes each row `open`, so opening one closes the last. The close
+  is **guarded on the sha**: the row you left reports closed a delay *after* the
+  row you arrived at reported open, and an unguarded handler would shut the card
+  you are pointing at. Rows are `memo`'d with sha-taking callbacks for this — a
+  list-wide open state otherwise re-renders all 300 rows per row crossed.
 
   **It opens beside the row, to its left. Changed 2026-08-18 on user feedback**,
   and this placement has now been both — so the two complaints are worth keeping
@@ -2155,7 +2176,12 @@ renderer draws SVG and never reasons about the DAG. See Q23 for why.
 - **Not a git repository** → the tab stays present and renders `Not a git
   repository.`, the same string and shape as `ChangesView`. `git_status`
   already resolves `repoRoot: null` rather than rejecting; the graph does the
-  same thing. The strip must not reflow as you move between projects.
+  same thing. The strip must not reflow as you move between projects. **The same
+  pixel, too**: all three tabs share one `PanelEmpty`, and the graph — which
+  renders outside the `py-1` scroll wrapper Files and Changes sit in, because it
+  owns its own scrolling and docks a detail pane — repeats that padding
+  explicitly. Its line sat 4px above theirs until 2026-08-18, on one click's
+  distance.
 - **Repository with no commits** (unborn `HEAD`) → `No commits yet.` There is
   nothing to walk and that is not an error.
 - **Detached `HEAD`** → a bare `HEAD` chip on its commit, with no branch to fold

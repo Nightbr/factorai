@@ -1,5 +1,6 @@
 import type { GitGraphCommit, GitRefKind, RemoteHost } from '@factorai/types';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@factorai/ui';
+import { memo } from 'react';
 import type { RefChip } from '@lib/gitGraph';
 import {
 	CHIP_CLASSES,
@@ -29,10 +30,13 @@ import IconGitLab from '~icons/simple-icons/gitlab';
  * un-truncates a row, so pointing at a row you cannot read and waiting is the
  * whole interaction, and 400ms of nothing reads as the app not responding.
  *
- * Radix keeps the sweep tolerable on its own — one card is open at a time, and
- * moving between triggers swaps content rather than opening a second. The close
- * delay stays: it is what lets the pointer travel from row to card without the
- * card vanishing under it, and it costs nothing on the way in.
+ * What makes the sweep tolerable is `GraphBody` holding the open row, **not**
+ * Radix: every row here is its own `HoverCard` root and roots know nothing of
+ * each other, so with no delay to hide it, crossing five rows opened five cards
+ * that then sat out their close delays stacked on top of each other. Read this
+ * with `cardOpen` below. The close delay stays: it is what lets the pointer
+ * travel from row to card without the card vanishing under it, and it costs
+ * nothing on the way in.
  */
 const HOVER_OPEN_MS = 0;
 const HOVER_CLOSE_MS = 150;
@@ -66,10 +70,18 @@ function RefIcon({ kind, host }: { kind: GitRefKind; host: RemoteHost }) {
  * while the sentence is one hover away.
  *
  * `maxWidth` is capped so one `feature/some-very-long-description` cannot push
- * the subject off the row, and **released on hover** so the name you pointed at
- * is the one you can read. The cap is an inline style because it is computed
- * from the panel's width, so lifting it needs `!` to outrank that — the one
- * place in this file where specificity is the mechanism rather than an accident.
+ * the subject off the row. **The cap used to lift on the chip's own hover** —
+ * removed 2026-08-18 on user feedback, because at 288px a long branch name does
+ * not fit uncapped either: the chip grew past the panel's edge, took the subject
+ * off the row with it, and did all that under the pointer as you swept across.
+ * Reading a truncated name is the hover card's job, which is one pointer-rest
+ * away and has room to wrap it.
+ *
+ * Uncapped is therefore the card's variant only, and it is bounded too — by the
+ * card rather than by a number, with the label wrapping instead of truncating.
+ * `max-w-full` is not decoration: a flex item sized by an unbreakable
+ * 50-character ref overflows its container, which is exactly how a chip ended up
+ * printed across the graph beside its own card.
  */
 function Chip({
 	chip,
@@ -85,15 +97,13 @@ function Chip({
 		<span
 			title={chip.title}
 			style={maxWidth ? { maxWidth } : undefined}
-			className={`${CHIP_SHAPE} ${maxWidth ? 'shrink-0 hover:max-w-none!' : ''} ${
-				CHIP_CLASSES[chip.kind]
-			}`}
+			className={`${CHIP_SHAPE} ${maxWidth ? 'shrink-0' : 'max-w-full'} ${CHIP_CLASSES[chip.kind]}`}
 		>
 			{/* The tick, not the word: `HEAD→` cost five characters to say what every
 			    other git UI says with a check beside the branch that is checked out. */}
 			{chip.isHead && <Check className="size-3 shrink-0" aria-hidden />}
 			<RefIcon kind={chip.kind} host={remoteHost} />
-			<span className="truncate">{chip.label}</span>
+			<span className={maxWidth ? 'truncate' : 'min-w-0 wrap-anywhere'}>{chip.label}</span>
 			{/* Local and remote are on this same commit, so the forge's mark stands
 			    in for ` ≡origin`. Which remote is in the tooltip — repositories with
 			    one remote are the common case, and naming it cost more width than it
@@ -117,7 +127,13 @@ interface CommitRowProps {
 	tabbable: boolean;
 	/** Uncommitted changes sit on top of this commit — only ever HEAD's row. */
 	dirty: boolean;
-	onSelect: () => void;
+	/** Whether *this* row is the one row in the list showing its card. Held by
+	 *  `GraphBody` so opening one closes the last — see `HOVER_OPEN_MS`. */
+	cardOpen: boolean;
+	/** Both callbacks take the sha rather than closing over it, so they stay
+	 *  referentially stable and `memo` below can do its job across 300 rows. */
+	onCardOpen: (sha: string, open: boolean) => void;
+	onSelect: (sha: string) => void;
 }
 
 /**
@@ -127,7 +143,7 @@ interface CommitRowProps {
  * ~38-character row acceptable: everything the row had to cut is one hover away,
  * and the body and file list — which genuinely want width — are in the pane below.
  */
-export function CommitRow({
+export const CommitRow = memo(function CommitRow({
 	commit,
 	pitch,
 	railWidth,
@@ -136,6 +152,8 @@ export function CommitRow({
 	selected,
 	tabbable,
 	dirty,
+	cardOpen,
+	onCardOpen,
 	onSelect,
 }: CommitRowProps) {
 	const chips = foldRefs(commit.refs);
@@ -145,7 +163,12 @@ export function CommitRow({
 
 	return (
 		<li>
-			<HoverCard openDelay={HOVER_OPEN_MS} closeDelay={HOVER_CLOSE_MS}>
+			<HoverCard
+				open={cardOpen}
+				onOpenChange={(open) => onCardOpen(commit.sha, open)}
+				openDelay={HOVER_OPEN_MS}
+				closeDelay={HOVER_CLOSE_MS}
+			>
 				<HoverCardTrigger asChild>
 					<button
 						type="button"
@@ -163,7 +186,7 @@ export function CommitRow({
 						className={`group flex w-full items-center gap-1.5 pr-2 text-left text-sm transition-colors ${
 							selected ? 'bg-secondary' : 'hover:bg-secondary/50'
 						}`}
-						onClick={onSelect}
+						onClick={() => onSelect(commit.sha)}
 					>
 						<GraphRail
 							lane={commit.lane}
@@ -243,7 +266,7 @@ export function CommitRow({
 			</HoverCard>
 		</li>
 	);
-}
+});
 
 /** Everything the row had to cut. Not the body or the file list — those are the
  *  detail pane's job, and a card big enough for them would cover the graph you
