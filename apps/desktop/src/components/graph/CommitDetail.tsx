@@ -217,7 +217,7 @@ function DetailTab({
 			type="button"
 			role="tab"
 			aria-selected={selected}
-			className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-xs transition-colors ${
+			className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-sm transition-colors ${
 				selected ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
 			}`}
 			onClick={() => onSelect(id)}

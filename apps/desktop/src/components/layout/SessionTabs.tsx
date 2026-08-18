@@ -156,7 +156,7 @@ export function SessionTabs() {
 								e.preventDefault();
 								setDragging(null);
 							}}
-							className={`group flex h-7 max-w-44 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-xs transition-colors ${
+							className={`group flex h-7 max-w-60 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-sm transition-colors ${
 								isActive
 									? 'bg-secondary text-foreground'
 									: 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
@@ -195,7 +195,7 @@ export function SessionTabs() {
 							<ProjectIcon
 								name={projectById.get(live.projectId)?.displayName ?? live.projectId}
 								path={projectById.get(live.projectId)?.realPath ?? live.projectId}
-								size={14}
+								size={16}
 							/>
 							<span className="min-w-0 flex-1 truncate">{titles.get(id) ?? shortId(id)}</span>
 							{/* Only where the pointer already is, or on the active tab: a row
@@ -211,7 +211,7 @@ export function SessionTabs() {
 									setClosing(id);
 								}}
 							>
-								<X className="size-3" />
+								<X className="size-3.5" />
 							</button>
 						</div>
 					);

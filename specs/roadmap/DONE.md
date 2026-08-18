@@ -3,6 +3,49 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **14px is the floor for labels, and a tab is 240px wide — `AGENTS.md` § 4, specs `05-features.md`
+  § F16** — 2026-08-18, user ask. "La font-size n'est pas consistent sur l'app. En 100%, le terminal
+  et le commit message sont ok mais le reste est un peu petit (nom des tabs, tout le panneau de
+  gauche, les icons). D'ailleurs les tabs pourraient être un peu plus large par défaut."
+
+  **The diagnosis is that the app has two sizes and was using the smaller one for navigation.**
+  123 font-size call sites, effectively `text-xs` (12px, 68) and `text-sm` (14px, 55). The two
+  things the report called fine are the 13px terminal and the commit subject at `text-sm`;
+  everything it called small was `text-xs` — tab labels, the sidebar's session rows, the panel's
+  `Files Changes Graph`. So this is not a scale that needs re-cutting, it is a rule nobody had
+  written down: `text-sm` for what you read to navigate, `text-xs` for metadata and status. That
+  rule is now `AGENTS.md` § 4, which is the point of the change — the sizes were a one-line fix
+  each and would have drifted back within a month.
+
+  **What moved.** All three tab strips (`SessionTabs`, `FileTreePanel`'s `TabButton`,
+  `CommitDetail`'s `DetailTab`) and the sidebar's nested rows — sessions, the pending "New session",
+  "N more…", "Loading…"/"No sessions yet". The session tab's cap went `max-w-44` → `max-w-60`
+  (176 → 240px), with the avatar 14 → 16px and the close `×` 12 → 14px so the tab reads as one
+  object. `ChangesView`'s hand-written `text-[11px]` heading became `text-xs`, so the app's two
+  uppercase section labels are one size.
+
+  **What deliberately did not move**, since the alternative was tried on paper first: no 13px step
+  (a third size answers the "which size is this" question with "it depends"), no global icon bump
+  (`IconButton`'s 14px base is the reference for this app's density — see item 23), and not the
+  root font-size, which would have lifted every existing inconsistency by 6% and desynced the rem
+  sizing from the px constants. The sidebar's footer, `PROJECTS` header and `missing` badge stay
+  12px: they are status and metadata, which is what the rule now says 12px is for.
+
+  Two things worth keeping:
+
+  - **The panel's minimum width was load-bearing on the label size.** `MIN_PANEL_WIDTH` was 200px
+    and its header lays out three tab labels plus, on the Files tab, three icon buttons — collapse,
+    refresh, close; at 14px that row no longer fits. A floor exists to keep a panel usable, so a
+    header that cannot fit its own tabs means the floor is wrong, not the labels. **Raised to 256,
+    from a measurement rather than the arithmetic**: 224 was the estimate and it was still 20px
+    short — `scrollWidth` 243 against a 223px content box, with the close button pushed to 2px off
+    the panel edge, eating the header's own padding. Persisted widths are clamped on read, so a
+    stored 200 comes back as 256 with no migration.
+  - **`gitGraph.ts`'s `CHAR_PX = 6.5` is why the 13px option was not free.** It turns a pixel
+    budget into a character budget to decide how many ref chips fit a commit row, and it is
+    calibrated to 12px. Any change to `--text-xs` re-tunes it silently rather than visibly. Keeping
+    the two sizes as they are left that constant honest and out of the diff.
+
 - **`sessions:changed` has a listener — specs `04-frontend.md` § "Projects and sessions: no store",
   `05-features.md` § F6** — 2026-08-18, user report. Two symptoms, one cause: a session started in a
   project just added from the picker did not show up under that project, and a tab kept the short id

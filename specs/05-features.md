@@ -1385,6 +1385,18 @@ all when nothing is live, so the bar looks untouched until the first session.
 **UI.** Project avatar, session title, and a close button that appears on hover
 or on the active tab; a permanent row of `×` is a row of accidents waiting.
 
+**Sized to be read — changed 2026-08-18 on user feedback.** The label is
+`text-sm`, the same size as the sidebar's rows and the commit subject rather
+than the 12px the strip shipped with, and a tab may reach **240px** before the
+title truncates, up from 176px. At the old pair a tab showed ~18 characters of
+a title claude derived from a first message, which is routinely not enough to
+tell two sessions in one project apart; 240px and 14px gives ~25. The tab stays
+`h-7` inside the 40px bar — 14px text at its line-height is 17.5px, so nothing
+had to grow to hold it — and the avatar (16px) and the close `×` (14px) moved up
+with the label, so a wide tab reads as one object instead of text with specks
+beside it. The cap is still a *cap*: width follows the title, so a short one
+still makes a short tab.
+
 **The avatar, not a status dot.** Every tab is a live PTY by definition, so a
 dot on each would be a row of green saying nothing; the avatar answers the
 question you actually have with several open — which project is this one? The
@@ -1744,7 +1756,7 @@ what makes a 38-character row acceptable.
   context is the worse of the two, so it is back on the left.
 
   **What actually broke the first time was the width, not the side.** A fixed
-  `w-80` inside a panel that starts at 200px meant collision handling shoved the
+  `w-80` inside a panel whose floor is 256px meant collision handling shoved the
   card sideways to fit a width nothing had. It is now bounded at both ends:
   `--radix-hover-card-trigger-width` so it tracks the row, `min-w-72` so a narrow
   panel doesn't produce a cramped card, `max-w-96` so it always fits the space to

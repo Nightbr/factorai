@@ -152,7 +152,7 @@ function TabButton({ tab, label }: { tab: PanelTab; label: string }) {
 			type="button"
 			role="tab"
 			aria-selected={active}
-			className={`rounded px-1.5 py-0.5 font-medium text-xs transition-colors ${
+			className={`rounded px-1.5 py-0.5 font-medium text-sm transition-colors ${
 				active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
 			}`}
 			onClick={() => setTab(tab)}

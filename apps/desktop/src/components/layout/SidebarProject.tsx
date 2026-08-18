@@ -341,7 +341,7 @@ function SessionList({ project }: { project: Project }) {
 						to="/projects/$projectId/sessions/$sessionId"
 						params={{ projectId: project.id, sessionId: p.sessionId }}
 						title="New session — it takes its title from your first message"
-						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-xs transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						<span className="min-w-0 flex-1 truncate">New session</span>
@@ -355,15 +355,17 @@ function SessionList({ project }: { project: Project }) {
 						to="/projects/$projectId/sessions/$sessionId"
 						params={{ projectId: project.id, sessionId: session.id }}
 						title={session.title || session.id}
-						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-xs transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						<span className="min-w-0 flex-1 truncate">
 							{session.title.trim() || session.id.slice(0, 8)}
 						</span>
 						{bySession[session.id] && (
-							// Smaller than the standalone dot: in a list of nested rows at
-							// 12px text, the full-size dot is the loudest thing on screen.
+							// Smaller than the standalone dot: down a column of nested rows the
+							// full-size dot is the loudest thing on screen. It stayed at 6px when
+							// the rows went to 14px — it marks which session is live, and a mark
+							// that grows with its label starts competing with it.
 							<StatusDot status={bySession[session.id].status} className="size-1.5" />
 						)}
 					</Link>
@@ -375,7 +377,7 @@ function SessionList({ project }: { project: Project }) {
 					<Link
 						to="/projects/$id"
 						params={{ id: project.id }}
-						className="block py-1.5 pr-2 pl-8 text-muted-foreground/60 text-xs transition-colors hover:text-foreground"
+						className="block py-1.5 pr-2 pl-8 text-muted-foreground/60 text-sm transition-colors hover:text-foreground"
 					>
 						{hidden} more…
 					</Link>
@@ -388,7 +390,7 @@ function SessionList({ project }: { project: Project }) {
 function Row({ children, muted }: { children: string; muted?: boolean }) {
 	return (
 		<p
-			className={`py-1.5 pl-8 text-xs ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
+			className={`py-1.5 pl-8 text-sm ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
 		>
 			{children}
 		</p>
