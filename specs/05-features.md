@@ -915,11 +915,20 @@ So the rule, in `TerminalManager`'s reader as bytes arrive — no polling, no ti
 
 **The rule is inverted on purpose: enumerate the idle marker, treat everything
 else as working.** Only `✳` is load-bearing, so any spinner glyph — present or
-future — reads correctly. Enumerating the *spinner* instead is exactly how
-switchboard's detector died: it matches braille frames (U+2800–U+28FF), and
-Claude Code has not used braille in the title for some time. Against 2.1.234 not
-one braille codepoint exists in the binary and their busy state never fires.
-Don't re-derive their version.
+future — reads correctly. The alternative is to enumerate the *spinner*, and
+switchboard shows what that costs: it matches braille frames (U+2800–U+28FF),
+which Claude Code no longer emits — against 2.1.234 not one braille codepoint
+exists in the binary — so **that check is dead code today**.
+
+**Corrected 2026-08-18**, and the correction is the more useful half. This
+section first said their busy state was therefore dead. It is not: they have a
+second source for it, `OSC 9;4` progress, so the dead braille check is redundant
+rather than load-bearing and their indicator still works. What their design
+actually demonstrates is the cost of the choice, not a failure — one of their two
+busy sources silently stopped working and nothing told them, because the other
+one covered for it. A single enumerated glyph set with no second source would
+simply have broken. Hence the inversion here: we have one source, so it must be
+the one that cannot go stale.
 
 **Two spinners exist and they are different.** The title animates `◐ ◑`
 (U+25D0/U+25D1); the TUI *body* spinner is `· ✢ ✳ ✶ ✻ ✽`. Note that `✳` appears
@@ -1038,10 +1047,27 @@ Kept because each is a thing the next reader will otherwise investigate again.
   state and a migration, orthogonal to the live PTY states here, and it is what a
   `finished` state would need to mean anything.
 
-**Switchboard ref.** `main.js` `ptyProcess.onData` (OSC parsing) and `public/app.js`
-`setActivity`. Read them for the shape, not the constants — see the braille note
-above, and note that the "noise-filtered output" fallback its comments describe
-does not exist in the code.
+**Switchboard ref**, read properly on 2026-08-18 because the README's "actively
+running, idle, or finished" is worth knowing the mechanism behind. It is **four
+signals, not one**, and only two of them are about Claude at all:
+
+| Their state | Where it comes from |
+| --- | --- |
+| running / stopped | `get-active-sessions` IPC over the main process's `activeSessions` map, polled every 3s while any PTY lives and every 30s otherwise (`main.js:870`, `app.js:559`). Purely "a PTY exists" — the same thing our dot meant before F10 |
+| busy | `OSC 9;4` progress, level 1/2/3 (`main.js:1201`) — plus a dead braille-title check at `main.js:1172` |
+| idle | the `OSC 0` title's first char being `✳` (`main.js:1173`), gated on having been busy first |
+| finished | `responseReadySessions` (`app.js:112`) — the busy→idle edge, recorded **only when that session is not the one you are looking at**, and cleared when you click it |
+
+Two things worth taking from that. **Their "finished" is our deferred unread
+axis**, not a process state: it is sticky until you look, which is exactly why a
+`finished` state needs `viewed_at` to mean anything. And **`OSC 9;4` costs them
+the `TERM_PROGRAM=iTerm.app` spoof** (`main.js:1128`, commented as being for
+OSC 9) — the CLI emits no progress otherwise, which is what we measured
+independently and why we took the title instead.
+
+Also note the "noise-filtered terminal output" fallback its comments describe
+(`app.js:104`) **does not exist in the code**: `setActivity` has exactly two call
+sites, both OSC-driven.
 
 ---
 

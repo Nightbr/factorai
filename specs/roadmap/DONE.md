@@ -13,18 +13,27 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   source, and choosing one was the whole job.
 
   **The mechanism came from reading switchboard and then verifying it, and verifying overturned
-  it.** Their busy signal matches braille spinner frames in the `OSC 0` title. Claude Code 2.1.234
-  contains no braille codepoint at all — so their busy state never fires, and their "noise-filtered
-  output" fallback is a comment with no code under it. Booting the CLI in a PTY and capturing raw
-  bytes found what does work: the title carries the state in its first character, `✳` when idle and
-  an animating `◐ ◑` while working. It needs no configuration, no settings file, no env changes and
-  no hooks.
+  it.** One of their two busy signals matches braille spinner frames in the `OSC 0` title, and
+  Claude Code 2.1.234 contains no braille codepoint at all — so that check is dead code. Booting the
+  CLI in a PTY and capturing raw bytes found what does work: the title carries the state in its
+  first character, `✳` when idle and an animating `◐ ◑` while working. It needs no configuration, no
+  settings file, no env changes and no hooks.
+
+  **Corrected later the same day, after a second read of their code.** The first version of this
+  entry, of F10 and of ADR-0015 all said their busy state was therefore dead. It is not — `OSC 9;4`
+  progress is their other source and it works, so the braille check is redundant rather than
+  load-bearing. The correction makes the argument stronger rather than weaker: a glyph list went
+  stale and *nothing reported it*, because a second source covered for it. We chose to have one
+  source, so it has to be the one that cannot go stale. F10 now carries the full four-signal
+  breakdown of how they determine running / idle / finished, which is worth reading before anyone
+  reaches for a second source here. (Their "noise-filtered output" fallback genuinely is a comment
+  with no code under it — `setActivity` has exactly two call sites, both OSC-driven.)
 
   **So the rule enumerates the *idle* marker and treats everything else as working**, which is the
   half that survives version drift — any spinner glyph the CLI adopts later still reads correctly,
-  and enumerating spinners is precisely how switchboard's detector died. An unrecognised title holds
-  the previous state, so the worst a future Claude can do is stop this improving the dot; it cannot
-  make the dot lie.
+  and a spinner list is the thing that went stale in switchboard without anyone noticing. An
+  unrecognised title holds the previous state, so the worst a future Claude can do is stop this
+  improving the dot; it cannot make the dot lie.
 
   Four mechanisms were rejected with evidence, and F10 records each so nobody investigates them
   twice: `OSC 9;4` progress (real, brackets a turn exactly, but only when the CLI thinks it is

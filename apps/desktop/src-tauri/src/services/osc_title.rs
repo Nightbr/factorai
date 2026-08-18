@@ -12,9 +12,15 @@
 //! **The rule enumerates the idle marker and treats everything else as
 //! working**, which is the half that survives version drift: any spinner glyph
 //! the CLI adopts later still reads correctly, and only [`IDLE_MARKER`] is
-//! load-bearing. Enumerating the *spinner* instead is how switchboard's
-//! detector died — it matches braille frames (U+2800–U+28FF) that Claude Code
-//! no longer emits, so its busy state never fires.
+//! load-bearing.
+//!
+//! Enumerating the *spinner* is the alternative, and switchboard shows what it
+//! costs: it matches braille frames (U+2800–U+28FF), which 2.1.234 does not
+//! contain a single codepoint of, so that check is dead code. Their indicator
+//! still works — they have a second busy source in `OSC 9;4` progress, which
+//! covered for it — and that is the actual lesson. A glyph list went stale
+//! silently and nothing reported it. This module has **one** source, so it has
+//! to be the one that cannot go stale.
 //!
 //! Note there are two different spinners in play. The title animates `◐ ◑`
 //! (U+25D0/U+25D1); the TUI *body* spinner is `· ✢ ✳ ✶ ✻ ✽`, which contains
