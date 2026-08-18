@@ -7,8 +7,9 @@
 //! bundle goes missing. So this is a **diff against what we have**, never a
 //! replacement for it.
 //!
-//! Two things are wrong with "what we have", and both come from being a GUI
-//! application rather than something started from a terminal.
+//! Three things are wrong with "what we have". The first two come from being a
+//! GUI application rather than something started from a terminal; the third
+//! comes from who started *us*.
 //!
 //! **`PATH` is not the user's.** No rc file has ever run in this process, so
 //! Homebrew and every version-manager shim are missing from it, and a session
@@ -42,7 +43,12 @@
 //! the new ones. Matching on the path is what makes this exhaustive.
 //!
 //! Outside an AppImage — a dev build, a `.deb`, a `.app` — `APPDIR` is unset
-//! and this does nothing at all.
+//! and that rule does nothing at all.
+//!
+//! **One variable is dropped by name regardless**, because it is not about
+//! AppImages and applies on every platform: `CLAUDE_CODE_CHILD_SESSION`, which
+//! describes our process rather than the child's and turns transcript saving
+//! off in any `claude` that inherits it. See [`AGENT_MARKERS`].
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -57,6 +63,22 @@ use super::shell_path;
 /// worse than either: a tool that checks one and uses the other would follow
 /// it straight into a directory we just removed from every search path.
 const APPIMAGE_MARKERS: &[&str] = &["APPDIR", "APPIMAGE", "ARGV0", "OWD"];
+
+/// How Claude Code marks a process it spawned itself, and describes *us* rather
+/// than the child.
+///
+/// A `claude` that inherits it starts with **transcript saving off** and says so
+/// in its banner: `Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION
+/// marker`. That is not cosmetic. No transcript means no row for the indexer,
+/// nothing to search, and `session_flag`'s probe (ADR-0008) sees no file — so the
+/// next launch of the same id picks `--session-id` on an id Claude already knows
+/// and fails with "already in use". The symptom lands one step from the cause,
+/// like every other bug this module exists for.
+///
+/// Reachable whenever factorai is itself started from inside a Claude session,
+/// which is exactly how it gets developed. Found 2026-08-18 while probing the CLI
+/// for F10's title sequences.
+const AGENT_MARKERS: &[&str] = &["CLAUDE_CODE_CHILD_SESSION"];
 
 /// What has to change about the inherited environment — as a **diff**, not as a
 /// finished environment.
@@ -125,18 +147,24 @@ pub fn changes_for_current_env() -> EnvChanges {
 }
 
 /// The testable half of [`changes_for_current_env`]. `appdir` is `$APPDIR` —
-/// `None` when not running from an AppImage, in which case there is nothing to
-/// change.
+/// `None` when not running from an AppImage, which disables the path-based rule
+/// but not the by-name [`AGENT_MARKERS`] one.
 pub fn changes<I>(vars: I, appdir: Option<&Path>) -> EnvChanges
 where
 	I: IntoIterator<Item = (OsString, OsString)>,
 {
-	let Some(appdir) = usable_appdir(appdir) else {
-		return EnvChanges::default();
-	};
+	// Deliberately *not* an early return when there is no `$APPDIR`: the agent
+	// markers below have nothing to do with AppImages and have to go on every
+	// platform and every build.
+	let appdir = usable_appdir(appdir);
 
 	let mut out = EnvChanges::default();
 	for (key, value) in vars {
+		if AGENT_MARKERS.iter().any(|m| key == OsStr::new(m)) {
+			out.remove.push(key);
+			continue;
+		}
+		let Some(appdir) = appdir else { continue };
 		if APPIMAGE_MARKERS.iter().any(|m| key == OsStr::new(m)) {
 			out.remove.push(key);
 			continue;
@@ -241,6 +269,29 @@ mod tests {
 	fn outside_an_appimage_nothing_is_touched() {
 		let original = env(&[("PATH", "/usr/bin"), ("PYTHONHOME", "/opt/py")]);
 		assert_eq!(changes(original, None), EnvChanges::default());
+	}
+
+	/// The agent marker is not an AppImage concern, so it cannot be behind the
+	/// `$APPDIR` gate — a `.app` on macOS is where this bug was actually found.
+	#[test]
+	fn the_agent_marker_goes_even_without_an_appdir() {
+		let ch =
+			changes(env(&[("PATH", "/usr/bin"), ("CLAUDE_CODE_CHILD_SESSION", "abc123")]), None);
+		assert_eq!(ch.remove, vec![OsString::from("CLAUDE_CODE_CHILD_SESSION")]);
+		// And it changes nothing else, so a dev build's environment is otherwise
+		// still untouched.
+		assert!(ch.set.is_empty());
+	}
+
+	#[test]
+	fn the_agent_marker_goes_inside_an_appimage_too() {
+		assert_eq!(
+			get(
+				&[("CLAUDE_CODE_CHILD_SESSION", "abc123"), ("PATH", "/usr/bin")],
+				"CLAUDE_CODE_CHILD_SESSION"
+			),
+			None
+		);
 	}
 
 	/// The regression test for v0.5.0. `CommandBuilder` starts out holding this
