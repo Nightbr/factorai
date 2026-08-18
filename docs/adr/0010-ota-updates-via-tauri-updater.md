@@ -38,6 +38,11 @@ Four consequences of that choice, each of which forced something else:
 2. **Releases are no longer marked pre-release.** GitHub's `/releases/latest`
    skips prereleases, so the endpoint would resolve to nothing. They stay
    **drafts** until published by hand, which is what actually gates a rollout.
+   → **Amended 2026-08-18 by
+   [ADR-0014](0014-alpha-releases-publish-themselves.md)**: while factorai is
+   alpha the workflow publishes the draft itself, once a check confirms both
+   platforms' artefacts are present. The draft and the not-a-prerelease rule
+   both stand; only the hand does not.
 3. **Linux ships AppImage only.** The updater can replace an AppImage in place;
    it cannot replace a `.deb`, because apt owns those files. Shipping a `.deb`
    that silently never self-updates is worse than not shipping one.
@@ -56,7 +61,8 @@ empty passphrase. Losing it means every installed copy stops accepting updates
 **Good.**
 
 - One command still ships a release (`git tag`, then publish the draft), and
-  installs converge on their own.
+  installs converge on their own. (Since ADR-0014 the second half is automatic,
+  so it really is one command.)
 - Signature verification means a compromised release host can't push arbitrary
   code to installs — the private key never leaves the secret store.
 - Update checks cost one static JSON fetch; no server to run.

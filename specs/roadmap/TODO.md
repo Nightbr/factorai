@@ -926,9 +926,21 @@ the steps *around* it:
       is hand-written after the fact each time — `generateReleaseNotes: true` produces notes that
       then get replaced. Either derive the notes from `DONE.md` or keep a changelog; writing them
       twice is the current state.
-- [ ] **Publishing is manual, and should stay manual for production.** The draft exists so a
-      half-finished matrix cannot publish a release missing a platform. Keep that. It interacts
-      with channels below — alpha is exactly the case where you do *not* want a human in the loop.
+- [x] **Publishing is automatic while factorai is alpha — done 2026-08-18, and the protection was
+      kept.** This item asked for exactly that ("alpha is exactly the case where you do *not* want a
+      human in the loop") while insisting the missing-platform guard survive, so the gate moved
+      rather than went: `release.yml` grew a `publish` job that `needs: build` — a failed platform
+      still skips publication — and, before un-drafting, counts the four required assets and
+      re-reads `latest.json` for both a `darwin-*` and a `linux-*` key. That last check is the
+      v0.10.1 case specifically, which a green matrix cannot catch, because on that release both
+      jobs *did* report success. See [ADR-0014](../../docs/adr/0014-alpha-releases-publish-themselves.md),
+      which amends ADR-0010's consequence 2.
+
+      **The honest cost, recorded here rather than buried in the ADR:** there is no longer any
+      moment where a person sees a release before the world does, so the item directly above —
+      nothing enforcing "tag a commit Quality has passed" — stops being tidy-up and becomes the
+      next real gap. Revisit the whole trade when alpha ends; it is priced on shipping several
+      times a day to a handful of users.
 - [ ] **`gh release edit --notes-file` reports a stale `untagged-…` URL** on a draft. Harmless, but
       it looks like it edited the wrong thing; worth a note wherever this gets written down so the
       next person doesn't chase it.
