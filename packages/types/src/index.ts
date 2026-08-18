@@ -118,7 +118,16 @@ export interface SearchHit {
 
 export type TerminalId = string;
 
-export type TerminalStatus = 'running' | 'idle' | 'waiting_input' | 'stopped';
+/**
+ * What a session is doing, derived from Claude's own terminal title (F10,
+ * ADR-0015). Mirrors `services::terminal::TerminalStatus`.
+ *
+ * Three values because three is what the source honestly supports. There is no
+ * `idle` — nothing distinguishes "alive with nothing pending" from "stopped and
+ * waiting for you" — and `running` was renamed `working` because its meaning
+ * narrowed: a live PTY sitting at the prompt is `waiting_input` now.
+ */
+export type TerminalStatus = 'working' | 'waiting_input' | 'stopped';
 
 export interface TerminalStatusDto {
 	id: TerminalId;

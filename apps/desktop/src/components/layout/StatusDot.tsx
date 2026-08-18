@@ -2,15 +2,13 @@ import type { TerminalStatus } from '@factorai/types';
 import { cn } from '@factorai/ui';
 
 const COLOR: Record<TerminalStatus, string> = {
-	running: 'bg-status-running',
-	idle: 'bg-status-idle',
+	working: 'bg-status-working',
 	waiting_input: 'bg-status-waiting',
 	stopped: 'bg-status-stopped',
 };
 
 const LABEL: Record<TerminalStatus, string> = {
-	running: 'Running',
-	idle: 'Idle',
+	working: 'Working',
 	waiting_input: 'Waiting for input',
 	stopped: 'Stopped',
 };
@@ -43,7 +41,7 @@ export function StatusDot({
 			className={cn(
 				'inline-block size-2 shrink-0 rounded-full',
 				COLOR[status],
-				pulse && status === 'running' && 'animate-running-pulse',
+				pulse && status === 'working' && 'animate-running-pulse',
 				className,
 			)}
 		/>

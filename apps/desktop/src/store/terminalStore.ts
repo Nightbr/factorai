@@ -47,7 +47,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
 		set((s) => ({
 			bySession: {
 				...s.bySession,
-				[sessionId]: { terminalId, projectId, status: 'running' },
+				[sessionId]: { terminalId, projectId, status: 'working' },
 			},
 			// Append. Re-attaching an existing session (a reload re-syncing from
 			// terminal_list) must not move its tab.

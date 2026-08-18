@@ -1,6 +1,6 @@
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
-import type { Project, SessionSummary } from '@factorai/types';
+import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
 import {
 	Button,
 	ContextMenu,
@@ -61,10 +61,13 @@ export function orderSessions(
 interface SidebarProjectProps {
 	project: Project;
 	isActive: boolean;
-	isLive: boolean;
+	/** Worst-status-wins roll-up of this project's live sessions, or undefined
+	 *  when it has none (F10). Was `isLive: boolean` while a live PTY was one
+	 *  state and the dot could only mean "connected". */
+	liveStatus?: TerminalStatus;
 }
 
-export function SidebarProject({ project, isActive, isLive }: SidebarProjectProps) {
+export function SidebarProject({ project, isActive, liveStatus }: SidebarProjectProps) {
 	const expanded = useSidebarStore((s) => s.expanded.includes(project.id));
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
 	const startSession = useStartSession();
@@ -150,7 +153,7 @@ export function SidebarProject({ project, isActive, isLive }: SidebarProjectProp
 								name={project.displayName}
 								path={project.realPath}
 								size={16}
-								status={isLive ? 'running' : undefined}
+								status={liveStatus}
 							/>
 							<span className="min-w-0 flex-1 truncate">{project.displayName}</span>
 							{project.missing && (

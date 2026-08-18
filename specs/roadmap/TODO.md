@@ -53,10 +53,11 @@ preference. Filed with a warning rather than a checklist — it contradicts a de
 kill-on-quit means the PTY is gone. Gated on a clarify-needs pass; depends on item 4 for the switch.
 
 Added 2026-08-18 as **items 34 and 35**, one user ask split in two: **session status** and the
-**desktop notifications** that ride on it. 34 was interviewed and specified the same day — F10 was
-rewritten from scratch and [ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md)
-records the mechanism — so it is ready to build. 35 is held behind item 4 on the user's own
-condition, that the notification have a switch before it has a voice.
+**desktop notifications** that ride on it. **Item 34 shipped the same day** — interviewed,
+specified as a rewritten F10, and built, with
+[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md) for the mechanism. 35 is
+held behind item 4 on the user's own condition, that the notification have a switch before it has a
+voice.
 
 The split is the point. 34's payoff is a dot that means something and the end of a confirm dialog
 that lies; 35's is being interrupted. One of those is safe to ship without a settings page and the
@@ -1119,52 +1120,31 @@ interview has to answer, and the first question is whether F16's invariant bends
 
 **Depends on item 4** for somewhere to put the switch. Nothing else blocks it.
 
-## 34. Session status — working, waiting, stopped (F10)
+## 34. Session status — shipped 2026-08-18 (see [`DONE.md`](./DONE.md))
 
-**User ask, 2026-08-18, interviewed and specified the same day.** The design is
-[`05-features.md` § F10](../05-features.md) and the mechanism is
-[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md). **If this entry and F10
-disagree, F10 wins.** This entry is sequencing.
+Interviewed, specified as a rewritten **F10** and built the same day. The design is
+[`05-features.md` § F10](../05-features.md); the mechanism is
+[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md).
 
-The ask: the green dot only means "connected", so it cannot tell you whether Claude is working or
-has finished — and its payoff is that closing a session which finished ten minutes ago stops warning
-you that "any work in progress is lost".
+**What it leaves for later.** The **unread / never-opened axis** is the third thing the original
+feedback asked for and the only part not built: durable `viewed_at` per session compared against
+`updated_at`, which needs a migration and is orthogonal to the live PTY states. It is also what a
+`finished` state would need in order to mean anything, so the two arrive together or not at all.
 
-**Build order.**
+**`needs_permission` is a verified recipe sitting unused.** F10 records it in full — `claude
+--settings '{"preferredNotifChannel":"ghostty"}'` plus
+`CLAUDE_CODE_DISABLE_NOTIFICATION_PRESENCE_CHECK=1` yields `OSC 777` notifications carrying the
+permission and plan-approval messages. It was dropped as not worth a settings file for a fourth
+state, and reinstating it is additive. The consequence to weigh first is in F10: a session parked on
+a permission prompt currently reads as `waiting_input` and so closes without a confirm.
 
-- [ ] **Rust first.** An `OSC 0` title parser in `services/terminal`, fed from the existing reader —
-      no new task and no tick. `TerminalStatus` becomes `working | waiting_input | stopped`
-      (`idle` deleted, `running` renamed). Tests over byte fixtures captured from a real session:
-      the working→idle edge, an unknown glyph holding state, a chunk boundary splitting an escape
-      sequence, and no-title staying `working`.
-- [ ] **`scripts/qa/osc-probe.sh`**, which boots a session and prints its OSC timeline. This is how
-      the CLI assumption gets re-checked after a Claude update or on a platform we have not tried,
-      and it is the reason the Rust side can be fixture-only.
-- [ ] **Types and tokens.** Mirror the enum in `packages/types`; `--color-status-working` (today's
-      `-running` green), `-waiting` unchanged amber, `-stopped` takes the grey that `-idle` held.
-      Delete `-idle`. The old red retires unused.
-- [ ] **UI.** `StatusDot`'s maps, sidebar session and project rows (worst-status-wins, F13's folder
-      dot shape), the session header's pulse, and the tab avatar badge.
-- [ ] **`CloseSessionConfirm` only when `working`.** `QuitConfirm` untouched — ADR-0005.
+**And the upgrade that supersedes the whole mechanism**: `OSC 21337 TAB_STATUS`, structured
+`indicator=…;status=Working…` with `idle | busy | waiting`, is already in the CLI behind a gate
+compiled to `return !1`. When that ships live it replaces the glyph rule and hands us `waiting` as a
+first-class state. `scripts/qa/osc-probe.sh` is how you find out.
 
-**Two things it drags in, both of which are fixes on their own merits.**
-
-- **`child_env` must strip `CLAUDE_CODE_CHILD_SESSION`.** Found while probing the CLI: a session
-  inheriting it writes **no transcript**, which breaks the index, search, and `session_flag`'s
-  probe. See `03-backend-rust.md` § `TerminalManager`. Unrelated to status; do it here because this
-  is where it was found and it is three lines.
-- **F16's tab paragraph is already updated** to badge the avatar, since its argument ("a row of
-  green saying nothing") was true only while a live PTY was one state.
-
-**What it deliberately leaves for later**, all recorded in F10 so nobody re-derives it: the
-`needs_permission` state via `OSC 777` (verified working, dropped as not worth a settings file);
-`OSC 21337 TAB_STATUS`, which is the structured protocol to switch to when the CLI stops compiling
-its gate to `return !1`; and the **unread / never-opened axis**, which is the third thing the
-feedback asked for and wants durable `viewed_at` state and a migration.
-
-**Also free, and not this item:** the title carries Claude's own derived session name
-(`✳ Date command`), so live tab titles are available for the price of keeping a string we already
-parse.
+**Free and not taken:** the title carries Claude's own derived session name, so live tab titles cost
+nothing but keeping a string the parser already has.
 
 ## 35. Desktop notifications when a session wants you
 

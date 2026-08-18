@@ -1,6 +1,6 @@
 import type { SessionSummary } from '@factorai/types';
 import { describe, expect, it } from 'vitest';
-import { groupSessions, pendingSessions } from './sessionGroups';
+import { groupSessions, pendingSessions, projectStatus } from './sessionGroups';
 
 function session(id: string, subagentOf: string | null = null): SessionSummary {
 	return {
@@ -60,12 +60,12 @@ describe('groupSessions', () => {
 
 describe('pendingSessions', () => {
 	const live = {
-		'live-1': { projectId: 'p1', status: 'running' as const },
-		'live-2': { projectId: 'p2', status: 'idle' as const },
+		'live-1': { projectId: 'p1', status: 'working' as const },
+		'live-2': { projectId: 'p2', status: 'waiting_input' as const },
 	};
 
 	it('returns the live sessions this project has no row for', () => {
-		expect(pendingSessions(live, 'p1', [])).toEqual([{ sessionId: 'live-1', status: 'running' }]);
+		expect(pendingSessions(live, 'p1', [])).toEqual([{ sessionId: 'live-1', status: 'working' }]);
 	});
 
 	it('drops a live session once the index has caught up with it', () => {
@@ -89,5 +89,65 @@ describe('pendingSessions', () => {
 		expect(pendingSessions(stopped, 'p1', [])).toEqual([
 			{ sessionId: 'live-3', status: 'stopped' },
 		]);
+	});
+});
+
+describe('projectStatus', () => {
+	const live = (pairs: [string, string, 'working' | 'waiting_input' | 'stopped'][]) =>
+		Object.fromEntries(pairs.map(([id, projectId, status]) => [id, { projectId, status }]));
+
+	it('is undefined for a project with nothing live', () => {
+		// The absence of a state, not a state: renders as no dot rather than a
+		// grey one, so the sidebar isn't a wall of dots for every project you
+		// have ever opened.
+		expect(projectStatus(live([['s1', 'p1', 'working']]), 'p2')).toBeUndefined();
+	});
+
+	it('surfaces the session that wants you over the one that is busy', () => {
+		// Attention first: a working session resolves itself, a waiting one does
+		// not, so the dot points at the one you have to do something about.
+		expect(
+			projectStatus(
+				live([
+					['s1', 'p1', 'working'],
+					['s2', 'p1', 'waiting_input'],
+				]),
+				'p1',
+			),
+		).toBe('waiting_input');
+		// waiting_input outranks stopped: it is the one that wants you.
+		expect(
+			projectStatus(
+				live([
+					['s1', 'p1', 'stopped'],
+					['s2', 'p1', 'waiting_input'],
+				]),
+				'p1',
+			),
+		).toBe('waiting_input');
+	});
+
+	it("does not let another project's sessions decide this one", () => {
+		expect(
+			projectStatus(
+				live([
+					['s1', 'p1', 'waiting_input'],
+					['s2', 'p2', 'working'],
+				]),
+				'p1',
+			),
+		).toBe('waiting_input');
+	});
+
+	it('is order-independent', () => {
+		// A fixture that happens to be sorted would pass even if the rank
+		// comparison were dropped for "first one wins".
+		const pairs: [string, string, 'working' | 'waiting_input' | 'stopped'][] = [
+			['s1', 'p1', 'stopped'],
+			['s2', 'p1', 'working'],
+			['s3', 'p1', 'waiting_input'],
+		];
+		expect(projectStatus(live(pairs), 'p1')).toBe('waiting_input');
+		expect(projectStatus(live([...pairs].reverse()), 'p1')).toBe('waiting_input');
 	});
 });

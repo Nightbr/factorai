@@ -44,6 +44,45 @@ export function groupSessions(sessions: SessionSummary[]): SessionGroup[] {
 	return groups;
 }
 
+/**
+ * Precedence for rolling several sessions up into one dot (F10). Lower wins.
+ *
+ * **Attention first, not activity first.** `waiting_input` beats `working`
+ * because the aggregate dot's job is to surface what you cannot otherwise see: a
+ * working session resolves itself and a waiting one never does. Ranking
+ * `working` first — which this did until a screenshot showed it — makes a project
+ * with four blocked sessions and one busy one read as "busy", hiding every
+ * session that wants you. The reverse mistake is milder: a project shown amber
+ * while four sessions hammer away still points at the one to act on.
+ *
+ * Same shape as F13's folder dots — a parent row has one dot and several
+ * children — but note "worst" means a different thing here. For a changed file
+ * it is severity; for a session it is who is blocked, and the answer is you.
+ */
+const STATUS_RANK: readonly TerminalStatus[] = ['waiting_input', 'working', 'stopped'];
+
+/**
+ * The single status to show for a project, from its live sessions.
+ *
+ * `undefined` when the project has no live session at all — which is not a
+ * state, it is the absence of one, and renders as no dot rather than a grey one.
+ * A grey dot on every project you have ever opened is noise; F10's `stopped` is
+ * for a session whose process died while you were watching it.
+ */
+export function projectStatus(
+	bySession: Record<string, { projectId: string; status: TerminalStatus }>,
+	projectId: string,
+): TerminalStatus | undefined {
+	let best: TerminalStatus | undefined;
+	for (const live of Object.values(bySession)) {
+		if (live.projectId !== projectId) continue;
+		if (best === undefined || STATUS_RANK.indexOf(live.status) < STATUS_RANK.indexOf(best)) {
+			best = live.status;
+		}
+	}
+	return best;
+}
+
 /** A live session the index has never heard of. `sessionId` rather than a
  *  `SessionSummary`: there is no row to summarise, which is the whole point.
  *  Not exported — both call sites infer it, and a named export nothing imports

@@ -934,8 +934,14 @@ already does — which is what makes this safe under
 ### UI
 
 - Sidebar session rows, and sidebar project rows aggregating their sessions
-  **worst-status-wins** — `working > waiting_input > stopped` — the same
-  precomputed-lookup shape as F13's folder dots.
+  **attention first** — `waiting_input > working > stopped`. Same
+  precomputed-lookup shape as F13's folder dots, but "worst" means a different
+  thing here: for a changed file it is severity, for a session it is who is
+  blocked, and the answer is you. A project row ranked `working` first — which
+  is how this was built until a screenshot showed it — reads as "busy" when four
+  of its sessions are blocked, hiding every one of them. The reverse mistake is
+  milder: amber while four sessions hammer away still points at the one to act
+  on. A working session resolves itself; a waiting one does not.
 - The session header, with `<StatusDot pulse />`.
 - **Tab avatars, badged** on the corner, reusing `ProjectIcon`'s existing badge.
   This retires F16's "the avatar, not a status dot" reasoning, which rested on
