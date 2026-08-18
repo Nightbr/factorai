@@ -2,93 +2,48 @@
 
 The agreed next steps, in priority order — the single source of truth for "what should we work
 on next". Consult it before re-deriving a plan from the specs and codebase. See
-[`README.md`](./README.md) for how this folder works (and [`DONE.md`](./DONE.md) for shipped
-work).
+[`README.md`](./README.md) for how this folder works, and [`DONE.md`](./DONE.md) for what has
+shipped.
 
-Context (2026-08-14): **M0–M3 are shipped** — scaffold, read-only browser, embedded terminal
-with kill-on-quit, FTS5 search. **M4 is nearly done**: `read_file` + the Monaco file viewer
-landed early alongside the file tree (ADR-0007), and the diff half shipped 2026-08-14 with the
-Changes tab (F13). Only the **CLAUDE.md / plans** half is left — item 2. **M5 has not started** — no settings route, no keybinding scheme,
-no titlebar, no release pipeline. Item 2 closes M4; items 4–8 are M5 in the order it should be
-built; **items 12–14 are high-priority despite their position** — the `Cmd+P` / `Cmd+Shift+F` /
-`Cmd+G` navigation trio, added 2026-08-14, kept at the end only so the earlier numbers stay
-stable.
+**Only live work is listed here.** Cleaned out 2026-08-18, when eleven of this file's
+thirty-four entries were announcements of their own completion: the list had become a place to
+read history rather than a place to pick work up, and `DONE.md` was already the history. An item
+whose whole scope shipped is gone from here. An item with a *remainder* keeps its number and is
+rewritten to the remainder — items 1, 29 and 34 are here for that reason, each saying in one line
+which half already landed and where the entry for it is.
 
-Added 2026-08-15 and **shipped 2026-08-17**: **item 1 was the git graph**, which took the slot the
-Changes tab freed. It was gated on a clarify-needs interview; that happened, produced F18, and the
-build followed the same day. So the re-ordering question it carried is moot — but the reason it
-carried one is not, and is worth keeping: an item's *position* here is where a slot happened to be
-free, never a claim about priority. **Item 2 is now the top of the list in substance.**
+**Numbers are permanent ids and are never reused.** They are append-only, and cited across the
+specs, the ADRs, `DONE.md` and a few code comments — so a shipped item's number is not recycled
+and a surviving item is never renumbered. Position is priority; the number is identity. If item N
+is not here, it shipped, and `DONE.md`'s entry for it names the number.
 
-Added 2026-08-16: **item 3 is the file tree's right-click menu**, taking the slot held open on
-2026-08-15 for exactly this — so nothing between 4 and 21 moved. Same caveat as item 1: the slot
-is where it landed, not a statement that it outranks M4's remainder.
+**Where things stand.** M0–M3 shipped — scaffold, read-only browser, embedded terminal with
+kill-on-quit, FTS5 search. M4 is one item from done: the **CLAUDE.md / plans** half, which is
+**item 2**. M5 has not started — no settings modal, no keybinding scheme, no titlebar, no release
+pipeline — and **items 4–8 are M5 in the order it should be built**.
 
-Also added 2026-08-16, appended as **items 22–25** because numbering here is append-only.
-**Item 25 shipped the same day** — see [`DONE.md`](./DONE.md); it redefined what a project is,
-which is what unblocked removing one and left the seam a second agent will need. **Item 23 shipped
-2026-08-17**, and **item 22 was folded into item 4** the same day: its confirm switches are F11's
-Confirmations section, since it was blocked on that surface and nothing else. So of those four only
-**24** (`DESIGN.md`) remains, and it is ready — item 23 produced the concrete numbers it should
-start from.
+**Item 4 is the one with dependents.** Items 31 (the channel picker), 32 (the theme control), 33
+(the restore switch) and 35 (the notification toggle) all wait on the surface it creates, and each
+of them is otherwise unblocked in part — read them for which half can land first.
 
-Added 2026-08-17 as **items 29–30**, both user asks, **both shipped the same day**. What each
-leaves behind is in its entry: per-surface error boundaries under 29, and a `head` field on
-`GitStatus` under 30 that item 1 wants anyway.
+**A position is where a slot happened to be free, never a claim about priority.** Items 12–14 —
+the `Cmd+P` / `Cmd+Shift+F` / `Cmd+G` navigation trio — are high priority despite sitting
+mid-list, and everything past 21 is simply the order things were asked for.
 
-**Item 20 was disqualified 2026-08-17** — the keep-awake inhibitor, on the user's call that it is
-too risky for now. It is the first item to travel *back* to
-[`06-milestones.md`](../06-milestones.md) § Deferred rather than out of it, and it should not be
-the last: an item that has stopped being the next thing to do belongs there, not sitting in this
-list looking queued. Item 20 is a stub saying where it went and why.
+## 1. Git graph — the wide surface, and the joins F18 deferred
 
-Added 2026-08-17 as **item 31**: rework the release process, plus alpha / production channels.
-Written straight after cutting v0.9.0 by hand, so its list of gaps is observed rather than
-imagined — and it puts the **version bump** question back on the table, which `release.yml`'s
-tag-only scheme had settled the other way.
+**The rail shipped 2026-08-17** (F18, `DONE.md`); what follows is Q22's deferred phase and the
+follow-ups the design named. None of it is started.
 
-Added 2026-08-17 as **item 33**, a user ask: **restore open session tabs on launch**, behind a
-preference. Filed with a warning rather than a checklist — it contradicts a decided line in F16
-("there are no tabs to restore") and the interesting half is what a restored tab even *is* when
-kill-on-quit means the PTY is gone. Gated on a clarify-needs pass; depends on item 4 for the switch.
-
-Added 2026-08-18 as **items 34 and 35**, one user ask split in two: **session status** and the
-**desktop notifications** that ride on it. **Item 34 shipped the same day** — interviewed,
-specified as a rewritten F10, and built, with
-[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md) for the mechanism. 35 is
-held behind item 4 on the user's own condition, that the notification have a switch before it has a
-voice.
-
-The split is the point. 34's payoff is a dot that means something and the end of a confirm dialog
-that lies; 35's is being interrupted. One of those is safe to ship without a settings page and the
-other is not. Their shared discovery — that the state is readable straight out of the PTY, from the
-terminal title Claude Code already writes — is what made both cheap, and F10 lists the four
-mechanisms that were rejected on the way so nobody investigates them twice.
-
-Added 2026-08-17 as **item 32**, split out of item 4 during F11's interview: the **light theme**.
-It came out because it is three unbuilt things rather than a settings row — nothing sets
-`data-theme`, Monaco has one theme, and Q8's xterm mapper was specced and never built — and burying
-that inside item 4 is how item 4 never lands. Item 4 owns the place to put the control; 32 owns the
-theme.
-
-One thing item 25 leaves for **item 3**: `ContextMenu` now exists in `@factorai/ui`, built for the
-sidebar row's menu. The file tree's menu is a consumer of it, not a build of it.
-
-## 1. Git graph — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
-
-Interviewed, specified as **F18** and built the same day. The design is
-[`05-features.md` § F18](../05-features.md); the decisions are Q18 (amended to three tabs), **Q22**
-(rail first, wide modal deferred) and **Q23** (lane assignment in Rust), plus
-[ADR-0012](../../docs/adr/0012-categorical-colour-tokens.md) for the colour tokens.
-
-**What it leaves for later, none of it started.** The **wide modal** is Q22's deferred phase and
-should become its own numbered item when it is next: the same component at 900–1200px with the
-detail beside the list, a hosting change rather than a second layout. **Worktrees** change what
-"the repository" means on screen. **Session↔commit linking** is the interesting one and the payload
-already carries what a join needs — full 40-character SHAs and both author and committer
-timestamps. A merge's **parent picker**, so the file list can diff against either side rather than
-only the first. And F18's own note that `+N` is the common case at 288px is the strongest argument
-yet for bringing the wide surface forward.
+- **The wide surface.** The same component at 900–1200px with the detail beside the list rather
+  than under it — a hosting change, not a second layout. F18's own note that `+N` is the common
+  case at 288px is the strongest argument for bringing this forward: at panel width the row cannot
+  show a tagged release on a branch tip without collapsing something.
+- **Session ↔ commit linking**, the interesting one. The payload already carries what a join
+  needs — full 40-character SHAs, and both author and committer timestamps.
+- **A merge's parent picker**, so the file list can diff against either side rather than only the
+  first.
+- **Worktrees**, which change what "the repository" means on screen.
 
 ## 2. M4 — CLAUDE.md & plans (F9)
 
@@ -116,20 +71,6 @@ takes the cheaper route it should have anyway —
 `CLAUDE.md` is **a file the tree opens**, with editability switched on for that one path, which
 also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
 it still describes the tab.
-
-## 3. File tree — right-click menu — shipped 2026-08-16 (see [`DONE.md`](./DONE.md))
-
-Four of the five asked-for actions landed; F12 describes the menu. **`Select for the agent` did
-not, and it belongs to item 19** — the real version is the IDE emulation surface: the CLI asks its
-editor what is selected, and factorai answers. That is the MCP server, its security boundary and
-its session-attribution question, none of which this item should have grown.
-
-Worth keeping from the deferral: there is a **cheap floor** available with no MCP at all — write
-`@<relative path>` into the active session's PTY, which is the mention syntax the CLI already
-parses, and `Copy relative path` now produces exactly that string. But it inherits the same
-unanswered question item 19 has: *which* session, when a project can have several and may have
-none running. Don't ship the floor as if it were the feature; if it ships at all it ships as a
-stopgap that says so.
 
 ## 4. M5 — Settings (F11) and a real `prefsStore`
 
@@ -174,21 +115,30 @@ point) and [ADR-0013](../../docs/adr/0013-preferences-storage-split.md) (the sto
 - [ ] The modal: `?settings=` on the root route's `validateSearch`, left nav, Save/Cancel,
       click-outside disabled while dirty, per-section dirty dots.
 - [ ] The three sections — Claude (detected + override, validating on blur), Editor (diff default),
-      Confirmations (item 22's two switches).
+      Confirmations (the two close-confirm switches — see below).
 - [ ] The gear in `TopBar`, right of the tabs and left of the panel toggle.
 - [ ] **Two** `@smoke` tests: the gear opens and `?settings=editor` deep-links; Save persists and
-      Cancel discards. Everything else goes to item 10 rather than a suite already at 114 (E1).
-- [ ] **The `UpdateBadge` overflow fix** — user ask, 2026-08-17, and a real bug rather than a
-      preference: in its `ready` state it returns a flex button with three children and no
-      `min-w-0`, so it clips `ZoomControls` instead of degrading. `⟳ Update ready` with the version
-      in the tooltip, plus `min-w-0` + `truncate`. F14 has the measurements. Its own commit; it is
-      F14, not F11, and only rides along because the footer is what ruled itself out as the entry
-      point.
+      Cancel discards. Everything else goes to item 10 rather than a suite already at 130 (E1).
 
-**Item 22 ships with this item.** Its two switches are the Confirmations section, and it was
-blocked on this item's *surface* and nothing else — so shipping them apart would leave a decided
-preference queued behind a page with one text field in it. It is also what proves `SettingRow`
-against a real group. Item 22's entry is now a pointer here.
+**The close-confirm switches are this item's Confirmations section**, and were their own entry
+(item 22) until 2026-08-17. They were blocked on this item's *surface* and nothing else, so
+shipping them apart would leave a decided preference queued behind a page with one text field in
+it — and they are what proves `SettingRow` against a real group. The `X` + shared-dialog half
+already shipped (2026-08-16, `DONE.md`). Three things about them are reasoning rather than design,
+so they live here rather than in F11:
+
+- **It does not contradict § 1 of `AGENTS.md`.** "Every irreversible action keeps its confirmation"
+  binds *the app* — it forbids factorai deciding on its own that an ask isn't worth it. A human
+  turning it off is the fourth verb in `00-overview.md` § "The operating model": setting the rules
+  agents run under. The rule stands; the human is allowed to set it.
+- **The quit dialog is not covered by it.** F5 calls the window-close confirm mandatory and
+  ADR-0005 makes kill-on-quit non-optional; that dialog is about losing *every* live session at
+  once. The preference wires to the per-session path only.
+- **Two switches, no master switch, both on by default.** The `X` and a tab's `×` are one row —
+  the same deliberate gesture on a close affordance you aimed at. Middle-click is the second,
+  because it has no aim to it and someone who finds the confirm tedious on a deliberate `×` may
+  still want the question on a stray wheel-click. A general switch plus per-action overrides would
+  produce a matrix with a dead cell and a UI that greys rows out to explain itself.
 
 **Item 31 is still not blocked whole.** Its channel *picker* is one row in a section that does not
 exist yet; the rest of that item — the process work, the alpha manifest, the automatic builds —
@@ -276,12 +226,6 @@ The last mile before the app is something a teammate installs rather than runs f
 **Exit criterion for M5** (`06-milestones.md`): a teammate installs the `.dmg` or `.AppImage` and uses
 factorai for an hour without hitting a flow-breaking bug.
 
-## 9. The dead session-read commands — settled 2026-08-16 (see [`DONE.md`](./DONE.md))
-
-Both halves resolved differently, which is why the entry could sit unread for so long:
-`get_session_tail` was **wired** by the sub-agent transcript view, and the offset-paged
-`get_session` was **deleted**. F3 now says so, so nobody re-adds it by reflex.
-
 ## 10. Interaction-level QA coverage
 
 **Partly done — narrow this rather than reading it as unstarted.** The Playwright lane it called
@@ -316,13 +260,6 @@ a full restart.
 
 Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 `gnome-screenshot` for `swaymsg` / `grim`). X11-only is fine while the dev box is X11.
-
-## 11. `Changes` tab — shipped 2026-08-14 (see [`DONE.md`](./DONE.md))
-
-Was a separate item, merged into item 1 during the design interview and shipped with it. The
-tab-slot contest it flagged is resolved in `07-open-questions.md` Q18: the strip is hardcoded and
-not a registry — Memory (item 2) and search results (item 13) get cheaper homes. It holds
-`Files | Changes | Graph` as of 2026-08-17, when Q18 was amended for F18.
 
 ## 12. Command palette — `Cmd+P` quick-open by filename
 
@@ -371,7 +308,7 @@ nobody merges them into one input.
       list on a large repo is unbounded), with per-file grouping and a line + column per hit.
 - [ ] Results UI. A palette mode is the wrong shape for this — hits need file grouping, context
       lines and persistence while you click through them. The right-hand panel is a better home
-      (it's where `Changes` is also queued, item 11), which makes the panel's tab strip a decision
+      (it's where `Changes` and the graph already live), which makes the panel's tab strip a decision
       that three items now depend on. Settle it once.
 - [ ] Clicking a hit must open the file **at that line**. `?file=` carries a path and nothing else
       today, so this needs `?file=…&line=N` (validated on `__root` beside the existing param) and
@@ -606,6 +543,17 @@ client is allowed to ask for (read any path? write any path?), and whether the p
 per-session or per-app are load-bearing questions, not configuration. Getting this wrong turns a
 developer tool into a local RCE, so it is the first thing to design and the first thing to test.
 
+**`Select for the agent` belongs here**, and is the one action of the five asked for in the file
+tree's right-click menu (shipped 2026-08-16) that deliberately did not land: the real version is
+this surface — the CLI asks its editor what is selected, and factorai answers.
+
+Worth keeping from that deferral: there is a **cheap floor** available with no MCP at all — write
+`@<relative path>` into the active session's PTY, which is the mention syntax the CLI already
+parses, and `Copy relative path` already produces exactly that string. But it inherits the
+attribution question below: *which* session, when a project can have several and may have none
+running. Don't ship the floor as if it were the feature; if it ships at all, it ships as a stopgap
+that says so.
+
 **Open questions, roughly in blocking order.**
 
 - What does the current `claude` CLI actually speak? The prior app's implementation is the
@@ -621,27 +569,21 @@ developer tool into a local RCE, so it is the first thing to design and the firs
   at once; a server that can't attribute a request to a session can't put the diff in the right
   tab.
 
-## 20. Keep the machine awake — disqualified 2026-08-17, moved to deferred
-
-**User call: too risky for now.** Demoted to
-[`06-milestones.md`](../06-milestones.md) § Deferred (entry 11), which holds the full reasoning
-and the two open design questions — it is the first item to travel in that direction rather than
-out of it, and the entry says so.
-
-The short version: the danger is the **release** path, not the feature. A leaked sleep inhibitor
-is invisible — no window, no indicator, a laptop flat by morning — which is ADR-0005's orphan-PTY
-problem on a platform surface we don't control. Linux has no single mechanism (logind / portal /
-ScreenSaver), so it is a load-bearing dependency and an ADR before it is a feature.
-
-**It no longer pulls on item 4.** That entry counted three dependents; it is two now (items 22 and
-whatever a future preference needs). Nothing else referenced this item.
-
 ## 21. Post-MVP / deferred
 
 Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
 list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,
 multi-window, auto-updates, crash reporting, Windows, mobile). Items graduate from there into
 this file when they become the next thing to do, not before.
+
+**The keep-awake inhibitor travelled that way on 2026-08-17** — disqualified on the user's call as
+too risky for now, and demoted to that list (entry 11), which holds the reasoning and the two open
+design questions. It was the first item to go back rather than forward, and it should not be the
+last: an item that has stopped being the next thing to do belongs there, not sitting here looking
+queued. The short version, so nobody re-adds it by reflex: the danger is the **release** path, not
+the feature — a leaked sleep inhibitor is invisible, which is ADR-0005's orphan-PTY problem on a
+platform surface we don't control, and Linux has no single mechanism (logind / portal /
+ScreenSaver).
 
 Two viewer follow-ups sit between "shipped" and "deferred", and belong here rather than there
 because F7 already commits to them:
@@ -653,83 +595,6 @@ because F7 already commits to them:
   sniffed from the magic bytes, and the viewer renders it in an `<img>`. The asset protocol lost
   because its path scope is static and ours is "whatever project you opened". SVG is still
   source-only, deliberately.
-
-## 22. Session header — the confirm preference — folded into item 4 (2026-08-17)
-
-**The `X` + shared-dialog half shipped 2026-08-16** — see [`DONE.md`](./DONE.md). The preference
-half **is now item 4's Confirmations section**, not a separate item: it was blocked on item 4's
-surface and nothing else, and shipping the two apart would leave a decided preference queued behind
-a settings page with one text field in it. It is also the group that proves `SettingRow` against
-something real. Behaviour is specced in [`05-features.md` § F11](../05-features.md); everything
-this entry had decided is carried there.
-
-What must not be lost in the move, since it is reasoning rather than design:
-
-- **It does not contradict § 1 of `AGENTS.md`.** "Every irreversible action keeps its confirmation"
-  binds *the app* — it forbids factorai deciding on its own that an ask isn't worth it. A human
-  turning it off is the fourth verb in `00-overview.md` § "The operating model": setting the rules
-  agents run under. The rule stands; the human is allowed to set it.
-- **The quit dialog is not covered by it.** F5 calls the window-close confirm mandatory and
-  ADR-0005 makes kill-on-quit non-optional; that dialog is about losing *every* live session at
-  once. The preference wires to the per-session path only.
-- **Two switches, no master switch, both on by default.** The `X` and a tab's `×` are one row —
-  the same deliberate gesture on a close affordance you aimed at. Middle-click is the second,
-  because it has no aim to it and someone who finds the confirm tedious on a deliberate `×` may
-  still want the question on a stray wheel-click. A general switch plus per-action overrides would
-  produce a matrix with a dead cell and a UI that greys rows out to explain itself.
-
-## 23. `Button`'s size scale — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
-
-`default h-8 · sm h-7 · lg h-9 · icon 8`, base icon `size-3.5`, and `Input` / `Select` moved to
-`h-8` with it so a row holding both still lines up. Four of the six inline overrides are gone.
-
-**Two things this leaves.** The viewer's toolbar buttons keep `h-6 text-xs` (`FileView`,
-`DiffView`) — they are a step below `sm` on purpose, and an `xs` variant is the obvious way to
-retire them if a third call site ever wants one; don't add it for two. And the numbers this
-produced are the concrete thing **item 24**'s `DESIGN.md` should start from, which is the argument
-for doing 24 next rather than from principles.
-
-<details>
-<summary>The original entry, kept for the reasoning</summary>
-
-**User ask, 2026-08-16:** `+ New session` is too big — shrink the default button in the UI
-package. It is `size="sm"` already (`routes/project.tsx:77`), which is the point: the scale
-underneath it is wrong, not that one call site.
-
-**`packages/ui` still ships stock shadcn sizing** — `default h-10 px-4`, `sm h-9`, `lg h-11`,
-`icon h-10 w-10`, with `[&_svg]:size-4` in the base. That is sized for a web page with room to
-breathe. This app is a dense desktop tool, **and every dense surface in it already says so by
-overriding the primitive inline**:
-
-- `routes/session.tsx` — `size="sm"` + `className="h-7 gap-1.5"` (twice)
-- `viewer/FileView.tsx` — `size="sm"` + `h-6 … text-xs` (twice), same in `viewer/DiffView.tsx`
-- `routes/project.tsx` — passes `<Plus className="size-3.5" />` to override the base `size-4`
-- `layout/Sidebar.tsx` — the search `Input` is hand-shrunk to `h-8`
-
-Six overrides fighting one default is the diagnosis. Fix the scale and delete them.
-
-- [ ] Re-cut the `size` variants in `button.tsx` for this app's density, and re-check the base
-      `[&_svg]:size-4` while you're there — if call sites keep passing `size-3.5`, the base is
-      wrong.
-- [ ] **Then remove the inline height overrides**, or the change is invisible: a call site pinning
-      `h-6` doesn't care what the default became. This is the half that actually takes the time,
-      and skipping it leaves the app looking exactly as it does now.
-- [ ] **`Input` and `Select` are `h-10` too, and they pair with buttons.** Shrinking `Button`
-      alone misaligns any row that has both — which the `/settings` route (item 4) is about to be
-      full of. Decide one scale for the trio even if only `Button` changes today, and write the
-      numbers down (item 24 is where they should end up).
-- [ ] Check the dialog footers last: `QuitConfirm`, `SessionTabs`, `UpdateBadge` use the bare
-      default, and a confirm button is the one place where *smaller* is not automatically better.
-      A destructive action that is easy to hit by accident is the failure mode there.
-
-**One mechanical caution, and one that expired.** `IconButton` is already dense and
-house-authored (`sm: p-0.5 [&_svg]:size-3.5`): it is the reference for what "this app's scale"
-means, not a thing to change alongside. The other caution used to say `button.tsx` is vendored
-shadcn in a foreign style, so don't reformat it or `pnpm format` buries your change — **gone as of
-2026-08-16**: every vendored file is in house style, formatting is gated (`pnpm format:check`), and
-`pnpm format` is safe to run on anything.
-
-</details>
 
 ## 24. `DESIGN.md` — one home for the design rules
 
@@ -747,14 +612,14 @@ So the first decision is boundaries, not content:
 - `CLAUDE.md` § 4 either **moves wholesale** into `DESIGN.md` and links out, or `DESIGN.md`
   doesn't exist. Two lists of design rules is the failure.
 - `specs/` keeps per-feature behaviour; `DESIGN.md` holds what is true across every surface —
-  the scale from item 23, colour and status semantics, density, hover and focus, empty states.
-- It is the natural home for the numbers item 23 produces, which is an argument for doing 23
-  first and letting the file start from something concrete rather than from principles.
-
-## 26. Indexer reap pass — shipped 2026-08-16 (see [`DONE.md`](./DONE.md))
-
-The lifecycle in `02-data-model.md` § "Indexer lifecycle" is now the description of it, including
-the three things the reap must not do.
+  the control scale, colour and status semantics, density, hover and focus, empty states.
+- **It starts from concrete numbers rather than principles**, because they exist now: `Button`'s
+  desktop scale shipped 2026-08-17 (`default h-8 · sm h-7 · lg h-9 · icon 8`, base icon `size-3.5`,
+  with `Input` and `Select` moved to `h-8` so a row holding both lines up), and `AGENTS.md` § 4 has
+  since grown the menu metrics, the two type sizes and the icon-button rule. One leftover to record
+  rather than re-derive: the viewer's toolbar buttons keep `h-6 text-xs` on purpose, a step below
+  `sm`, and an `xs` variant is the way to retire them **if a third call site ever wants one** —
+  don't add it for two.
 
 ## 27. The window's bottom corners on Linux are still not pixel-clean
 
@@ -857,15 +722,11 @@ either.
 hand-ordered list of every project the workspace has ever seen is a thing to maintain rather than
 a feature.
 
-## 29. Error boundaries — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
+## 29. Error boundaries — per-surface, so one crash costs one pane
 
-The root boundary and the crash screen landed; F17 describes them. The `(to clarify)` half of the
-ask is settled too — the issue button is **always** shown, and a prefilled GitHub link is not a
-reporting service, so § 8's "no telemetry" is untouched.
-
-**What is deliberately left, and it is the interesting half: per-surface boundaries.** Root-only
-means a crash in the file tree still takes a running terminal's pane down with it. The shape when
-someone picks this up:
+**The root boundary and the crash screen shipped 2026-08-17** (F17, `DONE.md`). What was
+deliberately left is the interesting half: root-only means a crash in the file tree still takes a
+running terminal's pane down with it. The shape when someone picks this up:
 
 - Boundaries around the **panel**, the **viewer**, and **each session pane** — the last one is the
   one that matters, since a live agent is the only thing in this app that is expensive to lose.
@@ -884,20 +745,6 @@ A smaller one: the crash screen has no test that actually renders it — `crashR
 unit-tested, but nothing throws inside a mounted tree. A `@smoke` case needs a deliberate way to
 make the mock app throw; worth adding when the per-surface work lands, since that is when the
 boundary logic stops being trivial.
-
-## 30. Git branch badge — shipped 2026-08-17 (see [`DONE.md`](./DONE.md))
-
-F3 describes it. Two things it leaves:
-
-- **A detached `HEAD` and an unborn branch are indistinguishable** to the renderer — `GitStatus`
-  has `branch: null` for both and no head SHA — so the badge shows nothing for either. Showing
-  `detached` for what might be a fresh repo would be a lie. Adding a `head: string | null` to
-  `GitStatus` is the fix, and it is **item 1's problem too**: a graph that cannot say where `HEAD`
-  is has a hole in it. Do it there rather than twice.
-- **This is the first thing outside the right panel to read the repository**, and the pattern it
-  set — a second observer on the same query key, at its own cadence, taking the project path as an
-  argument rather than reading the active project — is what item 1 should inherit rather than
-  re-decide.
 
 ## 31. Rework the release process — smooth, gapless, and two channels
 
@@ -997,14 +844,14 @@ Consequences to settle:
 - [x] **Where does the channel live? — settled 2026-08-17: it is a preference, so the picker is
       ⛔ blocked on item 4.** The channel is a `get_setting`/`set_setting` customer, since the
       updater endpoint is chosen in Rust at runtime — which also restores the argument for building
-      item 4's Rust half, left with a single caller when item 20 was disqualified.
+      item 4's Rust half, left with a single caller when the keep-awake item was disqualified.
 
       **Only the picker is blocked, and that distinction is the useful part of this item.**
       Everything in 31a, the alpha manifest, the automatic builds and the versioning scheme need no
       UI at all and can land first. What waits is the row that lets you *choose* — so sequence this
       as: process work and alpha builds now, channel switch when item 4 lands. Do **not** invent a
       one-off settings surface to unblock it; that is precisely the mess item 4 exists to prevent,
-      and item 22 has been waiting patiently for the same reason.
+      and the close-confirm switches have been waiting for the same reason.
 
       Until the picker exists, an alpha build is one someone installed deliberately — which is a
       fine first state, and an argument for shipping the channel *plumbing* early so the picker is
@@ -1124,15 +971,15 @@ interview has to answer, and the first question is whether F16's invariant bends
 
 **Depends on item 4** for somewhere to put the switch. Nothing else blocks it.
 
-## 34. Session status — shipped 2026-08-18 (see [`DONE.md`](./DONE.md))
+## 34. Session status — the unread axis, and two upgrades worth waiting for
 
-Interviewed, specified as a rewritten **F10** and built the same day. The design is
-[`05-features.md` § F10](../05-features.md); the mechanism is
-[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md).
+**The dot shipped 2026-08-18** — F10 is the design,
+[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md) the mechanism, `DONE.md`
+the entry. Four things it left, in the order they are worth doing.
 
-**What it leaves for later.** The **unread / never-opened axis** is the third thing the original
-feedback asked for and the only part not built: durable `viewed_at` per session compared against
-`updated_at`, which needs a migration and is orthogonal to the live PTY states. It is also what a
+**The unread / never-opened axis** is the third thing the original feedback asked for and the only
+part of it not built: durable `viewed_at` per session compared against `updated_at`, which needs a
+migration and is orthogonal to the live PTY states. It is also what a
 `finished` state would need in order to mean anything, so the two arrive together or not at all.
 
 **`needs_permission` is a verified recipe sitting unused.** F10 records it in full — `claude
@@ -1152,15 +999,16 @@ nothing but keeping a string the parser already has.
 
 ## 35. Desktop notifications when a session wants you
 
-**User ask, 2026-08-18, filed with item 34 and deliberately split from it.** When a session goes
+**User ask, 2026-08-18, filed with the session-status work (item 34) and deliberately split from it.** When a session goes
 `working` → `waiting_input` while you are not looking at it, notify the OS.
 
 **Depends on item 4**, and this is the user's own condition — "wait the setting modal to control
 enable of desktop notif". A notification nobody can switch off is a bug, and F11 is where the switch
 belongs rather than a fourth feature inventing its own home for a preference.
 
-**Depends on item 34** for the edge it fires on. Item 34's title parser already produces exactly the
-transition this needs, so there is no detection work here at all.
+**The edge it fires on already exists.** F10's title parser produces exactly the
+`working` → `waiting_input` transition this needs (shipped 2026-08-18), so there is no detection
+work here at all — item 4 is the only thing this is actually waiting on.
 
 **What it actually costs**, since the trigger is free:
 

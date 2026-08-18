@@ -13,8 +13,15 @@ Where the project tracks work: what to do next, and what's already shipped.
 1. **Add** a new task to `TODO.md`, placed by priority. Keep `TODO.md` current — re-prioritize
    as context changes.
 2. **Ship** it, then **move** the entry from `TODO.md` to the top of `DONE.md`, rewriting it as
-   a past-tense summary and **dating** it (the day it landed).
-3. Keep cross-references explicit across the split — a `DONE.md` entry that points back at a
+   a past-tense summary and **dating** it (the day it landed). *Move*, not annotate: an entry that
+   stays behind saying "shipped, see DONE.md" is how a list of what to do next turns into a list
+   of what already happened. `TODO.md` was cleaned of eleven such entries on 2026-08-18.
+3. **A part-shipped item keeps its number and is rewritten to what is left**, with one line saying
+   which half landed and where its entry is. Items 1, 29 and 34 are the worked examples.
+4. **Numbers are permanent ids, never reused and never renumbered.** They are cited from the specs,
+   the ADRs, `DONE.md` and a few code comments, so a gap in `TODO.md`'s numbering is information:
+   that item shipped, and `DONE.md`'s entry names its number. New items append.
+5. Keep cross-references explicit across the split — a `DONE.md` entry that points back at a
    pending task should say "TODO item N", not a bare "item N".
 
 That's the whole protocol: one list to pull from, one log to append to.

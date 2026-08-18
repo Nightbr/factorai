@@ -74,8 +74,8 @@ writes optimistically to the cached list, because the projects query polls at
 The scrolling list reserves a right-hand gutter so those hover buttons never
 sit under the scrollbar.
 
-**The row's context menu** (`ContextMenu` in `@factorai/ui`, shared with the
-file tree's — TODO item 3 needs the same primitive) carries **Pin / Unpin**,
+**The row's context menu** (`ContextMenu` in `@factorai/ui`, the same primitive
+the file tree's menu reuses — F12) carries **Pin / Unpin**,
 **Reveal in file manager**, a separator, and **Remove Project**. Remove sits
 below the separator and nowhere near Pin: the two are otherwise a slip apart and
 only one of them is reversible with a click.
@@ -1080,7 +1080,7 @@ changed, and the reasoning is below rather than in a commit message.
 
 **The problem it solves is not "the app needs settings".** It is that **three
 features in a row have arrived needing somewhere to put a preference and found
-nowhere** — item 22's confirm toggles, item 31's release channel, and the diff
+nowhere** — the close-confirm toggles, item 31's release channel, and the diff
 mode default that had to be parked in `panelStore` with a comment apologising for
 it. That is what makes this worth a surface rather than three one-off toggles.
 
@@ -1187,9 +1187,10 @@ preferences took and the Rust-readable one didn't, with no way to tell which.
 **Editor.** The diff-mode default (inline vs side-by-side), arriving out of
 `panelStore`.
 
-**Confirmations.** Roadmap item 22's two switches, both **on by default**: closing
-a session with the `X`, and closing a tab by middle-click. That item is blocked on
-*this* item's surface and nothing else, so the two ship together — which is also
+**Confirmations.** Two switches, both **on by default**: closing a session with
+the `X`, and closing a tab by middle-click. They were roadmap item 22 until it
+folded into item 4 — they were blocked on *this* surface and nothing else, so the
+two ship together — which is also
 what gives this modal enough content to be worth opening, and what proves
 `SettingRow` against a real group rather than one text field.
 

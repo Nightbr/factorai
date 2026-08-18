@@ -245,8 +245,8 @@ Keys, as of F11:
 
 - `diffInline: boolean` — the diff viewer's default, arriving from `panelStore`
   with a one-time read-across.
-- `confirmCloseSession: boolean` — default `true` (roadmap item 22).
-- `confirmMiddleClickTab: boolean` — default `true` (roadmap item 22).
+- `confirmCloseSession: boolean` — default `true` (roadmap item 4, Confirmations).
+- `confirmMiddleClickTab: boolean` — default `true` (roadmap item 4, Confirmations).
 
 Settings Rust must read are **not** here; they go through `get_setting` /
 `set_setting` into the SQLite `settings` table.
