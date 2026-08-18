@@ -13,6 +13,19 @@ async function openSession(page: Page, name: RegExp) {
 	await expect(page.locator('.xterm')).toBeVisible();
 }
 
+/** Drag one tab onto another with the pointer, which is what dnd-kit listens to
+ *  (ADR-0016). The steps matter: the sensor only starts a drag once the pointer
+ *  has travelled 4px, so a single jump to the target would land as a click. */
+async function dragTab(page: Page, source: RegExp, target: RegExp) {
+	const from = await page.getByRole('tab', { name: source }).boundingBox();
+	const to = await page.getByRole('tab', { name: target }).boundingBox();
+	if (!from || !to) throw new Error('tabs not laid out');
+	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+	await page.mouse.up();
+}
+
 test.describe('session tabs', () => {
 	test('@smoke the strip is absent until a session is live', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
@@ -140,17 +153,58 @@ test.describe('session tabs', () => {
 				.evaluateAll((tabs) => tabs.map((t) => t.getAttribute('data-session-id')));
 		expect(await order()).toEqual(['zulu-session-11', 'zulu-session-10', 'zulu-session-09']);
 
-		// Drag the last tab onto the first. Native HTML5 drag needs dataTransfer
-		// to be set in dragstart or the gesture never becomes a drag at all —
-		// which is exactly what was wrong the first time.
-		await page
-			.getByRole('tab', { name: /Zulu task 9/ })
-			.dragTo(page.getByRole('tab', { name: /Zulu task 11/ }));
+		// **A real pointer drag, not `dragTo`.** Since 2026-08-18 this is dnd-kit
+		// rather than native HTML5 drag-and-drop, because the OS drag session is
+		// unusable inside Tauri's window on macOS (ADR-0016). `dragTo` dispatches
+		// `dragstart` / `drop`, which nothing listens for now — the sensor is
+		// pointer events, so the test drives pointer events.
+		await dragTab(page, /Zulu task 9/, /Zulu task 11/);
 
 		expect(await order()).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
 	});
 
 	test('@smoke a dragged tab moves into place before it is dropped', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand zulu' }).click();
+		await openSession(page, /Zulu task 11/);
+		await openSession(page, /Zulu task 10/);
+		await openSession(page, /Zulu task 9/);
+
+		const first = page.getByRole('tab', { name: /Zulu task 11/ });
+		const source = page.getByRole('tab', { name: /Zulu task 9/ });
+		const before = await first.boundingBox();
+		const from = await source.boundingBox();
+		if (!before || !from) throw new Error('tabs not laid out');
+
+		// Hand-driven and left holding, because the point is the state *mid*
+		// gesture: the strip shows the arrangement you would get instead of making
+		// you drop to find out.
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2, { steps: 10 });
+
+		// **The preview is a transform, not a reordered list** — that is the one
+		// behavioural difference dnd-kit brings: the DOM order changes on drop, and
+		// until then the other tabs slide out of the way. So this asserts the slide:
+		// the tab we are dragging onto has moved right to open the gap.
+		await expect
+			.poll(async () => (await first.boundingBox())?.x ?? 0)
+			.toBeGreaterThan(before.x + 20);
+
+		await page.mouse.up();
+
+		const order = await page
+			.getByTestId('session-tabs')
+			.getByRole('tab')
+			.evaluateAll((tabs) => tabs.map((t) => t.getAttribute('data-session-id')));
+		expect(order).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
+		// And the transform is gone once the list itself holds the order — a tab
+		// left translated would sit on top of its neighbour.
+		await expect(first).toHaveJSProperty('style.transform', '');
+	});
+
+	test('@smoke Alt+arrows move the focused tab without a mouse', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
@@ -164,26 +218,21 @@ test.describe('session tabs', () => {
 				.getByRole('tab')
 				.evaluateAll((tabs) => tabs.map((t) => t.getAttribute('data-session-id')));
 
-		// Hand-driven rather than `dragTo`, because the point of the test is the
-		// state *mid-gesture*: dragover reorders as you travel, so the strip shows
-		// the arrangement you'd get instead of making you drop to find out.
-		const source = page.getByRole('tab', { name: /Zulu task 9/ });
-		const target = page.getByRole('tab', { name: /Zulu task 11/ });
-		const from = await source.boundingBox();
-		const to = await target.boundingBox();
-		if (!from || !to) throw new Error('tabs not laid out');
+		// A drag-only reorder is unreachable without a mouse, and dnd-kit's own
+		// keyboard sensor wants the space bar — which on a `role="tab"` already
+		// means "activate this tab". Alt+arrows need no mode at all.
+		const last = page.getByRole('tab', { name: /Zulu task 9/ });
+		await last.focus();
+		await page.keyboard.press('Alt+ArrowLeft');
+		expect(await order()).toEqual(['zulu-session-11', 'zulu-session-09', 'zulu-session-10']);
 
-		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-		await page.mouse.down();
-		// Two moves: the first is what the browser promotes into a drag, the
-		// second is the one that lands on the target.
-		await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
-		await page.mouse.move(to.x + 2, to.y + to.height / 2, { steps: 4 });
+		// Focus travels with the tab, so a second press keeps moving the same one
+		// rather than whatever landed under it.
+		await page.keyboard.press('Alt+ArrowLeft');
+		expect(await order()).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
 
-		// Still holding the button, and the tab has already moved.
-		await expect.poll(order).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
-
-		await page.mouse.up();
+		// And it stops at the end of the strip instead of wrapping around.
+		await page.keyboard.press('Alt+ArrowLeft');
 		expect(await order()).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
 	});
 

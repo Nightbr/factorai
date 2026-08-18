@@ -1,14 +1,33 @@
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { disposeTerminal } from '@components/terminal/Terminal';
-import type { SessionSummary } from '@factorai/types';
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
+import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+// Aliased, and it has to be: this file also calls the *global* `CSS.escape`
+// below, and dnd-kit's `CSS` helper would shadow it at module scope — a
+// `CSS.escape is not a function` the moment you switch session.
+import { CSS as DndCss } from '@dnd-kit/utilities';
+import type { Project, SessionSummary } from '@factorai/types';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
 import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+/**
+ * How far the pointer must travel before a press on a tab becomes a drag.
+ *
+ * Not decoration — it is what keeps a click a click. Without an activation
+ * constraint the sensor claims the `pointerdown`, and dnd-kit stops propagating
+ * the `click` that follows (core.esm.js § `AbstractPointerSensor`), so switching
+ * session by clicking its tab would stop working. Above the threshold that same
+ * suppression is what we want: a drag must not also navigate.
+ */
+const DRAG_START_PX = 4;
 
 /**
  * Tabs for the live sessions, in the top bar (specs/05-features.md F16).
@@ -20,6 +39,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
  *
  * Renders nothing when nothing is live, so the header looks exactly as it did
  * before the first session starts.
+ *
+ * **Reordering is dnd-kit, and it is pointer-based — that is the whole point.**
+ * This strip used native HTML5 drag-and-drop until 2026-08-18, when it turned
+ * out not to work on macOS at all: Tauri's own drag-drop handler returns
+ * "handled" for every drag session on the window, and wry only forwards
+ * `draggingUpdated` / `performDragOperation` to WKWebView when it returns
+ * "not handled" — so the page never saw `dragover` and the tab just dimmed. See
+ * ADR-0016; the short version is that the OS drag session is not ours to use in
+ * this shell, and dnd-kit does not use it.
  */
 export function SessionTabs() {
 	const bySession = useTerminalStore((s) => s.bySession);
@@ -30,7 +58,6 @@ export function SessionTabs() {
 	const navigate = useNavigate();
 
 	const [closing, setClosing] = useState<string | null>(null);
-	const [dragging, setDragging] = useState<string | null>(null);
 	const stripRef = useRef<HTMLDivElement>(null);
 
 	// `order` is the source of truth for sequence, `bySession` for existence —
@@ -39,6 +66,9 @@ export function SessionTabs() {
 		() => order.filter((id) => bySession[id]).map((id) => ({ id, live: bySession[id] })),
 		[order, bySession],
 	);
+	// `SortableContext` wants the ids, and it wants the same array identity across
+	// renders it doesn't change in.
+	const tabIds = useMemo(() => tabs.map((t) => t.id), [tabs]);
 
 	const titles = useSessionTitles(tabs.map((t) => t.live));
 	// The avatar answers "which project is this one?", and it now carries the
@@ -53,6 +83,10 @@ export function SessionTabs() {
 		[projectsQ.data],
 	);
 
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: DRAG_START_PX } }),
+	);
+
 	// Switching sessions from the sidebar (or a keyboard, later) must not leave
 	// you looking at the wrong end of a scrolled strip.
 	useEffect(() => {
@@ -61,6 +95,87 @@ export function SessionTabs() {
 			?.querySelector(`[data-session-id="${CSS.escape(activeId)}"]`)
 			?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 	}, [activeId]);
+
+	const openSession = useCallback(
+		(sessionId: string, projectId: string) => {
+			void navigate({
+				to: '/projects/$projectId/sessions/$sessionId',
+				params: { projectId, sessionId },
+			});
+		},
+		[navigate],
+	);
+
+	const closeSession = useCallback(
+		(sessionId: string) => {
+			const live = bySession[sessionId];
+			setClosing(null);
+			if (!live) return;
+			void (async () => {
+				try {
+					await cmd.terminalKill(live.terminalId);
+					// Drop it now rather than waiting for `terminal:exit`. We know what we
+					// just did, and a tab that lingers until an event arrives is a tab
+					// that lingers forever if the event is ever missed. The later event
+					// finds nothing to remove, which is fine.
+					detach(sessionId);
+				} catch (e) {
+					// The kill failed, so the PTY may well still be running: keep the tab,
+					// where its status dot keeps telling the truth.
+					console.error('terminal_kill failed', e);
+					return;
+				}
+				disposeTerminal(sessionId);
+				// Only navigate if you were looking at the session you just closed.
+				if (activeId === sessionId) {
+					void navigate({ to: '/projects/$id', params: { id: live.projectId } });
+				}
+			})();
+		},
+		[activeId, bySession, detach, navigate],
+	);
+
+	/** The × and middle-click both come through here: ask while Claude is
+	 *  working, close outright otherwise (F10). */
+	const requestClose = useCallback(
+		(sessionId: string) => {
+			if (needsCloseConfirm(bySession[sessionId]?.status)) setClosing(sessionId);
+			else closeSession(sessionId);
+		},
+		[bySession, closeSession],
+	);
+
+	/** `arrayMove` semantics, which is what `terminalStore.reorder` already does:
+	 *  lift the tab out, then insert it at the index the drop landed on. */
+	const onDragEnd = useCallback(
+		(event: DragEndEvent) => {
+			const { active, over } = event;
+			if (!over || active.id === over.id) return;
+			const to = tabIds.indexOf(String(over.id));
+			if (to < 0) return;
+			reorder(String(active.id), to);
+		},
+		[reorder, tabIds],
+	);
+
+	/**
+	 * One place left or right with the keyboard, because a drag-only reorder is
+	 * unreachable without a mouse.
+	 *
+	 * `Alt`+arrows rather than dnd-kit's `KeyboardSensor`: that sensor takes the
+	 * space bar to lift an item, and space on a `role="tab"` means *activate this
+	 * tab*. Trading a gesture everybody knows for a lift-move-drop mode nobody
+	 * discovers is the wrong way round, and a nudge needs no mode at all.
+	 */
+	const nudge = useCallback(
+		(sessionId: string, delta: -1 | 1) => {
+			const from = tabIds.indexOf(sessionId);
+			const to = from + delta;
+			if (from < 0 || to < 0 || to >= tabIds.length) return;
+			reorder(sessionId, to);
+		},
+		[reorder, tabIds],
+	);
 
 	if (tabs.length === 0) {
 		// Nothing live, but the row still needs something between the brand and the
@@ -71,163 +186,55 @@ export function SessionTabs() {
 		return <div className="flex-1" aria-hidden />;
 	}
 
-	function closeSession(sessionId: string) {
-		const live = bySession[sessionId];
-		setClosing(null);
-		if (!live) return;
-		void (async () => {
-			try {
-				await cmd.terminalKill(live.terminalId);
-				// Drop it now rather than waiting for `terminal:exit`. We know what we
-				// just did, and a tab that lingers until an event arrives is a tab
-				// that lingers forever if the event is ever missed. The later event
-				// finds nothing to remove, which is fine.
-				detach(sessionId);
-			} catch (e) {
-				// The kill failed, so the PTY may well still be running: keep the tab,
-				// where its status dot keeps telling the truth.
-				console.error('terminal_kill failed', e);
-				return;
-			}
-			disposeTerminal(sessionId);
-			// Only navigate if you were looking at the session you just closed.
-			if (activeId === sessionId) {
-				void navigate({ to: '/projects/$id', params: { id: live.projectId } });
-			}
-		})();
-	}
-
-	/** The × and middle-click both come through here: ask while Claude is
-	 *  working, close outright otherwise (F10). */
-	function requestClose(sessionId: string) {
-		if (needsCloseConfirm(bySession[sessionId]?.status)) setClosing(sessionId);
-		else closeSession(sessionId);
-	}
-
 	const closingLive = closing ? bySession[closing] : undefined;
 
 	return (
 		<>
-			<div
-				ref={stripRef}
-				role="tablist"
-				aria-label="Open sessions"
-				data-testid="session-tabs"
-				// `overflow-x-auto` with the bar hidden: at 40px tall a scrollbar would
-				// eat a third of the strip. The wheel handler below is what makes it
-				// reachable without one.
-				className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1"
-				onWheel={(e) => {
-					// A vertical wheel over a horizontal strip does nothing by default,
-					// which reads as "these tabs are stuck".
-					if (e.deltaY !== 0 && stripRef.current) {
-						stripRef.current.scrollLeft += e.deltaY;
-					}
-				}}
+			{/* `restrictToHorizontalAxis`: a tab strip has one axis, and a tab you can
+			    lift into the middle of the window suggests it can be dropped there.
+			    Auto-scroll is dnd-kit's default and we keep it — the strip overflows,
+			    so dragging to its edge scrolls it, which the old implementation could
+			    not do at all. */}
+			<DndContext
+				sensors={sensors}
+				collisionDetection={closestCenter}
+				modifiers={[restrictToHorizontalAxis]}
+				onDragEnd={onDragEnd}
 			>
-				{tabs.map(({ id, live }, index) => {
-					const isActive = id === activeId;
-					return (
-						<div
-							key={id}
-							role="tab"
-							aria-selected={isActive}
-							data-session-id={id}
-							draggable
-							onDragStart={(e) => {
-								// Setting data is what actually starts a native drag — without
-								// it the browser treats the gesture as a text selection and no
-								// drop target ever fires. This is why reordering did nothing.
-								e.dataTransfer.setData('text/plain', id);
-								e.dataTransfer.effectAllowed = 'move';
-								// Before setDragging, while the element on screen is still the
-								// tab you grabbed rather than the dimmed one.
-								setTabDragImage(e);
-								setDragging(id);
-							}}
-							onDragEnd={() => setDragging(null)}
-							onDragOver={(e) => {
-								// Without preventDefault the element is "not a drop target" and
-								// the drop is refused.
-								e.preventDefault();
-								e.dataTransfer.dropEffect = 'move';
-								// Reorder as you go, so the strip shows the arrangement you
-								// would get rather than making you drop to find out.
-								if (!dragging || dragging === id) return;
-								const from = tabs.findIndex((t) => t.id === dragging);
-								if (from < 0) return;
-								const box = e.currentTarget.getBoundingClientRect();
-								const to = dropIndex(from, index, e.clientX > box.left + box.width / 2);
-								if (to !== from) reorder(dragging, to);
-							}}
-							onDrop={(e) => {
-								// Nothing left to move: dragover already put the tab where it
-								// looks like it is. Dropping just ends the gesture.
-								e.preventDefault();
-								setDragging(null);
-							}}
-							className={`group flex h-7.5 max-w-60 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-sm transition-colors ${
-								isActive
-									? 'bg-secondary text-foreground'
-									: 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
-								// Dimmed rather than hidden: it is the tab's own slot sliding
-								// along the strip that shows where the drop will land, so it
-								// has to stay legible while the ghost follows the cursor.
-							} ${dragging === id ? 'opacity-50' : ''}`}
-							onClick={() =>
-								void navigate({
-									to: '/projects/$projectId/sessions/$sessionId',
-									params: { projectId: live.projectId, sessionId: id },
-								})
+				<SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
+					<div
+						ref={stripRef}
+						role="tablist"
+						aria-label="Open sessions"
+						data-testid="session-tabs"
+						// `overflow-x-auto` with the bar hidden: at 42px tall a scrollbar
+						// would eat a third of the strip. The wheel handler below is what
+						// makes it reachable without one.
+						className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1"
+						onWheel={(e) => {
+							// A vertical wheel over a horizontal strip does nothing by default,
+							// which reads as "these tabs are stuck".
+							if (e.deltaY !== 0 && stripRef.current) {
+								stripRef.current.scrollLeft += e.deltaY;
 							}
-							// Middle-click closes, the way every tab strip does. It goes
-							// through the same path as the × — a shortcut to the action, not
-							// a way around the question it may ask.
-							onAuxClick={(e) => {
-								if (e.button !== 1) return;
-								e.preventDefault();
-								requestClose(id);
-							}}
-							onKeyDown={(e) => {
-								if (e.key === 'Enter' || e.key === ' ') {
-									e.preventDefault();
-									void navigate({
-										to: '/projects/$projectId/sessions/$sessionId',
-										params: { projectId: live.projectId, sessionId: id },
-									});
-								}
-							}}
-							tabIndex={0}
-							title={`${projectById.get(live.projectId)?.displayName ?? live.projectId} — ${
-								titles.get(id) ?? id
-							}`}
-						>
-							<ProjectIcon
-								name={projectById.get(live.projectId)?.displayName ?? live.projectId}
-								path={projectById.get(live.projectId)?.realPath ?? live.projectId}
-								size={16}
-								status={live.status}
+						}}
+					>
+						{tabs.map(({ id, live }) => (
+							<SessionTab
+								key={id}
+								id={id}
+								live={live}
+								project={projectById.get(live.projectId)}
+								title={titles.get(id) ?? shortId(id)}
+								isActive={id === activeId}
+								onOpen={openSession}
+								onRequestClose={requestClose}
+								onNudge={nudge}
 							/>
-							<span className="min-w-0 flex-1 truncate">{titles.get(id) ?? shortId(id)}</span>
-							{/* Only where the pointer already is, or on the active tab: a row
-							    of permanent × buttons is a row of accidents waiting. */}
-							<button
-								type="button"
-								aria-label={`Close ${titles.get(id) ?? shortId(id)}`}
-								className={`-mr-1 rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 ${
-									isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-								}`}
-								onClick={(e) => {
-									e.stopPropagation();
-									requestClose(id);
-								}}
-							>
-								<X className="size-3.5" />
-							</button>
-						</div>
-					);
-				})}
-			</div>
+						))}
+					</div>
+				</SortableContext>
+			</DndContext>
 
 			<CloseSessionConfirm
 				sessionName={closing ? (titles.get(closing) ?? shortId(closing)) : null}
@@ -239,56 +246,118 @@ export function SessionTabs() {
 	);
 }
 
+interface SessionTabProps {
+	id: string;
+	live: LiveTerminal;
+	project: Project | undefined;
+	title: string;
+	isActive: boolean;
+	onOpen: (sessionId: string, projectId: string) => void;
+	onRequestClose: (sessionId: string) => void;
+	onNudge: (sessionId: string, delta: -1 | 1) => void;
+}
+
+/**
+ * One tab: project avatar, title, close control — and the drag itself.
+ *
+ * Its own component because `useSortable` is a hook, so every sortable item is
+ * one. That is the whole of the refactor the library asked for.
+ *
+ * **dnd-kit's `attributes` are deliberately not spread here.** They set
+ * `role="button"` and an `aria-describedby` pointing at "press space bar to pick
+ * up" instructions — wrong on both counts: this is a `role="tab"`, and the
+ * keyboard path is `Alt`+arrows rather than a lift-and-drop mode (see `nudge`).
+ * `aria-keyshortcuts` says so in the one place a screen reader will read it.
+ */
+function SessionTab({
+	id,
+	live,
+	project,
+	title,
+	isActive,
+	onOpen,
+	onRequestClose,
+	onNudge,
+}: SessionTabProps) {
+	const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id });
+
+	return (
+		<div
+			ref={setNodeRef}
+			role="tab"
+			aria-selected={isActive}
+			aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+			data-session-id={id}
+			{...listeners}
+			style={{ transform: DndCss.Transform.toString(transform), transition }}
+			// **The tab you are dragging is the tab, not a snapshot of it.** The old
+			// implementation dimmed the source and dragged a cloned drag image,
+			// because the browser snapshots the element *after* `dragstart` and the
+			// dimming landed on the snapshot. dnd-kit translates the real element, so
+			// the ghost, the clone and the dimming all go away: it lifts (shadow,
+			// above its neighbours) and the others slide under it.
+			className={`group flex h-7.5 max-w-60 shrink-0 cursor-pointer touch-none items-center gap-1.5 rounded px-2 text-sm ${
+				isDragging
+					? 'z-10 bg-secondary text-foreground shadow-lg'
+					: isActive
+						? 'bg-secondary text-foreground transition-colors'
+						: 'text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground'
+			}`}
+			onClick={() => onOpen(id, live.projectId)}
+			// Middle-click closes, the way every tab strip does. It goes through the
+			// same path as the × — a shortcut to the action, not a way around the
+			// question it may ask.
+			onAuxClick={(e) => {
+				if (e.button !== 1) return;
+				e.preventDefault();
+				onRequestClose(id);
+			}}
+			onKeyDown={(e) => {
+				if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+					e.preventDefault();
+					onNudge(id, e.key === 'ArrowLeft' ? -1 : 1);
+					return;
+				}
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					onOpen(id, live.projectId);
+				}
+			}}
+			tabIndex={0}
+			title={`${project?.displayName ?? live.projectId} — ${title}`}
+		>
+			<ProjectIcon
+				name={project?.displayName ?? live.projectId}
+				path={project?.realPath ?? live.projectId}
+				size={16}
+				status={live.status}
+			/>
+			<span className="min-w-0 flex-1 truncate">{title}</span>
+			{/* Only where the pointer already is, or on the active tab: a row of
+			    permanent × buttons is a row of accidents waiting. */}
+			<button
+				type="button"
+				aria-label={`Close ${title}`}
+				className={`-mr-1 rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 ${
+					isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+				}`}
+				// The sensor listens on the tab, so a press on the × is a press on the
+				// tab: stop it here or a slightly draggy click on the close button
+				// starts a drag instead of closing anything.
+				onPointerDown={(e) => e.stopPropagation()}
+				onClick={(e) => {
+					e.stopPropagation();
+					onRequestClose(id);
+				}}
+			>
+				<X className="size-3.5" />
+			</button>
+		</div>
+	);
+}
+
 function shortId(sessionId: string): string {
 	return sessionId.slice(0, 8);
-}
-
-/**
- * The image that follows the cursor during a tab drag.
- *
- * Left to itself the browser snapshots the source element — but it does that
- * *after* `dragstart` returns, by which point the tab has been dimmed to mark
- * it as in flight, so what you drag is a near-invisible sliver of the thing
- * you grabbed. An inactive tab paints no background either, so the snapshot is
- * bare text on nothing.
- *
- * A clone sidesteps both: solid, full opacity, and taken while the original is
- * still untouched. It lives off-screen for the one frame the snapshot needs —
- * off-screen rather than `display: none`, because an element with no layout box
- * snapshots blank.
- */
-function setTabDragImage(e: React.DragEvent<HTMLElement>) {
-	const box = e.currentTarget.getBoundingClientRect();
-	const ghost = e.currentTarget.cloneNode(true) as HTMLElement;
-	ghost.classList.add('bg-secondary', 'text-foreground', 'shadow-lg');
-	ghost.style.width = `${box.width}px`;
-	ghost.style.height = `${box.height}px`;
-	ghost.style.position = 'fixed';
-	ghost.style.top = '-9999px';
-	ghost.style.left = '-9999px';
-	ghost.style.pointerEvents = 'none';
-	document.body.appendChild(ghost);
-	// Grab it where the pointer actually is, so the tab doesn't jump under the
-	// cursor the moment the drag starts.
-	e.dataTransfer.setDragImage(ghost, e.clientX - box.left, e.clientY - box.top);
-	requestAnimationFrame(() => ghost.remove());
-}
-
-/**
- * Where a tab currently at `from` belongs while the pointer is over the tab at
- * `overIndex`. The result indexes the strip *after* the dragged tab is lifted
- * out, which is what `reorder` takes.
- *
- * The midpoint is what keeps it still. Swapping the moment two tabs touch puts
- * the other tab under the cursor, which swaps them straight back, and the pair
- * flickers for as long as you hold the pointer there. Crossing the centre line
- * is a commitment you have to travel back across to undo.
- */
-export function dropIndex(from: number, overIndex: number, pastMidpoint: boolean): number {
-	// Moving right, the hovered tab slides one place left once ours is lifted
-	// out; moving left, it stays put. Hence the asymmetry.
-	if (from < overIndex) return pastMidpoint ? overIndex : overIndex - 1;
-	return pastMidpoint ? overIndex + 1 : overIndex;
 }
 
 /**

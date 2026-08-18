@@ -836,10 +836,14 @@ either.
       it isn't — a repin goes to the end, and that is one less piece of invisible state).
 - [ ] **The gesture, cheapest first.** The row's `ContextMenu` already exists (item 25) and already
       carries Pin / Unpin, so **`Move up` / `Move down` rows in it are nearly free** and are a
-      complete answer to the ask. Drag-and-drop is the nicer gesture and is a **new load-bearing
-      dependency** (nothing in the workspace does dnd today) — that is an ADR under § 5, plus a
-      keyboard path regardless, since a drag-only reorder is unreachable without a mouse. Ship the
-      menu rows first; treat dnd as a separate follow-up that reuses the same command.
+      complete answer to the ask. Drag-and-drop is the nicer gesture and **no longer needs the ADR
+      this entry asked for**: dnd-kit landed 2026-08-18 for the session tabs (ADR-0016), so the
+      dependency is already load-bearing and paid for, and `SessionTabs` is the worked example —
+      `verticalListSortingStrategy` instead of the horizontal one. Two things from that work carry
+      over: **do not** reach for HTML5 drag-and-drop (it does nothing on macOS, § 4), and the
+      keyboard path is still required — the tabs took `Alt`+arrows rather than dnd-kit's
+      `KeyboardSensor`, for reasons that apply to a row you also activate with Enter. Ship the menu
+      rows first regardless; they are the cheap complete answer.
 - [ ] **Optimistic update or it will fight the poll.** The sidebar refetches every 2s and
       `usePinProject` already shows the pattern (`onMutate` rewrites the cached list). A reorder
       that waits for the round-trip will visibly snap back; the optimistic write has to cover the

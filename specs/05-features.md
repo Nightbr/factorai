@@ -1600,28 +1600,46 @@ so the row of dots now says which session wants you — which is the most useful
 thing the tab strip can tell you, since it is the surface you are already looking
 at. Same corner badge as `ProjectIcon`, not a second mechanism.
 
-- **Reorder** by dragging, using native HTML5 drag-and-drop rather than a
-  library: ~40 lines against a ~30KB dependency for one horizontal strip.
-  The strip reorders **live, on `dragover`** — the tab travels to where it
-  will land while you are still holding it, rather than making you drop to
-  find out. Two things that took getting right:
-  - **The ghost is a clone, not the element.** The browser snapshots the
-    source *after* `dragstart` returns, so the dimming that marks a tab as in
-    flight lands on the drag image too and you drag a near-invisible sliver;
-    an inactive tab paints no background, so the snapshot is bare text on
-    nothing. `setDragImage` takes a solid clone parked off-screen for the one
-    frame the snapshot needs — off-screen rather than `display: none`, since
-    an element with no layout box snapshots blank.
-  - **The swap waits for the midpoint.** Swapping the moment two tabs touch
-    puts the other tab under the cursor, which swaps them back, and the pair
-    flickers as long as you hover there. Crossing the centre line is a
-    commitment you have to travel back across to undo. `dropIndex` is that
-    arithmetic, unit-tested, and its "stay put" cases are the guard —
-    `to === from` is what stops the reorder firing.
+- **Reorder** by dragging, with **dnd-kit** — pointer events, never the OS drag
+  session. **Changed 2026-08-18 on a user report, and the report was macOS-only.**
+  This shipped as ~40 lines of native HTML5 drag-and-drop, and this bullet used to
+  justify that as the cheaper side of a trade against a ~30KB dependency. The
+  trade was decided on Linux, where it works. On macOS it does nothing at all:
+  Tauri's own drag-drop handler reports every drag session on the window as
+  handled, and wry then never forwards it to WKWebView, so the page sees
+  `dragstart` and nothing after it. You pick a tab up, it dims, and it will not
+  move. ADR-0016 has the call sites and the three ways out; the one taken keeps
+  native file-drop available for the app and moves the strip off the OS gesture
+  entirely.
 
-  Releasing outside the strip keeps the last previewed order rather than
-  snapping back: the strip has been showing that arrangement the whole way, so
-  reverting on release would undo something you had already watched happen.
+  What that changes to look at:
+  - **The tab you drag is the tab**, not a snapshot of it. The old code dimmed
+    the source and dragged a cloned drag image, because the browser snapshots the
+    element *after* `dragstart` returns — so the dimming landed on the image and
+    you dragged a near-invisible sliver of an inactive tab that paints no
+    background. dnd-kit translates the real element: it lifts, with a shadow and
+    above its neighbours, and they slide under it.
+  - **The order commits on drop, and the preview is a transform.** Before, every
+    `dragover` rewrote the list, which needed `dropIndex`'s midpoint rule to stop
+    two tabs flickering under a stationary cursor — swap the moment they touch and
+    the one you swapped with is now under the pointer, which swaps them back.
+    `closestCenter` plus `horizontalListSortingStrategy` is that rule now, so both
+    the arithmetic and its unit tests are gone. What you see mid-drag is the same
+    thing either way: the arrangement you would get, rather than a drop you have
+    to make to find out.
+  - **Releasing outside the strip still keeps the previewed order** rather than
+    snapping back. The strip has been showing that arrangement the whole way, so
+    reverting on release would undo something you had already watched happen.
+  - **A press is a click until it has travelled 4px.** dnd-kit suppresses the
+    `click` after a drag it activated, which is right — a drag must not also
+    navigate — and would otherwise mean clicking a tab no longer switches session.
+  - **Dragging to the strip's edge scrolls it**, which the HTML5 implementation
+    could not do at all.
+- **`Alt`+`←` / `Alt`+`→` moves the focused tab** one place, because a
+  drag-only reorder is unreachable without a mouse. Not dnd-kit's
+  `KeyboardSensor`: it lifts an item with the space bar, and space on a
+  `role="tab"` already means *activate this tab*. A nudge needs no mode, and
+  `aria-keyshortcuts` on the tab is where a screen reader finds it.
 - **Overflow** scrolls horizontally, with the scrollbar hidden (at 42px it
   would eat a third of the strip) and a wheel handler mapping vertical scroll
   onto it — otherwise the wheel does nothing over the header and the tabs read

@@ -3,6 +3,53 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Tab reordering works on macOS: dnd-kit, because the OS drag session is not ours to use — specs
+  `05-features.md` § F16, `01-architecture.md`, ADR-0016, `AGENTS.md` § 4** — 2026-08-18, user
+  report: "on macOS tabs reordering is not working. Maybe it is time to use a well-known drag&drop
+  working lib?"
+
+  **The premise needed one correction and the diagnosis needed none.** It was never our arithmetic:
+  `dragstart` fires, the tab dims, and nothing follows, because
+  `tauri-runtime-wry-2.11.2/src/lib.rs:4894` returns `true` from Tauri's drag-drop handler for
+  every drag session on the window, and `wry-0.55.1/src/wkwebview/drag_drop.rs` only lets WKWebView
+  see a drag when that handler returns `false`. The page therefore never receives `dragover`. Linux
+  works by accident of a different implementation — `webkitgtk/drag_drop.rs:94` returns `false` from
+  `drag_motion` and only claims drags carrying file paths — and `scripts/qa` is X11-only, which is
+  the whole story of how a reorder shipped working on one of our two platforms. The correction: a
+  "well-known lib" only fixes this if it is **pointer**-based. `react-dnd`'s `HTML5Backend` would
+  have failed identically.
+
+  **Three ways out, and the user picked the library.** `"dragDropEnabled": false` on the window is a
+  verified one-line fix — with no handler installed wry passes every callback through — but it
+  spends a window-level capability on one strip: no native file-drop ever, and a landmine for
+  whoever adds it later, on macOS only, silently, with nothing in CI able to see either half. A
+  hand-rolled pointer drag was the other option. dnd-kit won on the argument that a second
+  reordering surface is already specified (roadmap item 28, pinned projects), so the dependency is
+  paid for twice, and that a drag needs a keyboard path we would otherwise hand-write too.
+
+  **What the library changed on purpose.** The dragged tab is now the element itself rather than a
+  cloned drag image — the clone existed only because the browser snapshots the source *after*
+  `dragstart`, so the in-flight dimming landed on the image. The order commits on drop, with the
+  neighbours sliding under a transform during the gesture, where before every `dragover` rewrote the
+  list. That last change deletes `dropIndex` and its unit tests: `closestCenter` plus
+  `horizontalListSortingStrategy` own the midpoint rule now. Auto-scroll came free, and the strip
+  overflows, so dragging to its edge scrolls it — which the old code could not do at all.
+
+  **Three details are load-bearing and are in the ADR rather than in anyone's head.** A 4px
+  activation distance, because dnd-kit suppresses the click after an activated drag and without the
+  threshold clicking a tab would stop switching session. `PointerSensor` only: dnd-kit's
+  `KeyboardSensor` lifts with the space bar, and space on a `role="tab"` means activate — so the
+  keyboard path is `Alt`+arrows, one place per press, with `aria-keyshortcuts` to say so. And the
+  library's `attributes` are deliberately not spread onto the tab, since they would overwrite
+  `role="tab"` with `role="button"` and point `aria-describedby` at instructions that are not true
+  here.
+
+  The e2e tests moved from `dragTo` (which dispatches HTML5 events nothing listens for now) to a
+  real pointer drag, plus one for the mid-drag preview and one for the keyboard nudge. Worth being
+  plain about the limit: those run in Chromium, so they can prove the gesture works and cannot prove
+  it works in WKWebView — that is exactly the gap this bug lived in. `01-architecture.md`'s stack
+  table also stopped claiming codemirror and marked, which ADR-0007 had superseded.
+
 - **One hover card at a time, chips that stay inside their box, the graph's empty line on the other
   tabs' pixel, and 28px menu rows — specs `05-features.md` § F18, `04-frontend.md`, `AGENTS.md`
   § 4** — 2026-08-18, user ask, three reports in one pass over the graph.
