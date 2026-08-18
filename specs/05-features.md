@@ -1109,7 +1109,7 @@ someone made is not the kind of small that is fine.
 
 ### The surface
 
-**A medium modal, driven by the URL.** `?settings=claude|editor|confirmations`,
+**A medium modal, driven by the URL.** `?settings=claude|editor|confirmations|sessions`,
 validated on the root route exactly as `?file=` already is. That is deliberately
 both things: the modal keeps the session visible behind it and dismisses on Esc,
 and the URL gives deep links, reload/HMR survival and browser-back-closes — which
@@ -1162,7 +1162,7 @@ infallible one, so a failed write is a clean no-op with the draft still on scree
 and the reason attached — rather than a half-apply where the renderer's
 preferences took and the Rust-readable one didn't, with no way to tell which.
 
-### Sections — three, not four
+### Sections — four
 
 **Claude.**
 
@@ -1194,10 +1194,20 @@ two ship together — which is also
 what gives this modal enough content to be worth opening, and what proves
 `SettingRow` against a real group rather than one text field.
 
-**Appearance and Advanced are dropped until they have content**, and F11 no longer
-claims four sections. Appearance would hold theme, which is deferred to its own
-roadmap item (below); Advanced would hold item 31's release channel, which does not
-exist yet. An empty section reads as a bug.
+**Sessions.** One switch, **on by default**: restore open session tabs on launch
+(F16). Added 2026-08-18, and it is the one section here whose feature shipped
+first — restore landed unconditionally because this surface did not exist yet, so
+the switch arrives after the behaviour and must default on or it changes what
+people already have. The heading is *Sessions* rather than *Startup* because the
+unit of work in this app is a session and this is where the next per-session
+preference goes; a startup section would describe when a preference applies
+rather than what it applies to.
+
+**Appearance and Advanced are dropped until they have content.** This heading read
+"three, not four" until Sessions arrived, and the count is not the point — having
+content is. Appearance would hold theme, which is deferred to its own roadmap item
+(below); Advanced would hold item 31's release channel, which does not exist yet.
+An empty section reads as a bug.
 
 **Theme is not here, and that is a scope decision rather than an omission.**
 Nothing in the app sets `data-theme` today, so the light palette in
@@ -1575,14 +1585,35 @@ off the file-tree toggle (Q15). It belongs to the keybinding pass.
 
 ## F16 — Session tabs
 
-**Behavior.** The top bar carries a tab per **live session**, for switching
-between running agents without going through the sidebar.
+**Behavior.** The top bar carries a tab per **open session**, for switching
+between agents without going through the sidebar.
 
-**A tab is a running PTY**, not an open document. The strip is driven straight
-off `terminalStore`, so a tab appears when a session spawns and goes when the
-process exits, however it exited. The header stays an honest picture of what is
-running rather than a second list to keep in sync — and it renders nothing at
-all when nothing is live, so the bar looks untouched until the first session.
+**A tab is an open session. The dot says whether it is running. A tab goes when
+you close it, and only then.** Rewritten 2026-08-18, and this paragraph used to
+say the opposite: "a tab is a running PTY, not an open document", with the strip
+driven straight off `terminalStore.bySession` so a tab went the moment its
+process exited, however it exited. That was an honest picture of what was
+running and a dishonest one of what you had open — and the app already disagreed
+with itself about which of those the strip was for. The session route
+deliberately does *not* navigate away when a process exits, so you could sit
+reading `[process exited]` with `Restart` under your hand while the strip had
+already deleted that session's tab.
+
+What the three sentences buy, in order:
+
+- **Open, not live**, so a tab survives an exit — and survives a quit, which is
+  what makes restoring the strip on launch mean anything at all.
+- **The dot carries the difference**, and nothing else does. F10 gave
+  `StatusDot` a `stopped` colour and `ProjectIcon` a corner badge to put it in;
+  both were wired and neither had ever been drawn in a tab, because under the old
+  invariant a stopped tab could not exist. No second treatment — no dimming, no
+  italics: the tab keeps its size, weight and colour, and the badge goes grey.
+- **Only closing removes**, from either surface. That is the whole rule for how
+  a tab disappears; there is no other way and no timeout.
+
+The strip still renders nothing at all when nothing is open, so the bar looks
+untouched until the first session — which is now "until the first session ever"
+rather than "until the first one today".
 
 **UI.** Project avatar, session title, and a close button that appears on hover
 or on the active tab; a permanent row of `×` is a row of accidents waiting.
@@ -1673,25 +1704,163 @@ at. Same corner badge as `ProjectIcon`, not a second mechanism.
   would eat a third of the strip) and a wheel handler mapping vertical scroll
   onto it — otherwise the wheel does nothing over the header and the tabs read
   as stuck. Switching session scrolls the new active tab into view.
-- **Order** is in memory and appends at the end. Persisting it would be
-  meaningless: quitting kills every PTY (ADR-0005), so there are no tabs to
-  restore.
+- **Order** appends at the end and is **persisted** — see "Restored on launch"
+  below. This bullet used to end "persisting it would be meaningless: quitting
+  kills every PTY (ADR-0005), so there are no tabs to restore", which was true
+  only for as long as a tab *was* a PTY. ADR-0005 is untouched; what changed is
+  that a tab now outlives the process.
 
-**Closing kills the session, so it always asks** — same terms as the quit
-guard: an unattended `claude` is real money, and closing one mid-task loses its
-work. The dialog is `components/dialog/CloseSessionConfirm`, **shared with the
-session header** (F3): one component, so the two surfaces cannot come to
-disagree about what the act is called or whether it is worth asking about.
+**Closing kills the session, and asks first while Claude is working** — same
+terms as the quit guard: an unattended `claude` is real money, and closing one
+mid-task loses its work. `needsCloseConfirm` owns *when*, and the dialog it
+guards, `components/dialog/CloseSessionConfirm`, is **shared with the session
+header** (F3): one component and one predicate, so the two surfaces cannot come
+to disagree about what the act is called, when it is worth asking about, or
+whether it is at all. This paragraph read "so it always asks" until 2026-08-18,
+stale since F10 gave the strip a status to consult. A **stopped** tab has no
+process to kill and so closes without a question.
+
 On confirm the tab is dropped immediately rather than waiting for
 `terminal:exit`; we know what we just did, and a tab that waits for an event is
 a tab that lingers forever if the event is missed. A **failed** kill keeps the
 tab, since the PTY may well still be running.
 
+**Clicking a stopped tab restarts it.** It disposes the pooled xterm and spawns
+against the same session id — which is exactly what the header's `Restart` does,
+so the strip is a restart button for a tab you are not on and for the one you
+are, with no exception carved out for the active tab. The cost is the exit
+message and the scrollback of a session that just died. The case where that
+matters is the one where you are already looking at it, and there the exit
+message is on screen with `Restart` beside it; reaching this by clicking the tab
+is a deliberate act, not a stray one.
+
 **Edge cases.**
 - Closing the tab you're looking at navigates to its project; closing any other
   leaves you where you are.
-- A session that exits on its own takes its tab with it, with no dialog — you
-  didn't ask for it to close, so there is nothing to confirm.
+- A session that exits on its own **keeps its tab**, greyed, with no dialog —
+  you didn't ask for it to close, so there is nothing to confirm and nothing to
+  remove. This bullet used to end "takes its tab with it".
+
+### Restored on launch
+
+**User ask, 2026-08-17; built 2026-08-18.** The tabs you had open come back when
+you restart the app. This is what the invariant above was changed for.
+
+**Restored tabs are stopped, and nothing spawns on launch.** Kill-on-quit is
+non-optional and this does not reopen it (ADR-0005, Q10): every PTY died at quit,
+so there is no process to bring back. The alternative — respawning
+`claude --resume` for each tab at launch — was rejected, and not for the reason
+it is usually given. It is not API cost: a resumed `claude` loads its transcript
+and sits at a prompt, spending nothing. It is that N tabs means N processes, N
+sets of MCP servers, and N runs of claude's own `SessionStart` hooks, which match
+`resume` — arbitrary code, run before you have looked at the window, deciding on
+the human's behalf what `00-overview.md` § "The operating model" says the human
+decides. **The first thing that starts a process is your click.**
+
+**What is persisted, and where.** `terminalStore` gains `tabs`, an ordered
+`{ sessionId, projectId }` list, on localStorage under `factorai.terminals`.
+`bySession` — the map every other surface reads to answer "is this running" — is
+**not** persisted and does not change meaning. That split is the whole reason
+this was cheap: nine call sites read `bySession`, every one of them means
+running, and TypeScript would have caught almost none of them if the meaning had
+shifted underneath, because the dangerous ones read `.status`, `Object.keys()`
+or `id in bySession`. The two fields are kept in step by the same reducers that
+already kept `order` in step with `bySession`:
+
+| reducer | `bySession` | `tabs` |
+| --- | --- | --- |
+| `attach` (spawn) | add | append if absent |
+| `removeByTerminal` (`terminal:exit`) | remove | **keep** |
+| `detach` (close) | remove | remove |
+
+Written continuously, as zustand's `persist` does by default and as
+`sidebarStore` and `panelStore` already do — so a crash, a force-quit and the
+`ErrorBoundary` reload all keep your tabs, which are the launches you most want
+them back on. A quit-time snapshot would have caught only the clean case.
+
+Per ADR-0013 this is **not** a preference and does not go near `prefsStore`:
+nobody sets it in a settings page. It is the same kind of value as
+`sidebarStore`'s `expanded`.
+
+**Stale ids are dropped, quietly.** A tab whose `projectId` is no longer in
+`list_projects` goes without an error — `sidebarStore`'s v1→v2 precedent, where
+persisted project ids stopped matching anything and were dropped rather than
+remapped. It matters more here than it did there: F6 refuses a spawn with no
+`realPath` precisely because `portable_pty` would otherwise start `claude` in
+`$HOME` and misfile the session under a different project than the tab names.
+
+The filter needs `list_projects`, which is async, so **restored tabs paint only
+once that query resolves**. Unlike a sidebar width there is no default state to
+flash — an empty strip for the length of one local query is invisible. The
+reason `sidebarStore` could not wait is that it had something on screen to
+correct.
+
+**Transcripts are not probed.** A tab whose `.jsonl` has been deleted stays, and
+clicking it claims the id as a fresh session (ADR-0008: no transcript means
+`--session-id`). The index row is gone by then too, so the tab shows its short id
+rather than the title of a conversation that no longer exists. A per-session
+probe at boot would cost a round trip each and read an index that lags the
+watcher's 1s debounce — wrong in the direction that drops a tab you wanted.
+
+**A `missing` project keeps its tab.** It is still in `list_projects` (F1 reports
+the `cwd` recorded in the transcript and never stats it), so the tab survives and
+the spawn fails loudly in the pane. That is F6's existing behaviour, not a new
+one.
+
+**No cap.** They are your tabs; the strip scrolls, and the `×` is right there.
+
+**`terminal_list` is wired at boot**, which it never was. `terminalStore` and
+`ErrorBoundary` both carried comments claiming a reload re-synced from it, and
+the command had no renderer-side caller at all — so a reload kept every PTY alive
+in Rust and lost every tab, stranding running sessions off the strip. Fixed as
+its own commit ahead of this feature: the merge it needs — live PTYs unioned onto
+the persisted list, live winning, position preserved — is the same merge restore
+needs, and it is correct under the old invariant too.
+
+**Where you land is unchanged**: `/`, with the tabs showing and none active.
+Navigating into a session spawns it (F6), so restoring the active tab would
+reintroduce respawn-on-launch by the back door. `04-frontend.md`'s `lastProjectId`
+was deleted 2026-08-17 for being speculative, and stays deleted.
+
+**No switch yet, and that is deliberate.** The ask was for a preference; F11 is
+specified and unbuilt, so there is nowhere to put one that is not half of someone
+else's feature. Restore ships on, unconditionally, and F11 gains a **Sessions**
+section holding the switch — defaulting on, so it changes nothing when it
+arrives. Recorded as a checkbox in roadmap item 4 rather than as a memory.
+
+### Where "open" shows outside the strip
+
+**Every session list marks what is open**, from one derived record:
+`openSessions(tabs, bySession)` in `lib/sessionGroups.ts`, mapping session id to
+`{ projectId, status }` with `stopped` for anything without a live PTY.
+`projectStatus` and the session rows already took that structural shape, so they
+change the argument they are handed rather than their signatures.
+
+- **Sidebar session rows and the project page's session list** both show the dot
+  when a session is open — one rule, since they list the same sessions and are
+  read the same way.
+- **Sidebar project rows** roll it up, so a project holding open tabs with
+  nothing running shows grey. `STATUS_RANK` already ranks `stopped` last, so a
+  project with one waiting session and four stopped ones still reads amber.
+- **`orderSessions` floats open sessions** above recency, not just running ones,
+  so what you have open clusters at the top of its project. The 10-row cap is
+  unchanged: ten open sessions in one project fill the list, which is then a list
+  of the ten you have open, and the project page shows everything uncapped.
+- **`pendingSessions` stays live-only.** It exists to show a session claude has
+  not written a transcript for yet; a stopped one has no process and no
+  transcript, so a permanent `New session` row for it would be a ghost no reindex
+  ever clears. A restored never-messaged session shows in the strip and nowhere
+  else.
+- **`UpdateBadge`'s count, the quit guard's count, and the session header's
+  Close-versus-Restart** are all still about running processes and all still read
+  `bySession`. The quit guard does not fire for stopped tabs, because there is
+  nothing to kill.
+
+This reverses one line of `projectStatus`'s reasoning — "a grey dot on every
+project you have ever opened is noise" — and the reversal is narrower than that
+line makes it sound. The dot is not shown for every project you have ever opened;
+it is shown for every project you have a tab open in, which is a set you control
+with the `×`.
 
 ## F17 — Error boundary
 
