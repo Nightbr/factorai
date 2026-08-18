@@ -438,6 +438,40 @@ used to advertise "Resume/Restart, Kill, Copy selection, Search-in-terminal
 but nothing drives it, so `Cmd+F` is a keyboard-scheme item (roadmap item 5),
 not a shipped one.
 
+**No scrollbar, and the grid fills the pane** (2026-08-18). Both came out of one
+report — a white bar down the right of every session on macOS — and they are
+three separate faults that happened to stack in the same 30px.
+
+- **Colour.** The app declared no `color-scheme`, so WebKit painted every
+  platform-drawn widget for a white page: scrollbars above all, but also the
+  caret, `::selection` and native control internals. Now `dark` on `:root` and
+  `light` on `[data-theme="light"]` in `@factorai/ui`, which fixes the same bar
+  in the sidebar, file tree, Changes list and viewer.
+- **Presence.** `xterm.css` ships `.xterm-viewport { overflow-y: scroll }`, so
+  unlike every other scrolling surface in the app the bar was permanent rather
+  than on demand. Whether you saw it at all was a *user* setting:
+  `AppleShowScrollBars` defaults to Automatic, which means the opaque legacy
+  scrollbar when a mouse is attached and the auto-fading overlay one otherwise.
+  Now hidden outright (`scrollbar-width: none`). Scrolling still works — wheel,
+  trackpad, keyboard — and drawing nothing is what Terminal.app and iTerm2 do.
+  This is the one surface exempt from roadmap item 16's "visible enough to be
+  usable": that constraint is about panels you navigate by position, and a
+  terminal's scroll position is transient.
+- **Width, which was neither of the above.** The scrollbar overlaid the grid
+  rather than shrinking it (`.xterm-viewport` is `position: absolute; inset: 0`
+  over `.xterm-screen`). The dead strip was `@xterm/addon-fit` reserving 14px for
+  an **overview ruler** — the decoration minimap — that we never draw in and
+  cannot switch off: xterm 5.5.0 spells that option `overviewRulerWidth`, the
+  addon reads a nested `overviewRuler.width` from a later core, and the
+  `|| 14` fallback therefore fires every time. That cost about two columns of
+  every terminal on every platform. The addon is gone; `Terminal.tsx` sizes the
+  grid itself from rendered geometry, with `proposeGeometry` as a pure, tested
+  function. Measured on the browser lane: the grid went from 983px to 999px of
+  1002px available, the remaining 3px being sub-cell remainder.
+
+Each site carries the full reasoning — the two CSS files and the sizing section
+of `Terminal.tsx`.
+
 **Backend.** `terminal_spawn`, `terminal_write`, `terminal_resize`,
 `terminal_kill`. `terminal:data` events stream output. Status heuristics
 detect waiting-for-input.

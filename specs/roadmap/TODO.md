@@ -494,6 +494,25 @@ What a real pass covers:
 Small, self-contained, and entirely cosmetic — but it touches every scrolling surface, so it wants
 doing in one pass rather than one panel at a time.
 
+**Two things landed ahead of this pass on 2026-08-18, from a bug report, and neither pre-empts it.**
+A white bar down the right of every session on macOS turned out to be two faults stacked:
+
+- **`color-scheme` was never declared**, so WebKit painted every platform-drawn widget — scrollbars
+  above all, but also the caret, `::selection` and native control internals — for a white page.
+  That is a root-cause fix, not a styling choice, and it is now on `:root` / `[data-theme="light"]`
+  in `packages/ui/src/styles/globals.css`. **It changes the starting point for this item**: the
+  native bars this pass was written against were the *light* ones, and every panel listed above now
+  begins from a dark bar rather than a near-white one. Re-look before designing.
+- **The terminal is now exempt** and draws no bar at all (`scrollbar-width: none`, in the desktop
+  app's stylesheet, F5). The constraint above — visible enough to be usable — is about panels you
+  navigate by position; a terminal's scroll position is transient and both Terminal.app and iTerm2
+  draw nothing. It also had a problem no other panel has: xterm.css forces `overflow-y: scroll`, so
+  its bar was permanent rather than on-demand, and `FitAddon` was charging the PTY two columns for
+  it. Leave it out of the one-treatment-everywhere sweep, or decide deliberately to pull it back in.
+
+Still parked, still wants doing together — the `pr-2` gutters, overlay-vs-in-flow and the fate of
+the two utilities are all untouched by the above.
+
 ## 17. Rename a session from inside factorai
 
 Reading the name `/rename` set is done (F2). Setting one from the app is not, and it is a bigger

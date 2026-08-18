@@ -4,3 +4,51 @@
    here rather than in @factorai/ui: the plugin is a desktop-app dependency and
    nothing in the primitives package renders markdown. */
 @plugin "@tailwindcss/typography";
+
+/* ── The terminal has no scrollbar ─────────────────────────────────────────── */
+/* **The white bar down the right of every session on macOS** (reported
+   2026-08-18), and then the black one that replaced it.
+
+   Two separate things were wrong. The colour was `color-scheme` — unset, so
+   WebKit painted every platform-drawn widget for a white page; see the long
+   note on `:root` in `@factorai/ui`'s stylesheet, which fixes that everywhere.
+   The bar's *presence* is this rule, and it is xterm's own doing:
+   `xterm.css` sets `.xterm-viewport { overflow-y: scroll }`, so the bar is
+   always in flow. Every other scrolling surface in the app uses
+   `overflow-*-auto` and shows nothing until there is something to scroll — the
+   terminal was the only one holding a permanent gutter open.
+
+   Which bar macOS draws is a *user* setting, which is why this was never
+   universal: `AppleShowScrollBars` defaults to Automatic, meaning the opaque
+   legacy scrollbar whenever a mouse is attached and the translucent
+   auto-fading overlay one otherwise. On a laptop with no mouse there is
+   nothing to see; plug one in and a permanent 15px strip appears down the side
+   of the session.
+
+   **Hidden rather than styled, and the terminal is the right place for that
+   exception.** Roadmap item 16 parks the app-wide scrollbar pass with one
+   stated constraint — the bar has to stay visible enough to be usable — and
+   that constraint is about panels you navigate by position: the sidebar, the
+   file tree, the Changes list. A terminal is not one. Its scroll position is
+   transient, output snaps it back to the bottom, and both Terminal.app and
+   iTerm2 ship exactly this: no persistent bar, scrolling by wheel, trackpad
+   and keyboard. Nothing about scrolling changes here — only the chrome goes.
+
+   **This is not what was eating the width, though.** The scrollbar overlaid the
+   grid rather than shrinking it — `.xterm-viewport` is `position: absolute;
+   inset: 0` over `.xterm-screen`, so the bar sat *on top of* the rightmost
+   columns. The dead strip beside it was `@xterm/addon-fit` reserving 14px for an
+   overview ruler nothing draws in, on every platform; that is fixed in
+   `components/terminal/Terminal.tsx`, which explains it at length. The two
+   changes are complementary — with no bar overlaying that strip, the grid is
+   free to use it.
+
+   `scrollbar-width` over `::-webkit-scrollbar`: the two cannot be combined —
+   setting the standard property makes WebKit ignore the pseudo-elements — and
+   it is the one that covers both the legacy bar and the overlay one. This is
+   deliberately NOT the `scrollbar-none` utility in `@factorai/ui`: that one is
+   the tab strip's, item 16 will collapse it into whatever it becomes, and the
+   reasoning above is the terminal's alone. */
+.xterm .xterm-viewport {
+	scrollbar-width: none;
+}
