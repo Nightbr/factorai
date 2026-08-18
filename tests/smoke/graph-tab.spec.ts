@@ -77,15 +77,32 @@ test.describe('graph tab', () => {
 		await page.getByTestId('commit-row').nth(1).click();
 		const detail = page.getByTestId('commit-detail');
 		await expect(detail).toBeVisible();
-		await expect(detail).toContainText('A body paragraph, which the row had no room for.');
+
+		// **The files are what you see first, and that is the point of the tabs**
+		// (2026-08-18): the pane used to stack subject, body, author and parents
+		// above the list, so at the default height clicking a commit showed
+		// everything about it except what you clicked for.
+		//
 		// Basename and directory are separate spans, per `FileChangeRow` — the
 		// filename first and the path dimmed after it, which is F13's row verbatim.
 		await expect(detail).toContainText('index.ts');
 		await expect(detail).toContainText('+7');
-		// A merge names the parent its diff is against rather than leaving the
-		// reader to remember the convention. `SHA_MAIN` is the first parent.
+
+		// Identity sits above the tabs, so it survives whichever one is open —
+		// author, date, and the parent chips that are how you walk history. A merge
+		// names the parent its diff is against rather than leaving the reader to
+		// remember the convention; `SHA_MAIN` is the first parent.
+		await expect(detail).toContainText('Titouan');
 		await expect(detail).toContainText(`${SHA_MAIN.slice(0, 7)} (diffed)`);
 		await expect(detail).toContainText(SHA_SIDE.slice(0, 7));
+
+		// The body is a tab away rather than above the list — uncapped there,
+		// where it used to be clamped to 80px precisely to stop it swallowing the
+		// pane.
+		await expect(detail).not.toContainText('A body paragraph');
+		await detail.getByRole('tab', { name: 'Description' }).click();
+		await expect(detail).toContainText('A body paragraph, which the row had no room for.');
+		await expect(detail).not.toContainText('index.ts');
 
 		// The detail's own resizer, which is the horizontal PanelResizer variant.
 		await expect(page.getByRole('separator', { name: 'Resize commit detail' })).toBeVisible();
@@ -118,7 +135,7 @@ test.describe('graph tab — switching, paging and the keyboard', () => {
 
 		// Select one, so there is something that must not survive the switch.
 		await page.getByTestId('commit-row').first().click();
-		await expect(page.getByTestId('commit-detail')).toContainText('Belongs to zulu.');
+		await expect(page.getByTestId('commit-detail')).toContainText('zulu commit 0');
 
 		await page.goto(`/#/projects/${ALPHA_ID}`);
 
@@ -131,7 +148,7 @@ test.describe('graph tab — switching, paging and the keyboard', () => {
 		await expect(page.getByTestId('commit-detail')).toHaveCount(0);
 
 		await page.getByTestId('commit-row').first().click();
-		await expect(page.getByTestId('commit-detail')).toContainText('Belongs to alpha.');
+		await expect(page.getByTestId('commit-detail')).toContainText('alpha commit 0');
 
 		// And back to zulu: its history again, and **no** pane. Arriving at a clean
 		// graph is the predictable default — the pane costs 200px of the thing you
@@ -245,9 +262,9 @@ test.describe('graph tab — switching, paging and the keyboard', () => {
 		await page.getByTestId('commit-row').first().click();
 		const detail = page.getByTestId('commit-detail');
 
-		// `diffParent: null` — there is nothing to diff against, so the heading says
+		// `diffParent: null` — there is nothing to diff against, so the tab says
 		// what the files are rather than implying a comparison.
-		await expect(detail).toContainText('Added in this commit');
+		await expect(detail.getByRole('tab', { name: /Added/ })).toBeVisible();
 		await expect(detail).not.toContainText('Parent');
 		await expect(detail).toContainText('README.md');
 	});

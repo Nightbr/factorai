@@ -1762,6 +1762,39 @@ what makes a 38-character row acceptable.
   list — **reusing `ChangesView`'s row rendering verbatim**, since a `+12 −3`
   badge at 288px is a problem F13 already solved and a second file-row style
   would be a second thing to keep consistent.
+
+  **The pane is a header plus two tabs. Changed 2026-08-18 on user feedback**,
+  from one scrolling column with everything stacked. Stacked, the chrome —
+  subject, body, author, parents, the Changes heading — could fill the default
+  200px pane on its own, so clicking a commit showed everything about it except
+  the files you clicked for. The body had already been capped at 80px to fight
+  that, which treated the symptom and cost the body its readability.
+
+  - **Above the tabs, always visible: identity.** Subject (clamped to two lines,
+    full text on `title`), the short SHA with its copy control, author, relative
+    *and* absolute date, and the parent chips. These say *which* commit you are
+    looking at rather than being one of the things to look at — and putting them
+    in a tab meant trading the file list away to answer "who wrote this". It also
+    keeps the parent chips, which are how you walk history, reachable from either
+    tab.
+  - **`Changes N` and `Description`.** Changes is the default, because the hover
+    card already carries subject, refs, author and date, so the files are the
+    reason to click at all. The count sits on the tab, so "how much changed" is
+    answerable without opening it. The body is uncapped in its own tab — there is
+    nothing beneath it to crowd any more.
+  - **The selection is component state, not `panelStore`.** It is a reading
+    position rather than a preference: it follows you from commit to commit
+    within a sitting, which is what you want while walking a history, and starts
+    back on Changes next launch.
+
+  **`DEFAULT_DETAIL_HEIGHT` is 280, up from 200**, which is about eight file rows
+  once the header and tab strip are taken out. Deliberately not more — the graph
+  above it is the reason the pane exists. A raised default reaches nobody on its
+  own, since this value has persisted since F18 shipped, so `panelStore` went to
+  version 2 with a migration that lifts **only** a height that is exactly the old
+  default. Any other number is one somebody dragged to, and overwriting a
+  deliberate choice would be the worse failure — and an unrecoverable one, since
+  nothing records what they had.
 - **Clicking a file** opens the existing Monaco diff:
   `?file=<path>&diff=<parentSha>..<sha>`. Git's own range notation, both ends
   explicit, so nothing in the renderer has to resolve `sha^`.
