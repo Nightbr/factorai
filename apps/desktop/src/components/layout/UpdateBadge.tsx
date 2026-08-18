@@ -56,16 +56,31 @@ export function UpdateBadge() {
 
 	return (
 		<>
+			{/* **Three things keep this inside the footer**, and F14 has been carrying
+			    the reasoning since 2026-08-17 while the code carried the bug. The
+			    label is `Update ready` — the version lives in the tooltip, where it
+			    cannot set a min-content width the footer has no room for, and where
+			    a channel suffix (`v0.10.0-alpha.2`, roadmap item 31) costs nothing.
+			    `· Restart` is gone for the same reason, and because a glowing button
+			    and the tooltip both already say it. `inline-flex` + `max-w-full` +
+			    `truncate` are what make it *degrade* rather than clip: it wants
+			    ~175px beside `ZoomControls` and has ~48px at the 180px sidebar floor,
+			    so left to hug its content it pushed its neighbour out of the row —
+			    which is what a 120% zoom looked like. Now the label shortens and, at
+			    the very narrow end, it is the mark alone. */}
 			<button
 				type="button"
 				data-testid="update-badge"
-				title={`Version ${state.version} is installed and starts on the next launch`}
+				title={`Version ${state.version} is installed and starts on the next launch — click to restart`}
 				onClick={onRestart}
-				className="flex h-6 items-center gap-1.5 rounded border border-primary/40 bg-primary/10 px-2 text-primary text-xs transition-colors hover:bg-primary/20"
+				className="inline-flex h-6 max-w-full items-center gap-1.5 rounded border border-primary/40 bg-primary/10 px-2 text-primary text-xs transition-colors hover:bg-primary/20"
 			>
-				<RefreshCw className="size-3" />
-				<span className="font-medium">v{state.version} ready</span>
-				<span className="text-primary/70">· Restart</span>
+				<RefreshCw className="size-3 shrink-0" />
+				{/* Icon-only under ~120px of footer cell, which is the 180px sidebar
+				    floor: `Update ready` needs about 114px with its mark and padding,
+				    and what is left below that is the mark — which is F14's "degrade to
+				    the icon", and is why the tooltip carries the whole sentence. */}
+				<span className="@max-[7.5rem]:hidden truncate font-medium">Update ready</span>
 			</button>
 
 			<Dialog open={confirming} onOpenChange={setConfirming}>

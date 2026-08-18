@@ -30,7 +30,11 @@ test.describe('update badge', () => {
 		await page.goto('/');
 
 		const badge = page.getByTestId('update-badge');
-		await expect(badge).toContainText('v0.2.0 ready');
+		// **The label says `Update ready`; the version is in the tooltip.** F14 has
+		// said so since 2026-08-17 and the code said `v0.2.0 ready · Restart` until
+		// 2026-08-18 — a label whose min-content width the footer does not have.
+		await expect(badge).toHaveText('Update ready');
+		await expect(badge).toHaveAttribute('title', /Version 0\.2\.0/);
 		await badge.click();
 
 		// No live PTY, so no dialog — straight to relaunch.
@@ -60,6 +64,39 @@ test.describe('update badge', () => {
 		await page.getByRole('button', { name: /restart & kill sessions/i }).click();
 		calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
 		expect(calls.some((c) => c.name === 'relaunch')).toBe(true);
+	});
+
+	test('@smoke the badge degrades instead of pushing the zoom controls out', async ({ page }) => {
+		await installMockBridge(page, { ...fixtureOneProjectOneSession(), updateReady: '0.2.0' });
+		await page.goto('/');
+
+		const badge = page.getByTestId('update-badge');
+		const zoom = page.getByRole('button', { name: 'Zoom in' });
+		await expect(badge).toBeVisible();
+
+		// Squeeze the sidebar to its 180px floor through the same keyboard path the
+		// resize test uses, then zoom to 120% — the two together are the reported
+		// case, where the badge ran under the zoom controls and was clipped
+		// mid-word.
+		const separator = page.getByRole('separator', { name: 'Resize sidebar' });
+		await separator.focus();
+		for (let i = 0; i < 30; i++) await separator.press('ArrowLeft');
+		await page.getByRole('button', { name: 'Zoom in' }).click();
+		await page.getByRole('button', { name: 'Zoom in' }).click();
+
+		const sidebar = await page.getByTestId('sidebar').boundingBox();
+		const badgeBox = await badge.boundingBox();
+		const zoomBox = await zoom.boundingBox();
+		if (!sidebar || !badgeBox || !zoomBox) throw new Error('footer not laid out');
+
+		// Nothing leaves the sidebar, and the badge stops before the controls it
+		// used to run under. A clipped badge still reports a bounding box, so the
+		// assertion that catches the bug is this one: its right edge against its
+		// neighbour's left.
+		expect(badgeBox.x + badgeBox.width).toBeLessThanOrEqual(zoomBox.x + 1);
+		expect(zoomBox.x + zoomBox.width).toBeLessThanOrEqual(sidebar.x + sidebar.width + 1);
+		// And the control it used to displace is still fully inside the sidebar.
+		expect(zoomBox.width).toBeGreaterThan(0);
 	});
 
 	test('@smoke Later dismisses without restarting', async ({ page }) => {

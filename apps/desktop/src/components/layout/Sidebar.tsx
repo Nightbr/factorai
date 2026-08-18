@@ -284,7 +284,10 @@ export function Sidebar() {
 				{/* Indexing is transient and worth saying; "Idle" was a label for the
 				    absence of news. In its place, the updater — the one background
 				    thing whose state you might actually want to poke. */}
-				<span className="min-w-0 flex-1 truncate">
+				{/* `@container` so the badge inside can drop its label when this cell
+				    gets narrow — the sidebar's 180px floor leaves it about 76px, and a
+				    pill reading `Upd…` is not a degradation, it is a broken word. */}
+				<span className="@container min-w-0 flex-1 truncate">
 					{progress && progress.phase !== 'idle' ? (
 						`Indexing… ${progress.processed}/${progress.total}`
 					) : (
