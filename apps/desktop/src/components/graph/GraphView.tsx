@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { CommitDetail } from '@components/graph/CommitDetail';
 import { CommitRow } from '@components/graph/CommitRow';
 import { WorkingRow } from '@components/graph/WorkingRow';
+import { PanelEmpty } from '@components/layout/PanelEmpty';
 import { PanelResizer } from '@components/layout/PanelResizer';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { useGitGraph } from '@hooks/useGitGraph';
@@ -42,7 +43,25 @@ function GraphBody() {
 
 	// Plain state, because the remount above guarantees it belongs to this project.
 	const [selected, select] = useState<string | null>(null);
+	// **Which row's hover card is open, for the whole list.** Radix gives each row
+	// its own `HoverCard` root and roots know nothing of each other, so sweeping
+	// the list with `openDelay: 0` opened a card per row crossed — five at once in
+	// a five-row fixture — each then sitting out its own close delay stacked over
+	// the session pane. Reported as commits that persist while you move, and it
+	// was exactly that. Hoisted here, opening one card closes the last.
+	const [carded, setCarded] = useState<string | null>(null);
 	const listRef = useRef<HTMLUListElement>(null);
+
+	// Guarded, because the two events race: the row you left reports `false` a
+	// close delay *after* the row you arrived at reported `true`, and an
+	// unconditional `null` there would shut the card you are actually pointing at.
+	const onCardOpen = useCallback((sha: string, open: boolean) => {
+		setCarded((current) => (open ? sha : current === sha ? null : current));
+	}, []);
+	// Stable, and taking the sha rather than closing over it, so `CommitRow`'s
+	// `memo` holds: a hover used to re-render all 300 rows, which is what a
+	// list-wide open state costs if you pay it.
+	const onSelect = useCallback((sha: string) => select(sha), []);
 
 	// Uncommitted changes sit on top of HEAD, and a graph that showed `main` on a
 	// commit while forty files were dirty would read as clean. Free: the Graph tab
@@ -148,7 +167,9 @@ function GraphBody() {
 							remoteHost={graph.remoteHost}
 							// Only when the working row is not already saying it above.
 							dirty={!headLeads && commit.sha === dirtyHead}
-							onSelect={() => select(commit.sha)}
+							cardOpen={commit.sha === carded}
+							onCardOpen={onCardOpen}
+							onSelect={onSelect}
 						/>
 					))}
 				</ul>
@@ -188,6 +209,18 @@ function GraphBody() {
 	);
 }
 
+/**
+ * The same line as the other two tabs, plus the padding they get for free.
+ *
+ * Files and Changes sit inside a `py-1` scroll wrapper in `FileTreePanel`; the
+ * graph sits outside it, so it repeats the 4px here or its empty state — the
+ * *same sentence*, on a tab you reach by clicking 30px away — lands 4px higher
+ * than theirs. Fixed 2026-08-18 on user feedback.
+ */
 function Empty({ children }: { children: string }) {
-	return <p className="px-3 py-2 text-muted-foreground text-xs">{children}</p>;
+	return (
+		<div className="py-1">
+			<PanelEmpty>{children}</PanelEmpty>
+		</div>
+	);
 }

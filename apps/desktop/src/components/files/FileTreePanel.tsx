@@ -7,6 +7,7 @@ import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
 import { GraphView } from '@components/graph/GraphView';
 import { useActiveProject } from '@hooks/useActiveProject';
+import { PanelEmpty as Empty } from '@components/layout/PanelEmpty';
 import { PanelResizer } from '@components/layout/PanelResizer';
 import { clampPanelWidth, type PanelTab, usePanelStore } from '@store/panelStore';
 
@@ -176,8 +177,4 @@ function rootEntry(root: string, name: string): DirEntry {
 		// The project root itself is never dimmed, whatever git thinks of it.
 		ignored: false,
 	};
-}
-
-function Empty({ children }: { children: string }) {
-	return <p className="px-3 py-2 text-muted-foreground text-xs">{children}</p>;
 }

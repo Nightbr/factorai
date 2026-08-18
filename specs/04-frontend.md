@@ -20,6 +20,7 @@ apps/desktop/src/
 │   │   ├── TopBar.tsx       # brand, reserved space, panel toggle
 │   │   ├── Sidebar.tsx      # projects, search input, status dots, new-session +
 │   │   ├── PanelResizer.tsx # drag handle for the right panel
+│   │   ├── PanelEmpty.tsx   # the one line a panel tab shows instead of a list
 │   │   └── StatusBar.tsx
 │   ├── sessions/
 │   │   ├── SessionList.tsx

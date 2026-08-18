@@ -16,13 +16,16 @@ import {
 /**
  * The panel's Graph tab (specs/05-features.md F18).
  *
- * **Deliberately two tests.** Lane assignment is the feature and it is tested in
- * Rust, against `tempdir` repositories, where a merge or an octopus layout can be
- * asserted directly. What is left for the browser is that the tab mounts, folds
- * its chips and opens a detail — and the suite is already well past the time
- * budget `AGENTS.md` § 2d claims for it (E1), so selection, the hover card,
- * paging and the split drag are recorded against roadmap item 10 rather than
- * added here.
+ * **Lane assignment is not tested here.** It is the feature, and it is tested in
+ * Rust against `tempdir` repositories, where a merge or an octopus layout can be
+ * asserted directly. What is left for the browser is what the renderer decides:
+ * that the tab mounts, folds its chips, opens a detail, survives a project
+ * switch, pages, and answers the arrow keys.
+ *
+ * The rest grew from bug reports, and that is the rule for adding to it — the
+ * suite is already well past the time budget `AGENTS.md` § 2d claims for it (E1),
+ * so a case earns its ~0.5s by being something that already regressed once. The
+ * split drag is still recorded against roadmap item 10 rather than covered here.
  */
 
 const PROJECT = `/#/projects/${FOO_ID}`;
@@ -116,9 +119,84 @@ test.describe('graph tab', () => {
 		await page.goto(PROJECT);
 		await openGraph(page);
 
-		await expect(page.getByText('Not a git repository.')).toBeVisible();
+		const line = page.getByText('Not a git repository.');
+		await expect(line).toBeVisible();
 		// The strip must not reflow as you move between projects.
 		await expect(page.getByRole('tab', { name: 'Graph' })).toBeVisible();
+
+		// **The same sentence, on the same pixel, on the tab next door.** Changes
+		// shows this line too, and the graph's used to sit 4px above it: Files and
+		// Changes render inside a `py-1` scroll wrapper in `FileTreePanel` and the
+		// graph, which owns its own scrolling, renders outside it. Asserted rather
+		// than eyeballed because the two are one click apart and 4px is exactly the
+		// size of thing that comes back.
+		const inGraph = await line.boundingBox();
+		await page.getByRole('tab', { name: 'Changes' }).click();
+		await expect(page.getByTestId('changes-view')).toHaveCount(0);
+		const inChanges = await page.getByText('Not a git repository.').boundingBox();
+		expect(inGraph?.y).toBe(inChanges?.y);
+	});
+
+	test('@smoke sweeping the list leaves one card, and a long ref stays inside it', async ({
+		page,
+	}) => {
+		const fx = fixtureWithGraph();
+		const root = fx.projects?.[0]?.realPath ?? '';
+		const graph = fx.gitGraphs?.[root];
+		// A ref no cap and no card can show whole, which is what both halves of this
+		// test are about. On the side branch, so the tip keeps its four-ref case.
+		if (graph) {
+			graph.commits[3].refs = [
+				{
+					name: 'feature/a-very-long-branch-name-that-nobody-would-truncate',
+					kind: 'localBranch',
+					isHead: false,
+					upstreamInSync: null,
+				},
+			];
+		}
+		await installMockBridge(page, fx);
+		await page.goto(PROJECT);
+		await openGraph(page);
+
+		const rows = page.getByTestId('commit-row');
+		await expect(rows).toHaveCount(5);
+
+		// **One card at a time.** Every row is its own Radix `HoverCard` root and
+		// roots know nothing of each other, so with `openDelay: 0` a sweep opened a
+		// card per row crossed — five stacked over the session pane, each waiting out
+		// its own close delay. Reported as commits that persist while you move.
+		// `GraphBody` holds the open row for the whole list now.
+		const cards = page.locator('[data-radix-popper-content-wrapper]');
+		// Raw moves and a count after each, not `hover()` and a retrying
+		// `toHaveCount`: the cards did close, 150ms later, so anything that waits
+		// sees one card and passes against the bug. What must never happen is a
+		// *second* card being open at the same time as the first.
+		const open: number[] = [];
+		for (let index = 0; index < 5; index++) {
+			const box = await rows.nth(index).boundingBox();
+			await page.mouse.move((box?.x ?? 0) + 40, (box?.y ?? 0) + 13);
+			open.push(await cards.count());
+		}
+		expect(Math.max(...open)).toBeLessThanOrEqual(1);
+		// And the one still up is the row the pointer is on, not one it passed.
+		await expect(cards).toHaveCount(1);
+		await expect(cards).toContainText('chore: where the two branches parted');
+
+		// The card is where a truncated name becomes readable, so the chip wraps
+		// inside it rather than printing across the graph beside it — which is what
+		// an unbounded flex item sized by a 56-character ref did.
+		await rows.nth(3).hover();
+		await expect(cards).toHaveCount(1);
+		await expect(cards).toContainText('feature/a-very-long-branch-name-that-nobody-would-truncate');
+		const card = await cards.boundingBox();
+		const chip = await cards.locator('span[title]').first().boundingBox();
+		expect(chip?.width).toBeLessThanOrEqual(card?.width ?? 0);
+
+		// The row keeps its cap while the card is open — it used to lift on the
+		// chip's own hover, which took the subject off the row and overflowed the
+		// panel with a name that still didn't fit.
+		await expect(rows.nth(3)).toContainText('feat: work done on the side branch');
 	});
 });
 

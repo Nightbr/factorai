@@ -3,6 +3,48 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **One hover card at a time, chips that stay inside their box, the graph's empty line on the other
+  tabs' pixel, and 28px menu rows — specs `05-features.md` § F18, `04-frontend.md`, `AGENTS.md`
+  § 4** — 2026-08-18, user ask, three reports in one pass over the graph.
+
+  **"Commits that persist if you hover them while moving the mouse fast" were five cards at once.**
+  Every row is its own Radix `HoverCard` root and roots know nothing of each other, so removing the
+  open delay earlier the same day meant crossing five rows opened five cards, each sitting out its
+  own 150ms close delay stacked over the session pane — five entrance animations at five different
+  offsets, which is the whole of the "weird hover effect". F18 and `CommitRow` both *claimed* Radix
+  kept one card open at a time and swapped its content between triggers; it does not, and nothing
+  had checked. `GraphView` holds the carded sha for the list now, so opening one closes the last,
+  with the close **guarded on the sha** because the row you left reports closed a delay after the row
+  you arrived at reports open. Rows are `memo`'d with sha-taking callbacks to pay for it — a
+  list-wide open state otherwise re-renders 300 rows per row crossed.
+
+  **The overflowing chip was two overflows with one cause: an unbounded flex item.** In the card, a
+  56-character branch name printed straight through the border and across the graph beside it —
+  `flex-wrap` wraps items, it does not shrink one that is wider than its container. On the row, the
+  cap lifted on the chip's own hover, which was supposed to make a truncated name readable in place;
+  at 288px it cannot be, so it grew past the panel edge and took the subject off the row on the way,
+  under the pointer, as you swept. The row keeps its cap now, the card bounds its chips with
+  `max-w-full` and **wraps** their labels, and un-truncating is one job in one place.
+
+  **The empty line's 4px.** Files and Changes render inside a `py-1` scroll wrapper in
+  `FileTreePanel`; the graph renders outside it, because it owns its scrolling and docks a detail
+  pane. So `Not a git repository.` — the same sentence, one click apart — sat 4px higher on one tab
+  than the other two. The three identical private `Empty` helpers are one `PanelEmpty` in
+  `components/layout`, and the graph repeats the wrapper's padding explicitly. The test asserts the
+  two `y` values are equal, which is the only form of that assertion nobody has to re-eyeball.
+
+  **The menu was tightened in the primitive, not at the call site.** shadcn's `py-1.5` items,
+  `pl-8` indicator gutter and `text-sm font-semibold` label are proportions for a 16px-body web app
+  and read as a chunkier application beside this one's 26px rows: 32px rows became 28px, the gutter
+  28px, and the label the same quiet uppercase `text-xs` as `PROJECTS` above it. It landed on
+  `DropdownMenu` *and* `ContextMenu` in `@factorai/ui` — the sidebar's sort menu was the one
+  reported, and a menu that is 28px in one corner and 32px in another is worse than either. Item
+  text stayed `text-sm`: 14px is the floor for anything you read to navigate, so shrinking a menu
+  means its padding. Now a house rule in `AGENTS.md` § 4.
+
+  Two tests, both verified by reverting the fix and watching them fail: 5 cards where ≤1 is allowed,
+  a 394px chip in a 288px card, and 78px against 82px for the empty line.
+
 - **Session status: working, waiting, stopped, read out of Claude's terminal title — specs
   `05-features.md` § F10 + § F16, `03-backend-rust.md`, ADR-0015, `scripts/qa/README.md`** —
   2026-08-18, user ask (roadmap item 34), interviewed, specified and built the same day.

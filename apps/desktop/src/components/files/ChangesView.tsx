@@ -1,5 +1,6 @@
 import type { GitChange, GitGroup } from '@factorai/types';
 import { FileChangeRow } from '@components/files/FileChangeRow';
+import { PanelEmpty as Empty } from '@components/layout/PanelEmpty';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { useGitStatus } from '@hooks/useGitStatus';
 
@@ -71,8 +72,4 @@ function ChangeRow({ change }: { change: GitChange }) {
 			onClick={() => open(change.path, diff)}
 		/>
 	);
-}
-
-function Empty({ children }: { children: string }) {
-	return <p className="px-3 py-2 text-muted-foreground text-xs">{children}</p>;
 }
