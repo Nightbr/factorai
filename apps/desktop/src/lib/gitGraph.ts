@@ -37,8 +37,14 @@ const REF_BUDGET_RATIO = 0.5;
  *  being one chip out costs a `+1` rather than a broken layout. */
 const CHAR_PX = 6.5;
 
-/** Padding and gap a chip costs beyond its label, in characters. */
+/** Padding, border and gap a chip costs beyond its label, in characters. */
 const CHIP_OVERHEAD = 2;
+
+/** What one 12px mark and its gap cost, in the same characters. Chips carry
+ *  between one and three of them since the `HEAD→` / `≡origin` text became
+ *  icons, and charging nothing for them is how a row ends up one chip over
+ *  budget. */
+const CHIP_ICON_COST = 2.5;
 
 /** Which lane colour a lane index paints in, cycling once past the last token.
  *  Lanes are allocated left-first and recycled, so a wrap puts the same colour a
@@ -64,10 +70,58 @@ export function lanePitch(laneCount: number, panelWidth: number): number {
 	return Math.min(LANE_PITCH_MAX, Math.max(LANE_PITCH_MIN, fits));
 }
 
-/** Width of the rail column. One pitch per lane, plus half a pitch of air so the
- *  leftmost and rightmost nodes aren't flush against the edge. */
+/** Radius of the author disc drawn on a commit's node. 9 gives an 18px disc
+ *  inside a 26px row — the largest that still leaves air above and below. */
+export const AVATAR_RADIUS = 9;
+
+/** The ring around that disc. Half of it sits outside `AVATAR_RADIUS`, which is
+ *  the part the rail has to leave room for. */
+export const AVATAR_RING = 2;
+
+/**
+ * The pitch below which the node stays a plain dot.
+ *
+ * An avatar is 18px wide however tight the lanes get, so at a 6px pitch it
+ * covers three of them and the rail stops being traceable — and tracing is the
+ * job the rail exists to do (F18 § The rail). Wide repositories therefore keep
+ * dots and read their authors off the hover card, which is the same trade the
+ * subject makes when it truncates.
+ */
+export const AVATAR_MIN_PITCH = 10;
+
+/**
+ * Air between the rail's edge and the first lane's centre.
+ *
+ * **Half a pitch is not enough once the node is an avatar, and that was a bug**
+ * (fixed 2026-08-18): lane 0 sat at `pitch / 2` = 6px with a disc of radius 9
+ * plus a 1px ring outside it, so every avatar on the leftmost lane was clipped
+ * 4px into the panel's edge. Widening the disc's own margin would have been the
+ * wrong fix — the disc is sized against the 26px row, not against the rail.
+ *
+ * Only claimed when an avatar is actually drawn; below `AVATAR_MIN_PITCH` the
+ * node is a 3px dot and half a pitch is exactly right.
+ *
+ * Deliberately not exported: `laneCentre` and `railWidth` are the two things
+ * that have to agree about it, and a third caller computing its own inset is
+ * exactly the drift this was pulled out to end.
+ */
+function laneInset(pitch: number): number {
+	const air = pitch / 2;
+	if (pitch < AVATAR_MIN_PITCH) return air;
+	return Math.max(air, AVATAR_RADIUS + AVATAR_RING / 2);
+}
+
+/** Where lane `index` is drawn, in rail-local pixels. Exported so the rail's
+ *  width and the rail's contents cannot drift apart — they used to derive this
+ *  separately, which is how the clipping above went unnoticed. */
+export function laneCentre(index: number, pitch: number): number {
+	return laneInset(pitch) + index * pitch;
+}
+
+/** Width of the rail column: the lanes themselves, plus enough air at each end
+ *  that the outermost node is drawn whole. */
 export function railWidth(laneCount: number, pitch: number): number {
-	return Math.max(1, laneCount) * pitch + pitch;
+	return 2 * laneInset(pitch) + (Math.max(1, laneCount) - 1) * pitch;
 }
 
 /** Loaded pages, joined into one list. */
@@ -116,12 +170,23 @@ export function stitchPages(pages: (GitGraph | undefined)[]): StitchedGraph {
 }
 
 /** A ref as the row draws it, after folding. */
-interface RefChip {
+export interface RefChip {
 	/** Stable across polls, so React doesn't remount a chip that didn't change. */
 	key: string;
+	/** The ref's own name and nothing else — see `foldRefs` for why the two
+	 *  decorations that used to live in here are marks now. */
 	label: string;
 	kind: GitRefKind;
+	/** HEAD is here: drawn as a tick, the way a checked-out branch reads in every
+	 *  other git UI. */
 	isHead: boolean;
+	/** The remote whose branch sits on this very commit, when local and remote are
+	 *  in sync. Drawn as the forge's mark; the remote's name is in `title`. */
+	syncedRemote: string | null;
+	/** The whole of what the marks compress, spelled out for the chip's tooltip.
+	 *  An icon is faster to scan and worse to learn, so the words stay one hover
+	 *  away rather than being deleted. */
+	title: string;
 }
 
 /**
@@ -130,12 +195,24 @@ interface RefChip {
  * Three foldings, applied in this order, which between them mostly dissolve the
  * crowding rather than managing it:
  *
- * 1. `HEAD` merges into its branch chip as `HEAD→main`, rather than taking a slot.
- * 2. A local branch whose upstream sits on this same commit absorbs it as
- *    `main ≡origin`. This is the load-bearing one: a local branch and its remote
- *    crowd the same row *only when they are in sync*, because once they diverge
- *    they are on different rows and there is nothing to crowd.
+ * 1. `HEAD` merges into its branch chip rather than taking a slot of its own.
+ * 2. A local branch whose upstream sits on this same commit absorbs it. This is
+ *    the load-bearing one: a local branch and its remote crowd the same row
+ *    *only when they are in sync*, because once they diverge they are on
+ *    different rows and there is nothing to crowd.
  * 3. The remote ref that was absorbed is dropped, so it doesn't appear twice.
+ *
+ * **The first two used to fold into the label, and no longer do** (changed
+ * 2026-08-18 on user feedback). `HEAD→main ≡origin` spent 17 characters — the
+ * entire ref budget at 288px — on 4 characters of branch name, so the chip that
+ * mattered most was the one guaranteed to truncate, and a tag on the same commit
+ * was pushed into `+1`. Both decorations are marks now: a tick for HEAD, the
+ * forge's own logo for the synced remote, beside the laptop already saying the
+ * ref is local. The label is the branch name, which is the part you were reading.
+ *
+ * Nothing is lost, it moves: `title` carries the sentence the marks replace, so
+ * "which remote is that" is a hover rather than a guess. Marks are faster to
+ * scan and worse to learn, and that trade only works if the words stay reachable.
  *
  * `origin/HEAD` never arrives — it is dropped in Rust, being a symbolic ref
  * duplicating one we already return. Order is Rust's too, so the `+N` cut is the
@@ -152,14 +229,32 @@ export function foldRefs(refs: GitRef[]): RefChip[] {
 	for (const ref of refs) {
 		if (ref.kind === 'remoteBranch' && absorbed.has(ref.name)) continue;
 
-		let label = ref.name;
-		if (ref.kind === 'localBranch') {
-			if (ref.isHead) label = `HEAD→${label}`;
-			if (ref.upstreamInSync) label = `${label} ≡${remoteOf(ref.upstreamInSync, ref.name)}`;
-		}
-		chips.push({ key: `${ref.kind}:${ref.name}`, label, kind: ref.kind, isHead: ref.isHead });
+		const syncedRemote =
+			ref.kind === 'localBranch' && ref.upstreamInSync
+				? remoteOf(ref.upstreamInSync, ref.name)
+				: null;
+		chips.push({
+			key: `${ref.kind}:${ref.name}`,
+			label: ref.name,
+			kind: ref.kind,
+			isHead: ref.isHead,
+			syncedRemote,
+			title: chipTitle(ref),
+		});
 	}
 	return chips;
+}
+
+/** What the chip's marks say, in words. Assembled here rather than in the
+ *  component so the row and the hover card cannot describe the same ref
+ *  differently. */
+function chipTitle(ref: GitRef): string {
+	const where =
+		ref.kind === 'tag' ? 'Tag' : ref.kind === 'remoteBranch' ? 'Remote branch' : 'Local branch';
+	const parts = [`${where} ${ref.name}`];
+	if (ref.isHead) parts.push('checked out (HEAD)');
+	if (ref.upstreamInSync) parts.push(`in sync with ${ref.upstreamInSync}`);
+	return parts.join(' · ');
 }
 
 /** `origin` out of `origin/main` for branch `main` — which is not the same as
@@ -189,13 +284,21 @@ export function fitRefs(
 	const shown: RefChip[] = [];
 	let used = 0;
 	for (const chip of chips) {
-		const cost = chip.label.length + CHIP_OVERHEAD;
+		const cost = chipCost(chip);
 		// `shown.length === 0` is the always-show-one rule, not an off-by-one.
 		if (shown.length > 0 && used + cost > budget) break;
 		shown.push(chip);
 		used += cost;
 	}
 	return { shown, hiddenCount: chips.length - shown.length };
+}
+
+/** A chip's width in characters: its label, its box, and one charge per mark —
+ *  the kind icon always, plus HEAD's tick and the synced remote's logo when the
+ *  chip carries them. */
+function chipCost(chip: RefChip): number {
+	const marks = 1 + (chip.isHead ? 1 : 0) + (chip.syncedRemote ? 1 : 0);
+	return chip.label.length + CHIP_OVERHEAD + marks * CHIP_ICON_COST;
 }
 
 /**

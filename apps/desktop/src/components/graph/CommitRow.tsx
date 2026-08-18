@@ -1,21 +1,33 @@
 import type { GitGraphCommit, GitRefKind, RemoteHost } from '@factorai/types';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@factorai/ui';
+import type { RefChip } from '@lib/gitGraph';
 import { CHIP_CLASSES, CHIP_SHAPE, chipMaxWidth, fitRefs, foldRefs } from '@lib/gitGraph';
 import { formatAbsolute, formatRelative } from '@lib/format';
 import { avatarFor } from '@lib/avatar';
 import { GraphRail, ROW_HEIGHT } from '@components/graph/GraphRail';
-import { Cloud, Laptop, Tag } from 'lucide-react';
+import { Check, Cloud, Laptop, Tag } from 'lucide-react';
 // Brand marks, compiled at build time from `@iconify-json/simple-icons` the same
 // way the file-type icons are (ADR-0006). lucide dropped its brand set, and a
 // forge is exactly the case where the logo is the fastest thing to recognise.
 import IconGitHub from '~icons/simple-icons/github';
 import IconGitLab from '~icons/simple-icons/gitlab';
 
-/** How long the pointer must rest before the card appears, and how long it
- *  lingers after leaving. Sweeping down a list of 26px rows crosses a dozen in
- *  the time it takes to read one, so without the open delay this would be a
- *  cascade of cards rather than an affordance. */
-const HOVER_OPEN_MS = 400;
+/**
+ * How long the pointer must rest before the card appears, and how long it
+ * lingers after leaving.
+ *
+ * **Opens immediately (changed 2026-08-18 on user feedback), from 400ms.** The
+ * delay was there so sweeping down a list of 26px rows didn't fire a cascade of
+ * cards. In use the cascade never arrived and the wait did: this card is what
+ * un-truncates a row, so pointing at a row you cannot read and waiting is the
+ * whole interaction, and 400ms of nothing reads as the app not responding.
+ *
+ * Radix keeps the sweep tolerable on its own — one card is open at a time, and
+ * moving between triggers swaps content rather than opening a second. The close
+ * delay stays: it is what lets the pointer travel from row to card without the
+ * card vanishing under it, and it costs nothing on the way in.
+ */
+const HOVER_OPEN_MS = 0;
 const HOVER_CLOSE_MS = 150;
 
 /**
@@ -35,6 +47,53 @@ function RefIcon({ kind, host }: { kind: GitRefKind; host: RemoteHost }) {
 		return <Cloud className={className} />;
 	}
 	return <Laptop className={className} />;
+}
+
+/**
+ * One ref chip: its marks, its name, and the sentence they compress.
+ *
+ * **Marks replaced text on 2026-08-18** (F18 § The row). `HEAD→main ≡origin`
+ * spent the whole ref budget at 288px on 4 characters of branch name; it is now
+ * a tick, a laptop, `main`, and the forge's logo. `title` carries the words,
+ * because an icon is faster to scan and worse to learn — the trade only works
+ * while the sentence is one hover away.
+ *
+ * `maxWidth` is capped so one `feature/some-very-long-description` cannot push
+ * the subject off the row, and **released on hover** so the name you pointed at
+ * is the one you can read. The cap is an inline style because it is computed
+ * from the panel's width, so lifting it needs `!` to outrank that — the one
+ * place in this file where specificity is the mechanism rather than an accident.
+ */
+function Chip({
+	chip,
+	remoteHost,
+	maxWidth,
+}: {
+	chip: RefChip;
+	remoteHost: RemoteHost;
+	/** Uncapped on the hover card, where a long name is the point. */
+	maxWidth?: number;
+}) {
+	return (
+		<span
+			title={chip.title}
+			style={maxWidth ? { maxWidth } : undefined}
+			className={`${CHIP_SHAPE} ${maxWidth ? 'shrink-0 hover:max-w-none!' : ''} ${
+				CHIP_CLASSES[chip.kind]
+			}`}
+		>
+			{/* The tick, not the word: `HEAD→` cost five characters to say what every
+			    other git UI says with a check beside the branch that is checked out. */}
+			{chip.isHead && <Check className="size-3 shrink-0" aria-hidden />}
+			<RefIcon kind={chip.kind} host={remoteHost} />
+			<span className="truncate">{chip.label}</span>
+			{/* Local and remote are on this same commit, so the forge's mark stands
+			    in for ` ≡origin`. Which remote is in the tooltip — repositories with
+			    one remote are the common case, and naming it cost more width than it
+			    ever returned. */}
+			{chip.syncedRemote && <RefIcon kind="remoteBranch" host={remoteHost} />}
+		</span>
+	);
 }
 
 interface CommitRowProps {
@@ -111,16 +170,7 @@ export function CommitRow({
 							}
 						/>
 						{shown.map((chip) => (
-							<span
-								key={chip.key}
-								// Capped and truncating, so one long branch name cannot push
-								// the subject off the row. The full name is on the card.
-								style={{ maxWidth: maxChipWidth }}
-								className={`${CHIP_SHAPE} shrink-0 ${CHIP_CLASSES[chip.kind]}`}
-							>
-								<RefIcon kind={chip.kind} host={remoteHost} />
-								<span className="truncate">{chip.label}</span>
-							</span>
+							<Chip key={chip.key} chip={chip} remoteHost={remoteHost} maxWidth={maxChipWidth} />
 						))}
 						{hiddenCount > 0 && (
 							<span className="shrink-0 text-muted-foreground text-xs">+{hiddenCount}</span>
@@ -130,25 +180,36 @@ export function CommitRow({
 						</span>
 					</button>
 				</HoverCardTrigger>
-				{/* Under the row, not beside it. `side="left"` put the card outside the
-				    panel and over the terminal — the thing you are working in — and at
-				    the window's left edge it had nowhere to go at all.
-				
-				    **Width is the trigger's**, not a fixed `w-80`: the row spans the
-				    panel, so matching it is what keeps the card inside the panel instead
-				    of being shoved left by collision handling to fit a width the panel
-				    never had. `collisionPadding` still flips it above near the foot of
-				    the list. */}
+				{/* **Beside the row, not under it — back to `side="left"` on 2026-08-18.**
+				    This has now been both, and the two complaints are different rather
+				    than one reversed: opening left originally landed the card *outside*
+				    the panel in a way nothing bounded, and opening below covers the
+				    commits under the row, which is the list you are reading the card in
+				    order to navigate. A hover card that hides its own context is the
+				    worse of the two, so it goes back to the left — with the bound the
+				    first attempt was missing.
+
+				    **What actually broke the first time was the width, not the side.**
+				    A fixed `w-80` inside a panel that starts at 200px meant collision
+				    handling shoved the card sideways to fit a width nothing had, and it
+				    ended up over the terminal at an arbitrary offset. The card is now
+				    bounded on both ends: it tracks the row's width, floors at 18rem so a
+				    narrow panel doesn't produce a cramped card, and caps at 24rem so it
+				    always fits the space to the left. Worst case is a 600px panel in an
+				    1100px window — the minimum this app allows — which leaves ~500px for
+				    a card that can never exceed 384px, so Radix never has to flip it
+				    back to the right or slide it somewhere unpredictable. */}
 				<HoverCardContent
-					side="bottom"
+					side="left"
 					align="start"
-					sideOffset={4}
-					// Vertical only. A horizontal padding shoves the card left to keep
-					// clear of the window edge — and since the panel *is* the window's
-					// right edge, that put it back outside the panel, which is the
-					// exact complaint this placement was fixing.
-					collisionPadding={{ top: 8, bottom: 8 }}
-					className="w-[var(--radix-hover-card-trigger-width)]"
+					sideOffset={8}
+					// Both axes now. Horizontal padding was excluded while the card
+					// opened downwards, because the panel *is* the window's right edge
+					// and pushing left put the card back outside it. Opening leftwards
+					// inverts that: the padding is what keeps the card clear of the
+					// window's left edge instead.
+					collisionPadding={8}
+					className="w-[var(--radix-hover-card-trigger-width)] min-w-72 max-w-96"
 				>
 					<CommitCard commit={commit} remoteHost={remoteHost} />
 				</HoverCardContent>
@@ -171,10 +232,7 @@ function CommitCard({ commit, remoteHost }: { commit: GitGraphCommit; remoteHost
 					{chips.map((chip) => (
 						// Uncapped here: the card is where a name too long for the row is
 						// supposed to become readable.
-						<span key={chip.key} className={`${CHIP_SHAPE} ${CHIP_CLASSES[chip.kind]}`}>
-							<RefIcon kind={chip.kind} host={remoteHost} />
-							{chip.label}
-						</span>
+						<Chip key={chip.key} chip={chip} remoteHost={remoteHost} />
 					))}
 				</div>
 			)}

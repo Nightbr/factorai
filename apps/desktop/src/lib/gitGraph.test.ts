@@ -1,11 +1,14 @@
 import type { GitGraph, GitGraphCommit, GitRef } from '@factorai/types';
 import { describe, expect, it } from 'vitest';
 import {
+	AVATAR_RADIUS,
+	AVATAR_RING,
 	fitRefs,
 	foldRefs,
 	LANE_COUNT,
 	LANE_PITCH_MAX,
 	LANE_PITCH_MIN,
+	laneCentre,
 	laneColour,
 	lanePitch,
 	railWidth,
@@ -65,14 +68,44 @@ describe('lanePitch', () => {
 	});
 });
 
-describe('railWidth', () => {
+describe('railWidth / laneCentre', () => {
 	it('leaves air either side so the outer nodes are not flush', () => {
 		expect(railWidth(1, 12)).toBeGreaterThan(12);
-		expect(railWidth(3, 12)).toBe(48);
+		// Inset either side (10px each, for the avatar) plus two pitches between
+		// three lane centres.
+		expect(railWidth(3, 12)).toBe(44);
 	});
 
 	it('never collapses to nothing when there are no lanes to draw', () => {
 		expect(railWidth(0, 12)).toBeGreaterThan(0);
+	});
+
+	it('draws the leftmost avatar whole — the clipping bug of 2026-08-18', () => {
+		// Lane 0 used to sit at `pitch / 2` = 6px with a disc of radius 9 and a 1px
+		// ring outside it, so 4px of every avatar on the leftmost lane was cut off
+		// by the panel edge. The invariant: the disc's left edge is never negative.
+		for (const pitch of [10, 11, 12]) {
+			expect(laneCentre(0, pitch) - (AVATAR_RADIUS + AVATAR_RING / 2)).toBeGreaterThanOrEqual(0);
+		}
+	});
+
+	it('spends nothing on that inset once the node is back to a dot', () => {
+		// Below AVATAR_MIN_PITCH there is no disc to clear, and half a pitch of air
+		// is exactly right — the rail should not keep paying for a shape it has
+		// stopped drawing.
+		expect(laneCentre(0, 8)).toBe(4);
+		expect(railWidth(3, 8)).toBe(24);
+	});
+
+	it('keeps every lane inside the width the rail reserves', () => {
+		// The two used to be derived separately, which is how the clipping went
+		// unnoticed. Whatever the pitch, the last lane's node fits.
+		for (const pitch of [6, 8, 10, 12]) {
+			for (const lanes of [1, 3, 8]) {
+				const edge = pitch >= 10 ? AVATAR_RADIUS + AVATAR_RING / 2 : 0;
+				expect(laneCentre(lanes - 1, pitch) + edge).toBeLessThanOrEqual(railWidth(lanes, pitch));
+			}
+		}
 	});
 });
 
@@ -81,7 +114,11 @@ describe('foldRefs', () => {
 		const chips = foldRefs([ref({ name: 'main', kind: 'localBranch', isHead: true })]);
 
 		expect(chips).toHaveLength(1);
-		expect(chips[0].label).toBe('HEAD→main');
+		// The label is the branch name; HEAD is the tick, and the words are in the
+		// tooltip (changed 2026-08-18 — see `foldRefs`).
+		expect(chips[0].label).toBe('main');
+		expect(chips[0].isHead).toBe(true);
+		expect(chips[0].title).toContain('checked out');
 	});
 
 	it('collapses a branch and its in-sync remote into one chip', () => {
@@ -92,7 +129,14 @@ describe('foldRefs', () => {
 			ref({ name: 'v0.3.0', kind: 'tag' }),
 		]);
 
-		expect(chips.map((c) => c.label)).toEqual(['HEAD→main ≡origin', 'v0.3.0']);
+		expect(chips.map((c) => c.label)).toEqual(['main', 'v0.3.0']);
+		// The remote is a mark on the chip and a phrase in its tooltip, not 8
+		// characters of the ref budget.
+		expect(chips[0].syncedRemote).toBe('origin');
+		expect(chips[0].title).toBe(
+			'Local branch main · checked out (HEAD) · in sync with origin/main',
+		);
+		expect(chips[1].syncedRemote).toBeNull();
 	});
 
 	it('keeps both chips when the remote has diverged', () => {
@@ -113,7 +157,8 @@ describe('foldRefs', () => {
 			ref({ name: 'feature/x', kind: 'localBranch', upstreamInSync: 'origin/feature/x' }),
 		]);
 
-		expect(chips[0].label).toBe('feature/x ≡origin');
+		expect(chips[0].label).toBe('feature/x');
+		expect(chips[0].syncedRemote).toBe('origin');
 	});
 
 	it('leaves a detached HEAD as its own chip, with no branch to fold into', () => {
@@ -170,7 +215,7 @@ describe('fitRefs', () => {
 		const { shown, hiddenCount } = fitRefs(chips, 0);
 
 		expect(shown).toHaveLength(1);
-		expect(shown[0].label).toBe('HEAD→main');
+		expect(shown[0].label).toBe('main');
 		expect(hiddenCount).toBe(chips.length - 1);
 	});
 

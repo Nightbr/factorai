@@ -47,7 +47,16 @@ test.describe('graph tab', () => {
 		// upstream, plus a tag. HEAD folds into the branch and `origin/main` is
 		// absorbed into it, so three refs become two chips.
 		const tip = page.getByTestId('commit-row').first();
-		await expect(tip).toContainText('HEAD→main ≡origin');
+		// **The label is the branch name and nothing else** (changed 2026-08-18):
+		// `HEAD→main ≡origin` spent the entire ref budget at 288px on 4 characters
+		// of branch name. Both decorations are marks now, and the sentence they
+		// compress is the chip's tooltip — which is the assertion worth making,
+		// because a mark nobody can decode is worse than the text it replaced.
+		await expect(tip).toContainText('main');
+		await expect(tip.locator('span[title]').first()).toHaveAttribute(
+			'title',
+			'Local branch main · checked out (HEAD) · in sync with origin/main',
+		);
 		// `origin/main` never appears on its own — that is the folding, and it is
 		// the assertion worth making, because the alternative spends a slot saying
 		// the same thing twice.
