@@ -4,6 +4,7 @@ pub mod files;
 pub mod git;
 pub mod indexer;
 pub mod jsonl;
+pub mod osc_title;
 pub mod search;
 pub mod shell_path;
 pub mod terminal;

@@ -28,15 +28,27 @@ use uuid::Uuid;
 use crate::agents::claude;
 use crate::error::{AppError, AppResult};
 use crate::services::claude_cli::find_claude_binary;
+use crate::services::osc_title::TitleScanner;
 
 pub type TerminalId = String;
 
+/// What a session is doing, derived from Claude's own terminal title — see
+/// `services::osc_title`, `specs/05-features.md` § F10 and ADR-0015.
+///
+/// Three variants because three is what the source honestly supports. There is
+/// no `Idle`: nothing distinguishes "alive with nothing pending" from "stopped
+/// and waiting for you". `Running` was renamed `Working` in the same change,
+/// because its meaning narrowed rather than stayed put — a live PTY sitting at
+/// the prompt used to be `Running` and is now `WaitingInput`, and a silent
+/// redefinition would have left every existing reader subtly wrong.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalStatus {
-	Running,
-	Idle,
+	/// Claude is doing something.
+	Working,
+	/// Claude has stopped; it is the human's turn.
 	WaitingInput,
+	/// The process is gone.
 	Stopped,
 }
 
@@ -320,14 +332,25 @@ impl TerminalManager {
 			master: Mutex::new(pair.master),
 			writer: Mutex::new(writer),
 			killer: Mutex::new(killer),
-			status: Mutex::new(TerminalStatus::Running),
+			// `Working` until the first title says otherwise, which takes about
+			// 300ms. A spawning session genuinely is doing something — resolving
+			// MCP servers, replaying a transcript — and this is also what the
+			// dot did before F10, so a launch looks no different than it used to.
+			status: Mutex::new(TerminalStatus::Working),
 			last_activity: AtomicI64::new(now_ms()),
 		});
 
 		self.terminals.insert(id.clone(), handle.clone());
 
-		// Reader thread: pump PTY bytes → on_data event.
-		spawn_reader(id.clone(), reader, handle.clone(), self.on_data.clone());
+		// Reader thread: pump PTY bytes → on_data event, and derive status from
+		// the OSC 0 titles in that same stream (F10).
+		spawn_reader(
+			id.clone(),
+			reader,
+			handle.clone(),
+			self.on_data.clone(),
+			self.on_status.clone(),
+		);
 		// Wait thread: owns the child and blocks on `wait()`; emits on_exit
 		// when it terminates. Owning (not sharing) the child is what keeps
 		// `kill()` from blocking — see `TerminalHandle::killer`.
@@ -427,6 +450,7 @@ fn spawn_reader(
 	mut reader: Box<dyn Read + Send>,
 	handle: Arc<TerminalHandle>,
 	on_data: DataCb,
+	on_status: StatusCb,
 ) {
 	let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(FLUSH_BYTES)));
 	let eof = Arc::new(AtomicBool::new(false));
@@ -440,11 +464,18 @@ fn spawn_reader(
 		.name(format!("term-reader-{id}"))
 		.spawn(move || {
 			let mut tmp = [0u8; 8192];
+			// Scanning here rather than in the flusher because this is where
+			// bytes first exist, and because the scanner has to be stateful
+			// anyway: a read boundary can fall inside an escape sequence.
+			let mut titles = TitleScanner::default();
 			loop {
 				match reader.read(&mut tmp) {
 					Ok(0) => break,
 					Ok(n) => {
 						handle_r.last_activity.store(now_ms(), Ordering::Relaxed);
+						if let Some(next) = titles.push(&tmp[..n]) {
+							set_status(&id_r, &handle_r, next, &on_status);
+						}
 						buf_r.lock().extend_from_slice(&tmp[..n]);
 					}
 					Err(e) => {
@@ -482,6 +513,33 @@ fn spawn_reader(
 			}
 		})
 		.expect("spawn term-flush thread");
+}
+
+/// Record a status the title implied, and emit only on a real change.
+///
+/// Only on a change because the title reasserts itself constantly — the spinner
+/// alone is a frame every 960ms — and an event per frame would be a stream of
+/// IPC saying nothing, plus a React render each time.
+///
+/// **`Stopped` is terminal.** The waiter sets it when the process exits, and a
+/// final chunk of buffered output can still be read after that; without this
+/// guard a trailing title would resurrect a dead session to `WaitingInput` and
+/// leave a dot on a terminal that no longer exists.
+fn set_status(
+	id: &TerminalId,
+	handle: &Arc<TerminalHandle>,
+	next: TerminalStatus,
+	on_status: &StatusCb,
+) {
+	{
+		let mut st = handle.status.lock();
+		if *st == next || *st == TerminalStatus::Stopped {
+			return;
+		}
+		*st = next;
+	}
+	let last_activity = handle.last_activity.load(Ordering::Relaxed);
+	(on_status)(TerminalStatusEvent { id: id.clone(), status: next, last_activity });
 }
 
 fn emit_data(id: &TerminalId, bytes: &[u8], on_data: &DataCb) {
@@ -740,8 +798,60 @@ mod tests {
 		let listing = mgr.list();
 		assert_eq!(listing.len(), 1);
 		assert_eq!(listing[0].id, id);
-		assert_eq!(listing[0].status, TerminalStatus::Running);
+		// `Working` from spawn until a title says otherwise — and `/bin/sh` never
+		// writes one, so it stays there. See `TerminalHandle`'s initial status.
+		assert_eq!(listing[0].status, TerminalStatus::Working);
 		let _ = mgr.kill(&id);
+	}
+
+	/// The status a title implies has to reach the event, through a real PTY.
+	///
+	/// `osc_title`'s own tests cover the parse exhaustively over fixtures. This
+	/// one covers the wiring — reader thread → scanner → `set_status` → callback
+	/// — because every one of those fixture tests still passes with the scanner
+	/// never called from the reader at all. That is the same failure this module
+	/// has shipped once already: a right rule that never reaches the process
+	/// (see `a_child_runs_with_the_login_shell_path`).
+	#[test]
+	fn a_title_written_by_a_real_child_moves_the_status() {
+		let statuses: Arc<StdMutex<Vec<TerminalStatusEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+		let sc = statuses.clone();
+		let mgr = TerminalManager::with_callbacks(
+			PathBuf::from("/nonexistent-claude-dir"),
+			Arc::new(|_| {}),
+			Arc::new(move |e| sc.lock().unwrap().push(e)),
+			Arc::new(|_| {}),
+		);
+
+		// The idle title, exactly as the CLI writes it: OSC 0, U+2733, BEL.
+		let id = mgr
+			.spawn_with_argv(
+				opts(80, 24),
+				Some(vec![
+					"/bin/sh".into(),
+					"-c".into(),
+					"printf '\\033]0;\\342\\234\\263 Claude Code\\007'; sleep 30".into(),
+				]),
+			)
+			.unwrap();
+
+		// Poll rather than sleep a fixed time: the read is fast but scheduling
+		// is not, and a fixed sleep is how this becomes the flaky test.
+		let deadline = std::time::Instant::now() + Duration::from_secs(5);
+		let got = loop {
+			if let Some(e) =
+				statuses.lock().unwrap().iter().find(|e| e.status == TerminalStatus::WaitingInput)
+			{
+				break Some(e.id.clone());
+			}
+			if std::time::Instant::now() > deadline {
+				break None;
+			}
+			std::thread::sleep(Duration::from_millis(25));
+		};
+
+		let _ = mgr.kill(&id);
+		assert_eq!(got.as_deref(), Some(id.as_str()), "no waiting_input event for the title");
 	}
 
 	#[test]
