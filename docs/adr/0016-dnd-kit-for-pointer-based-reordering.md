@@ -62,7 +62,7 @@ Reorder with **dnd-kit**, pinned exact as the repo pins everything:
 | `@dnd-kit/core`      | 6.3.1   | `DndContext`, `PointerSensor`, `closestCenter`  |
 | `@dnd-kit/sortable`  | 10.0.0  | `SortableContext`, `horizontalListSortingStrategy` |
 | `@dnd-kit/modifiers` | 9.0.0   | `restrictToHorizontalAxis` — a strip has one axis |
-| `@dnd-kit/utilities` | 3.2.2   | `CSS.Transform.toString` for the item transform |
+| `@dnd-kit/utilities` | 3.2.2   | `CSS.Translate.toString` for the item transform — this cell said `Transform` for the few hours that cost, see the last consequence |
 
 The classic 6.x/10.x line, not `@dnd-kit/react` (0.x): the rewrite is
 pre-1.0 and this is the version everything in the ecosystem is written against.
@@ -106,3 +106,11 @@ whoever wants it.
   scrolls it; the old implementation could not do that at all.
 - **The trap is now written down** in `AGENTS.md` § 4: no new HTML5
   drag-and-drop in this app, because it cannot work in this shell.
+- **A fourth library detail, added the same day the migration shipped** (the
+  decision above is unchanged): apply the item's transform with
+  `CSS.Translate.toString`, not `CSS.Transform.toString`. dnd-kit scales the
+  active item by `over.rect.width / activeNodeRect.width`
+  (`core.esm.js:2997`) for the benefit of a `DragOverlay` that morphs into the
+  target; dragging the element itself, that scale is distortion, and tabs are
+  sized by their titles. It shipped, and was reported within the hour as a tab
+  that zooms mid-drag.

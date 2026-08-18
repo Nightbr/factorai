@@ -289,7 +289,16 @@ function SessionTab({
 			aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
 			data-session-id={id}
 			{...listeners}
-			style={{ transform: DndCss.Transform.toString(transform), transition }}
+			// **`Translate`, not `Transform`** — the difference is `scaleX`, and tabs
+			// are not all the same width. dnd-kit publishes the active item's transform
+			// through `adjustScale(translate, over.rect, activeNodeRect)`
+			// (core.esm.js:2997), so `scaleX` is the ratio of the tab you are over to
+			// the tab you are holding: drag a short title onto a long one and it zooms
+			// up, drag a long one onto a short one and it shrinks. That scale is there
+			// for a `DragOverlay` that morphs into the target's box; we drag the
+			// element itself, so it is pure distortion. Reported 2026-08-18 as a tab
+			// that "zooms weirdly" mid-drag, and it did.
+			style={{ transform: DndCss.Translate.toString(transform), transition }}
 			// **The tab you are dragging is the tab, not a snapshot of it.** The old
 			// implementation dimmed the source and dragged a cloned drag image,
 			// because the browser snapshots the element *after* `dragstart` and the

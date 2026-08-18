@@ -1619,6 +1619,16 @@ at. Same corner badge as `ProjectIcon`, not a second mechanism.
     you dragged a near-invisible sliver of an inactive tab that paints no
     background. dnd-kit translates the real element: it lifts, with a shadow and
     above its neighbours, and they slide under it.
+
+    **Translated, and only translated.** dnd-kit publishes the active item's
+    transform through `adjustScale(translate, over.rect, activeNodeRect)`, so its
+    `scaleX` is the ratio of the tab you are over to the tab you are holding —
+    meant for a `DragOverlay` that morphs into the target's box, and pure
+    distortion when the element itself is what moves: with tabs sized by their
+    titles, dragging a short one onto a long one visibly zoomed it. The style is
+    `CSS.Translate.toString`, never `CSS.Transform.toString`. Reported and fixed
+    2026-08-18, hours after the migration, which is the sort of thing a bounding
+    box in a test can assert and a screenshot review cannot.
   - **The order commits on drop, and the preview is a transform.** Before, every
     `dragover` rewrote the list, which needed `dropIndex`'s midpoint rule to stop
     two tabs flickering under a stationary cursor — swap the moment they touch and
