@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
 import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
-import { disposeTerminal, Terminal } from '@components/terminal/Terminal';
+import { disposeTerminal, restartSession, Terminal } from '@components/terminal/Terminal';
 import { useGitBranch } from '@hooks/useGitBranch';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -60,9 +60,11 @@ function SessionView() {
 
 	const live = useTerminalStore((s) => s.bySession[sessionId]);
 	const detach = useTerminalStore((s) => s.detach);
-	// Remounting the Terminal (new key) tears down the dead xterm and triggers
-	// a fresh spawn — used to restart a stopped session.
-	const [restartNonce, setRestartNonce] = useState(0);
+	// Remounting the Terminal (new key) tears down the dead xterm and triggers a
+	// fresh spawn — used to restart a stopped session. The counter lives in the
+	// store rather than here because the tab strip restarts sessions too (F16),
+	// and it cannot reach a `useState` in this component.
+	const restartEpoch = useTerminalStore((s) => s.restartEpoch[sessionId] ?? 0);
 	// The confirm is open while this is true. Killing a live agent is
 	// irreversible, and this header used to do it on one unguarded click —
 	// see `00-overview.md` § "The operating model".
@@ -170,11 +172,9 @@ function SessionView() {
 						size="sm"
 						variant="outline"
 						className="gap-1.5"
-						onClick={() => {
-							// Drop the dead pooled terminal, then remount to spawn fresh.
-							disposeTerminal(sessionId);
-							setRestartNonce((n) => n + 1);
-						}}
+						// The same call a click on this session's stopped tab makes, so the
+						// two surfaces cannot drift about what a restart is.
+						onClick={() => restartSession(sessionId)}
 					>
 						<Play className="size-3" /> Restart
 					</Button>
@@ -185,7 +185,7 @@ function SessionView() {
 			) : (
 				<div className="min-h-0 flex-1">
 					<Terminal
-						key={restartNonce}
+						key={restartEpoch}
 						sessionId={sessionId}
 						projectId={projectId}
 						projectCwd={projectCwd}
