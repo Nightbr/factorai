@@ -13,8 +13,11 @@ export interface LiveTerminal {
 /** A session you have open, whether or not it is running (F16). Carries its
  *  project because that is what the tab needs to render an avatar and what the
  *  spawn needs for a cwd — and looking it up from the index at boot would mean
- *  an async round trip before the strip could paint. */
-export interface OpenTab {
+ *  an async round trip before the strip could paint.
+ *
+ *  Not exported: `lib/` takes it structurally so it stays free of store
+ *  imports, and an export nothing imports is what knip is for. */
+interface OpenTab {
 	sessionId: string;
 	projectId: string;
 }

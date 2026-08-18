@@ -1,12 +1,19 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { ZULU_ID, fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
+import {
+	FOO_ID,
+	ZULU_ID,
+	fixtureOneProjectOneSession,
+	fixtureTwoProjectsManySessions,
+	installMockBridge,
+} from './fixtures';
 
 /**
- * Header tabs for live sessions (specs/05-features.md F16).
+ * Header tabs for open sessions (specs/05-features.md F16).
  *
- * A tab is a running PTY, so these open sessions to create tabs rather than
- * injecting them: the strip has no state of its own beyond the drag order.
+ * A tab is an open session, and most of these create one by opening it rather
+ * than by injecting state. The exception is the restore suite at the bottom,
+ * which has to seed the persisted list because that is the thing under test.
  */
 async function openSession(page: Page, name: RegExp) {
 	await page.getByRole('link', { name }).click();
@@ -281,5 +288,46 @@ test.describe('session tabs', () => {
 		const rightEdgeGap =
 			(bar?.x ?? 0) + (bar?.width ?? 0) - ((toggle?.x ?? 0) + (toggle?.width ?? 0));
 		expect(rightEdgeGap).toBeLessThan(24);
+	});
+});
+
+test.describe('restored tabs', () => {
+	/**
+	 * Seed the persisted tab list the way a previous run would have left it
+	 * (F16). Zustand's `persist` envelope, so this is the same bytes the store
+	 * writes — a hand-shaped object here would test a format nothing produces.
+	 */
+	async function seedTabs(page: Page, tabs: Array<{ sessionId: string; projectId: string }>) {
+		await page.addInitScript((t) => {
+			window.localStorage.setItem(
+				'factorai.terminals',
+				JSON.stringify({ state: { tabs: t }, version: 1 }),
+			);
+		}, tabs);
+	}
+
+	test('@smoke come back stopped on launch, and spawn when clicked', async ({ page }) => {
+		await seedTabs(page, [{ sessionId: 'session-uuid-001', projectId: FOO_ID }]);
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+
+		// The tab is there, with the title the index gives it — and it is stopped,
+		// because nothing was persisted that could claim otherwise.
+		const tab = page.getByTestId('session-tabs').getByRole('tab');
+		await expect(tab).toHaveCount(1);
+		await expect(tab).toHaveAttribute('title', /Refactor the auth middleware/);
+		await expect(tab.locator('[title="Stopped"]')).toHaveCount(1);
+
+		// **Nothing spawned.** You land where you always land, no tab is selected,
+		// and no terminal has mounted — the first thing that starts a process is
+		// the click below.
+		await expect(tab).toHaveAttribute('aria-selected', 'false');
+		await expect(page.locator('.xterm')).toHaveCount(0);
+
+		await tab.click();
+
+		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(tab).toHaveAttribute('aria-selected', 'true');
+		await expect(tab.locator('[title="Stopped"]')).toHaveCount(0);
 	});
 });
