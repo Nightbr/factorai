@@ -1,5 +1,11 @@
 import type { GitGraphEdge } from '@factorai/types';
-import { laneColour } from '@lib/gitGraph';
+import {
+	AVATAR_MIN_PITCH,
+	AVATAR_RADIUS,
+	AVATAR_RING,
+	laneCentre,
+	laneColour,
+} from '@lib/gitGraph';
 
 /** Row height, matching the 26px the file tree and Changes rows come out at
  *  (`py-[3px]` on `text-sm`). Hardcoded here because the SVG needs a number and
@@ -9,21 +15,6 @@ export const ROW_HEIGHT = 26;
 /** Radius of a commit's node. Small enough to sit inside a 6px pitch without
  *  touching its neighbour. */
 const NODE_RADIUS = 2.75;
-
-/** Radius of the avatar node. 9 gives an 18px disc inside a 26px row — the
- *  largest that still leaves air above and below. */
-const AVATAR_RADIUS = 9;
-
-/**
- * The pitch below which the node stays a plain dot.
- *
- * An avatar is 18px wide however tight the lanes get, so at a 6px pitch it
- * covers three of them and the rail stops being traceable — and tracing is the
- * job the rail exists to do (F18 § The rail). Wide repositories therefore keep
- * dots and read their authors off the hover card, which is the same trade the
- * subject makes when it truncates.
- */
-const AVATAR_MIN_PITCH = 10;
 
 /** Stroke width for lane lines. Under 1.5 the colour reads washed out at these
  *  sizes, which defeats the point of having colours. */
@@ -58,7 +49,7 @@ interface GraphRailProps {
  * turns lane indices into pixels and nothing else.
  */
 export function GraphRail({ lane, edges, pitch, width, node }: GraphRailProps) {
-	const centre = (index: number) => pitch / 2 + index * pitch;
+	const centre = (index: number) => laneCentre(index, pitch);
 	const mid = ROW_HEIGHT / 2;
 	const cx = centre(lane);
 	const colour = laneColour(lane);
@@ -91,16 +82,26 @@ export function GraphRail({ lane, edges, pitch, width, node }: GraphRailProps) {
 
 			{showAvatar && node.kind === 'commit' ? (
 				<g>
-					{/* A ring in the row's own background, so the lines running behind the
-					    disc are cut rather than appearing to touch it. Drawn as a fat
-					    stroke rather than a second circle: one shape, no seam. */}
+					{/* **Ring in the lane's colour, disc in the author's** (changed
+					    2026-08-18 on user feedback). The ring used to be the row's
+					    background, cutting the lines behind the disc so they didn't
+					    appear to touch it — which read as the node being *detached* from
+					    the line it sits on, the one relationship the rail exists to show.
+					    Painting it the lane's colour lets the line run into the node
+					    instead, and still hides whatever passes behind.
+
+					    The disc keeps the author's hue, so both questions stay
+					    answerable at a glance: the ring says which lane, the disc says
+					    who. Making the disc itself the lane colour would have cost
+					    "scan for the ones I did", which is why the node became an
+					    avatar in the first place (F18 § The node is its author). */}
 					<circle
 						cx={cx}
 						cy={mid}
 						r={AVATAR_RADIUS}
 						fill={node.colour}
-						stroke="var(--card)"
-						strokeWidth={2}
+						stroke={colour}
+						strokeWidth={AVATAR_RING}
 					/>
 					<text
 						x={cx}

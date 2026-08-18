@@ -1599,29 +1599,46 @@ on the hover card, which is where everything the row cut is supposed to be.
 they **fold before they collapse**. Three rules, applied in order, mostly
 dissolve the crowding rather than managing it:
 
-1. `HEAD` merges into its branch chip as `HEAD→main` rather than taking a slot
-   of its own.
+1. `HEAD` merges into its branch chip rather than taking a slot of its own.
 2. `origin/HEAD` is **hidden outright**. It is a symbolic ref duplicating
    `origin/main` and it is the single most common cause of overflow.
-3. A local branch and its remote **on the same commit** collapse to one chip,
-   `main ≡origin`. This is the load-bearing one: local and remote crowd the same
-   row *only when they are in sync* — once they diverge they are on different
-   rows and there is nothing to crowd.
+3. A local branch and its remote **on the same commit** collapse to one chip.
+   This is the load-bearing one: local and remote crowd the same row *only when
+   they are in sync* — once they diverge they are on different rows and there is
+   nothing to crowd.
 
 So the four-chip worst case — `main`, `origin/main`, `origin/HEAD`, `v0.3.0` —
-becomes two chips, `HEAD→main ≡origin` and `v0.3.0`. What still overflows
-collapses to a `+N` chip, ordered local branch → remote branch → tag; the chip is
-itself hoverable and opens the same card.
+becomes two chips. What still overflows collapses to a `+N` chip, ordered local
+branch → remote branch → tag; the chip is itself hoverable and opens the same
+card.
 
-**Measured 2026-08-17, and it corrects an earlier claim here.** This section used
-to say that pair "fits". It does not, at the default 288px: refs get half the
-text column, which is ~17 characters, and `HEAD→main ≡origin` alone is 17. So the
-tag collapses to `+1` on a default-width panel and both chips show from roughly
-400px up. The folding is still what earns its keep — it turns three refs into two
-chips rather than four into a `+3` — but the honest statement is that **a tagged
-release on the branch tip needs a wider panel to show both**, and `+N` is the
-common case at 288px rather than the rare one. That is the width constraint Q22
-deferred rather than answered, showing up exactly where the roadmap said it would.
+**The first two foldings used to spell themselves out in the label, and no
+longer do. Changed 2026-08-18 on user feedback.** The chip read
+`HEAD→main ≡origin`: 17 characters, of which 4 were the branch name. Measured at
+the default 288px, refs get half the text column — about 17 characters — so the
+chip that mattered most was the one guaranteed to truncate, and a tag on the same
+commit was pushed into `+1`. The two decorations are **marks** now, beside the
+laptop already saying where the ref lives:
+
+- **A tick for HEAD**, which is how a checked-out branch reads in every other git
+  UI, at a fifth of the width of `HEAD→`.
+- **The forge's own logo for the synced remote**, standing in for ` ≡origin`.
+  *Which* remote is a repository-level fact and almost always `origin`, so
+  spending eight characters per row naming it never returned the width.
+
+**Nothing is deleted, it moves to the chip's `title`** — `Local branch main ·
+checked out (HEAD) · in sync with origin/main`. That is the condition on the
+trade: a mark is faster to scan and worse to learn, so it is only an improvement
+while the sentence it replaced is one hover away.
+
+**Hovering a chip also releases its width cap**, so a name the row truncated
+becomes readable in place without opening the card. The cap is an inline style
+computed from the panel width, so the hover rule carries `!` to outrank it.
+
+`+N` is still the common case at 288px for a tagged release on the branch tip —
+the chips got shorter, not free, and the icons cost width of their own, which
+`fitRefs` charges for. That remains the width constraint Q22 deferred rather than
+answered.
 
 ### The node is its author
 
@@ -1650,6 +1667,27 @@ however tight the lanes get, so on a wide history it would cover three lanes and
 the rail would stop being traceable — which is the job the rail exists to do.
 Those repositories read their authors off the hover card instead, the same trade
 the subject makes when it truncates.
+
+**The ring around the disc is the lane's colour. Changed 2026-08-18 on user
+feedback**, from the row's background. That ring exists to cut whatever passes
+behind the disc, and painting it in the background did that — but it also cut the
+node's *own* lane line, so the node read as floating free of the line it sits on,
+which is the one relationship the rail is drawn to show. In the lane's colour the
+line runs into the node and still nothing behind it shows through.
+
+**The disc keeps the author's hue**, so ring and disc answer the two different
+questions a node is asked: which lane, and who. Making the disc itself the lane
+colour was the other reading of that feedback and was rejected — it would cost
+"scan for the ones I did", which is the entire reason the node became an avatar.
+
+**The rail reserves room for the disc, and did not always.** Fixed the same day:
+lane 0's centre sat at half a pitch — 6px — against a disc of radius 9 plus a 1px
+ring, so 4px of every avatar on the leftmost lane was clipped by the panel edge.
+`laneInset` now claims `AVATAR_RADIUS + AVATAR_RING / 2` whenever an avatar is
+actually drawn, and half a pitch below `AVATAR_MIN_PITCH` where the node is back
+to a 3px dot and there is nothing to clear. `laneCentre` and `railWidth` derive
+from it together — they were computed separately in two files, which is how this
+went unnoticed.
 
 ### The rail
 
@@ -1682,18 +1720,41 @@ what makes a 38-character row acceptable.
   (`@radix-ui/react-hover-card`) — the correct primitive for "popover opened by
   hover": it carries open/close delays and does not steal focus. Radix Popover
   is click-triggered, and Tooltip is `role="tooltip"` with content you cannot
-  select or click, so neither fits. **400ms open / 150ms close**, so sweeping
-  down the list does not fire a cascade of cards.
+  select or click, so neither fits. **Opens immediately, closes after 150ms.
+  Changed 2026-08-18 on user feedback**, from a 400ms open delay meant to stop a
+  sweep down the list firing a cascade of cards. In use the cascade never arrived
+  and the wait did: this card *is* what un-truncates a row, so pointing at a row
+  you cannot read and waiting is the whole interaction, and 400ms of nothing
+  reads as the app failing to respond. Radix already keeps the sweep tolerable —
+  one card is open at a time, and crossing to another trigger swaps the content
+  rather than opening a second. The close delay stays, because it is what lets
+  the pointer travel from the row onto the card without it vanishing underneath,
+  and it costs nothing on the way in. Measured after the change: 45ms from hover
+  to visible card.
 
-  **It opens under the row, at the row's own width. Changed 2026-08-17 on user
-  feedback**, from `side="left"` at a fixed `w-80`. Opening leftwards put the
-  card outside the panel and over the terminal — the thing you are working in —
-  and the fixed width made that worse: a card wider than the panel gets shoved
-  left by collision handling to fit a width the panel never had. Taking the
-  width from `--radix-hover-card-trigger-width` makes it exactly the row, so it
-  lands inside the panel by construction. Collision padding is **vertical only**
-  for the same reason — the panel sits on the window's right edge, so a
-  horizontal padding pushes the card straight back out of it.
+  **It opens beside the row, to its left. Changed 2026-08-18 on user feedback**,
+  and this placement has now been both — so the two complaints are worth keeping
+  apart, because they are different complaints rather than one reversed.
+
+  It began as `side="left"` at a fixed `w-80`, and on 2026-08-17 moved under the
+  row: opening leftwards put the card outside the panel and over the terminal at
+  an offset nothing bounded. Opening under the row fixed that and introduced the
+  second complaint — **the card covers the commits below it**, which is the list
+  you are reading it in order to navigate. A hover card that hides its own
+  context is the worse of the two, so it is back on the left.
+
+  **What actually broke the first time was the width, not the side.** A fixed
+  `w-80` inside a panel that starts at 200px meant collision handling shoved the
+  card sideways to fit a width nothing had. It is now bounded at both ends:
+  `--radix-hover-card-trigger-width` so it tracks the row, `min-w-72` so a narrow
+  panel doesn't produce a cramped card, `max-w-96` so it always fits the space to
+  the left. The worst case is a 600px panel in an 1100px window — the minimum
+  this app allows — leaving ~500px for a card that can never exceed 384px, so
+  Radix never flips it back to the right or slides it somewhere unpredictable.
+  Collision padding is on **both axes** now; it was vertical-only while the card
+  opened downwards, because the panel *is* the window's right edge and pushing
+  left put the card back outside it. Opening leftwards inverts that — the padding
+  is what holds it clear of the window's left edge.
 - **Click** selects the row and fills a detail pane **docked at the bottom of
   the panel**, split from the list by a horizontal drag handle whose height
   persists in `panelStore`. The pane carries the message body, author, date, the
