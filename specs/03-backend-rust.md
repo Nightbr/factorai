@@ -26,7 +26,8 @@ services/
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
   files.rs            # list_dir, read_file, read_image
-  child_env.rs        # the env diff a spawned child gets — PATH, and the AppImage strip
+  child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
+                      #   strip, and CLAUDE_CODE_CHILD_SESSION
   shell_path.rs       # ask the login shell what the user's PATH really is
   git.rs              # repository status + blob reads (ADR-0009)
 db/
@@ -101,6 +102,9 @@ check_claude_cli() -> ClaudeCliStatus
 app_quit_confirmed() -> ()
 // TerminalStatusDto = { id, sessionId, projectId, status, lastActivity }.
 // sessionId is never null: every PTY runs a named session (ADR-0008).
+// status is `working | waiting_input | stopped` (F10). There is no `idle`, and
+// `running` was renamed `working` when its meaning narrowed — a live PTY at the
+// prompt is `waiting_input`, not `working`.
 
 // files
 read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated flags
@@ -184,7 +188,13 @@ Owns the `DashMap<TerminalId, Terminal>`. On `terminal_spawn`:
 3. Open PTY via `portable_pty::native_pty_system().openpty(size)`.
 4. Spawn child, attach reader on a blocking thread, forward chunks into a
    tokio mpsc, fan out as `terminal:data` events.
-5. Status heuristics run on a separate tokio task (200ms tick).
+5. **Status is parsed out of that same byte stream, not polled.** The reader
+   scans each chunk for `OSC 0` titles and derives `working` / `waiting_input`
+   from the title's first character — see [`05-features.md` § F10](./05-features.md)
+   for the rule and [ADR-0015](../docs/adr/0015-session-status-from-the-terminal-title.md)
+   for why the title. This step used to say "status heuristics run on a separate
+   tokio task (200ms tick)"; there was never such a task, and a tick is the wrong
+   shape for a signal that arrives as an event.
 
 **The child's environment is ours, as a diff** (`services/child_env`). A session
 inherits our env, because `HOME`, `USER`, `SHELL`, `SSH_AUTH_SOCK`, `LANG`, the
@@ -192,9 +202,9 @@ proxy variables and `NODE_EXTRA_CA_CERTS` are exactly what a shell in a project
 needs. A minimal environment built by hand is a long tail of subtler bugs — git
 over SSH stops working, output stops being UTF-8, a corporate CA bundle goes
 missing — so `changes_for_current_env()` never constructs one; there is no
-`env_clear` and no hardcoded environment anywhere on this path. Two things about
-"ours" are nonetheless wrong for a child, and both are fixed in that one helper,
-at the one place a child is spawned.
+`env_clear` and no hardcoded environment anywhere on this path. Three things about
+"ours" are nonetheless wrong for a child, and all three are fixed in that one
+helper, at the one place a child is spawned.
 
 #### `PATH` comes from the login shell, not from us
 
@@ -316,6 +326,26 @@ Outside an AppImage (dev build, `.deb`, `.app`) `APPDIR` is unset and this is a
 no-op. Note this is a *second*, independent source of the `XDG_DATA_DIRS`
 breakage described in `AGENTS.md § Tauri gotchas` — that one is Turborepo
 stripping the variable, this one is the AppImage prepending to it.
+
+#### And `CLAUDE_CODE_CHILD_SESSION` goes, or transcripts stop existing
+
+Found 2026-08-18 while probing the CLI for F10's title sequences: a `claude` that
+inherits `CLAUDE_CODE_CHILD_SESSION` starts with **transcript saving off** and
+says so in its banner — `Transcript saving is off — inherited
+CLAUDE_CODE_CHILD_SESSION marker`. The variable is how Claude Code marks a
+process it spawned itself, so any session factorai launches while running under
+one inherits the marker and writes no `.jsonl` at all.
+
+That is not a cosmetic loss. No transcript means no row for the indexer, nothing
+to search, and `session_flag`'s probe (ADR-0008) sees no file — so the *next*
+launch of the same id picks `--session-id` on an id Claude already knows and
+fails with "already in use". The symptom appears one step removed from the cause,
+exactly like the `PATH` class of bug above.
+
+It is stripped for the same reason `$APPDIR` is: it describes our process, not the
+child's. Same rule shape, same helper, and it is why that helper strips rather
+than constructs — a hand-built environment would never have contained this
+variable, but it also would not have contained `SSH_AUTH_SOCK`.
 
 On `terminal_kill`: signal child (`child.kill()`), drop the PTY pair.
 

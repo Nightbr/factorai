@@ -52,6 +52,18 @@ preference. Filed with a warning rather than a checklist — it contradicts a de
 ("there are no tabs to restore") and the interesting half is what a restored tab even *is* when
 kill-on-quit means the PTY is gone. Gated on a clarify-needs pass; depends on item 4 for the switch.
 
+Added 2026-08-18 as **items 34 and 35**, one user ask split in two: **session status** and the
+**desktop notifications** that ride on it. 34 was interviewed and specified the same day — F10 was
+rewritten from scratch and [ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md)
+records the mechanism — so it is ready to build. 35 is held behind item 4 on the user's own
+condition, that the notification have a switch before it has a voice.
+
+The split is the point. 34's payoff is a dot that means something and the end of a confirm dialog
+that lies; 35's is being interrupted. One of those is safe to ship without a settings page and the
+other is not. Their shared discovery — that the state is readable straight out of the PTY, from the
+terminal title Claude Code already writes — is what made both cheap, and F10 lists the four
+mechanisms that were rejected on the way so nobody investigates them twice.
+
 Added 2026-08-17 as **item 32**, split out of item 4 during F11's interview: the **light theme**.
 It came out because it is three unbuilt things rather than a settings row — nothing sets
 `data-theme`, Monaco has one theme, and Q8's xterm mapper was specced and never built — and burying
@@ -1106,3 +1118,80 @@ sequencing is trivial and the design is not. Nothing here is a design — it is 
 interview has to answer, and the first question is whether F16's invariant bends or holds.
 
 **Depends on item 4** for somewhere to put the switch. Nothing else blocks it.
+
+## 34. Session status — working, waiting, stopped (F10)
+
+**User ask, 2026-08-18, interviewed and specified the same day.** The design is
+[`05-features.md` § F10](../05-features.md) and the mechanism is
+[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md). **If this entry and F10
+disagree, F10 wins.** This entry is sequencing.
+
+The ask: the green dot only means "connected", so it cannot tell you whether Claude is working or
+has finished — and its payoff is that closing a session which finished ten minutes ago stops warning
+you that "any work in progress is lost".
+
+**Build order.**
+
+- [ ] **Rust first.** An `OSC 0` title parser in `services/terminal`, fed from the existing reader —
+      no new task and no tick. `TerminalStatus` becomes `working | waiting_input | stopped`
+      (`idle` deleted, `running` renamed). Tests over byte fixtures captured from a real session:
+      the working→idle edge, an unknown glyph holding state, a chunk boundary splitting an escape
+      sequence, and no-title staying `working`.
+- [ ] **`scripts/qa/osc-probe.sh`**, which boots a session and prints its OSC timeline. This is how
+      the CLI assumption gets re-checked after a Claude update or on a platform we have not tried,
+      and it is the reason the Rust side can be fixture-only.
+- [ ] **Types and tokens.** Mirror the enum in `packages/types`; `--color-status-working` (today's
+      `-running` green), `-waiting` unchanged amber, `-stopped` takes the grey that `-idle` held.
+      Delete `-idle`. The old red retires unused.
+- [ ] **UI.** `StatusDot`'s maps, sidebar session and project rows (worst-status-wins, F13's folder
+      dot shape), the session header's pulse, and the tab avatar badge.
+- [ ] **`CloseSessionConfirm` only when `working`.** `QuitConfirm` untouched — ADR-0005.
+
+**Two things it drags in, both of which are fixes on their own merits.**
+
+- **`child_env` must strip `CLAUDE_CODE_CHILD_SESSION`.** Found while probing the CLI: a session
+  inheriting it writes **no transcript**, which breaks the index, search, and `session_flag`'s
+  probe. See `03-backend-rust.md` § `TerminalManager`. Unrelated to status; do it here because this
+  is where it was found and it is three lines.
+- **F16's tab paragraph is already updated** to badge the avatar, since its argument ("a row of
+  green saying nothing") was true only while a live PTY was one state.
+
+**What it deliberately leaves for later**, all recorded in F10 so nobody re-derives it: the
+`needs_permission` state via `OSC 777` (verified working, dropped as not worth a settings file);
+`OSC 21337 TAB_STATUS`, which is the structured protocol to switch to when the CLI stops compiling
+its gate to `return !1`; and the **unread / never-opened axis**, which is the third thing the
+feedback asked for and wants durable `viewed_at` state and a migration.
+
+**Also free, and not this item:** the title carries Claude's own derived session name
+(`✳ Date command`), so live tab titles are available for the price of keeping a string we already
+parse.
+
+## 35. Desktop notifications when a session wants you
+
+**User ask, 2026-08-18, filed with item 34 and deliberately split from it.** When a session goes
+`working` → `waiting_input` while you are not looking at it, notify the OS.
+
+**Depends on item 4**, and this is the user's own condition — "wait the setting modal to control
+enable of desktop notif". A notification nobody can switch off is a bug, and F11 is where the switch
+belongs rather than a fourth feature inventing its own home for a preference.
+
+**Depends on item 34** for the edge it fires on. Item 34's title parser already produces exactly the
+transition this needs, so there is no detection work here at all.
+
+**What it actually costs**, since the trigger is free:
+
+- `tauri-plugin-notification`, which is **not** in `Cargo.toml` today — a new load-bearing
+  dependency, so it wants its own ADR or a line in this one's.
+- macOS asks the user for notification permission the first time. Decide what happens when they
+  decline, and do not ask on launch — ask the first time a notification would fire.
+- **Do not notify for the session you are looking at.** The window's focus state and the active
+  session both gate it; the whole value is sessions you are *not* watching.
+- Coalescing, so four sessions finishing together are not four banners.
+- Clicking the notification should focus the window and open that session.
+
+**Worth knowing before designing it.** Claude Code has its own notification path and its own
+opinion about when you are away: it suppresses notifications with `disabledReason: "user_present"`
+unless `CLAUDE_CODE_DISABLE_NOTIFICATION_PRESENCE_CHECK` is set, and its idle notification is 60s
+delayed by default (`messageIdleNotifThresholdMs`, which is **not** reachable through `--settings` —
+verified). None of that is needed if the trigger is item 34's edge, which is instant. Do not
+reintroduce the CLI's notification channel for this; it is slower than the signal we already have.
