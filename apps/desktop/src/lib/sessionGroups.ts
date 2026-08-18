@@ -119,3 +119,60 @@ export function pendingSessions(
 		.filter(([sessionId, live]) => live.projectId === projectId && !known.has(sessionId))
 		.map(([sessionId, live]) => ({ sessionId, status: live.status }));
 }
+
+/**
+ * The sessions you have **open**, live or not (F16).
+ *
+ * A projection of the tab list, not a merge: `tabs` decides membership and
+ * `bySession` only colours it in, so a session with no live PTY comes out
+ * `stopped`. That is the whole of the "restored tabs are stopped" rule — there
+ * is nothing to remember to apply, because a rehydrated store has an empty
+ * `bySession` by construction.
+ *
+ * Shaped to be a drop-in for the `bySession` these functions already take, so
+ * `projectStatus` and the session rows change the argument they are handed
+ * rather than their signatures. Which surfaces switched and which deliberately
+ * did not is in F16 § "Where 'open' shows outside the strip" — `pendingSessions`
+ * is the interesting one that did not.
+ *
+ * Structural parameters, like the rest of this file: `lib/` stays free of store
+ * imports.
+ */
+export function openSessions(
+	tabs: ReadonlyArray<{ sessionId: string; projectId: string }>,
+	bySession: Record<string, { projectId: string; status: TerminalStatus }>,
+): Record<string, { projectId: string; status: TerminalStatus }> {
+	const out: Record<string, { projectId: string; status: TerminalStatus }> = {};
+	for (const tab of tabs) {
+		out[tab.sessionId] = {
+			projectId: tab.projectId,
+			status: bySession[tab.sessionId]?.status ?? 'stopped',
+		};
+	}
+	return out;
+}
+
+/**
+ * Restored tabs whose project still exists — the staleness filter (F16).
+ *
+ * A persisted `projectId` can name a project that has since been removed, and a
+ * tab for one is not merely useless: F6 refuses a spawn with no `realPath`
+ * precisely because `portable_pty` would otherwise start `claude` in `$HOME` and
+ * file the session under a different project than the tab names.
+ *
+ * Dropped silently, following `sidebarStore`'s v1→v2 precedent — persisted ids
+ * that stop matching anything are dropped rather than remapped or reported.
+ *
+ * `undefined` projects means "not fetched yet" and yields nothing, so the strip
+ * paints once rather than painting stale tabs and then dropping some. Unlike a
+ * sidebar width there is no default state to flash, which is why this one can
+ * afford to wait where `sidebarStore` could not.
+ */
+export function tabsInKnownProjects<T extends { projectId: string }>(
+	tabs: readonly T[],
+	projects: ReadonlyArray<{ id: string }> | undefined,
+): T[] {
+	if (!projects) return [];
+	const known = new Set(projects.map((p) => p.id));
+	return tabs.filter((t) => known.has(t.projectId));
+}

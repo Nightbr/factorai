@@ -289,6 +289,27 @@ export function disposeTerminal(sessionId: string): void {
 	pool.delete(sessionId);
 }
 
+/**
+ * Restart a session: throw the pooled xterm away, then ask the mounted
+ * `<Terminal>` to tear down and spawn a fresh one against the same session id.
+ *
+ * **One function because two surfaces ask for it** — the session header's
+ * `Restart` and a click on a stopped tab (F16). A restart that disposed the pool
+ * on one path and not the other would reattach to the dead pane reading
+ * `[process exited]` instead of starting anything, and the two surfaces have
+ * already been made to agree about closing for exactly this reason.
+ *
+ * The epoch lives in the store rather than in a component because the tab strip
+ * has no way to reach the session route's state — and because clicking the
+ * stopped tab you are *already on* navigates nowhere, so nothing would remount.
+ *
+ * Kills nothing: it is only reachable for a session with no live PTY.
+ */
+export function restartSession(sessionId: string): void {
+	disposeTerminal(sessionId);
+	useTerminalStore.getState().requestRestart(sessionId);
+}
+
 // Memoises the spawn so StrictMode's double-invoke (and any concurrent caller)
 // shares ONE `terminal_spawn` rather than racing two.
 const spawnInFlight = new Map<string, Promise<string>>();

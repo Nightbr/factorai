@@ -1,6 +1,6 @@
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
-import { disposeTerminal } from '@components/terminal/Terminal';
+import { disposeTerminal, restartSession } from '@components/terminal/Terminal';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
@@ -9,10 +9,11 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dn
 // below, and dnd-kit's `CSS` helper would shadow it at module scope — a
 // `CSS.escape is not a function` the moment you switch session.
 import { CSS as DndCss } from '@dnd-kit/utilities';
-import type { Project, SessionSummary } from '@factorai/types';
+import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
 import { queryKeys } from '@lib/queryKeys';
+import { tabsInKnownProjects } from '@lib/sessionGroups';
 import { cmd } from '@lib/tauri';
-import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
+import { useTerminalStore } from '@store/terminalStore';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { X } from 'lucide-react';
@@ -30,15 +31,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 const DRAG_START_PX = 4;
 
 /**
- * Tabs for the live sessions, in the top bar (specs/05-features.md F16).
+ * Tabs for the open sessions, in the top bar (specs/05-features.md F16).
  *
- * **A tab is a running PTY**, not an "open document": the strip is driven
- * straight off `terminalStore`, so it appears when a session spawns and goes
- * when the process exits, however it exited. That keeps the header an honest
- * picture of what is running rather than a second thing to keep in sync.
+ * **A tab is an open session. The dot says whether it is running. A tab goes
+ * when you close it, and only then.** This used to say the opposite — "a tab is
+ * a running PTY, not an open document" — with the strip driven straight off
+ * `bySession`, so a tab went the moment its process exited. Now the strip is
+ * driven off `tabs`, which is persisted, and `bySession` only colours it in.
  *
- * Renders nothing when nothing is live, so the header looks exactly as it did
- * before the first session starts.
+ * Renders nothing when nothing is open, so the header looks exactly as it did
+ * before the first session — which is now "the first session ever" rather than
+ * "the first one today".
  *
  * **Reordering is dnd-kit, and it is pointer-based — that is the whole point.**
  * This strip used native HTML5 drag-and-drop until 2026-08-18, when it turned
@@ -51,7 +54,7 @@ const DRAG_START_PX = 4;
  */
 export function SessionTabs() {
 	const bySession = useTerminalStore((s) => s.bySession);
-	const order = useTerminalStore((s) => s.order);
+	const openTabs = useTerminalStore((s) => s.tabs);
 	const reorder = useTerminalStore((s) => s.reorder);
 	const detach = useTerminalStore((s) => s.detach);
 	const { sessionId: activeId } = useParams({ strict: false }) as { sessionId?: string };
@@ -60,24 +63,36 @@ export function SessionTabs() {
 	const [closing, setClosing] = useState<string | null>(null);
 	const stripRef = useRef<HTMLDivElement>(null);
 
-	// `order` is the source of truth for sequence, `bySession` for existence —
-	// filter by the latter so a tab can never outlive its PTY.
+	// The avatar answers "which project is this one?", and it carries the
+	// session's status as a corner badge (F10). It did not until 2026-08-18, on
+	// the reasoning that every tab is a live PTY by definition so a dot on each
+	// would be a row of green telling you nothing — true while a live PTY was one
+	// state. Now the row says which session wants you, and which are not running
+	// at all, on the surface you are already looking at.
+	//
+	// This query is also the staleness gate: a persisted tab naming a project that
+	// no longer exists must not paint, so nothing renders until it resolves. There
+	// is no default state to flash, which is why waiting is free here and was not
+	// for `sidebarStore` (F16).
+	const projectsQ = useQuery({ queryKey: queryKeys.projects(), queryFn: () => cmd.listProjects() });
+
+	// `tabs` is the source of truth for what is open and in what order;
+	// `bySession` only says which of them are running. A tab with no entry there
+	// is stopped — that is the whole of the restore rule, and it needs no branch.
 	const tabs = useMemo(
-		() => order.filter((id) => bySession[id]).map((id) => ({ id, live: bySession[id] })),
-		[order, bySession],
+		() =>
+			tabsInKnownProjects(openTabs, projectsQ.data).map((t) => ({
+				id: t.sessionId,
+				projectId: t.projectId,
+				status: bySession[t.sessionId]?.status ?? ('stopped' as const),
+			})),
+		[openTabs, projectsQ.data, bySession],
 	);
 	// `SortableContext` wants the ids, and it wants the same array identity across
 	// renders it doesn't change in.
 	const tabIds = useMemo(() => tabs.map((t) => t.id), [tabs]);
 
-	const titles = useSessionTitles(tabs.map((t) => t.live));
-	// The avatar answers "which project is this one?", and it now carries the
-	// session's status as a corner badge (F10). It did not until 2026-08-18, on
-	// the reasoning that every tab is a live PTY by definition so a dot on each
-	// would be a row of green telling you nothing — true while a live PTY was one
-	// state. Now the row says which session wants you, on the surface you are
-	// already looking at.
-	const projectsQ = useQuery({ queryKey: queryKeys.projects(), queryFn: () => cmd.listProjects() });
+	const titles = useSessionTitles(tabs);
 	const projectById = useMemo(
 		() => new Map((projectsQ.data ?? []).map((p) => [p.id, p])),
 		[projectsQ.data],
@@ -98,6 +113,12 @@ export function SessionTabs() {
 
 	const openSession = useCallback(
 		(sessionId: string, projectId: string) => {
+			// **A stopped tab is a restart** (F16). Without this you would land on the
+			// pooled xterm's dead pane — or, for a tab restored from a previous run,
+			// on nothing at all — and a navigate to the route you are already on does
+			// not remount, so the tab you are looking at would do nothing whatever.
+			// `restartSession` is the same call the session header's Restart makes.
+			if (!useTerminalStore.getState().bySession[sessionId]) restartSession(sessionId);
 			void navigate({
 				to: '/projects/$projectId/sessions/$sessionId',
 				params: { projectId, sessionId },
@@ -107,28 +128,29 @@ export function SessionTabs() {
 	);
 
 	const closeSession = useCallback(
-		(sessionId: string) => {
+		(sessionId: string, projectId: string) => {
 			const live = bySession[sessionId];
 			setClosing(null);
-			if (!live) return;
 			void (async () => {
-				try {
-					await cmd.terminalKill(live.terminalId);
-					// Drop it now rather than waiting for `terminal:exit`. We know what we
-					// just did, and a tab that lingers until an event arrives is a tab
-					// that lingers forever if the event is ever missed. The later event
-					// finds nothing to remove, which is fine.
-					detach(sessionId);
-				} catch (e) {
-					// The kill failed, so the PTY may well still be running: keep the tab,
-					// where its status dot keeps telling the truth.
-					console.error('terminal_kill failed', e);
-					return;
+				if (live) {
+					try {
+						await cmd.terminalKill(live.terminalId);
+					} catch (e) {
+						// The kill failed, so the PTY may well still be running: keep the
+						// tab, where its status dot keeps telling the truth.
+						console.error('terminal_kill failed', e);
+						return;
+					}
 				}
+				// Closing is the only thing that removes a tab (F16). Done here rather
+				// than on `terminal:exit`: we know what we just did, and a tab that
+				// waits for an event is a tab that lingers forever if the event is
+				// missed — and that event now keeps the tab anyway.
+				detach(sessionId);
 				disposeTerminal(sessionId);
 				// Only navigate if you were looking at the session you just closed.
 				if (activeId === sessionId) {
-					void navigate({ to: '/projects/$id', params: { id: live.projectId } });
+					void navigate({ to: '/projects/$id', params: { id: projectId } });
 				}
 			})();
 		},
@@ -136,11 +158,12 @@ export function SessionTabs() {
 	);
 
 	/** The × and middle-click both come through here: ask while Claude is
-	 *  working, close outright otherwise (F10). */
+	 *  working, close outright otherwise (F10). A stopped tab has no process to
+	 *  kill, so `needsCloseConfirm` says no and it closes on the click. */
 	const requestClose = useCallback(
-		(sessionId: string) => {
+		(sessionId: string, projectId: string) => {
 			if (needsCloseConfirm(bySession[sessionId]?.status)) setClosing(sessionId);
-			else closeSession(sessionId);
+			else closeSession(sessionId, projectId);
 		},
 		[bySession, closeSession],
 	);
@@ -178,7 +201,7 @@ export function SessionTabs() {
 	);
 
 	if (tabs.length === 0) {
-		// Nothing live, but the row still needs something between the brand and the
+		// Nothing open, but the row still needs something between the brand and the
 		// panel toggle: the strip is the only flexible element in that flex line,
 		// so returning null slides the toggle across to sit beside the app name.
 		// A spacer keeps the toggle on the right without a second `flex-1` sibling,
@@ -186,7 +209,7 @@ export function SessionTabs() {
 		return <div className="flex-1" aria-hidden />;
 	}
 
-	const closingLive = closing ? bySession[closing] : undefined;
+	const closingTab = closing ? tabs.find((t) => t.id === closing) : undefined;
 
 	return (
 		<>
@@ -219,12 +242,13 @@ export function SessionTabs() {
 							}
 						}}
 					>
-						{tabs.map(({ id, live }) => (
+						{tabs.map(({ id, projectId, status }) => (
 							<SessionTab
 								key={id}
 								id={id}
-								live={live}
-								project={projectById.get(live.projectId)}
+								projectId={projectId}
+								status={status}
+								project={projectById.get(projectId)}
 								title={titles.get(id) ?? shortId(id)}
 								isActive={id === activeId}
 								onOpen={openSession}
@@ -238,9 +262,9 @@ export function SessionTabs() {
 
 			<CloseSessionConfirm
 				sessionName={closing ? (titles.get(closing) ?? shortId(closing)) : null}
-				canConfirm={Boolean(closingLive)}
+				canConfirm={Boolean(closing && bySession[closing])}
 				onCancel={() => setClosing(null)}
-				onConfirm={() => closing && closeSession(closing)}
+				onConfirm={() => closingTab && closeSession(closingTab.id, closingTab.projectId)}
 			/>
 		</>
 	);
@@ -248,12 +272,15 @@ export function SessionTabs() {
 
 interface SessionTabProps {
 	id: string;
-	live: LiveTerminal;
+	projectId: string;
+	/** `stopped` when nothing is running — which is every restored tab, and every
+	 *  session whose process has exited since. */
+	status: TerminalStatus;
 	project: Project | undefined;
 	title: string;
 	isActive: boolean;
 	onOpen: (sessionId: string, projectId: string) => void;
-	onRequestClose: (sessionId: string) => void;
+	onRequestClose: (sessionId: string, projectId: string) => void;
 	onNudge: (sessionId: string, delta: -1 | 1) => void;
 }
 
@@ -271,7 +298,8 @@ interface SessionTabProps {
  */
 function SessionTab({
 	id,
-	live,
+	projectId,
+	status,
 	project,
 	title,
 	isActive,
@@ -312,14 +340,14 @@ function SessionTab({
 						? 'bg-secondary text-foreground transition-colors'
 						: 'text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground'
 			}`}
-			onClick={() => onOpen(id, live.projectId)}
+			onClick={() => onOpen(id, projectId)}
 			// Middle-click closes, the way every tab strip does. It goes through the
 			// same path as the × — a shortcut to the action, not a way around the
 			// question it may ask.
 			onAuxClick={(e) => {
 				if (e.button !== 1) return;
 				e.preventDefault();
-				onRequestClose(id);
+				onRequestClose(id, projectId);
 			}}
 			onKeyDown={(e) => {
 				if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -329,17 +357,20 @@ function SessionTab({
 				}
 				if (e.key === 'Enter' || e.key === ' ') {
 					e.preventDefault();
-					onOpen(id, live.projectId);
+					onOpen(id, projectId);
 				}
 			}}
 			tabIndex={0}
-			title={`${project?.displayName ?? live.projectId} — ${title}`}
+			title={`${project?.displayName ?? projectId} — ${title}`}
 		>
+			{/* The badge is the only thing that says whether this session is running.
+			    No dimming, no italics: at 14px a second treatment says the same thing
+			    twice and makes the strip harder to read, not easier (F16). */}
 			<ProjectIcon
-				name={project?.displayName ?? live.projectId}
-				path={project?.realPath ?? live.projectId}
+				name={project?.displayName ?? projectId}
+				path={project?.realPath ?? projectId}
 				size={16}
-				status={live.status}
+				status={status}
 			/>
 			<span className="min-w-0 flex-1 truncate">{title}</span>
 			{/* Only where the pointer already is, or on the active tab: a row of
@@ -356,7 +387,7 @@ function SessionTab({
 				onPointerDown={(e) => e.stopPropagation()}
 				onClick={(e) => {
 					e.stopPropagation();
-					onRequestClose(id);
+					onRequestClose(id, projectId);
 				}}
 			>
 				<X className="size-3.5" />
@@ -370,15 +401,16 @@ function shortId(sessionId: string): string {
 }
 
 /**
- * Titles for the live sessions, looked up per project.
+ * Titles for the open sessions, looked up per project.
  *
  * One query per distinct project rather than per session — they share the cache
  * entry the sidebar and project page already fill, so an open project costs
  * nothing extra. A session too new to be indexed has no title yet and falls
- * back to its short id, matching the session header.
+ * back to its short id, matching the session header — as does a restored tab
+ * whose transcript has since been deleted, since the index row goes with it.
  */
-function useSessionTitles(live: LiveTerminal[]): Map<string, string> {
-	const projectIds = useMemo(() => [...new Set(live.map((t) => t.projectId))].sort(), [live]);
+function useSessionTitles(tabs: Array<{ projectId: string }>): Map<string, string> {
+	const projectIds = useMemo(() => [...new Set(tabs.map((t) => t.projectId))].sort(), [tabs]);
 
 	// `combine` rather than a useMemo over the results array: useQueries hands
 	// back a fresh array on every render, so a memo would either lie about its

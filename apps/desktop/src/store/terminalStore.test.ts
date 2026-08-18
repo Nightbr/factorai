@@ -13,7 +13,8 @@ function dto(sessionId: string, over: Partial<TerminalStatusDto> = {}): Terminal
 	};
 }
 
-const reset = () => useTerminalStore.setState({ bySession: {}, order: [] });
+const reset = () => useTerminalStore.setState({ bySession: {}, tabs: [], restartEpoch: {} });
+const ids = () => useTerminalStore.getState().tabs.map((t) => t.sessionId);
 
 describe('adoptLive', () => {
 	beforeEach(reset);
@@ -22,7 +23,7 @@ describe('adoptLive', () => {
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
 
 		const s = useTerminalStore.getState();
-		expect(s.order).toEqual(['a', 'b']);
+		expect(ids()).toEqual(['a', 'b']);
 		expect(s.bySession.a).toEqual({
 			terminalId: 'pty-a',
 			projectId: 'p1',
@@ -44,21 +45,93 @@ describe('adoptLive', () => {
 		useTerminalStore.getState().attach('new', 'pty-new', 'p2');
 		useTerminalStore.getState().adoptLive([dto('old')]);
 
-		const s = useTerminalStore.getState();
-		expect(Object.keys(s.bySession).sort()).toEqual(['new', 'old']);
-		expect(s.order).toEqual(['new', 'old']);
+		expect(Object.keys(useTerminalStore.getState().bySession).sort()).toEqual(['new', 'old']);
+		expect(ids()).toEqual(['new', 'old']);
 	});
 
 	it('is idempotent, because StrictMode invokes the effect twice', () => {
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
-		expect(useTerminalStore.getState().order).toEqual(['a', 'b']);
+		expect(ids()).toEqual(['a', 'b']);
 	});
 
-	it('does not reorder a tab that is already placed', () => {
+	it('adopts a PTY onto the tab a previous run left behind, in place', () => {
+		// The reload case: the tabs rehydrate from localStorage in their dragged
+		// order, and the live list arrives after. Adopting must not append a
+		// second entry or move the first.
+		useTerminalStore.setState({ tabs: [{ sessionId: 'b', projectId: 'p1' }, ...[]] });
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
-		useTerminalStore.getState().reorder('b', 0);
-		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
-		expect(useTerminalStore.getState().order).toEqual(['b', 'a']);
+		expect(ids()).toEqual(['b', 'a']);
+	});
+});
+
+describe('a tab goes when you close it, and only then (F16)', () => {
+	beforeEach(reset);
+
+	it('keeps the tab when the process exits on its own', () => {
+		useTerminalStore.getState().attach('a', 'pty-a', 'p1');
+		useTerminalStore.getState().removeByTerminal('pty-a');
+
+		// The PTY is gone; the tab is not. It is stopped, and clicking it restarts.
+		expect(useTerminalStore.getState().bySession.a).toBeUndefined();
+		expect(ids()).toEqual(['a']);
+	});
+
+	it('removes the tab when the session is closed', () => {
+		useTerminalStore.getState().attach('a', 'pty-a', 'p1');
+		useTerminalStore.getState().detach('a');
+
+		expect(useTerminalStore.getState().bySession.a).toBeUndefined();
+		expect(ids()).toEqual([]);
+	});
+
+	it('closes a stopped tab, which has no live terminal to key off', () => {
+		// The path that matters for a restored tab: `detach` used to bail out
+		// early when `bySession` had no entry, which would leave the × inert on
+		// every tab restored from a previous run.
+		useTerminalStore.setState({ tabs: [{ sessionId: 'a', projectId: 'p1' }] });
+		useTerminalStore.getState().detach('a');
+		expect(ids()).toEqual([]);
+	});
+
+	it('drops every tab of a project that has been removed', () => {
+		useTerminalStore.getState().attach('a', 'pty-a', 'p1');
+		useTerminalStore.getState().attach('b', 'pty-b', 'p2');
+		useTerminalStore.getState().closeProject('p1');
+
+		expect(ids()).toEqual(['b']);
+	});
+});
+
+describe('reorder', () => {
+	beforeEach(reset);
+
+	it('lifts a tab out and inserts it at the index dropped on', () => {
+		for (const id of ['a', 'b', 'c']) useTerminalStore.getState().attach(id, `pty-${id}`, 'p1');
+		useTerminalStore.getState().reorder('c', 0);
+		expect(ids()).toEqual(['c', 'a', 'b']);
+	});
+
+	it('ignores a session with no tab', () => {
+		useTerminalStore.getState().attach('a', 'pty-a', 'p1');
+		useTerminalStore.getState().reorder('ghost', 0);
+		expect(ids()).toEqual(['a']);
+	});
+
+	it('clamps an index past either end rather than dropping the tab', () => {
+		for (const id of ['a', 'b']) useTerminalStore.getState().attach(id, `pty-${id}`, 'p1');
+		useTerminalStore.getState().reorder('a', 99);
+		expect(ids()).toEqual(['b', 'a']);
+	});
+});
+
+describe('restartEpoch', () => {
+	beforeEach(reset);
+
+	it('bumps per session, so one restart does not remount the others', () => {
+		useTerminalStore.getState().requestRestart('a');
+		useTerminalStore.getState().requestRestart('a');
+
+		expect(useTerminalStore.getState().restartEpoch).toEqual({ a: 2 });
 	});
 });

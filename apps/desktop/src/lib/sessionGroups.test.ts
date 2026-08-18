@@ -1,6 +1,12 @@
 import type { SessionSummary } from '@factorai/types';
 import { describe, expect, it } from 'vitest';
-import { groupSessions, pendingSessions, projectStatus } from './sessionGroups';
+import {
+	groupSessions,
+	openSessions,
+	pendingSessions,
+	projectStatus,
+	tabsInKnownProjects,
+} from './sessionGroups';
 
 function session(id: string, subagentOf: string | null = null): SessionSummary {
 	return {
@@ -149,5 +155,69 @@ describe('projectStatus', () => {
 		];
 		expect(projectStatus(live(pairs), 'p1')).toBe('waiting_input');
 		expect(projectStatus(live([...pairs].reverse()), 'p1')).toBe('waiting_input');
+	});
+});
+
+describe('openSessions', () => {
+	const tabs = [
+		{ sessionId: 'a', projectId: 'p1' },
+		{ sessionId: 'b', projectId: 'p2' },
+	];
+
+	it('calls a session with no live PTY stopped', () => {
+		// The whole of the restore rule: a rehydrated store has an empty
+		// `bySession`, so every restored tab comes out stopped by construction.
+		expect(openSessions(tabs, {})).toEqual({
+			a: { projectId: 'p1', status: 'stopped' },
+			b: { projectId: 'p2', status: 'stopped' },
+		});
+	});
+
+	it('takes the live status where there is one', () => {
+		const out = openSessions(tabs, { a: { projectId: 'p1', status: 'working' } });
+		expect(out.a.status).toBe('working');
+		expect(out.b.status).toBe('stopped');
+	});
+
+	it('is a projection of the tabs, so a PTY with no tab is not open', () => {
+		// Cannot happen through the reducers — `attach` writes both — but the
+		// direction matters: `tabs` decides membership, `bySession` only colours.
+		const out = openSessions([], { ghost: { projectId: 'p1', status: 'working' } });
+		expect(out).toEqual({});
+	});
+
+	it('drops in where bySession did, so projectStatus needs no new signature', () => {
+		const open = openSessions(tabs, { a: { projectId: 'p1', status: 'waiting_input' } });
+		expect(projectStatus(open, 'p1')).toBe('waiting_input');
+		expect(projectStatus(open, 'p2')).toBe('stopped');
+	});
+});
+
+describe('tabsInKnownProjects', () => {
+	const tabs = [
+		{ sessionId: 'a', projectId: 'p1' },
+		{ sessionId: 'b', projectId: 'gone' },
+	];
+
+	it('drops a tab whose project no longer exists, silently', () => {
+		expect(tabsInKnownProjects(tabs, [{ id: 'p1' }])).toEqual([
+			{ sessionId: 'a', projectId: 'p1' },
+		]);
+	});
+
+	it('yields nothing until the project list has been fetched', () => {
+		// `undefined` is "not asked yet", not "no projects" — painting first and
+		// filtering after would show a stale tab and then take it away.
+		expect(tabsInKnownProjects(tabs, undefined)).toEqual([]);
+	});
+
+	it('keeps order, since it is the order the tabs were dragged into', () => {
+		const many = [
+			{ sessionId: 'c', projectId: 'p2' },
+			{ sessionId: 'a', projectId: 'p1' },
+		];
+		expect(tabsInKnownProjects(many, [{ id: 'p1' }, { id: 'p2' }]).map((t) => t.sessionId)).toEqual(
+			['c', 'a'],
+		);
 	});
 });
