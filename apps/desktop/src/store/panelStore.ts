@@ -2,8 +2,21 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 /** Narrower than this and file names are unreadable; wider and the terminal
- *  loses more columns than the tree is worth. */
-export const MIN_PANEL_WIDTH = 200;
+ *  loses more columns than the tree is worth.
+ *
+ *  **256 rather than 200 since the panel's tab labels went to 14px.** The
+ *  header has to lay out `Files Changes Graph` plus, on the Files tab, three
+ *  icon buttons — collapse, refresh, close — and at 200px it no longer could.
+ *  The floor exists to keep the panel usable, so a header that cannot fit its
+ *  own tabs means the floor is wrong, not the labels.
+ *
+ *  **256 is measured, not estimated**: at 224 the header still overflowed
+ *  (`scrollWidth` 243 against a 223px content box) and the close button was
+ *  pushed to 2px off the panel edge, eating the `px-2` padding. 244 is the true
+ *  minimum for the widest tab; 256 is that plus enough slack that a font
+ *  fallback or a fourth control doesn't put it back over. A stored width below
+ *  this is re-clamped on the next launch, so no migration is needed. */
+export const MIN_PANEL_WIDTH = 256;
 export const MAX_PANEL_WIDTH = 600;
 export const DEFAULT_PANEL_WIDTH = 288;
 

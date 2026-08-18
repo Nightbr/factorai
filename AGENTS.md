@@ -256,6 +256,18 @@ Concrete rules:
 
 ### Design rules
 
+- **Two type sizes, and 14px is the floor for anything you read to
+  navigate.** `text-sm` covers tab labels — all three strips, the top bar's,
+  the file panel's and the commit pane's — the sidebar's project *and* session
+  rows, and the commit subject. `text-xs` is for **metadata, status and
+  section headers**: a SHA, a count, `missing`, the footer's indexer line, an
+  uppercase `PROJECTS`. There is no 13px step and there should not be one: the
+  app has two sizes on purpose, so the only question a new string raises is
+  which of the two it is. Added 2026-08-18 on user feedback — tab names and
+  the sidebar's session rows were `text-xs`, which sized the things you
+  navigate by for glancing at. Hand-written sizes (`text-[11px]`) are how the
+  scale erodes; the two exceptions left are deliberate micro-marks, the dev
+  badge and a 16px avatar's initials.
 - **Anything clickable shows `cursor: pointer`.** Tailwind v4's
   Preflight sets `cursor: default` on buttons, so this does not happen
   by itself. It is one base rule in

@@ -31,7 +31,7 @@ export function ChangesView() {
 				if (rows.length === 0) return null;
 				return (
 					<section key={group}>
-						<h3 className="flex items-center gap-1.5 px-3 py-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+						<h3 className="flex items-center gap-1.5 px-3 py-1 font-medium text-muted-foreground text-xs uppercase tracking-wide">
 							{label}
 							<span className="text-muted-foreground/60">{rows.length}</span>
 						</h3>
