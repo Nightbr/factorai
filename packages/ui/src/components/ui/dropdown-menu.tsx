@@ -6,6 +6,21 @@ import { Check, ChevronRight, Circle } from 'lucide-react';
 
 import { cn } from '../../lib/utils';
 
+/*
+ * **House deviation from shadcn's defaults: a menu row is 28px, not 32.**
+ * `py-1.5` and the `pl-8` indicator gutter make sense in a 16px-body web app;
+ * next to this app's 26px session, file and commit rows a menu of 32px rows
+ * reads as a different, chunkier application. The label goes with them — it is a
+ * section header, and this app writes those at `text-xs` (AGENTS.md § Design
+ * rules), not at the same size and weight as the items underneath. Tightened
+ * 2026-08-18 on user feedback about the sidebar's sort menu; it lives here
+ * rather than at that one call site because a menu that is 28px in one corner
+ * and 32px in another is worse than either.
+ *
+ * The item text stays `text-sm`: 14px is the floor for anything you read to
+ * navigate, and reducing a menu means its padding, never its label.
+ */
+
 const DropdownMenu = DropdownMenuPrimitive.Root;
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -27,8 +42,8 @@ const DropdownMenuSubTrigger = React.forwardRef<
 	<DropdownMenuPrimitive.SubTrigger
 		ref={ref}
 		className={cn(
-			'flex select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
-			inset && 'pl-8',
+			'flex select-none items-center gap-2 rounded-sm px-2 py-1 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+			inset && 'pl-7',
 			className,
 		)}
 		{...props}
@@ -81,8 +96,8 @@ const DropdownMenuItem = React.forwardRef<
 	<DropdownMenuPrimitive.Item
 		ref={ref}
 		className={cn(
-			'relative flex select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
-			inset && 'pl-8',
+			'relative flex select-none items-center gap-2 rounded-sm px-2 py-1 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+			inset && 'pl-7',
 			className,
 		)}
 		{...props}
@@ -97,13 +112,13 @@ const DropdownMenuCheckboxItem = React.forwardRef<
 	<DropdownMenuPrimitive.CheckboxItem
 		ref={ref}
 		className={cn(
-			'relative flex select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+			'relative flex select-none items-center rounded-sm py-1 pl-7 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
 			className,
 		)}
 		checked={checked}
 		{...props}
 	>
-		<span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+		<span className="absolute left-1.5 flex h-3.5 w-3.5 items-center justify-center">
 			<DropdownMenuPrimitive.ItemIndicator>
 				<Check className="h-4 w-4" />
 			</DropdownMenuPrimitive.ItemIndicator>
@@ -120,12 +135,12 @@ const DropdownMenuRadioItem = React.forwardRef<
 	<DropdownMenuPrimitive.RadioItem
 		ref={ref}
 		className={cn(
-			'relative flex select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+			'relative flex select-none items-center rounded-sm py-1 pl-7 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
 			className,
 		)}
 		{...props}
 	>
-		<span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+		<span className="absolute left-1.5 flex h-3.5 w-3.5 items-center justify-center">
 			<DropdownMenuPrimitive.ItemIndicator>
 				<Circle className="h-2 w-2 fill-current" />
 			</DropdownMenuPrimitive.ItemIndicator>
@@ -143,7 +158,11 @@ const DropdownMenuLabel = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
 	<DropdownMenuPrimitive.Label
 		ref={ref}
-		className={cn('px-2 py-1.5 text-sm font-semibold', inset && 'pl-8', className)}
+		className={cn(
+			'px-2 py-1 font-medium text-muted-foreground text-xs uppercase tracking-wider',
+			inset && 'pl-7',
+			className,
+		)}
 		{...props}
 	/>
 ));

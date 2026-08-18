@@ -285,6 +285,17 @@ Concrete rules:
   `Button variant="ghost" size="icon"`, and don't add `hover:bg-*` to
   it. It deliberately carries no `cursor-pointer` class either, so the
   base rule above stays in charge of disabled controls.
+- **A menu row is 28px, and a menu's section label is a section
+  header.** shadcn ships `py-1.5` items, a `pl-8` indicator gutter and a
+  `text-sm font-semibold` label — proportions for a 16px-body web app,
+  which beside this app's 26px rows read as a chunkier application
+  borrowed from elsewhere. The tightened metrics (`py-1`, `pl-7`, and a
+  `text-xs` uppercase label in the same voice as `PROJECTS`) live on
+  `DropdownMenu` and `ContextMenu` in `@factorai/ui`, so every menu gets
+  them rather than the one whose padding somebody happened to notice.
+  Item text stays `text-sm` — shrinking a menu means its padding, never
+  its labels. Added 2026-08-18 on user feedback about the sidebar's sort
+  menu.
 - **Chevrons colour on hover too** — the sidebar's expand toggle from
   its own hover, the file tree's from its row's (`group-hover`), since
   there the whole row is the click target.
