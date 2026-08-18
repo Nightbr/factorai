@@ -245,6 +245,16 @@ Concrete rules:
   `Input`, `Button`, `Select` from `@factorai/ui`. Icon-only controls
   use **`IconButton`**, not `Button variant="ghost" size="icon"`.
 
+- **No HTML5 drag-and-drop. It cannot work in this shell.** `draggable` +
+  `dragstart` / `dragover` / `drop` is dead on macOS: Tauri's own
+  drag-drop handler reports every drag session on the window as handled
+  and wry then never forwards it to WKWebView, so the page gets
+  `dragstart` and nothing after it. It *does* work on Linux, which is how
+  the tab strip shipped with a reorder that only worked on one of our two
+  platforms. Drag with **dnd-kit** (pointer events, ADR-0016) —
+  `SessionTabs` is the worked example, including the 4px activation
+  constraint that keeps a click a click. Ship a keyboard path beside the
+  drag; a gesture only a mouse can reach is half a feature.
 - State: Zustand for client state, TanStack Query for server-state
   caches (Tauri command results). PTY data **never** goes through
   React state — it streams from events directly into xterm.

@@ -78,9 +78,10 @@ same tooling versions.
 | Styling             | `tailwindcss@4` + `@tailwindcss/vite`                                |
 | UI primitives       | `@factorai/ui` (Radix-based shadcn components)                       |
 | Icons               | `lucide-react`                                                       |
+| Drag and drop       | `@dnd-kit/{core,sortable,modifiers,utilities}` — pointer-based, and it has to be (ADR-0016) |
 | Terminal            | `@xterm/xterm` + `@xterm/addon-fit`, `addon-search`, `addon-web-links`, `addon-webgl`, `addon-unicode-graphemes` |
-| Editor              | `codemirror` 6 + `@codemirror/{state,view,commands,search,merge,lang-markdown,language-data}` |
-| Markdown rendering  | `marked` (for JSONL viewer message bodies)                           |
+| Editor              | `monaco-editor` (ADR-0007; this row said `codemirror` until 2026-08-18) |
+| Markdown rendering  | `react-markdown` + `remark-gfm` (the viewer's markdown mode)          |
 | Tauri bindings      | `@tauri-apps/api` + plugin packages mirroring Rust list              |
 
 ## IPC contract
