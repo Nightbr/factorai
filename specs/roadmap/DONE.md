@@ -3,6 +3,43 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **`sessions:changed` has a listener — specs `04-frontend.md` § "Projects and sessions: no store",
+  `05-features.md` § F6** — 2026-08-18, user report. Two symptoms, one cause: a session started in a
+  project just added from the picker did not show up under that project, and a tab kept the short id
+  it was born with instead of taking the title claude derives a few seconds later.
+
+  **The backend was innocent and was checked first**, because the report pointed straight at it
+  ("adding a second project made the session appear", which is what `add_project` → `scan_project` →
+  `discover()` would fix). It does not need fixing: `scan_dir_path` already calls `discover()` when a
+  store directory has no row yet, which is the freshly-added-folder case, and
+  `the_first_session_in_a_freshly_added_folder_indexes_from_the_watcher` now pins that. Two
+  false leads worth knowing: an end-to-end test of the real watcher on macOS fails for a reason the
+  app never hits — `TempDir` hands back `/var/folders/…` while FSEvents reports
+  `/private/var/folders/…`, so `project_dir_for_event` can't strip the prefix and drops every event;
+  canonicalize the fixture root. And the user's own database showed every row correctly indexed
+  minutes after each session started, which is what moved the search to the renderer.
+
+  **Nothing in the renderer listened to the event.** `events.onSessionsChanged` existed in
+  `lib/tauri.ts` with zero call sites, while `routes/session.tsx` carried a comment saying the
+  refetch was "`sessions:changed`-driven". The only thing keeping any session list current was the
+  sidebar's 5s poll, which lives inside `SessionList` — mounted only while a project row is
+  *expanded*. So a session in a collapsed project was invisible, and the tab strip, which has no poll
+  at all, could never learn a title. `useSessionsSync`, mounted once in `__root.tsx`, invalidates that
+  project's session list plus `projects` (whose `sessionCount` / `lastSessionAt` are aggregates over
+  the same rows, and the sidebar's default sort). The polls stay, as the net under a missed event.
+
+  **The sidebar also unions live-but-unindexed sessions now**, which the project page has always
+  done: claude writes no transcript until you send a message, so for that window the list you look at
+  to find a session *under its project* said "No sessions yet" about a project with a running PTY.
+  `pendingSessions` in `lib/sessionGroups.ts` is that derivation, shared by both surfaces.
+
+  **The reason this shipped unnoticed is the mock bridge**: `mockListen` registered nothing and
+  returned an unlisten stub, so no smoke test could reach event-driven behaviour, and M1's "events
+  wired" deliverable passed with one end of the wire missing. It now keeps its handlers and publishes
+  `window.__FACTORAI_EMIT__` when a fixture is installed; `tests/smoke/pending-session.spec.ts`
+  mutates the fixture and fires the event, which is the shape of "the watcher caught up" and fails on
+  both counts without the hook.
+
 - **A session's `PATH` comes from the login shell now, not from this GUI process — spec
   `03-backend-rust.md` § `TerminalManager`, `05-features.md` § F4 edge cases** — 2026-08-17, user
   report. The symptom was three unrelated-looking failures at once in an app-launched session:

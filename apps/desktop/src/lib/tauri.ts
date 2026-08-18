@@ -338,6 +338,10 @@ declare global {
 		 *  the renderer sent, not just on what it rendered. Only populated when a
 		 *  fixture is installed. */
 		__FACTORAI_TEST_CALLS__?: MockCall[];
+		/** Fire a Rust→JS event at the renderer's listeners. Browser-only, and
+		 *  only present once a fixture is installed — it is how a smoke test
+		 *  reaches behaviour that only a backend event triggers. */
+		__FACTORAI_EMIT__?: (event: string, payload: unknown) => void;
 	}
 }
 
@@ -539,6 +543,28 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 	}
 }
 
-async function mockListen<T>(_name: string, _handler: (payload: T) => void): Promise<UnlistenFn> {
-	return async () => {};
+const mockListeners = new Map<string, Set<(payload: unknown) => void>>();
+
+/**
+ * Browser-only `listen`: registers the handler and lets a test fire the event.
+ *
+ * It used to return an unlisten function and drop the handler on the floor, so
+ * no smoke test could reach behaviour an event drives — which is how M1's
+ * "events wired" deliverable shipped with `sessions:changed` listened to by
+ * nobody. Emitting is a *test* affordance, so the bridge is only published when
+ * a fixture is installed; without one this behaves as it did.
+ */
+async function mockListen<T>(name: string, handler: (payload: T) => void): Promise<UnlistenFn> {
+	const wrapped = (payload: unknown) => handler(payload as T);
+	const handlers = mockListeners.get(name) ?? new Set();
+	handlers.add(wrapped);
+	mockListeners.set(name, handlers);
+	if (testFixture() && typeof window !== 'undefined') {
+		window.__FACTORAI_EMIT__ = (event, payload) => {
+			for (const fn of mockListeners.get(event) ?? []) fn(payload);
+		};
+	}
+	return async () => {
+		handlers.delete(wrapped);
+	};
 }

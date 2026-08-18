@@ -19,6 +19,7 @@ import {
 import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
+import { pendingSessions } from '@lib/sessionGroups';
 import { cmd, openExternally } from '@lib/tauri';
 import { useSidebarStore } from '@store/sidebarStore';
 import { type LiveTerminal, useTerminalStore } from '@store/terminalStore';
@@ -304,8 +305,9 @@ function SessionList({ project }: { project: Project }) {
 	const bySession = useTerminalStore((s) => s.bySession);
 
 	// Shares the project route's cache entry, so expanding a project you then
-	// open costs one fetch, not two. Polled like the project list: a session's
-	// title arrives only once claude has written its transcript.
+	// open costs one fetch, not two. `sessions:changed` is what actually keeps
+	// this current (see useSessionsSync); the poll is the net under a missed
+	// event, not the mechanism.
 	const sessionsQ = useQuery({
 		queryKey: queryKeys.sessions(project.id),
 		queryFn: () => cmd.listSessions(project.id),
@@ -316,14 +318,37 @@ function SessionList({ project }: { project: Project }) {
 		() => orderSessions(sessionsQ.data ?? [], bySession),
 		[sessionsQ.data, bySession],
 	);
+	// A session you started ten seconds ago has no index row yet, and this list
+	// is where you look for it (F6). Same union the project page does — without
+	// it the row you clicked `+` on reads "No sessions yet".
+	const pending = useMemo(
+		() => pendingSessions(bySession, project.id, sessionsQ.data),
+		[bySession, project.id, sessionsQ.data],
+	);
 
 	if (sessionsQ.isPending) return <Row muted>Loading…</Row>;
-	if (sessions.length === 0) return <Row muted>No sessions yet</Row>;
+	if (sessions.length === 0 && pending.length === 0) return <Row muted>No sessions yet</Row>;
 
 	const hidden = (sessionsQ.data?.length ?? 0) - sessions.length;
 
 	return (
 		<ul className="mb-1" data-testid={`sidebar-sessions-${project.id}`}>
+			{/* Above the indexed rows: it is the newest thing here by definition,
+			    and it is the one you are looking at. */}
+			{pending.map((p) => (
+				<li key={p.sessionId}>
+					<Link
+						to="/projects/$projectId/sessions/$sessionId"
+						params={{ projectId: project.id, sessionId: p.sessionId }}
+						title="New session — it takes its title from your first message"
+						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-xs transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						activeProps={{ className: 'bg-secondary text-foreground' }}
+					>
+						<span className="min-w-0 flex-1 truncate">New session</span>
+						<StatusDot status={p.status} className="size-1.5" />
+					</Link>
+				</li>
+			))}
 			{sessions.map((session) => (
 				<li key={session.id}>
 					<Link

@@ -723,3 +723,58 @@ fn a_jsonl_outside_subagents_does_not_become_a_project() {
 	})
 	.unwrap();
 }
+
+/// The watcher's entry point, on the folder it is hardest for: one added to the
+/// workspace before Claude had ever run there, so its store directory does not
+/// exist at add time and no `discovered_projects` row can.
+///
+/// `scan_dir_path` has to `discover()` first or the directory looks like
+/// activity outside the workspace and is dropped — which would leave the first
+/// session of a freshly added project invisible until the next full scan. This
+/// went untested while a UI bug with the same symptom was blamed on it; the
+/// renderer was the culprit, and this pins the half that was innocent.
+#[test]
+fn the_first_session_in_a_freshly_added_folder_indexes_from_the_watcher() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let claude_dir = tmp.path().join(".claude");
+	std::fs::create_dir_all(claude_dir.join("projects")).expect("mkdir projects");
+
+	let cwd = make_folder(tmp.path(), "fresh");
+	let project = add_project_in(&db, cwd.to_str().unwrap()).expect("add project");
+	assert_eq!(project.session_count, 0, "nothing has run here yet");
+
+	let (indexer, changes) = make_indexer(db.clone(), claude_dir.clone());
+	// Claude starts, and writes its transcript into a directory that appeared
+	// after the project did.
+	let project_dir = store_dir(&claude_dir, &cwd);
+	let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+	let cwd_str = cwd.to_string_lossy();
+	let user_msg = format!(
+		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"Start here"}}}}"#
+	);
+	write_session(&project_dir, session_id, &[&user_msg]);
+
+	indexer.scan_dir_path(&project_dir).expect("scan the changed directory");
+
+	let sessions = db
+		.with(|conn| {
+			let mut stmt = conn.prepare(
+				"SELECT s.id FROM sessions s
+				   JOIN discovered_projects d ON d.id = s.discovered_id
+				  WHERE d.project_id = ?1",
+			)?;
+			let ids = stmt
+				.query_map(params![project.id], |r| r.get::<_, String>(0))?
+				.collect::<rusqlite::Result<Vec<_>>>()?;
+			Ok(ids)
+		})
+		.expect("query sessions");
+	assert_eq!(sessions, vec![session_id.to_string()]);
+
+	// And it says so, which is what the renderer refetches on.
+	let emitted = changes.lock().unwrap();
+	assert_eq!(emitted.len(), 1);
+	assert_eq!(emitted[0].project_id, project.id);
+	assert_eq!(emitted[0].session_ids, vec![session_id.to_string()]);
+}

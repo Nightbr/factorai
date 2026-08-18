@@ -35,6 +35,10 @@ export interface TestFixture {
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	/** Session id `start_session` hands back for a new-session click (F6). The
+	 *  mock falls back to a fixed uuid, so a spec only sets this when it wants
+	 *  to talk about the id. */
+	newSessionId?: string;
 	searchHits?: SearchHit[];
 	/** Directory listings keyed by absolute path (F12 file tree). Paths the
 	 *  test never expands can be omitted — the mock treats them as empty. */
@@ -64,6 +68,9 @@ export interface TestFixture {
 declare global {
 	interface Window {
 		__FACTORAI_TEST__?: TestFixture;
+		/** Fire a Rust→JS event at the renderer (see `mockListen` in lib/tauri.ts).
+		 *  Present once a fixture is installed and something has subscribed. */
+		__FACTORAI_EMIT__?: (event: string, payload: unknown) => void;
 		/** Mocked command calls in order — see `mockInvoke` in lib/tauri.ts. Lets
 		 *  a test assert on the arguments the renderer sent. */
 		__FACTORAI_TEST_CALLS__?: Array<{ name: string; args?: Record<string, unknown> }>;
