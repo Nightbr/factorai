@@ -8,6 +8,9 @@ import { cn } from '../../lib/utils';
  * same object opened by different gestures, and a menu that looks different
  * depending on how you summoned it reads as a different menu.
  *
+ * Its row metrics are that file's too — 28px rows, a 28px indicator gutter, an
+ * `text-xs` section label — and the reasoning for them is written there once.
+ *
  * `variant="destructive"` on an item is for actions with no undo. It is a
  * colour, not a confirmation: whether something asks first is the caller's
  * decision, made on what the action would actually destroy.
@@ -48,10 +51,10 @@ const ContextMenuItem = React.forwardRef<
 		ref={ref}
 		data-variant={variant}
 		className={cn(
-			'relative flex select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+			'relative flex select-none items-center gap-2 rounded-sm px-2 py-1 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
 			variant === 'destructive' &&
 				'text-destructive focus:bg-destructive/10 focus:text-destructive',
-			inset && 'pl-8',
+			inset && 'pl-7',
 			className,
 		)}
 		{...props}
@@ -65,7 +68,11 @@ const ContextMenuLabel = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
 	<ContextMenuPrimitive.Label
 		ref={ref}
-		className={cn('px-2 py-1.5 font-semibold text-sm', inset && 'pl-8', className)}
+		className={cn(
+			'px-2 py-1 font-medium text-muted-foreground text-xs uppercase tracking-wider',
+			inset && 'pl-7',
+			className,
+		)}
 		{...props}
 	/>
 ));
