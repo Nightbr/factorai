@@ -16,7 +16,7 @@ export function TopBar() {
 	const toggle = usePanelStore((s) => s.toggle);
 
 	return (
-		<header className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+		<header className="flex h-10.5 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
 			<Brand />
 			<DevBadge />
 

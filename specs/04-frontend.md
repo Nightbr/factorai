@@ -77,7 +77,7 @@ route content, and the right-hand panel.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ ◱ factorai [DEV]  (reserved: search, window controls)          [▣]   │  TopBar, 40px
+│ ◱ factorai [DEV]  (reserved: search, window controls)          [▣]   │  TopBar, 42px
 ├───────────────┬──────────────────────────────────┬───────────────────┤
 │ [search]      │  Route content                   │ Files       ⇕ ⟳ ✕ │
 │               │                                  │ ▾ factorai        │

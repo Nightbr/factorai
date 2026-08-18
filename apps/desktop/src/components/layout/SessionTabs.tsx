@@ -156,7 +156,7 @@ export function SessionTabs() {
 								e.preventDefault();
 								setDragging(null);
 							}}
-							className={`group flex h-7 max-w-60 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-sm transition-colors ${
+							className={`group flex h-7.5 max-w-60 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-sm transition-colors ${
 								isActive
 									? 'bg-secondary text-foreground'
 									: 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'

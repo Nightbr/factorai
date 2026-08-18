@@ -153,7 +153,7 @@ export function CommitRow({
 						data-testid="commit-row"
 						data-sha={commit.sha}
 						style={{ height: ROW_HEIGHT }}
-						className={`flex w-full items-center gap-1.5 pr-2 text-left text-sm transition-colors ${
+						className={`group flex w-full items-center gap-1.5 pr-2 text-left text-sm transition-colors ${
 							selected ? 'bg-secondary' : 'hover:bg-secondary/50'
 						}`}
 						onClick={onSelect}
@@ -166,7 +166,12 @@ export function CommitRow({
 							node={
 								dirty
 									? { kind: 'dirty' }
-									: { kind: 'commit', colour: avatar.colour, initials: avatar.initials }
+									: {
+											kind: 'commit',
+											colour: avatar.colour,
+											ink: avatar.ink,
+											initials: avatar.initials,
+										}
 							}
 						/>
 						{shown.map((chip) => (
@@ -175,7 +180,22 @@ export function CommitRow({
 						{hiddenCount > 0 && (
 							<span className="shrink-0 text-muted-foreground text-xs">+{hiddenCount}</span>
 						)}
-						<span className={`min-w-0 flex-1 truncate ${selected ? '' : 'text-foreground'}`}>
+						{/* **Not full white until you point at it** (changed 2026-08-18 on
+						    user feedback). A column of 96%-lightness subjects is the
+						    loudest thing in the panel, and every row shouting equally is
+						    how a list stops having a focus. `secondary-foreground` is the
+						    same hue two steps quieter, so the column reads as one surface
+						    and the row under the pointer is the one that lifts out of it.
+
+						    Selected keeps full foreground rather than waiting for a hover:
+						    it is a state, the same reasoning the panel toggle carries. */}
+						<span
+							className={`min-w-0 flex-1 truncate ${
+								selected
+									? 'text-foreground'
+									: 'text-secondary-foreground group-hover:text-foreground'
+							}`}
+						>
 							{commit.subject}
 						</span>
 					</button>
@@ -246,8 +266,11 @@ function CommitCard({ commit, remoteHost }: { commit: GitGraphCommit; remoteHost
 					    introducing a second way to identify an author. */}
 					<span
 						aria-hidden="true"
-						style={{ background: avatar.colour }}
-						className="flex size-4 shrink-0 items-center justify-center rounded-full font-semibold text-[8px] text-card"
+						// Ink from the same function as the fill, not `text-card`: see
+						// `lib/avatar.ts` § `avatarInk` for why a token here inverts the
+						// day the light theme lands.
+						style={{ background: avatar.colour, color: avatar.ink }}
+						className="flex size-4 shrink-0 items-center justify-center rounded-full font-semibold text-[8px]"
 					>
 						{avatar.initials}
 					</span>

@@ -1391,11 +1391,19 @@ than the 12px the strip shipped with, and a tab may reach **240px** before the
 title truncates, up from 176px. At the old pair a tab showed ~18 characters of
 a title claude derived from a first message, which is routinely not enough to
 tell two sessions in one project apart; 240px and 14px gives ~25. The tab stays
-`h-7` inside the 40px bar — 14px text at its line-height is 17.5px, so nothing
-had to grow to hold it — and the avatar (16px) and the close `×` (14px) moved up
-with the label, so a wide tab reads as one object instead of text with specks
-beside it. The cap is still a *cap*: width follows the title, so a short one
-still makes a short tab.
+`h-7.5` — the avatar (16px) and the close `×` (14px) moved up with the label
+too, so a wide tab reads as one object instead of text with specks beside it. The
+cap is still a *cap*: width follows the title, so a short one still makes a short
+tab.
+
+**The bar, the mark and the tab each grew 2px on the same feedback**, a follow-up
+once the labels were bigger: `TopBar` 40 → 42px (`h-10.5`), the brand mark 16 →
+18px (`size-4.5`), a tab 28 → 30px (`h-7.5`). A 40px bar was cut for a 12px
+label, and 14px text in it left the strip looking packed rather than roomy. Two
+pixels is deliberately the smallest change that reads: it is measured in the
+running app, not asserted — 42 / 18 / 30 — because Tailwind's fractional spacing
+steps are derived rather than enumerated, and a class that does not exist fails
+silently by rendering the default.
 
 **The avatar, not a status dot.** Every tab is a live PTY by definition, so a
 dot on each would be a row of green saying nothing; the avatar answers the
@@ -1425,7 +1433,7 @@ session header.
   Releasing outside the strip keeps the last previewed order rather than
   snapping back: the strip has been showing that arrangement the whole way, so
   reverting on release would undo something you had already watched happen.
-- **Overflow** scrolls horizontally, with the scrollbar hidden (at 40px it
+- **Overflow** scrolls horizontally, with the scrollbar hidden (at 42px it
   would eat a third of the strip) and a wheel handler mapping vertical scroll
   onto it — otherwise the wheel does nothing over the header and the tabs read
   as stuck. Switching session scrolls the new active tab into view.
@@ -1652,6 +1660,18 @@ the chips got shorter, not free, and the icons cost width of their own, which
 `fitRefs` charges for. That remains the width constraint Q22 deferred rather than
 answered.
 
+### The subject is quiet until you point at it
+
+**Changed 2026-08-18 on user feedback.** The subject was `--foreground` on every
+row — 96% lightness, the brightest thing in the panel, repeated down the whole
+column. Everything shouting equally is how a list stops having a focus, so the
+resting colour is `--secondary-foreground` (82%, the same hue two steps quieter)
+and the row under the pointer takes full `--foreground`.
+
+A **selected** row keeps full foreground without waiting for a hover: selection
+is a state, not a hover, which is the reasoning the panel toggle already carries
+(F12) and the same rule as pinned rows keeping their affordances on show.
+
 ### The node is its author
 
 **Added 2026-08-17 on user feedback.** The commit node is a disc in a colour
@@ -1670,9 +1690,23 @@ resolver seam is there: a remote lookup would sit in front of `avatarFor`, and
 everything under it stays the offline default.
 
 Colour is one of 12 hues at a fixed lightness and chroma, so no author's dot
-shouts louder than another's and white initials stay legible on all of them. The
-key is the **email**, normalised in Rust, so an author who changes how their name
-is spelled keeps their colour.
+shouts louder than another's. The key is the **email**, normalised in Rust, so an
+author who changes how their name is spelled keeps their colour.
+
+**Pastel, and the initials come with the fill. Changed 2026-08-18 on user
+feedback**, from `oklch(62% 0.14 h)` to `oklch(80% 0.07 h)`. At the old chroma a
+dozen authors down one rail read as a strip of saturated dots competing with the
+lane colours beside them, and the lanes are what the rail is drawn to show.
+
+The initials moved with it, and that half is not cosmetic: they were painted
+`--card`, which is near-black in the dark theme and **white in the light one**,
+so dark-on-pastel would have inverted into white-on-pastel the day item 32 lands.
+`avatarInk` returns a dark tone of the disc's own hue instead, from the same
+function as the fill — so the contrast between disc and initials is a property of
+`lib/avatar.ts` rather than of whichever theme is mounted, and a unit test pins
+the 50-point lightness gap. This is the mirror-image bug caught before it
+renders, which is the lesson `color-scheme` in `globals.css` records the hard
+way.
 
 **The disc gives way to a plain dot below a 10px lane pitch.** It is 18px wide
 however tight the lanes get, so on a wide history it would cover three lanes and

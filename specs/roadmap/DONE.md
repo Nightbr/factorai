@@ -3,6 +3,34 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The bar grew 2px, the commit subject stopped shouting, and the author discs went pastel — specs
+  `05-features.md` § F16 and § F18, `04-frontend.md`, `AGENTS.md` § 4** — 2026-08-18, user ask, the
+  follow-up to the entry below after seeing it rendered. Three unrelated things in one pass because
+  all three are the same screenshot.
+
+  **+2px, three places.** `TopBar` 40 → 42px (`h-10.5`), the brand mark 16 → 18px (`size-4.5`), a
+  tab 28 → 30px (`h-7.5`). The 40px bar was cut for a 12px label; with 14px in it the strip read
+  packed. Worth knowing: **Tailwind v4's fractional spacing steps are derived, not enumerated**, so
+  `h-10.5` is not in any list you can grep — a class that does not resolve fails *silently* by
+  rendering the element's default height. Measured in the browser rather than assumed: 42 / 18 / 30.
+
+  **The commit subject rests at `secondary-foreground` and takes `foreground` on its row's hover.**
+  It was `--foreground` on every row, 96% lightness repeated down the whole column, and a list where
+  everything shouts equally has no focus. A selected row keeps full foreground without a hover,
+  because selection is a state — the same distinction the panel toggle draws, now written down in
+  `AGENTS.md` § 4 so the next list does not have to rediscover it.
+
+  **The author disc went `oklch(62% 0.14 h)` → `oklch(80% 0.07 h)`**, because a dozen saturated dots
+  down one rail compete with the lane colours, which are the thing the rail exists to show.
+
+  **The half of that which was not cosmetic: the initials.** Both call sites painted them `--card` —
+  near-black in the dark theme, **white in the light one**. That works today by coincidence, and
+  lightening the disc would have made the coincidence load-bearing: the day item 32 renders, white
+  initials would land on a pastel disc. `avatarInk` now returns a dark tone of the disc's own hue
+  from the same function as the fill, so the contrast is a property of `lib/avatar.ts` rather than of
+  whichever theme is mounted, and `avatar.test.ts` pins the 50-point lightness gap. Caught before it
+  rendered, which is the thing `color-scheme` in `globals.css` records having learned the other way.
+
 - **14px is the floor for labels, and a tab is 240px wide — `AGENTS.md` § 4, specs `05-features.md`
   § F16** — 2026-08-18, user ask. "La font-size n'est pas consistent sur l'app. En 100%, le terminal
   et le commit message sont ok mais le reste est un peu petit (nom des tabs, tout le panneau de

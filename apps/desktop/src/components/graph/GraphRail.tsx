@@ -22,8 +22,10 @@ const STROKE = 1.5;
 
 /** What the node at this row's lane is. */
 type RailNode =
-	/** An ordinary commit, drawn as its author. */
-	| { kind: 'commit'; colour: string; initials: string }
+	/** An ordinary commit, drawn as its author. `ink` travels with `colour`
+	 *  rather than being a token, so the pair stays legible in either theme —
+	 *  see `lib/avatar.ts` § `avatarInk`. */
+	| { kind: 'commit'; colour: string; ink: string; initials: string }
 	/** HEAD, with uncommitted changes sitting on top of it. */
 	| { kind: 'dirty' }
 	/** The synthetic working-changes row above HEAD. */
@@ -112,7 +114,7 @@ export function GraphRail({ lane, edges, pitch, width, node }: GraphRailProps) {
 						// inside an 18px disc, not text anyone reads as text.
 						fontSize={9}
 						fontWeight={600}
-						fill="var(--card)"
+						fill={node.ink}
 					>
 						{node.initials}
 					</text>

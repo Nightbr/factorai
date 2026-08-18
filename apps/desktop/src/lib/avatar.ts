@@ -38,12 +38,40 @@ const HUE_STEPS = 12;
  * The avatar's fill, as an oklch triple.
  *
  * Fixed lightness and chroma, hue varying: the whole set then sits at one
- * weight, so no author's dot shouts louder than another's, and white initials
- * stay legible on every one of them.
+ * weight, so no author's dot shouts louder than another's.
+ *
+ * **Pastel since 2026-08-18, from `oklch(62% 0.14 h)`, on user feedback.** At
+ * 0.14 chroma a dozen authors down one rail read as a strip of saturated dots
+ * competing with the lane colours beside them — and the lanes are the thing the
+ * rail exists to show. Lifting lightness and halving chroma keeps every author
+ * distinguishable while letting the disc sit behind its own initials rather
+ * than in front of them.
  */
 export function avatarColour(email: string): string {
-	const hue = (hash(email) % HUE_STEPS) * (360 / HUE_STEPS);
-	return `oklch(62% 0.14 ${hue})`;
+	return `oklch(80% 0.07 ${avatarHue(email)})`;
+}
+
+/**
+ * The initials' colour for that fill: the same hue, dark.
+ *
+ * **Not `--card`, which is what both call sites used to paint them.** That
+ * works in the dark theme by coincidence — `--card` there is near-black, so
+ * dark-on-pastel comes out legible — and inverts in the light theme, where
+ * `--card` is white and the same pair becomes white-on-pastel. Item 32 has not
+ * shipped, so this is the mirror-image bug caught *before* it renders rather
+ * than after, which is the same lesson `color-scheme` in `globals.css` records.
+ *
+ * Tying the ink to the fill in one function is what makes the pair
+ * theme-independent: neither value is a token, so neither moves when the theme
+ * does, and the contrast between them is a property of this file.
+ */
+export function avatarInk(email: string): string {
+	return `oklch(30% 0.08 ${avatarHue(email)})`;
+}
+
+/** The hue both halves share. */
+function avatarHue(email: string): number {
+	return (hash(email) % HUE_STEPS) * (360 / HUE_STEPS);
 }
 
 /**
@@ -73,5 +101,9 @@ export function avatarFor(authorName: string, authorEmail: string) {
 	// stands in as the key; two authors with no email at all sharing a colour is
 	// a better failure than one author flickering between colours.
 	const key = authorEmail || authorName.trim().toLowerCase();
-	return { colour: avatarColour(key), initials: authorInitials(authorName, authorEmail) };
+	return {
+		colour: avatarColour(key),
+		ink: avatarInk(key),
+		initials: authorInitials(authorName, authorEmail),
+	};
 }

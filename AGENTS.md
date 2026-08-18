@@ -291,6 +291,13 @@ Concrete rules:
 - Rows you act on repeatedly (pinned, selected) keep their hover
   affordances permanently visible; everything else stays quiet until
   hovered.
+- **Full `foreground` is a focus, not a default.** Text repeated down a
+  list — a commit subject, a filename — rests at `secondary-foreground`
+  and takes `foreground` from its row's hover; a *selected* row keeps
+  `foreground` permanently, since selection is a state and not a hover.
+  A column where every row is at 96% lightness has no focus at all,
+  which is what the graph looked like until 2026-08-18. The same
+  distinction the panel toggle draws between "open" and "hovered".
 
 ### Backend
 

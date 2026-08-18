@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authorInitials, avatarColour, avatarFor } from './avatar';
+import { authorInitials, avatarColour, avatarFor, avatarInk } from './avatar';
 
 describe('avatarColour', () => {
 	it('is stable for the same identity', () => {
@@ -14,7 +14,29 @@ describe('avatarColour', () => {
 
 	it('stays inside the one lightness and chroma the set is drawn at', () => {
 		for (const email of ['a@b.c', 'ada@example.com', '', 'x'.repeat(200)]) {
-			expect(avatarColour(email)).toMatch(/^oklch\(62% 0\.14 \d+(\.\d+)?\)$/);
+			expect(avatarColour(email)).toMatch(/^oklch\(80% 0\.07 \d+(\.\d+)?\)$/);
+		}
+	});
+});
+
+describe('avatarInk', () => {
+	it("shares the fill's hue, so the pair reads as one disc", () => {
+		for (const email of ['a@b.c', 'ada@example.com', '', 'x'.repeat(200)]) {
+			const hue = (h: string) => h.match(/ (\d+(?:\.\d+)?)\)$/)?.[1];
+			expect(hue(avatarInk(email))).toBe(hue(avatarColour(email)));
+		}
+	});
+
+	it('is dark enough against the fill to carry initials in either theme', () => {
+		// The point of not using `--card`: the contrast between disc and initials
+		// has to be a property of this file, not of whichever theme is mounted.
+		// 50 points of oklch lightness is the floor that survives both, and the
+		// pair sits exactly on it — 80 against 30.
+		const lightness = (c: string) => Number(c.match(/^oklch\((\d+(?:\.\d+)?)%/)?.[1]);
+		for (const email of ['a@b.c', 'ada@example.com', '', 'x'.repeat(200)]) {
+			expect(lightness(avatarColour(email)) - lightness(avatarInk(email))).toBeGreaterThanOrEqual(
+				50,
+			);
 		}
 	});
 });
@@ -53,6 +75,7 @@ describe('avatarFor', () => {
 	it('falls back to the name when there is no email at all', () => {
 		const a = avatarFor('Ada Lovelace', '');
 		expect(a.colour).toBe(avatarColour('ada lovelace'));
+		expect(a.ink).toBe(avatarInk('ada lovelace'));
 		expect(a.initials).toBe('AL');
 	});
 });
