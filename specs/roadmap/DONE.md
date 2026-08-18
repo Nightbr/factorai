@@ -50,6 +50,16 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   it works in WKWebView — that is exactly the gap this bug lived in. `01-architecture.md`'s stack
   table also stopped claiming codemirror and marked, which ADR-0007 had superseded.
 
+  **One bug, reported within the hour of shipping it: the tab zoomed while you dragged it.** dnd-kit
+  hands the active item a transform whose `scaleX` is `over.rect.width / activeNodeRect.width`
+  (`core.esm.js:2997`) — for a `DragOverlay` that morphs into the target's box, which we do not use —
+  so a tab sized by its title grew or shrank to whatever it was passing over. `CSS.Translate` instead
+  of `CSS.Transform` is the whole fix. **The tests could have caught it and didn't**, which is the
+  part worth keeping: the mid-drag test asserted the *neighbour* slid and said nothing about the
+  element in flight. It now asserts the dragged tab's own width is unchanged, against a fixture with
+  one deliberately capped-width title — with equal widths the ratio is 1 and the regression is
+  invisible. Verified by reverting: 110px of distortion.
+
 - **One hover card at a time, chips that stay inside their box, the graph's empty line on the other
   tabs' pixel, and 28px menu rows — specs `05-features.md` § F18, `04-frontend.md`, `AGENTS.md`
   § 4** — 2026-08-18, user ask, three reports in one pass over the graph.

@@ -164,7 +164,15 @@ test.describe('session tabs', () => {
 	});
 
 	test('@smoke a dragged tab moves into place before it is dropped', async ({ page }) => {
-		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		const fx = fixtureTwoProjectsManySessions();
+		// **A title long enough to hit the 240px cap**, so the two tabs in this drag
+		// are visibly different widths. That is what makes the "no distortion"
+		// assertion below mean something: dnd-kit scales the dragged item by the
+		// ratio of the tab it is over to itself, and with equal widths the ratio is
+		// 1 and a regression is invisible.
+		const wide = fx.sessionsByProject?.[ZULU_ID]?.find((s) => s.id === 'zulu-session-11');
+		if (wide) wide.title = 'Zulu task 11, with a title long enough to fill a whole tab';
+		await installMockBridge(page, fx);
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
 		await openSession(page, /Zulu task 11/);
@@ -176,6 +184,8 @@ test.describe('session tabs', () => {
 		const before = await first.boundingBox();
 		const from = await source.boundingBox();
 		if (!before || !from) throw new Error('tabs not laid out');
+		// The premise of the test: the tabs really are different widths.
+		expect(before.width).toBeGreaterThan(from.width + 40);
 
 		// Hand-driven and left holding, because the point is the state *mid*
 		// gesture: the strip shows the arrangement you would get instead of making
@@ -191,6 +201,15 @@ test.describe('session tabs', () => {
 		await expect
 			.poll(async () => (await first.boundingBox())?.x ?? 0)
 			.toBeGreaterThan(before.x + 20);
+
+		// **And the tab in flight is still its own size.** dnd-kit publishes the
+		// active transform through `adjustScale(translate, over.rect,
+		// activeNodeRect)`, so `CSS.Transform.toString` scales the tab you are
+		// holding to the width of the tab you are over — reported as a tab that
+		// zooms mid-drag. `CSS.Translate.toString` is the whole fix, and this is the
+		// assertion that would have caught it: a bounding box reflects the scale.
+		const mid = await source.boundingBox();
+		expect(Math.abs((mid?.width ?? 0) - from.width)).toBeLessThan(1);
 
 		await page.mouse.up();
 
