@@ -1462,16 +1462,34 @@ before settling back. Only a staged version earns the accent:
 
 > `⟳ Update ready`
 
-**The label was shortened 2026-08-17, and the reason is a bug rather than a
-preference.** It read `⟳ v0.2.0 ready · Restart`, and in that state the component
-returns a flex button with three children and no `min-w-0` — so its content sets a
+**The label was shortened — decided 2026-08-17, and actually in the code on
+2026-08-18.** That gap is the point of this paragraph now: this text described the
+short label as done, `UpdateBadge.tsx` had not been touched since 2026-08-14, and
+nothing noticed for a day because the badge only renders when an update is
+*staged* — so the first person to see it was a user, on the release that shipped
+the fix for something else. A spec that says "fixed" is not a fix; F14 was wrong
+about its own code.
+
+The bug: the label read `⟳ v0.2.0 ready · Restart`, from a flex button with three
+children, no `min-w-0` and nothing able to truncate — so its content set a
 min-content width the footer cannot shrink. It wants roughly 175px beside
 `ZoomControls`, has about 156px at a 288px sidebar, and about 48px at the 180px
-floor, so it **clipped the zoom controls instead of degrading**. Now: the version
-moves into the tooltip (which also stops the label growing when item 31's channels
-make `v0.10.0-alpha.2` a plausible version), `· Restart` goes since the tooltip and
-a glowing button both already say it, and `min-w-0` plus `truncate` let it degrade
-to the icon at the narrow end rather than pushing its neighbour out.
+floor, so it **clipped the zoom controls instead of degrading**. Measured on the
+report: 174px of badge against a cell that ended at 157.
+
+What the code now does, in the order the space runs out:
+
+1. The label is `Update ready`. The **version moved into the tooltip**, which also
+   stops it growing when item 31's channels make `v0.10.0-alpha.2` a plausible
+   version, and `· Restart` went with it — a glowing button and a tooltip saying
+   "click to restart" are already two ways of saying so.
+2. `inline-flex` + `max-w-full` + `truncate` mean the badge hugs its content but
+   can never be wider than its cell, so it shortens instead of running under its
+   neighbour.
+3. Below ~120px of cell — which is what the 180px sidebar floor leaves — the label
+   **hides outright** and the badge is its mark alone, via a container query on the
+   footer cell. Truncation alone gets you a pill reading `Upd…`, which is a broken
+   word rather than a degradation.
 
 Checking and downloading are silent by design. An announcement you can't act on
 yet ("downloading 43%…") is noise beside a running agent, and the useful moment

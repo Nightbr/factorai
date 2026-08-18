@@ -3,6 +3,30 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The update badge fits the footer, a day after the spec said it did — specs `05-features.md`
+  § F14** — 2026-08-18, user report, on the first release where anyone could see the badge at all.
+
+  **The fix existed only in prose.** F14 has said since 2026-08-17 that the label was shortened to
+  `⟳ Update ready` with the version in the tooltip, because the long form —
+  `⟳ v0.2.0 ready · Restart` — sets a min-content width the footer does not have and clips its
+  neighbour instead of degrading. `UpdateBadge.tsx` was last touched 2026-08-14. Nobody caught it
+  because the badge only renders when an update is **staged**: the app has to have downloaded a
+  newer version than the one you are running, which on a machine that ships several releases a day
+  is a state you pass through rarely and never on purpose. The first render was a user's, on
+  v0.13.1, and it was clipped mid-word — 174px of badge against a cell ending at 157.
+
+  Three mechanisms now, in the order the space runs out: the short label with the version in the
+  tooltip; `inline-flex` + `max-w-full` + `truncate`, so the badge hugs its content and can never
+  exceed its cell; and below ~120px of cell — the 180px sidebar floor — a container query that hides
+  the label entirely, leaving the mark. That last one is not polish: truncation alone yields a pill
+  reading `Upd…`, which is a broken word rather than a degradation.
+
+  **The test is the part worth keeping**, since this bug's whole biography is "nothing ran the code
+  path". `update-badge.spec.ts` now drives the reported case — sidebar squeezed to its floor, zoom
+  at 120% — and asserts the badge's right edge against the zoom controls' left, because a clipped
+  element still reports a bounding box and only the neighbour relationship catches it. Verified by
+  restoring the old markup: 174 against 157, caught.
+
 - **Tab reordering works on macOS: dnd-kit, because the OS drag session is not ours to use — specs
   `05-features.md` § F16, `01-architecture.md`, ADR-0016, `AGENTS.md` § 4** — 2026-08-18, user
   report: "on macOS tabs reordering is not working. Maybe it is time to use a well-known drag&drop
