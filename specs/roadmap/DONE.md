@@ -3,6 +3,67 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Open session tabs come back on launch, and a tab is now an open session — specs
+  `05-features.md` §§ F16 / F11, `04-frontend.md`, `07-open-questions.md` Q24** — 2026-08-18, from
+  the user ask of 2026-08-17 and the clarify-needs interview roadmap item 33 was gated on.
+
+  **F16's invariant was the first question and it bent.** "A tab is a running PTY, not an open
+  document" became **"a tab is an open session; the dot says whether it is running; a tab goes when
+  you close it, and only then."** The strip is driven off a persisted `tabs` list now, so a tab
+  survives its process exiting and survives a quit — which is what makes restoring it mean
+  anything. ADR-0005 is untouched: every PTY still dies at quit, and nothing is brought back
+  running.
+
+  **The app already disagreed with itself here**, which is what made the reversal easy to argue.
+  The session route deliberately does *not* navigate away when a process exits — so you could sit
+  reading `[process exited]` with `Restart` under your hand while the strip had already deleted
+  that session's tab. One rule fixes both surfaces, and F10's `stopped` dot, wired since 2026-08-18
+  and never once drawn in a tab because a stopped tab could not exist, is what carries the
+  difference. No dimming and no second treatment: at 14px that says the same thing twice.
+
+  **Respawn-at-launch was rejected, and item 33's stated reason for rejecting it was wrong.** That
+  entry called N resumed sessions "real money". They are not: `claude --resume` loads its transcript
+  and sits at a prompt, spending nothing. What actually rules it out is N processes, N sets of MCP
+  servers and N runs of claude's own `SessionStart` hooks — which match `resume` — all executing
+  before you have looked at the window. Restored tabs are inert; **the first thing that starts a
+  process is your click**, and clicking a stopped tab restarts it, including the one you are already
+  on, where a `navigate` to the route you are standing on remounts nothing.
+
+  **The near-miss worth recording: `bySession` does not change meaning.** Nine surfaces read it as
+  "is this running", and TypeScript would have caught almost none of them if the meaning had shifted
+  underneath — the dangerous ones read `.status`, `Object.keys()` or `id in bySession`, none of which
+  a nullable field breaks. So the persisted list is a *second* field in the same store, which is what
+  `order` already was, and the surfaces that genuinely wanted "open" moved to a derived
+  `openSessions` record instead: sidebar project rows, sidebar session rows, the project page's list,
+  and the ordering that floats what you have open above recency. `pendingSessions`, `UpdateBadge`'s
+  count and the session header's Close-versus-Restart deliberately stayed on `bySession`.
+
+  That reverses one line of `projectStatus`'s reasoning — "a grey dot on every project you have ever
+  opened is noise" — and narrowly: the dot is not shown for every project you have opened, but for
+  every project you have a tab open in, which is a set you control with the `×`.
+
+  **Two things were found on the way, both older than this feature.**
+
+  - **`terminal_list` had no caller in the renderer at all**, while `terminalStore` *and*
+    `ErrorBoundary` both carried comments describing a reload re-syncing from it. So the crash
+    screen's "reloading keeps your sessions alive" was half true — the processes survived in Rust
+    state and every tab vanished, leaving running agents reachable only through the sidebar. Fixed
+    first, as its own commit, because it is correct under the *old* invariant too and needs the same
+    merge restore needs.
+  - **F16 claimed closing "always asks"**, stale since F10 gave the strip a status to consult. The
+    code has asked only while Claude is working for some time.
+
+  **The switch the ask began with is not here, deliberately.** F11 is specified and unbuilt, so the
+  preference has nowhere to live that is not half of item 4. Restore ships on, unconditionally, and
+  F11 gained a fourth **Sessions** section holding the switch — defaulting on, so it changes nothing
+  when it arrives. It is a checkbox in item 4 rather than a memory.
+
+  **Verified in the running app**, which is the only place the interesting half shows: five tabs
+  persisted from a previous run came back grey with **zero** spawns in the log, the sidebar marked
+  them at both levels, and the first `claude --resume` appeared only when a tab was clicked. The
+  smoke test asserts the same shape against a seeded `factorai.terminals`; the staleness filter, the
+  reducers and `openSessions` are vitest.
+
 - **The update badge fits the footer, a day after the spec said it did — specs `05-features.md`
   § F14** — 2026-08-18, user report, on the first release where anyone could see the badge at all.
 

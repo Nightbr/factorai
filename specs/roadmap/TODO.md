@@ -906,64 +906,6 @@ background, with light values written but never once looked at. Expect real corr
 the moment this lands and is deliberately absent until then. So this item owns the theme; item 4
 owns the place to put it.
 
-## 33. Restore open session tabs on launch
-
-**User ask, 2026-08-17. Interviewed 2026-08-18**, and the design is now
-[`05-features.md` § F16](../05-features.md) — the invariant, the restore rules and where "open"
-shows outside the strip. This entry is sequencing again. **If this entry and F16 disagree, F16
-wins.**
-
-**The title lost "behind a preference", and that is the one thing the interview changed about the
-shape of the item.** F11 is specified and unbuilt, so the switch has nowhere to live that is not
-half of item 4. Restore ships **on, unconditionally**; the switch became a checkbox in **item 4**
-and a *Sessions* section in F11, defaulting on so it changes nothing when it arrives. A deliberate
-split, written into F16 in as many words rather than left to be rediscovered.
-
-**F16's invariant bent, which this entry said was the first question.** "A tab is a running PTY"
-became "a tab is an open session; the dot says whether it is running; a tab goes when you close it,
-and only then." Two of the three alternatives listed here were rejected on the interview's terms:
-respawn-at-launch — and *not* for the reason this entry gave, since a resumed `claude` loads its
-transcript and sits at a prompt spending nothing; what rules it out is N processes, N sets of MCP
-servers and N runs of claude's own `SessionStart` hooks before you have looked at the window — and
-the launch prompt, a modal in front of a cold app answered the same way every time. The third,
-inert tabs that spawn on click, is what shipped, and it costs almost nothing: clicking a tab
-navigates, and navigating already spawns (F6).
-
-**What the interview added that this entry did not anticipate**, which is most of why it was worth
-doing:
-
-- **A tab survives its own exit, not just a quit.** Restoring only at launch would have left two
-  kinds of tab that look identical and behave differently — the exact objection this entry raised
-  against inert tabs. One rule instead, and it settles a disagreement that predates this item: the
-  session route keeps you on a dead session with `Restart` under your hand while the strip has
-  already deleted its tab.
-- **`bySession` does not change meaning, and that was nearly got wrong.** Nine surfaces read it as
-  "is this running", and TypeScript would have caught almost none of them, because the dangerous
-  ones read `.status`, `Object.keys()` or `id in bySession`. So the persisted list is a *second*
-  field, `tabs`, in the same store — which is what `order` already was. This entry guessed
-  "`terminalStore` gains a persisted `order`": right store, wrong field.
-
-**The build, in order.**
-
-- [ ] **`terminal_list` at boot, as its own commit.** It has no renderer caller at all, while
-      `terminalStore` and `ErrorBoundary` both carry comments saying a reload re-syncs from it — so
-      a reload strands live PTYs off the strip. Correct under the *old* invariant too, and the
-      merge it needs is the one restore needs.
-- [ ] `terminalStore`: `tabs` persisted as `factorai.terminals` v1, `partialize`d to `tabs` alone;
-      `removeByTerminal` keeps the tab, `detach` removes it. Vitest on the reducers.
-- [ ] `openSessions(tabs, bySession)` in `lib/sessionGroups.ts`, pure, plus the staleness filter —
-      the interesting logic, testable without a render, same reasoning as `settingsDraft` in item 4.
-- [ ] `SessionTabs`: render from `tabs`, grey dot from the absent status, click a stopped tab to
-      restart, and paint only once `list_projects` has resolved.
-- [ ] The four surfaces that move to the open record — sidebar project rows, sidebar session rows,
-      the project page's session list, `orderSessions`. `pendingSessions`, `UpdateBadge` and the
-      session header stay on `bySession`.
-- [ ] `useRemoveProject` drops the removed project's tabs as well as killing its PTYs.
-- [ ] One `@smoke`: a seeded tab list paints stopped, and clicking one spawns.
-
-**No longer blocked on item 4.** That dependency existed for the switch, and the switch moved into
-item 4 instead.
-
 ## 34. Session status — the unread axis, and two upgrades worth waiting for
 
 **The dot shipped 2026-08-18** — F10 is the design,
