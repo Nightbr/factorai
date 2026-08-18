@@ -1,4 +1,3 @@
-import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -56,6 +55,91 @@ export function createOscLinkHandler(open: (uri: string) => void = openExternall
 	return { activate: (event, uri) => onLinkActivated(event, uri, open) };
 }
 
+// ── Sizing the grid ────────────────────────────────────────────────────────
+//
+// **This replaces `@xterm/addon-fit`, which reserved 14px we never used.** That
+// addon computes `available = parentWidth - padding -
+// (options.overviewRuler?.width || 14)`, holding a gutter open for the overview
+// ruler — the minimap decorations can be drawn into. We register no decorations
+// and never set `overviewRulerWidth`, so nothing is ever drawn there.
+//
+// It cannot be turned off. xterm 5.5.0 spells that option `overviewRulerWidth`,
+// a flat number on `ITerminalOptions`; the nested `overviewRuler.width` the
+// addon reads belongs to a later core and is always `undefined` here, so `|| 14`
+// fires every time. Setting it to `0` would not help either — `0 || 14` is 14.
+// The addon declares no peer range, so nothing flagged the pairing.
+//
+// Downgrading is not the way out: addon-fit 0.10.0 subtracts the scrollbar
+// instead, read from xterm's own viewport, which ends `|| 15` — so a hidden
+// scrollbar measures 0 and falls back to 15. Both versions insist on a gutter.
+//
+// The cost was about two columns of every terminal on every platform, and a
+// visible strip of dead background down the right of the session. With the
+// scrollbar gone (see the desktop app's stylesheet) nothing overlays that strip
+// any more, so it is simply the terminal's to use.
+
+/** xterm's own floor: below this the renderer has no grid to draw into. */
+const MIN_COLS = 2;
+const MIN_ROWS = 1;
+
+/**
+ * The grid that exactly fills `host`, reserving nothing.
+ *
+ * Pure, and exported, because the arithmetic is the whole point of the change
+ * above — a regression here is two silently-lost columns, which is precisely the
+ * kind of thing that survives a screenshot.
+ *
+ * Returns `null` rather than a guess when it has nothing to measure: a detached
+ * or not-yet-rendered terminal reports zero, and `floor(x / 0)` is `Infinity`.
+ * Callers leave the size alone and the next fit corrects it.
+ */
+export function proposeGeometry(
+	hostWidth: number,
+	hostHeight: number,
+	cellWidth: number,
+	cellHeight: number,
+): { cols: number; rows: number } | null {
+	if (!(cellWidth > 0) || !(cellHeight > 0)) return null;
+	if (!(hostWidth > 0) || !(hostHeight > 0)) return null;
+	return {
+		cols: Math.max(MIN_COLS, Math.floor(hostWidth / cellWidth)),
+		rows: Math.max(MIN_ROWS, Math.floor(hostHeight / cellHeight)),
+	};
+}
+
+/**
+ * Resize the terminal to its host — the same contract `fit()` had, so callers
+ * still never compute cols/rows or talk to the PTY themselves (`onResize`
+ * forwards the result).
+ *
+ * **Cell metrics come from what the renderer actually drew**, not from
+ * `_core._renderService`: `.xterm-screen` is exactly `cols x rows` cells, so
+ * dividing its box by the terminal's current dimensions gives the cell size
+ * through public API alone. It also self-corrects — when "JetBrains Mono"
+ * finishes loading and every glyph changes width, the next fit sees the new
+ * number with nothing to invalidate.
+ *
+ * No `_renderService.clear()` before the resize, which is the one thing the
+ * addon did that this drops. That guards against stale glyphs left in a canvas;
+ * we run the DOM renderer deliberately (see the WebGL note at construction),
+ * whose rows are re-rendered elements rather than a painted surface.
+ */
+function fitToHost(entry: PooledTerm): void {
+	const { term, host } = entry;
+	const screen = host.querySelector('.xterm-screen');
+	if (!(screen instanceof HTMLElement)) return;
+
+	const rect = screen.getBoundingClientRect();
+	const next = proposeGeometry(
+		host.clientWidth,
+		host.clientHeight,
+		rect.width / term.cols,
+		rect.height / term.rows,
+	);
+	if (!next) return;
+	if (next.cols !== term.cols || next.rows !== term.rows) term.resize(next.cols, next.rows);
+}
+
 // ── Persistent xterm pool ──────────────────────────────────────────────────
 //
 // One xterm instance per session, kept alive for the app's lifetime (or until
@@ -73,7 +157,6 @@ export function createOscLinkHandler(open: (uri: string) => void = openExternall
 interface PooledTerm {
 	host: HTMLDivElement;
 	term: XTerm;
-	fit: FitAddon;
 	cleanup: Array<() => void>;
 	/** Set once `attachPty` has run, so the spawn + output listeners are wired
 	 *  exactly once per pooled terminal. */
@@ -118,8 +201,6 @@ function getOrCreateTerm(sessionId: string): PooledTerm {
 		// whether the CLI emits them at all. It does.
 		linkHandler: createOscLinkHandler(),
 	});
-	const fit = new FitAddon();
-	term.loadAddon(fit);
 	term.loadAddon(new SearchAddon());
 	term.loadAddon(new WebLinksAddon(onLinkActivated));
 	term.loadAddon(new UnicodeGraphemesAddon());
@@ -128,7 +209,7 @@ function getOrCreateTerm(sessionId: string): PooledTerm {
 	// but reliable.
 	term.open(host);
 
-	const entry: PooledTerm = { host, term, fit, cleanup: [], ptyAttached: false };
+	const entry: PooledTerm = { host, term, cleanup: [], ptyAttached: false };
 	pool.set(sessionId, entry);
 
 	// Forward keystrokes to the live PTY. Reads the terminal id from the store
@@ -261,11 +342,11 @@ export function Terminal({ sessionId, projectId, projectCwd }: TerminalProps) {
 		// the final width. If the container has no layout yet (zero-sized during a
 		// route transition) fit() is a no-op and the timer below catches up —
 		// `onResize` then forwards the corrected size to the PTY.
-		entry.fit.fit();
+		fitToHost(entry);
 		attachPty(entry, sessionId, projectId, projectCwd);
 
 		const focusTimer = setTimeout(() => {
-			entry.fit.fit();
+			fitToHost(entry);
 			// Reattaching a pooled terminal: jump to the latest output (the live
 			// prompt) rather than wherever the buffer was last scrolled.
 			entry.term.scrollToBottom();
@@ -274,7 +355,7 @@ export function Terminal({ sessionId, projectId, projectCwd }: TerminalProps) {
 
 		// `fit()` is all this needs to do — the terminal's `onResize` handler
 		// pushes the new geometry to the PTY.
-		const ro = new ResizeObserver(() => entry.fit.fit());
+		const ro = new ResizeObserver(() => fitToHost(entry));
 		ro.observe(container);
 
 		return () => {

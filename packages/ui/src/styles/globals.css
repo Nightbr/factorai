@@ -124,6 +124,28 @@
 
 /* ── Base theme: dark first ───────────────────────────────────────────────── */
 :root {
+	/* **Tells the engine the page is dark, which nothing else here does.** The
+	   tokens below dress every element *we* draw; `color-scheme` is the only way
+	   to reach the ones the platform draws for us — scrollbars above all, but
+	   also the caret, `::selection`, native control internals and the canvas
+	   colour before the first paint. Its initial value is `normal`, which WebKit
+	   renders *light* no matter what the system appearance is, so those widgets
+	   were being painted for a white page sitting on a 16%-lightness one.
+
+	   What that looked like: a full-height near-white bar down the right edge of
+	   every terminal on macOS (reported 2026-08-18). Three things had to line up
+	   for it. xterm.css sets `.xterm-viewport { overflow-y: scroll }`, so the bar
+	   is always in flow rather than appearing on scroll; macOS switches from
+	   overlay scrollbars to the opaque legacy ones whenever a mouse is attached
+	   and `AppleShowScrollBars` is left on Automatic, which is the default; and
+	   the legacy bar's light-scheme track is #fafafa. Linux never showed it
+	   because WebKitGTK draws that bar from the GTK theme instead.
+
+	   Keyed to the theme selector rather than hardcoded, so item 32's light theme
+	   doesn't inherit the mirror-image bug the day it starts setting
+	   `data-theme`. */
+	color-scheme: dark;
+
 	--background: oklch(16% 0.008 250);
 	--foreground: oklch(96% 0.004 250);
 	--card: oklch(18% 0.008 250);
@@ -187,6 +209,10 @@
 
 /* Light theme — applied via [data-theme="light"] on <html> */
 [data-theme="light"] {
+	/* Same specificity as `:root` and written after it, which is exactly how the
+	   tokens below already override — see the note there for what this controls. */
+	color-scheme: light;
+
 	--background: oklch(98% 0.004 250);
 	--foreground: oklch(18% 0.008 250);
 	--card: oklch(100% 0 0);

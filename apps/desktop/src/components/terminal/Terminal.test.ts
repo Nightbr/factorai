@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createOscLinkHandler, onLinkActivated } from '@components/terminal/Terminal';
+import {
+	createOscLinkHandler,
+	onLinkActivated,
+	proposeGeometry,
+} from '@components/terminal/Terminal';
 
 function click(mods: Partial<MouseEvent> = {}): MouseEvent {
 	return { ctrlKey: false, metaKey: false, ...mods } as MouseEvent;
@@ -69,5 +73,45 @@ describe('createOscLinkHandler', () => {
 		expect(confirmSpy).not.toHaveBeenCalled();
 
 		vi.unstubAllGlobals();
+	});
+});
+
+/**
+ * Grid sizing — the arithmetic that replaced `@xterm/addon-fit`.
+ *
+ * The addon reserved 14px of every terminal for an overview ruler we never draw
+ * in, and against xterm 5.5.0 that reservation could not be configured off (see
+ * the long note above `proposeGeometry`). These pin the property that matters:
+ * the grid fills its host and holds nothing back.
+ */
+describe('proposeGeometry', () => {
+	it('reserves no gutter — the 14px the fit addon kept', () => {
+		// 1002px of host at a 7.8016px cell is 128.4 columns. The addon proposed
+		// floor((1002 - 14) / 7.8016) = 126, and the two missing columns were the
+		// dead strip down the right of the session.
+		expect(proposeGeometry(1002, 600, 7.8016, 17)).toEqual({ cols: 128, rows: 35 });
+	});
+
+	it('floors rather than overflowing, leaving under one cell spare', () => {
+		// A character grid cannot fill a box that is not a whole number of cells
+		// wide. Up to `cellWidth - 1` px is unavoidable; more than that is a bug.
+		const { cols } = proposeGeometry(1000, 100, 7, 10) ?? { cols: 0 };
+		expect(cols).toBe(142);
+		expect(1000 - cols * 7).toBeLessThan(7);
+	});
+
+	it('declines to guess when there is nothing to measure', () => {
+		// A detached or not-yet-rendered terminal measures zero, and dividing by it
+		// would propose Infinity columns. Callers leave the size alone instead.
+		expect(proposeGeometry(1002, 600, 0, 17)).toBeNull();
+		expect(proposeGeometry(1002, 600, 7.8, 0)).toBeNull();
+		expect(proposeGeometry(0, 600, 7.8, 17)).toBeNull();
+		expect(proposeGeometry(1002, 0, 7.8, 17)).toBeNull();
+		expect(proposeGeometry(Number.NaN, 600, 7.8, 17)).toBeNull();
+	});
+
+	it('never proposes a grid too small to render into', () => {
+		// xterm's own floor. A pane dragged to nothing must not propose 0 columns.
+		expect(proposeGeometry(3, 4, 7.8, 17)).toEqual({ cols: 2, rows: 1 });
 	});
 });

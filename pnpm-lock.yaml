@@ -65,9 +65,6 @@ importers:
       '@tauri-apps/plugin-updater':
         specifier: 2.10.1
         version: 2.10.1
-      '@xterm/addon-fit':
-        specifier: 0.11.0
-        version: 0.11.0
       '@xterm/addon-search':
         specifier: 0.16.0
         version: 0.16.0
@@ -1846,9 +1843,6 @@ packages:
 
   '@vitest/utils@3.0.5':
     resolution: {integrity: sha512-N9AX0NUoUtVwKwy21JtwzaqR5L5R5A99GAbrHfCCXK1lp593i/3AZAXhSP43wRQuxYsflrdzEfXZFo1reR1Nkg==}
-
-  '@xterm/addon-fit@0.11.0':
-    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
 
   '@xterm/addon-search@0.16.0':
     resolution: {integrity: sha512-9OeuBFu0/uZJPu+9AHKY6g/w0Czyb/Ut0A5t79I4ULoU4IfU5BEpPFVGQxP4zTTMdfZEYkVIRYbHBX1xWwjeSA==}
@@ -4651,8 +4645,6 @@ snapshots:
       '@vitest/pretty-format': 3.0.5
       loupe: 3.2.1
       tinyrainbow: 2.0.0
-
-  '@xterm/addon-fit@0.11.0': {}
 
   '@xterm/addon-search@0.16.0': {}
 
