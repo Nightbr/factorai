@@ -6,7 +6,7 @@ import { FileViewerModal } from '@components/viewer/FileViewerModal';
 import { type DiffMode, isDiffMode, useFileViewer } from '@hooks/useFileViewer';
 import { useNativeContextMenu } from '@hooks/useNativeContextMenu';
 import { useSessionsSync } from '@hooks/useSessionsSync';
-import { events } from '@lib/tauri';
+import { cmd, events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { useTerminalStore } from '@store/terminalStore';
 
@@ -30,6 +30,24 @@ function RootLayout() {
 			});
 		return () => unlisten?.();
 	}, [setProgress]);
+
+	// Adopt whatever Rust is already running. A renderer reload keeps every PTY
+	// alive and throws this store away, so without this the tabs vanish off
+	// processes that are still very much running — which is what the crash
+	// screen's "reloading keeps your sessions alive" has been promising while
+	// `terminal_list` had no caller on this side at all.
+	//
+	// Runs before the listeners below in source order but not in effect order,
+	// and it does not matter: `adoptLive` merges, and a `terminal:exit` that
+	// lands first simply finds nothing to remove.
+	useEffect(() => {
+		void cmd
+			.terminalList()
+			.then((live) => useTerminalStore.getState().adoptLive(live))
+			// Nothing to surface: with no adopted terminals the app behaves exactly
+			// as it did before this call existed.
+			.catch((e) => console.error('terminal_list failed', e));
+	}, []);
 
 	// App-wide terminal lifecycle: keep the running indicator accurate no
 	// matter which route is mounted. `terminal:status` updates a live
