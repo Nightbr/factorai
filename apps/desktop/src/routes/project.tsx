@@ -1,6 +1,7 @@
 import { StatusDot } from '@components/layout/StatusDot';
 import { Button, IconButton } from '@factorai/ui';
 import type { SessionSummary } from '@factorai/types';
+import { useOpenSessions } from '@hooks/useOpenSessions';
 import { useStartSession } from '@hooks/useStartSession';
 import { formatRelative } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
@@ -215,8 +216,11 @@ interface SessionRowProps {
  */
 function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 	const { session, agents } = group;
-	const bySession = useTerminalStore((s) => s.bySession);
-	const live = bySession[session.id];
+	// The open record, not `bySession`: the sidebar's list and this one show the
+	// same sessions and are read the same way, so a dot that meant different
+	// things in the two panes would be worse than either rule alone (F16).
+	const open = useOpenSessions();
+	const live = open[session.id];
 	const hasAgents = agents.length > 0;
 	const label = session.title || session.id.slice(0, 8);
 

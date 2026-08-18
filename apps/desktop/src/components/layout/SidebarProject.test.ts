@@ -71,6 +71,17 @@ describe('orderSessions', () => {
 		expect(ordered[0]?.id).toBe('s24');
 	});
 
+	it('floats an open session that is not running, alongside the running ones', () => {
+		// F16: what you have on the strip clusters at the top of its project,
+		// whether or not it is mid-task. `orderSessions` takes the open record
+		// now, so a stopped tab floats exactly as a working one does.
+		const ordered = orderSessions([session('fresh', 900), session('stopped', 1)], {
+			stopped: { projectId: 'p', status: 'stopped' },
+		});
+
+		expect(ordered.map((s) => s.id)).toEqual(['stopped', 'fresh']);
+	});
+
 	it('keeps a running session even when it would fall outside the cap', () => {
 		const many = Array.from({ length: 25 }, (_, i) => session(`s${i}`, 100 + i));
 
