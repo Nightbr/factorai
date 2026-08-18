@@ -1,4 +1,4 @@
-import { CloseSessionConfirm } from '@components/dialog/CloseSessionConfirm';
+import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { disposeTerminal } from '@components/terminal/Terminal';
 import type { SessionSummary } from '@factorai/types';
@@ -41,9 +41,12 @@ export function SessionTabs() {
 	);
 
 	const titles = useSessionTitles(tabs.map((t) => t.live));
-	// Every tab is a live PTY by definition, so a status dot on each would be a
-	// row of green telling you nothing. The project avatar answers the question
-	// you actually have with several sessions open: which project is this one?
+	// The avatar answers "which project is this one?", and it now carries the
+	// session's status as a corner badge (F10). It did not until 2026-08-18, on
+	// the reasoning that every tab is a live PTY by definition so a dot on each
+	// would be a row of green telling you nothing — true while a live PTY was one
+	// state. Now the row says which session wants you, on the surface you are
+	// already looking at.
 	const projectsQ = useQuery({ queryKey: queryKeys.projects(), queryFn: () => cmd.listProjects() });
 	const projectById = useMemo(
 		() => new Map((projectsQ.data ?? []).map((p) => [p.id, p])),
@@ -92,6 +95,13 @@ export function SessionTabs() {
 				void navigate({ to: '/projects/$id', params: { id: live.projectId } });
 			}
 		})();
+	}
+
+	/** The × and middle-click both come through here: ask while Claude is
+	 *  working, close outright otherwise (F10). */
+	function requestClose(sessionId: string) {
+		if (needsCloseConfirm(bySession[sessionId]?.status)) setClosing(sessionId);
+		else closeSession(sessionId);
 	}
 
 	const closingLive = closing ? bySession[closing] : undefined;
@@ -170,13 +180,13 @@ export function SessionTabs() {
 									params: { projectId: live.projectId, sessionId: id },
 								})
 							}
-							// Middle-click closes, the way every tab strip does. It opens the
-							// same confirm as the × — this is a shortcut to the action, not
-							// a way around the question, and closing kills a live session.
+							// Middle-click closes, the way every tab strip does. It goes
+							// through the same path as the × — a shortcut to the action, not
+							// a way around the question it may ask.
 							onAuxClick={(e) => {
 								if (e.button !== 1) return;
 								e.preventDefault();
-								setClosing(id);
+								requestClose(id);
 							}}
 							onKeyDown={(e) => {
 								if (e.key === 'Enter' || e.key === ' ') {
@@ -196,6 +206,7 @@ export function SessionTabs() {
 								name={projectById.get(live.projectId)?.displayName ?? live.projectId}
 								path={projectById.get(live.projectId)?.realPath ?? live.projectId}
 								size={16}
+								status={live.status}
 							/>
 							<span className="min-w-0 flex-1 truncate">{titles.get(id) ?? shortId(id)}</span>
 							{/* Only where the pointer already is, or on the active tab: a row
@@ -208,7 +219,7 @@ export function SessionTabs() {
 								}`}
 								onClick={(e) => {
 									e.stopPropagation();
-									setClosing(id);
+									requestClose(id);
 								}}
 							>
 								<X className="size-3.5" />

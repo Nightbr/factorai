@@ -67,13 +67,16 @@
 	--font-family-sans: Inter, system-ui, sans-serif;
 	--font-family-mono: "JetBrains Mono", "Fira Code", monospace;
 
-	/* Terminal status palette */
-	--color-status-running: oklch(68% 0.17 150);
-	--color-status-idle: oklch(55% 0.01 250);
+	/* Session status palette (F10). Three states, and the ramp is deliberate:
+	   green is fine, amber is your move, and grey is inert. `stopped` held the
+	   red at hue 25 until 2026-08-18 — it was the loudest colour in the app,
+	   spent on the one state that asks nothing of you, so it took over the grey
+	   that `-idle` left behind when F10 deleted that state. */
+	--color-status-working: oklch(68% 0.17 150);
 	--color-status-waiting: oklch(78% 0.17 75);
-	--color-status-stopped: oklch(58% 0.22 25);
+	--color-status-stopped: oklch(55% 0.01 250);
 
-	/* Running activity indicator */
+	/* Working activity indicator */
 	--animate-running-pulse: running-pulse 1.5s ease-in-out infinite;
 
 	@keyframes running-pulse {

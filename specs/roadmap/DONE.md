@@ -3,6 +3,62 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Session status: working, waiting, stopped, read out of Claude's terminal title — specs
+  `05-features.md` § F10 + § F16, `03-backend-rust.md`, ADR-0015, `scripts/qa/README.md`** —
+  2026-08-18, user ask (roadmap item 34), interviewed, specified and built the same day.
+
+  The green dot only ever meant "the PTY is alive". `TerminalStatus` had carried four variants since
+  M2 and **two of them were never assigned anywhere in the crate**; the spec described status
+  heuristics on a 200ms tick that did not exist. So the state everyone assumed was there had no
+  source, and choosing one was the whole job.
+
+  **The mechanism came from reading the prior app and then verifying it, and verifying overturned
+  it.** Their busy signal matches braille spinner frames in the `OSC 0` title. Claude Code 2.1.234
+  contains no braille codepoint at all — so their busy state never fires, and their "noise-filtered
+  output" fallback is a comment with no code under it. Booting the CLI in a PTY and capturing raw
+  bytes found what does work: the title carries the state in its first character, `✳` when idle and
+  an animating `◐ ◑` while working. It needs no configuration, no settings file, no env changes and
+  no hooks.
+
+  **So the rule enumerates the *idle* marker and treats everything else as working**, which is the
+  half that survives version drift — any spinner glyph the CLI adopts later still reads correctly,
+  and enumerating spinners is precisely how the prior app's detector died. An unrecognised title holds
+  the previous state, so the worst a future Claude can do is stop this improving the dot; it cannot
+  make the dot lie.
+
+  Four mechanisms were rejected with evidence, and F10 records each so nobody investigates them
+  twice: `OSC 9;4` progress (real, brackets a turn exactly, but only when the CLI thinks it is
+  talking to iTerm2 — so it costs a `TERM_PROGRAM` lie to learn what the title says plainly),
+  `OSC 777` notifications (verified working, buys `needs_permission` for a settings file plus 6s of
+  latency), hooks, and transcript tailing. Plus `OSC 21337 TAB_STATUS` — a *structured* protocol
+  already in the binary, `indicator=…;status=Working…`, gated behind a function compiled to
+  `return !1`. That is the upgrade to take when it ships, and the reason to supersede ADR-0015.
+
+  **Two bugs the tests found, both worth keeping.** The scanner has to be stateful because an 8KB
+  read lands wherever it lands, and the split test failed on its first run: a chunk ending exactly
+  on `ESC ]` was judged "not a sequence" and its carry thrown away, losing the title that completed
+  on the next read. Running out of input and seeing a non-digit are different answers. Separately,
+  the QA probe's trust-prompt answer sat inside its read branch, so a probe parked on that prompt
+  never answered it and reported the title missing — a false negative *about the CLI*, which is the
+  worst thing a check like that can do.
+
+  **A screenshot changed a decision.** Project rows aggregate their sessions, and this shipped with
+  `working` ranked first on the reasoning that a project with anything running is busy. Rendered, a
+  project holding one working and one waiting session read as plain green — so four blocked sessions
+  and one busy one would hide all four. Flipped to attention-first: a working session resolves
+  itself, a waiting one never does.
+
+  Also here because this is where it was found: `child_env` now strips
+  **`CLAUDE_CODE_CHILD_SESSION`**. A `claude` inheriting it saves **no transcript**, which would
+  take out the index, search and `session_flag`'s probe — and it sits outside the `$APPDIR` gate,
+  because a `.app` on macOS is where it turned up. And the title carries Claude's own derived
+  session name (`✳ Date command`), so live tab titles are now free for the taking.
+
+  What it leaves: the **unread / never-opened axis**, deferred by choice, and **item 35** (desktop
+  notifications) which is held behind item 4 on the user's own condition — the notification gets a
+  switch before it gets a voice. `needs_permission` was dropped by choice too, and F10 keeps the
+  verified recipe for reinstating it.
+
 - **The graph's rows are indented like every other row, and the author disc is dark — specs
   `05-features.md` § F18** — 2026-08-18, user ask, the third pass on the same screenshot.
 

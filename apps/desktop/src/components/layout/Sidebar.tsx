@@ -19,6 +19,7 @@ import {
 import { useActiveProject } from '@hooks/useActiveProject';
 import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
+import { projectStatus } from '@lib/sessionGroups';
 import { cmd, pickFolder } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
@@ -70,10 +71,13 @@ export function Sidebar() {
 	});
 	const progress = useIndexerStore((s) => s.progress);
 	const bySession = useTerminalStore((s) => s.bySession);
-	const liveProjectIds = useMemo(
-		() => new Set(Object.values(bySession).map((t) => t.projectId)),
-		[bySession],
-	);
+	// One dot per project, worst-status-wins over its live sessions (F10). Was a
+	// Set of "has anything live", which is all the dot could say when a live PTY
+	// was one state.
+	const statusByProject = useMemo(() => {
+		const ids = new Set(Object.values(bySession).map((t) => t.projectId));
+		return new Map([...ids].map((id) => [id, projectStatus(bySession, id)]));
+	}, [bySession]);
 	const { projectId: activeProjectId } = useActiveProject();
 
 	const sort = useSidebarStore((s) => s.sort);
@@ -255,7 +259,7 @@ export function Sidebar() {
 									key={p.id}
 									project={p}
 									isActive={activeProjectId === p.id}
-									isLive={liveProjectIds.has(p.id)}
+									liveStatus={statusByProject.get(p.id)}
 								/>
 							))}
 						</ul>
@@ -270,7 +274,7 @@ export function Sidebar() {
 							key={p.id}
 							project={p}
 							isActive={activeProjectId === p.id}
-							isLive={liveProjectIds.has(p.id)}
+							liveStatus={statusByProject.get(p.id)}
 						/>
 					))}
 				</ul>

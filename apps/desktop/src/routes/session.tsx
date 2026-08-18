@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { BookOpen, GitBranch, Play, X } from 'lucide-react';
 import { useState } from 'react';
-import { CloseSessionConfirm } from '@components/dialog/CloseSessionConfirm';
+import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
 import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, Terminal } from '@components/terminal/Terminal';
@@ -157,7 +157,11 @@ function SessionView() {
 					<IconButton
 						aria-label="Close session"
 						title="Close session"
-						onClick={() => setClosing(true)}
+						// Asks only while Claude is working (F10). `needsCloseConfirm` is
+						// shared with the tab strip so the two cannot disagree about when.
+						onClick={() =>
+							needsCloseConfirm(live.status) ? setClosing(true) : void closeSession(live.terminalId)
+						}
 					>
 						<X />
 					</IconButton>

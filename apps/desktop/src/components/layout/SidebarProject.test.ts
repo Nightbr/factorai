@@ -19,7 +19,7 @@ function session(id: string, updatedAt: number, subagentOf: string | null = null
 
 function live(...ids: string[]): Record<string, LiveTerminal> {
 	return Object.fromEntries(
-		ids.map((id) => [id, { terminalId: `t-${id}`, projectId: 'p', status: 'running' as const }]),
+		ids.map((id) => [id, { terminalId: `t-${id}`, projectId: 'p', status: 'working' as const }]),
 	);
 }
 

@@ -153,7 +153,7 @@ test.describe('sidebar resizing', () => {
 		const badgedIcon = page
 			.locator('aside')
 			.getByTestId('project-icon')
-			.filter({ has: page.locator('[title="Running"]') });
+			.filter({ has: page.locator('[title="Working"]') });
 		await expect(badgedIcon).toHaveCount(1);
 	});
 });

@@ -17,7 +17,7 @@ async function boxes(page: import('@playwright/test').Page) {
 	const icon = page
 		.locator('aside')
 		.getByTestId('project-icon')
-		.filter({ has: page.locator('[title="Running"]') })
+		.filter({ has: page.locator('[title="Working"]') })
 		.first();
 
 	return icon.evaluate((el) => {
@@ -33,7 +33,7 @@ async function boxes(page: import('@playwright/test').Page) {
 			};
 		};
 		const tile = el.querySelector('[data-testid="project-icon-tile"]');
-		const dot = el.querySelector('[title="Running"]');
+		const dot = el.querySelector('[title="Working"]');
 		if (!tile || !dot) throw new Error('missing tile or badge');
 		return { wrapper: rect(el), tile: rect(tile), dot: rect(dot) };
 	});

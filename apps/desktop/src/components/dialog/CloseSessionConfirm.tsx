@@ -1,3 +1,4 @@
+import type { TerminalStatus } from '@factorai/types';
 import {
 	Button,
 	Dialog,
@@ -8,6 +9,31 @@ import {
 	DialogTitle,
 } from '@factorai/ui';
 import { AlertTriangle } from 'lucide-react';
+
+/**
+ * Whether closing a session should ask first — **only while Claude is
+ * working** (F10).
+ *
+ * This is the ask F10 came from: the dialog below warns that "any work in
+ * progress is lost", and until there was a status to consult it said that about
+ * a session which finished ten minutes ago. Now it only says it when it is true.
+ *
+ * `undefined` means no live PTY, so there is nothing to kill and nothing to ask
+ * about.
+ *
+ * **Known gap, accepted in F10.** A session parked on a permission prompt reads
+ * as `waiting_input`, because Claude's title says idle while a dialog is open —
+ * so that one closes without asking. Catching it needs the `needs_permission`
+ * state F10 records as considered and not built. What is lost is a dialog, not
+ * the transcript.
+ *
+ * Lives beside the dialog rather than at each call site for the same reason the
+ * dialog itself is shared: two surfaces deciding this separately would drift on
+ * *when* to ask exactly as they once drifted on whether to.
+ */
+export function needsCloseConfirm(status: TerminalStatus | undefined): boolean {
+	return status === 'working';
+}
 
 interface CloseSessionConfirmProps {
 	/** The session being closed, or `null` when none is — this is the open
