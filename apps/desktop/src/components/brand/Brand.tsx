@@ -55,7 +55,7 @@ function BrandMark({ className }: { className?: string }) {
 	return (
 		<svg
 			viewBox={`0 0 ${MARK_SIZE} ${MARK_SIZE}`}
-			className={cn('size-4', className)}
+			className={cn('size-4.5', className)}
 			aria-hidden="true"
 			focusable="false"
 		>
