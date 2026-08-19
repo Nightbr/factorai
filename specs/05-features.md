@@ -544,6 +544,11 @@ Two consequences worth keeping:
   login screen is a different code path. So the "true OSC 8" half of item 15 is
   answered and wired, and what remains there is the *file*-link half.
 
+**A third kind of link — a path — is F19**, and it is not OSC 8 either: the CLI
+marks up URLs and never paths, so paths are matched by a link provider over the
+buffer. Same modifier gate, different destination — the viewer rather than the
+shell. F19 owns that rule; this section owns the two URL paths.
+
 **The prior app ref.** `main.js` (PTY spawning), `terminal-manager.js`,
 `session-transitions.js`.
 
@@ -2471,3 +2476,120 @@ When the user closes the window with one or more live PTYs:
 
 This is non-optional and not configurable. The cost of a stray zombie
 process running an LLM agent is real money.
+
+---
+
+## F19 — Clickable file links in terminal output
+
+**Behavior.** `Ctrl`/`Cmd`-click a path in the agent's output and it opens in
+the viewer (F7) — at the line, if the path carried one. A directory reveals
+itself in the file tree instead (F12). A path that isn't on disk was never a
+link in the first place.
+
+This is the fourth member of the navigation family: F12–F14 are "I know roughly
+what I want, find it"; this is "the thing on screen right now, open it", which
+is both cheaper and far more frequent.
+
+### It is a link provider, not OSC 8 — settled 2026-08-19
+
+Roadmap item 15 left this fork open, and it decides the size of the feature.
+Answered from the CLI binary (2.1.235): the only OSC 8 emitter it carries is the
+`link(url)` helper quoted in F5, and it is used for **URLs**. Nothing marks up a
+*path*. Grepping the binary for `file://` finds ripgrep's `--hyperlink-format`
+templates (`file://{host}{path}#{line}`, `vscode://…`) vendored inside it, which
+is a convincing false positive and not us — rg is invoked without that flag.
+
+So a path Claude Code prints is plain text, and the only thing that can turn it
+into a link is us matching it. **OSC 8 stays wired for URLs (F5) and contributes
+nothing here.** The two paths remain separate in xterm and remain separately
+correct.
+
+**The cost item 15 worried about does not exist.** It feared "a regex over every
+frame of a busy TUI". `ILinkProvider.provideLinks(bufferLineNumber, callback)`
+is called by xterm for the **hovered line only**, on mouse move — not per frame,
+not for the buffer. A TUI redrawing at speed costs nothing at all until the
+pointer is over it.
+
+### The grammar
+
+A candidate is path-shaped text with an optional `:line` or `:line:col` suffix.
+In scope, all of it verified against disk before it becomes a link:
+
+- **Absolute paths**, and `~/`-prefixed ones expanded against `HOME`. The agent
+  prints `~/.claude/…` constantly and it is unambiguous.
+- **Relative paths** with a separator — `src/lib/foo.ts`, `./scripts/qa/kill.sh`.
+- **Bare filenames** with no separator at all — `README.md`, `Cargo.toml`. These
+  are common in the agent's prose and cheap to allow *because* of verification:
+  `package.json` mid-sentence links only if a `package.json` really sits at the
+  base.
+- **Wrapped lines are joined first.** xterm marks continuation rows `isWrapped`,
+  and the provider is handed one row. Without walking the wrap, the long paths
+  most worth clicking are exactly the ones that never link — which is the
+  failure nobody would report as a bug, only as "it doesn't really work".
+
+Out of scope, deliberately: **paths containing spaces.** Nothing in the output
+quotes them, so there is no way to know where the path ends, and guessing turns
+"open the file" into "open some prefix of the file".
+
+### Verification is what makes that grammar affordable
+
+`path_kinds(paths) -> Vec<PathKind>` (`03-backend-rust.md` § `files`) answers
+file / directory / missing for a batch, called once per hovered line with every
+candidate on it and memoised in the renderer. Three things fall out of it:
+
+- Version strings, prose and `foo.ts` inside a sentence stop being links,
+  without a cleverer regex.
+- Item 15's requirement that a stale path "should say so rather than opening an
+  empty editor" is met by never linking it. There is still a race — verified on
+  hover, deleted before the click — and that lands in `FileView`'s existing read
+  error, which is the right place for it.
+- Returning the **kind** rather than a boolean is what lets a directory do
+  something sensible instead of opening an empty editor.
+
+### The base a relative path resolves against
+
+Session `cwd` first, then the project's `realPath`. Whichever resolves to
+something real wins; if neither does, it was not a link.
+
+Worth knowing that **today this chain is a no-op**: `Terminal.tsx` spawns the
+PTY with `cwd: projectCwd`, so the two are the same string. It earns its place
+for **resumed** sessions, where `SessionSummary.cwd` comes from the transcript
+and can be a subdirectory of the project.
+
+### Modifier-click, the same gate as F5
+
+`onLinkActivated`'s rule is reused verbatim, and the reason in its doc comment is
+unchanged by the destination: Claude Code is a TUI, and a bare click lands on
+interactive output — a menu row, an approval prompt — often enough that throwing
+a viewer over the terminal on one would be an ambush. Three kinds of link in one
+terminal disagreeing about what a click means would be worse than any of the
+three rules alone.
+
+### Where the click lands
+
+The existing `FileViewerModal` via `?file=`, plus a new **`?line=`** (and
+`?col=`) driving Monaco's `revealLineInCenter` + `setPosition`. One viewer, one
+entry point, URL-driven — so browser-back closes it, and the F20 bridge's
+`openFile` calls exactly the same `useFileViewer().open(path, { line })` rather
+than inventing a second way in.
+
+**A directory opens the panel, expands to it and selects it.** This is the one
+place a programmatic panel change is justified against `panelStore`'s rule that
+the strip never moves under you: that rule is about a surface moving *while you
+type*, and this is the direct answer to a click you just made.
+
+**Focus returns to the terminal on close.** The modal is a Radix `Dialog` and
+traps focus already; the missing half is restoring it to the xterm textarea. Skip
+it and the sequence is: click a path, read it, press `Esc`, type — and the
+keystrokes go nowhere.
+
+### Shape
+
+Resolution — candidate matching, `~` expansion, base resolution, the
+`path_kinds` cache, and the open — lives in `lib/fileLinks.ts`, separate from
+the xterm wiring that calls it. **The live terminal is the only consumer for
+now**; a rendered transcript is a completely different implementation of the
+same idea, and the split exists so that one can be added without a rewrite
+rather than because it is being added.
+
+**Roadmap.** Item 15.

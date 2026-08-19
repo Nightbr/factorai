@@ -11,7 +11,7 @@ commands/
                       #   list_import_candidates, resolve_project_path, pin_project
   sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
-  files.rs            # read_file, read_image, list_dir
+  files.rs            # read_file, read_image, list_dir, path_kinds
   git.rs              # git_status, git_blob
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
   settings.rs         # get_setting, set_setting
@@ -25,7 +25,7 @@ services/
   terminal.rs         # TerminalManager — owns PTYs
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
-  files.rs            # list_dir, read_file, read_image
+  files.rs            # list_dir, read_file, read_image, path_kinds
   child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
                       #   strip, and CLAUDE_CODE_CHILD_SESSION
   shell_path.rs       # ask the login shell what the user's PATH really is
@@ -113,6 +113,9 @@ read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, b
 // than truncating — half a PNG is a decode error, not a smaller PNG.
 read_image(path: String, max_bytes: Option<usize>) -> ImageContents
 list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped, git-ignored flagged
+// Batch stat for the terminal's link provider (F19): is each of these a file,
+// a directory, or nothing? One call per hovered line, so it takes a list.
+path_kinds(paths: Vec<String>) -> Vec<PathKind>                       // file | directory | missing
 // NOTE: file_diff(path, original, modified) -> DiffPayload was specced and
 // never built. Monaco's createDiffEditor (ADR-0007) diffs two strings itself,
 // so a Rust hunk list has no consumer. Dropped in ADR-0009; the diff viewer is
@@ -517,6 +520,23 @@ Rules, all enforced in Rust so the renderer stays dumb:
   renderer resolves a language from the extension through Monaco's own
   language registry (ADR-0007), so a `mime_guess` dependency would be a
   second and worse source of the same answer.
+
+`path_kinds(paths) -> Vec<PathKind>` is what lets F19's link provider be
+generous about what looks like a path and still not produce false links. It
+`symlink_metadata`s each entry and answers `file` / `directory` / `missing`,
+in the order given so the caller can zip it against its own candidate list.
+
+- **Batched because the caller is batched**: xterm hands the provider one
+  hovered line, which may hold several candidates, and one round trip per line
+  beats one per token.
+- **Never an error.** An unreadable path, a broken symlink, a path that is
+  neither — all `missing`. A stat failing is an answer here, not a fault: the
+  question is only ever "can I usefully open this", and the renderer has nothing
+  it would do differently with a reason.
+- Symlinks are followed for the *kind* (a link to a file is a file), which is
+  what a reader means by clicking one. `list_dir`'s escape-flagging exists to
+  stop the tree *browsing* out of a project; opening one file the agent just
+  named is not that.
 
 Read-only, like the rest of our disk access (ADR-0004).
 

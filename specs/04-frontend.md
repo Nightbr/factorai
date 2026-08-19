@@ -48,11 +48,12 @@ apps/desktop/src/
 │   └── prefsStore.ts        # user preferences, localStorage (ADR-0013)
 ├── hooks/
 │   ├── useActiveProject.ts  # project the current route is about
-│   └── useFileViewer.ts     # ?file= — which file the viewer shows
+│   └── useFileViewer.ts     # ?file= &line= — what the viewer shows, and where
 ├── lib/
 │   ├── tauri.ts             # typed invoke + listen wrappers
 │   ├── queryKeys.ts
 │   ├── fileIcon.ts          # filename → icon key (pure)
+│   ├── fileLinks.ts         # terminal text → an openable path (F19, pure + cache)
 │   └── format.ts
 └── styles/
     └── globals.css          # imports @factorai/ui/styles
@@ -287,6 +288,22 @@ const searchKey = (q: string, projectId: string | null) => ['search', q, project
 
 Terminal output is **not** TanStack Query data — it streams via events
 straight to xterm, bypassing React reconciliation.
+
+`path_kinds` (F19) is the one file-system read that is **not** a Query either.
+It is called from inside xterm's `provideLinks` callback, on mouse move, outside
+React entirely — so it gets a plain `Map` cache in `lib/fileLinks.ts` rather than
+a query key. Nothing renders from it: the answer decides whether a range becomes
+a link, and xterm owns that painting.
+
+## Viewer search params
+
+`?file=` is the open path (F7). `&diff=` turns it into a diff (F13). **`&line=`
+and `&col=` place the cursor** (F19) — validated on the root route with the
+other two, so a hand-edited URL cannot reach Monaco with a negative line, and
+dropped whenever `file` is absent, since a position in no file is not a state.
+
+Both new params are 1-based, matching what `foo.ts:42:7` means to everyone who
+writes it and what Monaco's `setPosition` expects.
 
 ## Terminal component
 
