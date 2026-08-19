@@ -857,12 +857,15 @@ network here for any of them to come from. `vite/pdfjsAssets.ts` stages them int
   lines would land in this app's cascade. A colocated test reads the installed
   package and fails if the copy drifts. There is no find bar yet; see
   `roadmap/TODO.md`.
-- **Fit-width on open**, measured from the *widest* page so a landscape figure
-  can't open overflowing sideways. Zoom steps ×1.25 between 0.5 and 4 — narrower
-  than the image viewer's 0.25–8, which exists to look at a screenshot's pixels.
-  Clicking the readout returns to fit, and fit is stored as "no chosen scale"
-  rather than a number, so resizing the pane re-fits instead of holding a scale
-  that has stopped fitting.
+- **100% on open** — one CSS pixel per PDF point, the page at its authored size.
+  Fit-width was built first and dropped on the user's call (2026-08-19): a scale
+  derived from the pane is a different number in every pane, so the same document
+  opens looking different depending on where the panel divider is, and "100%" is
+  the one reading that means something without knowing the pane. A page wider
+  than the pane can therefore start off-screen to the right; the stage scrolls
+  both ways. Zoom steps ×1.25 between 0.5 and 4 — narrower than the image
+  viewer's 0.25–8, which exists to look at a screenshot's pixels. Clicking the
+  readout returns to 100%.
 - **The wheel scrolls; Cmd/Ctrl+wheel zooms.** Deliberately the opposite of the
   image viewer, where a bare wheel zooms because that pane has nothing to
   scroll. This one is a document. Cmd +/− stays with F15's webview zoom.
@@ -877,11 +880,13 @@ network here for any of them to come from. `vite/pdfjsAssets.ts` stages them int
 `GlobalWorkerOptions.workerPort` is *one* Worker and pdf.js takes ownership of
 it, so tearing one document down killed the next with "PDFWorker.create - the
 worker is being destroyed" — a `workerSrc` URL gives each document its own.
-And the fit-width scale was read off a ref during render, where it is still null
-on the render that mounts the pane, so every document opened at 100%; the pane
-width is state now, measured by a `ResizeObserver`, which also covers the stage
-reading zero wide while the modal is still animating open — the same trap
-Monaco's `automaticLayout` note describes.
+And the fit-width scale this
+originally opened at was read off a ref during render, where it is still null on
+the render that mounts the pane, so every document opened at 100% instead — with
+no error anywhere. Measuring it honestly took `ResizeObserver` state, since the
+stage also reads zero wide while the modal is still animating open, the same trap
+Monaco's `automaticLayout` note describes. Fit-width is gone now (above), but
+both halves of that are true of anything else that measures this pane.
 
 **A changed `.pdf` in the Changes tab keeps `DiffView`'s binary dead end.**
 Diffing two rendered documents is a feature of its own — which side, aligned

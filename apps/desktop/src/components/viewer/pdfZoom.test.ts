@@ -4,7 +4,6 @@ import {
 	PDF_ZOOM_MIN,
 	clampPdfZoom,
 	currentPage,
-	fitWidthScale,
 	pdfZoomPercent,
 	stepPdfZoom,
 } from '@components/viewer/pdfZoom';
@@ -34,22 +33,6 @@ describe('stepPdfZoom', () => {
 	it('cannot step outside the bounds', () => {
 		expect(stepPdfZoom(PDF_ZOOM_MAX, 1)).toBe(PDF_ZOOM_MAX);
 		expect(stepPdfZoom(PDF_ZOOM_MIN, -1)).toBe(PDF_ZOOM_MIN);
-	});
-});
-
-describe('fitWidthScale', () => {
-	it('fits the widest page, gutter included', () => {
-		expect(fitWidthScale(1000, 800, 40)).toBeCloseTo(1.2);
-	});
-
-	it('answers 1 before anything has been measured', () => {
-		// First render: the pane has no width yet and no page has been sized.
-		expect(fitWidthScale(0, 800, 40)).toBe(1);
-		expect(fitWidthScale(1000, 0, 40)).toBe(1);
-	});
-
-	it('will not go below the minimum in a very narrow pane', () => {
-		expect(fitWidthScale(120, 2400, 40)).toBe(PDF_ZOOM_MIN);
 	});
 });
 

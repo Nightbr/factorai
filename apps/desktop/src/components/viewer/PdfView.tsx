@@ -9,10 +9,10 @@ import {
 	openPdf,
 } from '@components/viewer/pdfjs';
 import {
+	PDF_ZOOM_DEFAULT,
 	PDF_ZOOM_MAX,
 	PDF_ZOOM_MIN,
 	currentPage,
-	fitWidthScale,
 	pdfZoomPercent,
 	stepPdfZoom,
 } from '@components/viewer/pdfZoom';
@@ -22,7 +22,7 @@ import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
 import { useQuery } from '@tanstack/react-query';
 import { Lock, Minus, Plus } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * One PDF, rendered (specs/05-features.md F7, ADR-0018).
@@ -45,8 +45,6 @@ const RENDER_MARGIN_PAGES = 1;
 
 /** Space around and between pages, in CSS px at scale 1. */
 const PAGE_GAP = 16;
-/** Left+right padding of the stage, kept out of the fit-width calculation. */
-const STAGE_GUTTER = 32;
 
 interface Measured {
 	/** 1-based, as pdf.js numbers pages. */
@@ -93,7 +91,7 @@ function PdfDocumentView({
 	/** The password actually being tried, so typing doesn't reopen per keystroke. */
 	const [attempt, setAttempt] = useState<string | undefined>(undefined);
 
-	const [zoom, setZoom] = useState<number | null>(null);
+	const [zoom, setZoom] = useState(PDF_ZOOM_DEFAULT);
 	const [page, setPage] = useState(1);
 	const stageRef = useRef<HTMLDivElement>(null);
 
@@ -143,45 +141,13 @@ function PdfDocumentView({
 		};
 	}, [base64, attempt]);
 
-	const widest = pages.reduce((w, p) => Math.max(w, p.width), 0);
-
-	/**
-	 * The pane's width, in state — not read off the ref during render.
-	 *
-	 * Two reasons it has to be state, and the first one shipped a bug: the stage
-	 * exists only once the document does, so on the render that mounts it the ref
-	 * is still null, and a ref read is not a subscription, so nothing recomputes.
-	 * Every document opened at 100% instead of fit-width, silently. Second, the
-	 * stage measures **zero while the modal is still animating open** — the same
-	 * thing Monaco's note in `FileView` describes — so the honest first answer
-	 * arrives from the observer rather than from the first render.
-	 */
-	const [paneWidth, setPaneWidth] = useState(0);
-	useLayoutEffect(() => {
-		// `doc` is read, not just depended on: there is no stage to observe until a
-		// document has opened, and re-running when one does is the point.
-		const stage = doc ? stageRef.current : null;
-		if (!stage) return;
-		const measure = () => setPaneWidth(stage.clientWidth);
-		measure();
-		// Keeps a fit-width document fitted while the panel divider is dragged.
-		const observer = new ResizeObserver(measure);
-		observer.observe(stage);
-		return () => observer.disconnect();
-	}, [doc]);
-
-	// `zoom === null` *is* fit-width: it stays null for exactly as long as the
-	// reader hasn't picked a scale, so a resize re-fits rather than holding a
-	// number that has stopped fitting.
-	const fit = fitWidthScale(paneWidth, widest, STAGE_GUTTER);
-	const scale = zoom ?? fit;
-	/** Both halves of "we know what fit-width is": a measured pane and a sized
-	 *  document. Until then `fit` is a placeholder 1, not an answer. */
-	const measured = paneWidth > 0 && widest > 0;
+	// The scale is a plain number, from `PDF_ZOOM_DEFAULT` — the page at its
+	// authored size, in whatever pane it happens to be shown in.
+	const scale = zoom;
 
 	const stepZoom = useCallback(
-		(direction: 1 | -1) => setZoom((z) => stepPdfZoom(z ?? fit, direction)),
-		[fit],
+		(direction: 1 | -1) => setZoom((z) => stepPdfZoom(z, direction)),
+		[],
 	);
 
 	// Cmd/Ctrl+wheel zooms; a bare wheel scrolls the document, which is the
@@ -222,22 +188,17 @@ function PdfDocumentView({
 				onScroll={(e) => setPage(currentPage(pageTops(pages, scale), e.currentTarget.scrollTop))}
 			>
 				<div className="mx-auto flex w-fit flex-col items-center" style={{ gap: PAGE_GAP }}>
-					{/* Nothing until the pane has been measured. The stage reads 0 wide
-					    while the modal is mid-open-animation — the same thing Monaco's
-					    note in FileView describes — so laying pages out before then
-					    paints them at 1× for a frame and then snaps them to fit. */}
-					{measured &&
-						pages.map((p) => (
-							<Page
-								key={p.number}
-								doc={doc}
-								measured={p}
-								scale={scale}
-								// Rendered only near the viewport. Everything outside keeps
-								// its reserved box, so scrolling never reflows.
-								active={Math.abs(p.number - page) <= RENDER_MARGIN_PAGES}
-							/>
-						))}
+					{pages.map((p) => (
+						<Page
+							key={p.number}
+							doc={doc}
+							measured={p}
+							scale={scale}
+							// Rendered only near the viewport. Everything outside keeps its
+							// reserved box, so scrolling never reflows.
+							active={Math.abs(p.number - page) <= RENDER_MARGIN_PAGES}
+						/>
+					))}
 				</div>
 			</div>
 
@@ -253,8 +214,7 @@ function PdfDocumentView({
 				<span className="flex-1" />
 
 				{/* The same minus / readout / plus idiom as ImageView and the
-				    sidebar's webview zoom (F15). The readout resets to fit-width
-				    rather than to 100%: fit is what the view opened at. */}
+				    sidebar's webview zoom (F15). */}
 				<IconButton
 					aria-label="Zoom out"
 					title="Zoom out"
@@ -267,9 +227,9 @@ function PdfDocumentView({
 					type="button"
 					data-testid="pdf-zoom-readout"
 					aria-label="Reset zoom"
-					title={zoom === null ? 'Zoom' : 'Reset to fit width'}
+					title={scale === PDF_ZOOM_DEFAULT ? 'Zoom' : 'Reset to 100%'}
 					className="min-w-10 rounded px-1 text-center tabular-nums transition-colors hover:text-foreground"
-					onClick={() => setZoom(null)}
+					onClick={() => setZoom(PDF_ZOOM_DEFAULT)}
 				>
 					{pdfZoomPercent(scale)}
 				</button>
