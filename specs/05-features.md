@@ -2678,6 +2678,13 @@ source — that is item 14's LSP question — and advertising the tool while
 returning `[]` tells the agent *there are no errors*, which it will act on.
 Silence is honest; a confident empty answer is not.
 
+**The same rule binds `getOpenEditors`, and it is easier to get wrong.** It is
+offered, so it has to be *answered* — a hardcoded empty list while the human has
+a file open is the identical lie in a place where returning nothing looks like a
+reasonable stub. The viewer holds at most one path (`?file=`), so the renderer
+reports it to the backend rather than the tool guessing. If that wiring is not
+there, the tool comes out of the list until it is.
+
 `openDiff`, `close_tab` and `closeAllDiffTabs` come with the write path, which
 is a separate decision and a separate ADR (ADR-0017 § 6).
 
