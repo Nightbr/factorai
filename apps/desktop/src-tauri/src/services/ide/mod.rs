@@ -7,10 +7,14 @@
 //! would distinguish them.
 //!
 //! Built in slices. [`lockfile`] is the handle the CLI finds us by, [`scope`]
-//! is the boundary a connected client cannot cross, and [`server`] is the
-//! transport and the door. What the messages *mean* — the MCP layer — arrives
-//! next, injected into the server as a handler so the two stay separable.
+//! is the boundary a connected client cannot cross, [`server`] is the transport
+//! and the door, and [`protocol`] is what the messages mean. The protocol is
+//! injected into the server rather than owned by it, so each is testable
+//! without the other.
+//!
+//! Still unwired: nothing starts a bridge yet.
 
 pub mod lockfile;
+pub mod protocol;
 pub mod scope;
 pub mod server;
