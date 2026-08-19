@@ -2578,6 +2578,11 @@ place a programmatic panel change is justified against `panelStore`'s rule that
 the strip never moves under you: that rule is about a surface moving *while you
 type*, and this is the direct answer to a click you just made.
 
+**A directory the tree cannot show is not a link.** `~/.claude/projects/` is
+real, and interesting, and the tree only shows this project — so clicking it
+would do nothing at all. A link that underlines and then ignores you is worse
+than plain text, so a directory only links when it is inside one of the bases.
+
 **Focus returns to the terminal on close.** The modal is a Radix `Dialog` and
 traps focus already; the missing half is restoring it to the xterm textarea. Skip
 it and the sequence is: click a path, read it, press `Esc`, type — and the
@@ -2593,3 +2598,95 @@ same idea, and the split exists so that one can be added without a rewrite
 rather than because it is being added.
 
 **Roadmap.** Item 15.
+
+---
+
+## F20 — IDE bridge: the agent opens files in our viewer
+
+**Status: designed, not built.** Roadmap item 19 and
+[ADR-0017](../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
+which holds the decisions and the reasoning behind each. This section is the
+behaviour they add up to.
+
+**Behavior.** factorai presents itself to the `claude` CLI as an editor. The
+agent asks us to show a file; it opens in the viewer (F7), at the line if the
+request carried one. That is the whole of the first slice, and it is
+deliberately the half that writes nothing.
+
+**Why it matters more than its size suggests.** Everything the app does today is
+*pull*: the human goes and looks at the Changes tab, the tree, the diff. This is
+the **push** half — the agent asks and the human decides in place, which is two
+of the four verbs in `00-overview.md` § "The operating model". F19 makes the
+agent's *output* actionable by parsing it; this makes the agent's *intent*
+actionable by protocol. They meet at the same viewer, and `openFile` calls the
+same `useFileViewer().open(path, { line })` a terminal link does.
+
+### The protocol, as of CLI 2.1.235
+
+Read out of the shipped binary rather than inferred, and the version matters:
+nothing in CI can prove we still match a program that ships weekly.
+
+- We write `~/.claude/ide/<port>.lock`, mode `0600`, holding
+  `workspaceFolders`, `pid`, `ideName`, `useWebSocket`, `runningInWindows` and
+  `authToken`. **The port is the filename**, which is why it cannot be anywhere
+  else.
+- The CLI TCP-probes the port, then connects by WebSocket with the token in an
+  `X-Claude-Code-Ide-Authorization` header.
+- `CLAUDE_CODE_SSE_PORT` in the child's environment selects *among the lockfiles
+  it found*. It adds no search path and is not a substitute for the file.
+- Autodetect polls ~30s and connects only when **exactly one** entry matches, so
+  a developer with VS Code open is a coin toss unless the port is pinned. Ours
+  is: one server per session, its port in that session's environment.
+
+### Tools we answer, and one we deliberately do not
+
+First slice: `ide_connected`, `getWorkspaceFolders`, `openFile`,
+`getOpenEditors`.
+
+**`getDiagnostics` is not registered, on purpose.** We have no diagnostics
+source — that is item 14's LSP question — and advertising the tool while
+returning `[]` tells the agent *there are no errors*, which it will act on.
+Silence is honest; a confident empty answer is not.
+
+`openDiff`, `close_tab` and `closeAllDiffTabs` come with the write path, which
+is a separate decision and a separate ADR (ADR-0017 § 6).
+
+### `openFile`, mapped onto a viewer that is not VS Code
+
+- `startLine` / `endLine` → `&line=` (F19). This is why that param exists before
+  this feature does.
+- **Text anchors (`startText` / `endText`) are ignored for now**, and logged when
+  one arrives so we learn whether they are worth a second resolution strategy
+  with its own not-found case.
+- **`preview` is ignored**, and the name is a false friend: it is VS Code's
+  *preview tab* — the italic-titled tab the next open replaces — not a render
+  mode. What a reader wants from it is already true here for a different reason:
+  `FileView` opens markdown and SVG rendered, with a source toggle, whoever
+  asked for the file. One behaviour, three entry points.
+- **`makeFrontmost: false` agrees with a rule we would have needed anyway.** An
+  `openFile` for a session that is not the tab in front marks that tab and
+  leaves the reader where they are; only the active session's request opens the
+  viewer. An agent-centred ADE is not a human-absent one, and `panelStore`
+  already encodes the sibling rule that a surface must not move under you while
+  you type. The call succeeds either way — it asked us to surface a file, and we
+  did, at the level the human can act on.
+
+### It is visible
+
+A badge in the session header says the bridge is attached — `text-xs`, state
+rather than a control, the same voice as the git branch badge. A port that opens
+without telling anyone is the kind of thing you find out about from a firewall
+prompt.
+
+There is **no off switch yet**, and that is the same shape as F18's restore
+preference: F11 is specified and unbuilt, so the switch lands there rather than
+becoming half of someone else's feature. Recorded in roadmap item 4.
+
+### Not in this feature
+
+`selection_changed` and `at_mentioned` — the outbound half, where selecting code
+in the viewer becomes context for the agent. It is what makes this a bridge
+rather than a remote control, and it needs a selection model the viewer does not
+have. Its own roadmap entry.
+
+**Roadmap.** Item 19.

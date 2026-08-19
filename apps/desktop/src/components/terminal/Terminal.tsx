@@ -95,6 +95,26 @@ export function onFileLinkActivated(
 	});
 }
 
+/**
+ * What the file-link provider needs from React, per session (F19).
+ *
+ * The provider has to be registered when the pooled terminal is built — see the
+ * ordering note there — but what it needs (the router, the panel store, the
+ * session's cwd) only exists inside the component. So the provider is
+ * registered once and reads through this, which the component keeps current
+ * while it is mounted and clears when it isn't.
+ *
+ * An unmounted session therefore has no links, which is right: there is nothing
+ * on screen to hover, and opening a viewer for a terminal nobody is looking at
+ * would be the ambush `onLinkActivated` exists to prevent.
+ */
+interface FileLinkWiring {
+	context: () => ResolveContext;
+	activate: (event: MouseEvent, link: ResolvedLink) => void;
+}
+
+const fileLinkWiring = new Map<string, FileLinkWiring>();
+
 // ── Sizing the grid ────────────────────────────────────────────────────────
 //
 // **This replaces `@xterm/addon-fit`, which reserved 14px we never used.** That
@@ -242,6 +262,32 @@ function getOrCreateTerm(sessionId: string): PooledTerm {
 		linkHandler: createOscLinkHandler(),
 	});
 	term.loadAddon(new SearchAddon());
+
+	// **Registration order is load-bearing, and getting it wrong is silent.**
+	// xterm's `Linkifier._checkLinkProviderResult` only shows provider N's links
+	// once every provider before it has replied *with nothing* — and it tests
+	// that reply for falsiness. `WebLinksAddon` always calls back with an array,
+	// `[]` when it found no URLs, and `[]` is truthy. So anything registered
+	// after it can never produce a visible link, with no error anywhere: the
+	// text simply doesn't underline, and a click falls through to the TUI's
+	// mouse reporting. Found exactly that way (F19).
+	//
+	// Ours goes first, which is safe in both directions: it excludes URL spans
+	// before it tokenises, so it never claims a link that belongs to
+	// `WebLinksAddon`, and it calls back with `undefined` rather than `[]` when
+	// it has none — which is what lets the addon behind it still work. That
+	// `undefined` is not a style choice; it is this contract.
+	term.loadAddon({
+		activate: (t) =>
+			t.registerLinkProvider(
+				createFileLinkProvider(
+					t,
+					() => fileLinkWiring.get(sessionId)?.context() ?? { bases: [], home: null },
+					(event, link) => fileLinkWiring.get(sessionId)?.activate(event, link),
+				),
+			),
+		dispose: () => undefined,
+	});
 	term.loadAddon(new WebLinksAddon(onLinkActivated));
 	term.loadAddon(new UnicodeGraphemesAddon());
 	// WebGL addon is deliberately not loaded: it crashes WebKitGTK on some
@@ -393,16 +439,48 @@ interface TerminalProps {
 
 export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: TerminalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
-	const { open: openInViewer } = useFileViewer();
+	const { open: openInViewer, path: viewerPath } = useFileViewer();
 	const revealInTree = useRevealInTree(projectId, projectCwd);
+
+	/** Did the open viewer come from a link in *this* terminal? Decides whether
+	 *  closing it hands focus back here — see the effect below. */
+	const cameFromHereRef = useRef(false);
 
 	// Read through a ref inside `provideLinks`, which runs on mouse move and
 	// must not be re-registered every time a query resolves.
 	const targetsRef = useRef<FileLinkTargets>({ openInViewer: () => {}, revealInTree });
 	targetsRef.current = {
-		openInViewer: (path, position) => openInViewer(path, position),
+		openInViewer: (path, position) => {
+			cameFromHereRef.current = true;
+			openInViewer(path, position);
+		},
 		revealInTree,
 	};
+
+	/**
+	 * Closing a viewer that was opened from this terminal puts the caret back in
+	 * the terminal.
+	 *
+	 * Without it the sequence is: ctrl-click a path, read the file, press `Esc`,
+	 * type — and the keystrokes go nowhere. The `Dialog` traps focus and Radix's
+	 * own restoration does not reach xterm's helper textarea; **measured in the
+	 * running app, not assumed** — an `x` typed after `Esc` never reached the
+	 * prompt.
+	 *
+	 * Deferred by a tick because Radix restores focus during its own unmount, so
+	 * focusing synchronously here would simply be overwritten. Same reason the
+	 * mount effect below defers its first `focus()`.
+	 *
+	 * Only when the viewer came from here. Opening a file from the tree and
+	 * closing it should leave focus where the tree put it, not yank it into a
+	 * terminal the reader was not using.
+	 */
+	useEffect(() => {
+		if (viewerPath || !cameFromHereRef.current) return;
+		cameFromHereRef.current = false;
+		const timer = setTimeout(() => pool.get(sessionId)?.term.focus(), 0);
+		return () => clearTimeout(timer);
+	}, [viewerPath, sessionId]);
 
 	// The base chain, same shape. `home` is resolved once and cached by the
 	// bridge; until it lands, a `~/` path just isn't a link yet.
@@ -422,19 +500,17 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		home: homeRef.current,
 	};
 
-	// Registered per mount rather than with the pooled terminal: it needs the
-	// router and the panel store, and a terminal nobody is looking at has
-	// nothing to hover.
+	// Hand the provider what it can't reach on its own. The provider itself is
+	// registered with the pooled terminal, ahead of `WebLinksAddon`, and cannot
+	// move here — see the ordering note at its registration.
 	useEffect(() => {
-		const entry = getOrCreateTerm(sessionId);
-		const provider = entry.term.registerLinkProvider(
-			createFileLinkProvider(
-				entry.term,
-				() => contextRef.current,
-				(event, link) => onFileLinkActivated(event, link, targetsRef.current),
-			),
-		);
-		return () => provider.dispose();
+		fileLinkWiring.set(sessionId, {
+			context: () => contextRef.current,
+			activate: (event, link) => onFileLinkActivated(event, link, targetsRef.current),
+		});
+		return () => {
+			fileLinkWiring.delete(sessionId);
+		};
 	}, [sessionId]);
 
 	useEffect(() => {

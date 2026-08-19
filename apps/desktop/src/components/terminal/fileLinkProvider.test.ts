@@ -1,6 +1,12 @@
-import type { Terminal as XTerm } from '@xterm/xterm';
-import { describe, expect, it } from 'vitest';
-import { cellAt, windowedLine } from './fileLinkProvider';
+import type { ILink, Terminal as XTerm } from '@xterm/xterm';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearKindCache } from '@lib/fileLinks';
+import { cellAt, createFileLinkProvider, windowedLine } from './fileLinkProvider';
+
+vi.mock('@lib/tauri', () => ({ cmd: { pathKinds: vi.fn() } }));
+
+const { cmd } = await import('@lib/tauri');
+const pathKinds = cmd.pathKinds as unknown as ReturnType<typeof vi.fn>;
 
 /**
  * A buffer stand-in. xterm can't run in the browser-only test lane, and the two
@@ -125,5 +131,88 @@ describe('cellAt', () => {
 
 	it('returns null when the offset runs off the end of the buffer', () => {
 		expect(cellAt(fakeTerm([{ text: 'abc' }]), 0, 0, 99)).toBeNull();
+	});
+});
+
+/**
+ * The provider end to end: a buffer row in, an xterm link range out. This is
+ * the seam where a coordinate mistake would otherwise only show up as an
+ * underline in the wrong place in a running app.
+ */
+describe('createFileLinkProvider', () => {
+	beforeEach(() => {
+		clearKindCache();
+		pathKinds.mockReset();
+	});
+
+	function provide(term: XTerm, row: number): Promise<ILink[] | undefined> {
+		const provider = createFileLinkProvider(
+			term,
+			() => ({ bases: ['/proj'], home: null }),
+			() => {},
+		);
+		return new Promise((resolve) => provider.provideLinks(row, resolve));
+	}
+
+	it('underlines exactly the path, not the words around it', async () => {
+		pathKinds.mockResolvedValue(['file']);
+		//               1234567890123456
+		const term = fakeTerm([{ text: "Read the project's CLAUDE.md." }]);
+
+		const links = await provide(term, 1);
+
+		expect(links).toHaveLength(1);
+		// `CLAUDE.md` starts at string index 19 and is 9 characters, so cells
+		// 20..28 inclusive, 1-based. The trailing full stop is not part of it.
+		expect(links?.[0].range).toEqual({
+			start: { x: 20, y: 1 },
+			end: { x: 28, y: 1 },
+		});
+		expect(links?.[0].text).toBe('/proj/CLAUDE.md');
+	});
+
+	it('covers the :line:col suffix, so the whole reference is clickable', async () => {
+		pathKinds.mockResolvedValue(['file']);
+		const term = fakeTerm([{ text: 'see src/a.ts:42:7 now' }]);
+
+		const links = await provide(term, 1);
+
+		// `src/a.ts:42:7` is 13 characters starting at index 4 → cells 5..17.
+		expect(links?.[0].range).toEqual({ start: { x: 5, y: 1 }, end: { x: 17, y: 1 } });
+	});
+
+	it('spans the wrap when a path is split across two rows', async () => {
+		pathKinds.mockResolvedValue(['file']);
+		const term = fakeTerm([{ text: 'in apps/de' }, { text: 'sktop/a.ts', wrapped: true }]);
+
+		const links = await provide(term, 2);
+
+		expect(links?.[0].text).toBe('/proj/apps/desktop/a.ts');
+		expect(links?.[0].range).toEqual({ start: { x: 4, y: 1 }, end: { x: 10, y: 2 } });
+	});
+
+	/**
+	 * `undefined` rather than `[]`, and that is a contract rather than a style.
+	 *
+	 * xterm's `Linkifier._checkLinkProviderResult` shows provider N's links only
+	 * once every earlier provider has replied with something **falsy**. This
+	 * provider is registered ahead of `WebLinksAddon`, so replying `[]` here
+	 * would silently kill every URL link in the terminal — no error, the text
+	 * just stops underlining. (The same rule the other way round is why we go
+	 * first at all: the addon always replies with an array.)
+	 */
+	it('offers nothing — as undefined — when the path is not on disk', async () => {
+		pathKinds.mockResolvedValue(['missing']);
+		expect(await provide(fakeTerm([{ text: 'see ghost.ts' }]), 1)).toBeUndefined();
+	});
+
+	it('offers undefined on an empty row, without asking the disk', async () => {
+		expect(await provide(fakeTerm([{ text: '' }]), 1)).toBeUndefined();
+		expect(pathKinds).not.toHaveBeenCalled();
+	});
+
+	it('survives a failing path_kinds by offering no links', async () => {
+		pathKinds.mockRejectedValue(new Error('backend gone'));
+		expect(await provide(fakeTerm([{ text: 'see a.ts' }]), 1)).toBeUndefined();
 	});
 });

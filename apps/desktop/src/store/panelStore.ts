@@ -53,6 +53,24 @@ export function clampDetailHeight(height: number): number {
 	return Math.min(MAX_DETAIL_HEIGHT, Math.max(MIN_DETAIL_HEIGHT, Math.round(height)));
 }
 
+/**
+ * `current` plus every path in `paths`.
+ *
+ * Pure, like the clamps above, so the one property that matters can be pinned
+ * without a store: revealing a path (F19) expands a whole ancestor chain of
+ * which most entries are usually open already, and `toggleExpanded` would close
+ * exactly those. Returns `current` untouched for an empty list so a no-op
+ * reveal doesn't churn a new Set through every subscriber.
+ */
+export function withExpanded(
+	current: ReadonlySet<string> | undefined,
+	paths: string[],
+): Set<string> {
+	const next = new Set(current ?? []);
+	for (const path of paths) next.add(path);
+	return next;
+}
+
 /** The panel's three tabs (F12, F13, F18). Hardcoded rather than a registry —
  *  see 07-open-questions.md Q18, amended when the graph took a third slot. */
 export type PanelTab = 'files' | 'changes' | 'graph';
@@ -143,9 +161,12 @@ export const usePanelStore = create<PanelState>()(
 			expandAll: (projectId, paths) =>
 				set((s) => {
 					if (!paths.length) return s;
-					const next = new Set(s.expandedByProject[projectId] ?? []);
-					for (const path of paths) next.add(path);
-					return { expandedByProject: { ...s.expandedByProject, [projectId]: next } };
+					return {
+						expandedByProject: {
+							...s.expandedByProject,
+							[projectId]: withExpanded(s.expandedByProject[projectId], paths),
+						},
+					};
 				}),
 
 			seedRoot: (projectId, rootPath) =>

@@ -341,8 +341,11 @@ approaches, cheapest to richest:
   not have, i.e. Q2's discovery problem again. Weak.
 - **LSP** — the richest (real definitions, references, types) and the heaviest: a server process
   per language, lifecycle management, and a protocol client. That's a product in itself; it also
-  overlaps with the deferred MCP/IDE-emulator work (`06-milestones.md` deferred #1), so decide
-  whether these are one effort or two before either starts.
+  overlaps with item 19's IDE bridge, so decide whether these are one effort or two before either
+  starts. **Partly answered 2026-08-19**: F20's first slice deliberately does *not* register
+  `getDiagnostics`, precisely because we have no diagnostics source and a confident empty answer
+  is worse than none. So the bridge does not pull this forward — but it is the consumer that would
+  make it worth having, since diagnostics only reach the agent through that tool.
 
 Design questions the ADR has to answer: which languages ship first; where the index lives (a new
 SQLite table alongside the session index, or in-memory per project); when it's built (on project
@@ -364,54 +367,14 @@ VS Code's own answers are `Cmd+Shift+O` (symbols in file) and `Cmd+T` (symbols i
 free here. Recommendation: ship `Cmd+G` as asked, keep `Cmd+Shift+O` as an alias, and record the
 choice in `07-open-questions.md` rather than leaving it implicit in a `useGlobalShortcuts` switch.
 
-## 15. Clickable file links in terminal output (OSC 8)
+## 15. Clickable file links in terminal output — shipped 2026-08-19 (see [`DONE.md`](./DONE.md))
 
-A path in the agent's output should take you to the file. Fourth member of the navigation family
-above — items 12–14 are "I know roughly what I want, find it"; this is "the thing on screen
-right now, open it", which is the cheaper and more frequent case.
-
-**Most of the machinery is already here, and one decision has to change.** `Terminal.tsx` loads
-`WebLinksAddon` with `onLinkActivated`, and the shell scope in `tauri.conf.json` already permits
-absolute paths (`/[\w.][^\n]*`, guarded by `tests/shell_open_scope.rs`). So a file path is
-*already* openable — but it opens **externally**, in whatever the OS says owns that extension.
-That was right when the only links were `https://`. It is wrong for a file: `00-overview.md` §
-"The operating model" puts review inside the app, and F7's Monaco viewer is where a file the
-agent touched belongs. **A file link should open the viewer; a URL should keep going to the
-browser.** Same addon, two destinations, chosen by scheme.
-
-**Keep the modifier-click rule.** `onLinkActivated` ignores a bare click on purpose, and the
-reason is in its doc comment: Claude Code is a TUI, a plain click lands on interactive output
-often enough that acting on one would be an ambush. That reasoning is unchanged by the
-destination, and this item must not quietly relax it.
-
-**The fork to settle first — and it is cheap to settle.** Two ways for a path to become a link:
-
-- **True OSC 8 — answered 2026-08-17: the CLI does emit them, and the wiring already exists.**
-  This was to be checked by grepping a live session for `\x1b]8;`; it got answered the expensive
-  way instead, by an OSC 8 login link crashing the macOS app, then confirmed properly in the CLI
-  binary (v2.1.233) which carries a `link(url)` helper whose whole body is an OSC 8 sequence. Note
-  `claude --help` emits none, so a casual check says the opposite — the login screen is a different
-  code path. xterm routes OSC 8 to
-  `options.linkHandler`, **not** through `WebLinksAddon`, and that handler is now set and points at
-  the same `onLinkActivated` gate as a regex link (F5). So for `https:` this half is done.
-
-  What that leaves for this item is the **`file:`** half, which is the half it actually cares
-  about: whether Claude Code marks up *paths* as OSC 8 as well as URLs, and if so, routing those to
-  the viewer rather than the browser. `onLinkActivated` sends everything to the shell today, so a
-  file link would open externally — the wrong destination per this item's own argument. The grep is
-  still worth running, just for `file://` rather than for OSC 8 at all.
-- **A link provider.** `registerLinkProvider` over the buffer, matching path-like text — works no
-  matter what the CLI emits, and covers `src/foo.ts:42` line references, which OSC 8 alone
-  wouldn't give us. Cost is false positives, and a regex over every frame of a busy TUI needs a
-  look at cost.
-
-They aren't exclusive; OSC 8 when offered, provider as the floor, is a plausible answer. But
-which one is load-bearing changes the size of this item by a lot.
-
-**Open beyond that.** Relative paths need a base — the session's cwd is known, the agent's
-working directory may not be. Does a `:line:col` suffix drive the viewer's scroll position (F7
-takes a path today)? And a path that doesn't exist — stale output, a file the agent deleted —
-should say so rather than opening an empty editor.
+Shipped as **F19**. The fork this entry left open is settled and the answer was
+the cheap one: the CLI marks up URLs with OSC 8 and never paths, so the link
+provider is load-bearing and OSC 8 contributes nothing here. Every open question
+it listed is answered in [`05-features.md`](../05-features.md) F19 — the base a
+relative path resolves against, `:line:col` driving the viewer, and what a path
+that isn't there does (it never becomes a link).
 
 ## 16. App-wide scrollbar styling
 
@@ -522,6 +485,23 @@ block a release:
   Spotlight.
 
 ## 19. IDE emulation — the MCP server Claude opens files and diffs through
+
+**Designed 2026-08-19; not built.** The blocking questions below are answered in
+[ADR-0017](../../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md)
+and the behaviour is specified as [F20](../05-features.md). What is settled: the
+protocol as of CLI 2.1.235, one server per session (the port *is* the session
+id), the three-layer boundary with path scoping as the real one,
+`tokio-tungstenite` plus hand-rolled JSON-RPC, `ideName: "factorai"`, and a
+read-only first slice that leaves ADR-0009 untouched. Its relationship to item
+15 is settled too: that shipped, and this routes what the CLI drives by protocol
+while F19 covers everything it merely prints.
+
+What remains is the code, in this order: the lockfile and its reaping, the
+handshake and `tests/ide_ws_scope.rs`, then the four tools. Then a manual
+conformance pass against the real CLI, recording the version.
+
+The original entry, kept because it is the argument for doing it at all:
+
 
 **Graduated from `06-milestones.md` § Deferred (was #1) on 2026-08-15.** Re-implement
 switchboard's WebSocket MCP server so the `claude` CLI treats factorai as its editor: file opens
