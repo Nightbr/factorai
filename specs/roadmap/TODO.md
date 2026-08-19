@@ -507,8 +507,17 @@ What is left:
 
 - **A tool call observed end to end.** `openFile` reaching the viewer has only
   been driven by unit tests; the connection and handshake have not.
-- **The session-header badge**, so an open port is visible. Specified in F20 and
-  not yet built.
+- **Surfacing a bridge that never connects.** The header now badges the one
+  failure we can name without guessing — the bridge did not bind. The two other
+  shapes of "it isn't working" need a timer and a threshold to detect: a client
+  that never attaches (indistinguishable from one still starting, since the
+  CLI's autodetect polls for 30s) and one that detaches while the PTY lives on
+  (what `/ide` disconnect looks like). Both are real failures worth catching and
+  neither is worth a badge that cries wolf; decide the threshold deliberately.
+- **Where an `openFile` for a background session should land.** Nothing happens
+  today and the agent is told so. A tab mark was tried and removed for colliding
+  with the session status dot; the toast primitive item 7 wants is the likely
+  home, since a transient event probably deserves a transient surface.
 - **The off switch**, which belongs to item 4's `prefsStore`.
 - **`openDiff` and the write path** — its own ADR, and the thing that supersedes
   part of ADR-0009.

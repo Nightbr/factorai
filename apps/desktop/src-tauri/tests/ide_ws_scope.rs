@@ -37,14 +37,18 @@ struct Harness {
 	project: TempDir,
 	server: IdeServer,
 	seen: Arc<parking_lot::Mutex<Vec<String>>>,
+	/// Every attach/detach edge, in order, for the badge the header draws.
+	clients: Arc<parking_lot::Mutex<Vec<bool>>>,
 }
 
 fn harness() -> Harness {
 	let claude = TempDir::new().unwrap();
 	let project = TempDir::new().unwrap();
 	let seen = Arc::new(parking_lot::Mutex::new(Vec::new()));
+	let clients = Arc::new(parking_lot::Mutex::new(Vec::new()));
 
 	let sink = seen.clone();
+	let edges = clients.clone();
 	let server = IdeServer::start(
 		claude.path(),
 		project.path().to_str().unwrap(),
@@ -52,10 +56,11 @@ fn harness() -> Harness {
 			sink.lock().push(text.to_string());
 			Some(format!("echo:{text}"))
 		}),
+		Arc::new(move |connected| edges.lock().push(connected)),
 	)
 	.expect("bridge starts");
 
-	Harness { _claude: claude, project, server, seen }
+	Harness { _claude: claude, project, server, seen, clients }
 }
 
 /// Open a WebSocket to the bridge with whatever authorization header is given.
@@ -183,6 +188,7 @@ fn the_lockfile_appears_while_the_bridge_is_up_and_is_gone_when_it_stops() {
 			claude.path(),
 			project.path().to_str().unwrap(),
 			Arc::new(|_: &str| None),
+			Arc::new(|_| {}),
 		)
 		.unwrap();
 		let port = server.port();
@@ -269,4 +275,41 @@ fn a_subprotocol_list_containing_mcp_is_matched() {
 		response.headers().get("sec-websocket-protocol").and_then(|v| v.to_str().ok()),
 		Some("mcp"),
 	);
+}
+
+/// The header's connected dot is the only place an open port is visible, so
+/// both edges have to be right — and the closing one is the easy half to lose.
+#[test]
+fn attaching_and_detaching_are_both_reported() {
+	let h = harness();
+
+	{
+		let mut ws = connect(h.server.port(), Some(h.server.token())).expect("connects");
+		ws.send(tungstenite::Message::Text("hi".into())).unwrap();
+		let _ = ws.read().unwrap();
+		assert_eq!(h.clients.lock().as_slice(), [true], "attached, and not yet detached");
+		ws.close(None).unwrap();
+		let _ = ws.read();
+	}
+
+	// The guard fires however the connection ends, which is the point of it
+	// being a guard: a client that vanishes must not leave the header claiming
+	// it is still there.
+	for _ in 0..50 {
+		if h.clients.lock().len() > 1 {
+			break;
+		}
+		std::thread::sleep(Duration::from_millis(20));
+	}
+	assert_eq!(h.clients.lock().as_slice(), [true, false]);
+}
+
+#[test]
+fn a_refused_client_never_counts_as_attached() {
+	// The badge means "Claude is here", not "something knocked".
+	let h = harness();
+
+	assert!(connect(h.server.port(), Some("wrong")).is_err());
+
+	assert!(h.clients.lock().is_empty());
 }

@@ -113,6 +113,48 @@ pub struct IdeOpenFileEvent {
 	pub frontmost: bool,
 }
 
+/// Where this session's bridge stands (F20).
+///
+/// **The header shows nothing while this is healthy.** A badge for a working
+/// bridge is a label that is always on, which is a label you stop reading; the
+/// only thing worth a pixel is the case where the agent *cannot* open a file.
+/// So `error` is what the UI draws and `connected` is for the log.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdeStatusEvent {
+	pub session_id: String,
+	pub connected: bool,
+	/// Why the bridge is unusable for this session, in words a human can act
+	/// on. `None` means there is nothing wrong to report.
+	pub error: Option<String>,
+}
+
+/// A session's bridge, or the reason it hasn't got one.
+///
+/// The failure is kept rather than logged and forgotten: a session whose bridge
+/// never bound is one where every `openFile` will silently do nothing, and the
+/// only honest thing is to say so in the header.
+enum IdeSlot {
+	Running(IdeServer),
+	Failed(String),
+}
+
+impl IdeSlot {
+	fn server(&self) -> Option<&IdeServer> {
+		match self {
+			Self::Running(s) => Some(s),
+			Self::Failed(_) => None,
+		}
+	}
+
+	fn error(&self) -> Option<String> {
+		match self {
+			Self::Running(_) => None,
+			Self::Failed(reason) => Some(reason.clone()),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalExitEvent {
@@ -124,6 +166,7 @@ type DataCb = Arc<dyn Fn(TerminalDataEvent) + Send + Sync>;
 type StatusCb = Arc<dyn Fn(TerminalStatusEvent) + Send + Sync>;
 type ExitCb = Arc<dyn Fn(TerminalExitEvent) + Send + Sync>;
 type IdeOpenCb = Arc<dyn Fn(IdeOpenFileEvent) + Send + Sync>;
+type IdeStatusCb = Arc<dyn Fn(IdeStatusEvent) + Send + Sync>;
 
 struct TerminalHandle {
 	session_id: String,
@@ -142,12 +185,12 @@ struct TerminalHandle {
 	killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 	status: Mutex<TerminalStatus>,
 	last_activity: AtomicI64,
-	/// This session's IDE bridge (F20), held only so its lifetime is the PTY's.
-	/// Dropping the handle drops the server, which removes the lockfile and
+	/// This session's IDE bridge (F20), held so its lifetime is the PTY's:
+	/// dropping the handle drops the server, which removes the lockfile and
 	/// stops the listener — so the reaping ADR-0017 promises rides on the
 	/// teardown ADR-0005 already guarantees, rather than on a second one that
-	/// could be forgotten. `None` when the bridge failed to start.
-	_ide: Option<IdeServer>,
+	/// could be forgotten. Carries the reason instead when it failed to start.
+	ide: IdeSlot,
 }
 
 #[derive(Clone)]
@@ -164,6 +207,7 @@ pub struct TerminalManager {
 	/// What the renderer has on screen, for the bridge's answers (F20).
 	ui: Arc<UiState>,
 	on_ide_open: IdeOpenCb,
+	on_ide_status: IdeStatusCb,
 }
 
 impl TerminalManager {
@@ -171,13 +215,17 @@ impl TerminalManager {
 		let app_data = app.clone();
 		let app_status = app.clone();
 		let app_exit = app.clone();
-		let app_ide = app;
+		let app_ide = app.clone();
+		let app_ide_status = app;
 		Self {
 			terminals: Arc::new(DashMap::new()),
 			claude_dir,
 			ui,
 			on_ide_open: Arc::new(move |e| {
 				let _ = app_ide.emit("ide:open-file", e);
+			}),
+			on_ide_status: Arc::new(move |e| {
+				let _ = app_ide_status.emit("ide:status", e);
 			}),
 			on_data: Arc::new(move |e| {
 				let _ = app_data.emit("terminal:data", e);
@@ -207,6 +255,7 @@ impl TerminalManager {
 			binary_override: None,
 			ui: Arc::new(UiState::default()),
 			on_ide_open: Arc::new(|_| {}),
+			on_ide_status: Arc::new(|_| {}),
 		}
 	}
 
@@ -214,6 +263,13 @@ impl TerminalManager {
 	#[cfg(test)]
 	pub fn set_binary(&mut self, path: PathBuf) {
 		self.binary_override = Some(path);
+	}
+
+	/// Watch the bridge's attach/detach edges. For tests only — production wires
+	/// this to a Tauri event in `for_app`.
+	#[cfg(test)]
+	pub fn set_ide_status_cb(&mut self, cb: IdeStatusCb) {
+		self.on_ide_status = cb;
 	}
 
 	pub fn live_count(&self) -> usize {
@@ -225,6 +281,31 @@ impl TerminalManager {
 	/// whatever happened to its transcript on disk.
 	pub fn live_session_ids(&self) -> HashSet<String> {
 		self.terminals.iter().map(|e| e.value().session_id.clone()).collect()
+	}
+
+	/// Re-announce every bridge's current state (F20).
+	///
+	/// For a renderer that just reloaded: it threw its state away, every bridge
+	/// carried on, and without this the header would say Claude had gone from a
+	/// session it is still driving. The same hole `terminal_list` fills for
+	/// PTYs.
+	///
+	/// **Re-emitted rather than returned**, and that is what makes it correct
+	/// rather than merely convenient. A returned list has to be merged with the
+	/// events that arrive while the call is in flight, and there is no way to
+	/// tell a stale entry from a fresh one — `adoptLive` carries that problem
+	/// deliberately because a PTY really can be born mid-request. Here the state
+	/// only ever changes by an event, so replaying it down the same channel puts
+	/// every update in one ordered queue and there is nothing to reconcile.
+	pub fn resync_ide_status(&self) {
+		for entry in self.terminals.iter() {
+			let handle = entry.value();
+			(self.on_ide_status)(IdeStatusEvent {
+				session_id: handle.session_id.clone(),
+				connected: handle.ide.server().is_some_and(IdeServer::is_attached),
+				error: handle.ide.error(),
+			});
+		}
 	}
 
 	pub fn list(&self) -> Vec<TerminalStatusDto> {
@@ -300,10 +381,20 @@ impl TerminalManager {
 			Arc::new(move || ui_for_editors.open_files()),
 		);
 
+		let on_status = self.on_ide_status.clone();
+		let status_session = session_id.to_string();
+
 		IdeServer::start(
 			&self.claude_dir,
 			&cwd.to_string_lossy(),
 			Arc::new(move |text| mcp.handle(text)),
+			Arc::new(move |connected| {
+				(on_status)(IdeStatusEvent {
+					session_id: status_session.clone(),
+					connected,
+					error: None,
+				});
+			}),
 		)
 	}
 
@@ -385,11 +476,11 @@ impl TerminalManager {
 		let ide = match self.start_bridge(&opts.session_id, &cwd_path) {
 			Ok(server) => {
 				cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
-				Some(server)
+				IdeSlot::Running(server)
 			}
 			Err(e) => {
 				warn!(error = %e, "ide bridge did not start; the session runs without one");
-				None
+				IdeSlot::Failed(e.to_string())
 			}
 		};
 
@@ -432,10 +523,22 @@ impl TerminalManager {
 			// dot did before F10, so a launch looks no different than it used to.
 			status: Mutex::new(TerminalStatus::Working),
 			last_activity: AtomicI64::new(now_ms()),
-			_ide: ide,
+			ide,
 		});
 
 		self.terminals.insert(id.clone(), handle.clone());
+
+		// A bridge that never bound is announced immediately: every `openFile`
+		// for this session will silently do nothing, and the header is the only
+		// place that can say so. A healthy one announces nothing — there is no
+		// news in "it worked".
+		if let Some(reason) = handle.ide.error() {
+			(self.on_ide_status)(IdeStatusEvent {
+				session_id: opts.session_id.clone(),
+				connected: false,
+				error: Some(reason),
+			});
+		}
 
 		// Reader thread: pump PTY bytes → on_data event, and derive status from
 		// the OSC 0 titles in that same stream (F10).
@@ -1058,5 +1161,80 @@ mod tests {
 		mgr.kill_all();
 		// kill_all sleeps 500ms internally before removing; live_count is 0 after.
 		assert_eq!(mgr.live_count(), 0);
+	}
+
+	/// The resync path (F20), which exists for a renderer that reloaded: it
+	/// threw its state away while every bridge carried on.
+	///
+	/// Driven through a real spawn and a real client, because the thing that
+	/// could break is the iteration — a bridge that is attached but not reported
+	/// leaves the header saying Claude has gone from a session it is driving,
+	/// and nothing else would notice.
+	#[test]
+	fn resync_re_announces_a_bridge_that_has_a_client_on_it() {
+		use tungstenite::client::IntoClientRequest;
+
+		let claude_dir = tempfile::tempdir().unwrap();
+		let (mut mgr, _data, _exit) = make_manager_in(claude_dir.path().to_path_buf());
+
+		let seen: Arc<StdMutex<Vec<IdeStatusEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+		let sink = seen.clone();
+		mgr.set_ide_status_cb(Arc::new(move |e| sink.lock().unwrap().push(e)));
+
+		// `sleep` rather than `echo`: the PTY has to outlive the assertions, or
+		// the handle — and the bridge with it — is gone before we look.
+		mgr.spawn_with_argv(
+			opts(80, 24),
+			Some(vec!["/bin/sh".into(), "-c".into(), "sleep 5".into()]),
+		)
+		.expect("spawn");
+
+		// The port is in the lockfile, which is the only place production reads
+		// it from either.
+		let dir = crate::services::ide::lockfile::dir(claude_dir.path());
+		let entry = std::fs::read_dir(&dir)
+			.expect("the bridge wrote its handle")
+			.flatten()
+			.next()
+			.expect("exactly one lockfile");
+		let port: u16 = entry
+			.path()
+			.file_stem()
+			.unwrap()
+			.to_string_lossy()
+			.parse()
+			.expect("the filename is the port");
+		let lock = crate::services::ide::lockfile::read(&entry.path()).unwrap();
+
+		// Nothing attached yet: resync must say so rather than say nothing.
+		mgr.resync_ide_status();
+		{
+			let events = seen.lock().unwrap();
+			assert_eq!(events.len(), 1);
+			assert!(!events[0].connected, "no client has connected yet");
+		}
+		seen.lock().unwrap().clear();
+
+		let mut request = format!("ws://127.0.0.1:{port}").into_client_request().unwrap();
+		request
+			.headers_mut()
+			.insert("x-claude-code-ide-authorization", lock.auth_token.parse().unwrap());
+		let (_ws, _) = tungstenite::connect(request).expect("a client attaches");
+
+		// The attach edge is asynchronous, so wait for it rather than racing it.
+		for _ in 0..100 {
+			if seen.lock().unwrap().iter().any(|e| e.connected) {
+				break;
+			}
+			std::thread::sleep(Duration::from_millis(20));
+		}
+		seen.lock().unwrap().clear();
+
+		mgr.resync_ide_status();
+
+		let events = seen.lock().unwrap();
+		assert_eq!(events.len(), 1, "one announcement per bridge");
+		assert!(events[0].connected, "a bridge with a client on it must say so");
+		assert_eq!(events[0].session_id, opts(80, 24).session_id);
 	}
 }

@@ -136,3 +136,70 @@ test.describe('session header branch badge', () => {
 		await expect(page.getByTestId('session-branch')).toHaveText('main');
 	});
 });
+
+/**
+ * The IDE bridge's one pixel in the header (specs/05-features.md F20).
+ *
+ * The bridge shows **nothing** while it works, which is the design rather than
+ * an omission: a badge for a healthy bridge is a label that is always on, and a
+ * label that is always on is one you stop reading. The badge exists for the one
+ * case worth interrupting for — an agent that *cannot* open a file looks exactly
+ * like an agent that chose not to.
+ */
+test.describe('session header ide bridge', () => {
+	async function openTheOneSession(page: Page) {
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+	}
+
+	test('@smoke a healthy bridge puts nothing in the header', async ({ page }) => {
+		await installMockBridge(page, fixtureWithChanges());
+		await page.goto('/');
+		await openTheOneSession(page);
+
+		await expect(page.getByTestId('session-ide-issue')).toHaveCount(0);
+	});
+
+	test('@smoke a broken bridge says so, and says why on hover', async ({ page }) => {
+		await installMockBridge(page, fixtureWithChanges());
+		await page.goto('/');
+		await openTheOneSession(page);
+
+		await page.evaluate(() => {
+			window.__FACTORAI_EMIT__?.('ide:status', {
+				sessionId: 'session-uuid-001',
+				connected: false,
+				error: 'binding the ide bridge: Address already in use (os error 98)',
+			});
+		});
+
+		const badge = page.getByTestId('session-ide-issue');
+		await expect(badge).toBeVisible();
+		// The reason is the point. "Something is wrong" that does not say what is
+		// a worse header than no badge at all.
+		await expect(badge).toHaveAttribute('title', /Address already in use/);
+	});
+
+	test('@smoke the badge clears when the bridge recovers', async ({ page }) => {
+		// A restarted session gets a fresh bridge, and a stale error would
+		// outlive the problem it describes.
+		await installMockBridge(page, fixtureWithChanges());
+		await page.goto('/');
+		await openTheOneSession(page);
+
+		const emit = (error: string | null) =>
+			page.evaluate((e) => {
+				window.__FACTORAI_EMIT__?.('ide:status', {
+					sessionId: 'session-uuid-001',
+					connected: e === null,
+					error: e,
+				});
+			}, error);
+
+		await emit('binding the ide bridge: permission denied');
+		await expect(page.getByTestId('session-ide-issue')).toBeVisible();
+
+		await emit(null);
+		await expect(page.getByTestId('session-ide-issue')).toHaveCount(0);
+	});
+});

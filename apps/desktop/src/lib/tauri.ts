@@ -9,6 +9,7 @@ import type {
 	ImageContents,
 	ImportCandidate,
 	IdeOpenFileEvent,
+	IdeStatusEvent,
 	IndexerProgressEvent,
 	PathKind,
 	Project,
@@ -90,6 +91,10 @@ export const cmd = {
 	 *  rather than guess (F20). Fire-and-forget: a report that goes missing
 	 *  leaves a stale-but-honest picture. */
 	ideReportUi: (snapshot: UiSnapshot) => invoke<void>('ide_report_ui', { snapshot }),
+	/** Ask every bridge to re-announce itself, as `ide:status` events. Called
+	 *  once at boot: a renderer reload loses the events that got us here while
+	 *  every bridge carries on (F20). */
+	ideResync: () => invoke<void>('ide_resync'),
 
 	/** Repository state for the Changes tab and the tree's decorations (F13).
 	 *  A project outside a repository resolves with `repoRoot: null` rather
@@ -300,6 +305,8 @@ export const events = {
 	/** The agent asked to show a file, through the IDE bridge (F20). */
 	onIdeOpenFile: (cb: (p: IdeOpenFileEvent) => void) =>
 		listen<IdeOpenFileEvent>('ide:open-file', cb),
+	/** Claude attached to, or let go of, a session's bridge (F20). */
+	onIdeStatus: (cb: (p: IdeStatusEvent) => void) => listen<IdeStatusEvent>('ide:status', cb),
 };
 
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
@@ -494,6 +501,9 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			if (!image) throw { kind: 'InvalidInput', message: `not a displayable image: ${path}` };
 			return image as unknown as T;
 		}
+		case 'ide_resync':
+			// No bridge in browser-only mode, so there is nothing to announce.
+			return undefined as unknown as T;
 		case 'ide_report_ui':
 			// Nothing listens in browser-only mode — there is no bridge to inform.
 			return undefined as unknown as T;

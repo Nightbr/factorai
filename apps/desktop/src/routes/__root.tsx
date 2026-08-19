@@ -74,23 +74,50 @@ function RootLayout() {
 	// The agent asked to show a file. `frontmost` was decided in Rust, from
 	// whether this session is in front *and* whether the agent asked to be
 	// intrusive — obeyed rather than re-decided here, so the rule lives in one
-	// place. A background session gets a mark on its tab instead: the ask has to
-	// land somewhere, or the bridge told the agent a file was surfaced when
-	// nothing was.
+	// place.
+	//
+	// **A request for a session you are not looking at does nothing, and the
+	// agent is told so.** It briefly put an amber dot on that session's tab,
+	// which was wrong twice over: amber is `--color-status-waiting`'s exact
+	// value, so it was indistinguishable from "this session is waiting for you",
+	// and that dot could sit beside the status badge already on the same tab.
+	// Where such a request should land is an open question — probably the toast
+	// primitive roadmap item 7 wants — so until then the bridge reports honestly
+	// that nothing was shown rather than claiming a mark nobody can see.
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
 		events
 			.onIdeOpenFile((e) => {
-				if (e.frontmost) {
-					viewerOpenRef.current(e.path, e.line ?? undefined);
-					return;
-				}
-				useTerminalStore.getState().flagAttention(e.sessionId);
+				if (e.frontmost) viewerOpenRef.current(e.path, e.line ?? undefined);
 			})
 			.then((fn) => {
 				unlisten = fn;
 			});
 		return () => unlisten?.();
+	}, []);
+
+	// Where each session's bridge stands (F20). App-wide for the same reason the
+	// terminal listeners are: the session you are looking at is not the only one
+	// whose header has to be right when you get back to it.
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		events
+			.onIdeStatus((e) => useTerminalStore.getState().setIdeStatus(e.sessionId, e.error))
+			.then((fn) => {
+				unlisten = fn;
+			});
+		return () => unlisten?.();
+	}, []);
+
+	// ...and then ask every bridge to say where it stands, because a reload
+	// keeps them all alive while throwing this store away. **After the listener
+	// above, in source order**, since the answers arrive as ordinary
+	// `ide:status` events — which is the point: a change racing this call lands
+	// in order behind it rather than having to be merged with it.
+	useEffect(() => {
+		// Nothing to surface: without it the header behaves as it did before this
+		// existed, and the next real event corrects it.
+		void cmd.ideResync().catch((e) => console.error('ide_resync failed', e));
 	}, []);
 
 	// App-wide terminal lifecycle: keep the running indicator accurate no

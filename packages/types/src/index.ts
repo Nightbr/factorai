@@ -225,6 +225,21 @@ export interface UiSnapshot {
  * *and* whether the agent asked to be intrusive. The renderer obeys rather than
  * re-deciding, so the rule lives in one place.
  */
+/**
+ * Where a session's IDE bridge stands (F20).
+ *
+ * The header draws nothing while this is healthy — a badge for a working bridge
+ * is a label that is always on, and a label that is always on is one you stop
+ * reading. `error` is the only field the UI acts on; `connected` is for the log.
+ */
+export interface IdeStatusEvent {
+	sessionId: string;
+	connected: boolean;
+	/** Why the bridge is unusable, in words a human can act on. Null when there
+	 *  is nothing wrong to report. */
+	error: string | null;
+}
+
 export interface IdeOpenFileEvent {
 	sessionId: string;
 	path: string;
