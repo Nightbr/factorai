@@ -118,3 +118,108 @@ test.describe('file tree panel', () => {
 		expect(await listedPaths(page)).toEqual([]);
 	});
 });
+
+/**
+ * Handing files to the agent from the tree (specs/05-features.md F20).
+ *
+ * The gestures are the point as much as the wire call: a modified click must
+ * never open the viewer or expand a directory, because you are building a
+ * selection rather than navigating, and a modal thrown over the tree on every
+ * ctrl-click would make the whole thing unusable.
+ */
+test.describe('add files to Claude', () => {
+	/** Every `ide_mention` call so far, flattened to the paths it carried. */
+	function mentioned(page: Page) {
+		return page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'ide_mention')
+				.map((c) => ({
+					sessionId: String(c.args?.sessionId),
+					paths: ((c.args?.mentions ?? []) as { path: string }[]).map((m) => m.path),
+				})),
+		);
+	}
+
+	/** A session has to be in front for the gesture to have a target. */
+	async function openSessionThenPanel(page: Page) {
+		await page.locator('aside').first().getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		await page.getByRole('button', { name: 'Toggle file tree' }).click();
+		return page.getByTestId('file-tree-panel');
+	}
+
+	test('@smoke sends one file, to the session in front', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openSessionThenPanel(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Add to Claude' }).click();
+
+		expect(await mentioned(page)).toEqual([
+			{ sessionId: 'session-uuid-001', paths: [`${ROOT}/README.md`] },
+		]);
+	});
+
+	test('@smoke ctrl-click builds a selection without opening anything', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openSessionThenPanel(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		// The plain click above opened the viewer, as it always has. Dismiss it,
+		// then build a selection — which must not open anything further.
+		await page.keyboard.press('Escape');
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click({ modifiers: ['ControlOrMeta'] });
+		await panel.getByRole('button', { name: 'knip.jsonc' }).click({ modifiers: ['ControlOrMeta'] });
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
+
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click({ button: 'right' });
+		// **Three, not two**: the plain click that opened README.md selected it as
+		// well, and ctrl-click adds rather than starts over — which is what every
+		// file manager does. The count in the label is what makes that visible
+		// before you commit to it, and it is why the label carries one.
+		await page.getByRole('menuitem', { name: 'Add 3 items to Claude' }).click();
+
+		const calls = await mentioned(page);
+		expect(calls).toHaveLength(1);
+		expect(calls[0].paths.sort()).toEqual(
+			[`${ROOT}/Cargo.toml`, `${ROOT}/README.md`, `${ROOT}/knip.jsonc`].sort(),
+		);
+	});
+
+	test('@smoke shift-click takes the run between the two rows', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openSessionThenPanel(page);
+
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click({ modifiers: ['ControlOrMeta'] });
+		await panel.getByRole('button', { name: 'logo.png' }).click({ modifiers: ['Shift'] });
+
+		await panel.getByRole('button', { name: 'logo.png' }).click({ button: 'right' });
+		await page.getByRole('menuitem', { name: /Add \d+ items to Claude/ }).click();
+
+		// Cargo.toml, README.md, knip.jsonc, logo.png — the fixture's order.
+		const calls = await mentioned(page);
+		expect(calls[0].paths).toEqual([
+			`${ROOT}/Cargo.toml`,
+			`${ROOT}/README.md`,
+			`${ROOT}/knip.jsonc`,
+			`${ROOT}/logo.png`,
+		]);
+	});
+
+	test('@smoke with no session in front the row is there but disabled', async ({ page }) => {
+		// Disabled rather than hidden: the row is what tells you the gesture
+		// exists, and a menu that changes shape by route is harder to learn.
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openPanelOnProject(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click({ button: 'right' });
+
+		const row = page.getByRole('menuitem', { name: /Add to Claude/ });
+		await expect(row).toBeVisible();
+		await expect(row).toHaveAttribute('aria-disabled', 'true');
+	});
+});

@@ -1,13 +1,30 @@
 import type { DirEntry } from '@factorai/types';
 import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Clipboard, ExternalLink, FileText, Link, Route } from 'lucide-react';
+import { Clipboard, ExternalLink, FileText, Link, Route, Sparkles } from 'lucide-react';
 import { iconKeyFor } from '@lib/fileIcon';
 import { relativeToRoot } from '@lib/paths';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, copyImageFile, openExternally } from '@lib/tauri';
+import { usePanelStore } from '@store/panelStore';
 
-export type CopyOutcome = 'yes' | 'failed';
+/** Whether a menu action worked, for the transient mark the row shows after —
+ *  the menu has closed by then and cannot report anything itself. Named for the
+ *  outcome rather than for copying since "Add to Claude" reports through it
+ *  too. */
+export type RowOutcome = 'yes' | 'failed';
+
+/** What the add-to-Claude row says, which depends on how much it would send.
+ *  Naming the count is the difference between a menu item you trust and one you
+ *  try once to find out what it does. */
+function addLabel(entry: DirEntry, enabled: boolean): string {
+	if (!enabled) return 'Add to Claude — no session open';
+	const selected = usePanelStore.getState().selectedPaths;
+	if (selected.has(entry.path) && selected.size > 1) {
+		return `Add ${selected.size} items to Claude`;
+	}
+	return entry.isDir ? 'Add folder to Claude' : 'Add to Claude';
+}
 
 interface FileRowMenuProps {
 	entry: DirEntry;
@@ -17,9 +34,12 @@ interface FileRowMenuProps {
 	onOpen?: () => void;
 	/** Told what happened so the row can show it: the menu has closed by then,
 	 *  so it cannot report anything itself. */
-	onCopied: (outcome: CopyOutcome) => void;
+	onCopied: (outcome: RowOutcome) => void;
 	/** True while this row's menu is open — gates the `read_file` below. */
 	menuOpen: boolean;
+	/** The session in front, or null when the human is not in one. Decides
+	 *  whether "Add to Claude" can do anything (F20). */
+	activeSessionId: string | null;
 }
 
 /**
@@ -38,7 +58,14 @@ interface FileRowMenuProps {
  * for a directory; its contents aren't, and neither is the viewer. Those rows
  * disable rather than disappearing, so the menu keeps one shape.
  */
-export function FileRowMenu({ entry, root, onOpen, onCopied, menuOpen }: FileRowMenuProps) {
+export function FileRowMenu({
+	entry,
+	root,
+	onOpen,
+	onCopied,
+	menuOpen,
+	activeSessionId,
+}: FileRowMenuProps) {
 	const isImage = !entry.isDir && iconKeyFor(entry.name) === 'image';
 	const readable = menuOpen && !entry.isDir && !isImage;
 
@@ -73,6 +100,33 @@ export function FileRowMenu({ entry, root, onOpen, onCopied, menuOpen }: FileRow
 
 	return (
 		<ContextMenuContent className="w-56">
+			{/* **Hands these to the agent as `@path` mentions** (F20). Acts on the
+			    whole selection when this row is part of one, which is what the
+			    right-click already established — so ctrl-clicking five files and
+			    right-clicking any of them sends all five.
+
+			    Disabled with no session in front rather than hidden: the row is
+			    what tells you the gesture exists, and a menu that changes shape
+			    depending on where you were last is harder to learn than one that
+			    greys out. */}
+			<ContextMenuItem
+				disabled={!activeSessionId}
+				onSelect={() => {
+					if (!activeSessionId) return;
+					const selected = usePanelStore.getState().selectedPaths;
+					const paths = selected.has(entry.path) ? [...selected] : [entry.path];
+					void run(() =>
+						cmd.ideMention(
+							activeSessionId,
+							paths.map((path) => ({ path })),
+						),
+					);
+				}}
+			>
+				<Sparkles />
+				{addLabel(entry, Boolean(activeSessionId))}
+			</ContextMenuItem>
+			<ContextMenuSeparator />
 			<ContextMenuItem disabled={!onOpen} onSelect={() => onOpen?.()}>
 				<FileText /> Open
 			</ContextMenuItem>

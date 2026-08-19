@@ -95,8 +95,16 @@ interface PanelState {
 	 *  path that existed last session may be gone, and restoring a half-open
 	 *  tree of stale paths is worse than starting collapsed. */
 	expandedByProject: Record<string, Set<string>>;
-	/** Selected row, for highlight only. */
-	selectedPath: string | null;
+	/** Selected rows, for highlight and for what "add to Claude" acts on (F20).
+	 *
+	 *  A set rather than one path since multi-select landed. Not persisted, like
+	 *  `expandedByProject` and for the same reason: it names paths that may not
+	 *  exist next launch, and a restored selection nobody made is worse than
+	 *  none. */
+	selectedPaths: ReadonlySet<string>;
+	/** The row a shift-click measures its range from — the last one selected
+	 *  outright or toggled. Null when nothing has been clicked yet. */
+	anchorPath: string | null;
 	/** Diff viewer: inline (unified) rather than side-by-side. Persisted.
 	 *  Parked here until `prefsStore` exists (roadmap item 4); it migrates with
 	 *  `open`/`width` when F11 lands. */
@@ -122,7 +130,14 @@ interface PanelState {
 	 *  deliberate collapse-all is not undone on the next render. */
 	seedRoot: (projectId: string, rootPath: string) => void;
 	collapseAll: (projectId: string) => void;
+	/** Select exactly this row, dropping any other, and make it the anchor. The
+	 *  plain-click case. */
 	select: (path: string | null) => void;
+	/** Add or remove one row, and make it the anchor. Ctrl/Cmd-click. */
+	toggleSelected: (path: string) => void;
+	/** Select exactly these, leaving the anchor where it is. Shift-click hands
+	 *  in the run it worked out; the store does not know the tree's shape. */
+	selectRange: (paths: string[]) => void;
 }
 
 /** Exactly what `partialize` writes, and therefore what `migrate` is handed and
@@ -140,7 +155,8 @@ export const usePanelStore = create<PanelState>()(
 			tab: 'files',
 			width: DEFAULT_PANEL_WIDTH,
 			expandedByProject: {},
-			selectedPath: null,
+			selectedPaths: new Set<string>(),
+			anchorPath: null,
 			diffInline: false,
 			detailHeight: DEFAULT_DETAIL_HEIGHT,
 
@@ -186,7 +202,20 @@ export const usePanelStore = create<PanelState>()(
 					expandedByProject: { ...s.expandedByProject, [projectId]: new Set<string>() },
 				})),
 
-			select: (selectedPath) => set({ selectedPath }),
+			select: (path) =>
+				set({ selectedPaths: path ? new Set([path]) : new Set<string>(), anchorPath: path }),
+
+			toggleSelected: (path) =>
+				set((s) => {
+					const next = new Set(s.selectedPaths);
+					if (!next.delete(path)) next.add(path);
+					// The anchor moves even when the click *removed* the row: a shift
+					// range afterwards should measure from where you last acted, which
+					// is here either way.
+					return { selectedPaths: next, anchorPath: path };
+				}),
+
+			selectRange: (paths) => set({ selectedPaths: new Set(paths) }),
 		}),
 		{
 			name: 'factorai.panel',

@@ -226,6 +226,21 @@ export interface UiSnapshot {
  * re-deciding, so the rule lives in one place.
  */
 /**
+ * A file, or a run of lines in one, handed to the agent as context (F20).
+ *
+ * **`lineStart`/`lineEnd` are 1-based and inclusive** — the CLI prints them
+ * straight into its prompt as `@path#L12-18`. Deliberately *not* the same
+ * convention as the viewer's internal ranges or as the protocol's
+ * `selection_changed`, which is 0-based; the conversion happens once, where the
+ * selection is read.
+ */
+export interface Mention {
+	path: string;
+	lineStart?: number;
+	lineEnd?: number;
+}
+
+/**
  * Where a session's IDE bridge stands (F20).
  *
  * The header draws nothing while this is healthy — a badge for a working bridge

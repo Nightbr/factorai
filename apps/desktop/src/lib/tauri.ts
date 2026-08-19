@@ -11,6 +11,7 @@ import type {
 	IdeOpenFileEvent,
 	IdeStatusEvent,
 	IndexerProgressEvent,
+	Mention,
 	PathKind,
 	Project,
 	QuitRequestedEvent,
@@ -95,6 +96,13 @@ export const cmd = {
 	 *  once at boot: a renderer reload loses the events that got us here while
 	 *  every bridge carries on (F20). */
 	ideResync: () => invoke<void>('ide_resync'),
+	/** Hand files, or a run of lines in one, to a session's agent (F20).
+	 *
+	 *  Rejects when the session has no bridge or Claude is not attached — this
+	 *  is a gesture the human just made, so it has to fail where they can see
+	 *  it rather than in a log. */
+	ideMention: (sessionId: string, mentions: Mention[]) =>
+		invoke<void>('ide_mention', { sessionId, mentions }),
 
 	/** Repository state for the Changes tab and the tree's decorations (F13).
 	 *  A project outside a repository resolves with `repoRoot: null` rather
@@ -501,6 +509,11 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			if (!image) throw { kind: 'InvalidInput', message: `not a displayable image: ${path}` };
 			return image as unknown as T;
 		}
+		case 'ide_mention':
+			// No bridge in browser-only mode. Resolving rather than rejecting keeps
+			// a smoke test able to click the menu item and assert what was asked
+			// for, which is the half that can be tested here.
+			return undefined as unknown as T;
 		case 'ide_resync':
 			// No bridge in browser-only mode, so there is nothing to announce.
 			return undefined as unknown as T;
