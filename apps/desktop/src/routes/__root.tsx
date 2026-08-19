@@ -1,5 +1,5 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { createRootRoute, Outlet, useParams } from '@tanstack/react-router';
+import { useEffect, useRef } from 'react';
 import { QuitConfirm } from '@components/dialog/QuitConfirm';
 import { AppShell } from '@components/layout/AppShell';
 import { FileViewerModal } from '@components/viewer/FileViewerModal';
@@ -13,6 +13,13 @@ import { useTerminalStore } from '@store/terminalStore';
 function RootLayout() {
 	const setProgress = useIndexerStore((s) => s.setProgress);
 	const viewer = useFileViewer();
+	const { sessionId } = useParams({ strict: false }) as { sessionId?: string };
+
+	// The `ide:open-file` listener is registered once for the app's life, so it
+	// reads `open` through a ref rather than capturing the first one — a
+	// listener re-subscribed on every navigation would drop events in the gap.
+	const viewerOpenRef = useRef<(path: string, line?: number) => void>(() => {});
+	viewerOpenRef.current = (path, line) => viewer.open(path, { line });
 
 	// The WebView's own menu is a browser's, and this is not a browser.
 	useNativeContextMenu();
@@ -47,6 +54,43 @@ function RootLayout() {
 			// Nothing to surface: with no adopted terminals the app behaves exactly
 			// as it did before this call existed.
 			.catch((e) => console.error('terminal_list failed', e));
+	}, []);
+
+	// **Tell the backend what is on screen** (F20). The IDE bridge answers two
+	// questions that depend on it and Rust cannot see the UI: `getOpenEditors`
+	// has to name real files, and an `openFile` for a session that is not in
+	// front must mark its tab rather than take the window. Reported from here
+	// because this is the one component that outlives every route and already
+	// holds the viewer's state.
+	useEffect(() => {
+		void cmd
+			.ideReportUi({ activeSession: sessionId ?? null, openFile: viewer.path })
+			// Nothing to surface: a report that goes missing leaves the bridge with
+			// a stale-but-honest picture, and it errs towards marking a tab rather
+			// than opening over the wrong session.
+			.catch(() => undefined);
+	}, [sessionId, viewer.path]);
+
+	// The agent asked to show a file. `frontmost` was decided in Rust, from
+	// whether this session is in front *and* whether the agent asked to be
+	// intrusive — obeyed rather than re-decided here, so the rule lives in one
+	// place. A background session gets a mark on its tab instead: the ask has to
+	// land somewhere, or the bridge told the agent a file was surfaced when
+	// nothing was.
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		events
+			.onIdeOpenFile((e) => {
+				if (e.frontmost) {
+					viewerOpenRef.current(e.path, e.line ?? undefined);
+					return;
+				}
+				useTerminalStore.getState().flagAttention(e.sessionId);
+			})
+			.then((fn) => {
+				unlisten = fn;
+			});
+		return () => unlisten?.();
 	}, []);
 
 	// App-wide terminal lifecycle: keep the running indicator accurate no

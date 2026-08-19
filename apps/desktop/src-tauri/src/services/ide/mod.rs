@@ -12,9 +12,11 @@
 //! injected into the server rather than owned by it, so each is testable
 //! without the other.
 //!
-//! Still unwired: nothing starts a bridge yet.
+//! [`ui_state`] is the one thing flowing the other way: what the renderer has
+//! on screen, which two of the tools' answers depend on and neither can guess.
 
 pub mod lockfile;
 pub mod protocol;
 pub mod scope;
 pub mod server;
+pub mod ui_state;

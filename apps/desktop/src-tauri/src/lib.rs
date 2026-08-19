@@ -63,9 +63,27 @@ pub fn run() {
 			// window must not wait on `~/.zshrc`. See `services::shell_path`.
 			services::shell_path::warm();
 
+			// Anything we left behind last time. A SIGKILL leaves an IDE lockfile
+			// pointing at a port nothing is listening on, which is ADR-0005's
+			// orphan problem on a surface where it is inert rather than dangerous
+			// — the CLI probes before it trusts one. It still matters: the CLI
+			// auto-connects only when exactly one candidate matches, and our own
+			// litter is the easiest way to stop being that one. Only our entries,
+			// and only those whose process is gone (ADR-0017).
+			let swept = services::ide::lockfile::sweep(&cd, services::ide::lockfile::pid_is_alive);
+			if swept > 0 {
+				info!(swept, "removed stale ide lockfiles from a previous run");
+			}
+
+			// What the renderer has on screen, for the IDE bridge's answers. Held
+			// by the manager (each session's bridge reads it) and by AppState (the
+			// command that writes it), so it is one shared cell rather than two
+			// that can disagree.
+			let ui = Arc::new(services::ide::ui_state::UiState::default());
+
 			// Terminals first: the indexer's reap pass asks them what is live
 			// before it deletes the row of a session whose transcript is gone.
-			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone());
+			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone(), ui.clone());
 			let live = terminals.clone();
 			let indexer = Arc::new(
 				Indexer::for_app(db.clone(), cd.clone(), app.handle().clone())
@@ -78,6 +96,7 @@ pub fn run() {
 				terminals,
 				claude_dir: cd,
 				data_dir,
+				ui,
 			});
 
 			spawn_initial_scan(indexer.clone());
@@ -137,6 +156,7 @@ pub fn run() {
 			commands::files::read_file,
 			commands::files::read_image,
 			commands::files::path_kinds,
+			commands::ide::ide_report_ui,
 			commands::git::git_status,
 			commands::git::git_blob,
 			commands::git::git_graph,
