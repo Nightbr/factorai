@@ -1,11 +1,29 @@
+import { CHIP_SHAPE } from '@lib/gitGraph';
+
 /**
  * Marks the window as a development build.
  *
  * A release factorai sits open all day beside the dev one — it is where the
  * agents building this app actually run — and the two are otherwise identical
  * on screen. Getting that wrong costs a live Claude session, so the marker is
- * loud (violet, the one hue the palette reserves for nothing else) rather than
- * tasteful.
+ * violet, the one hue the palette reserves for nothing else.
+ *
+ * **It is a chip, not a sticker** (changed 2026-08-19 on user feedback). It was
+ * a solid violet block of bold 10px mono with widened tracking — loud, but loud
+ * in a vocabulary nothing else in the app speaks, so it read as a debug
+ * artefact rather than as part of the header. It now borrows F18's ref chips
+ * exactly: `CHIP_SHAPE` for the border, radius, padding and 12px text, and the
+ * same `border-X/30 bg-X/12 text-X` tint the graph gives a branch, with `--dev`
+ * as the X. Same shape as every other chip in the app, one hue nothing else
+ * uses — which is the loudness that was actually doing the work.
+ *
+ * The caps stayed, in the app's usual `uppercase tracking-wider` voice for a
+ * status mark (`PROJECTS`, the changes headers). A chip's label is normally a
+ * name — a branch, a tag — and lower-case `dev` read as one. `DEV` is also what
+ * the window title says, and the two markers are worth spelling identically.
+ *
+ * `CHIP_SHAPE` is imported rather than copied for the reason its own comment
+ * gives: a chip that picks its own geometry is a chip that drifts.
  *
  * It renders nothing in a bundled build: `pnpm tauri build` puts the renderer
  * through `vite:build`, where `import.meta.env.DEV` is false. `pnpm dev` and
@@ -22,10 +40,7 @@ export function DevBadge() {
 		<span
 			data-testid="dev-badge"
 			title="Development build — not your installed factorai"
-			// Padding is asymmetric on purpose: the tracking adds a space after
-			// the V that the left edge has no counterpart for, so the right side
-			// gives that width back.
-			className="rounded-sm bg-dev py-px pr-1 pl-1.5 font-bold font-mono text-[10px] text-dev-foreground uppercase leading-none tracking-widest"
+			className={`${CHIP_SHAPE} shrink-0 border-dev/30 bg-dev/12 text-dev uppercase tracking-wider`}
 		>
 			dev
 		</span>

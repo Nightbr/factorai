@@ -138,7 +138,10 @@ window title gains the same marker, in `setup()` under
 factorai runs beside the dev one all day with live Claude sessions in it,
 and the pair must be told apart from the window switcher as readily as from
 the screen. The badge is violet — a hue reserved for exactly this, so it
-can't be read as session status or as the amber brand. `scripts/qa/`
+can't be read as session status or as the amber brand. It is shaped like
+F18's ref chips (`CHIP_SHAPE` plus a `--dev` tint), not as a solid block:
+the hue is what distinguishes the window, so the shape can be the app's
+ordinary one. `scripts/qa/`
 matches on both markers to make sure an agent's screenshots and kills land
 on the dev build; see `scripts/qa/README.md`.
 
