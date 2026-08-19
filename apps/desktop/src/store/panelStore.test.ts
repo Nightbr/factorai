@@ -8,6 +8,7 @@ import {
 	MAX_PANEL_WIDTH,
 	MIN_DETAIL_HEIGHT,
 	MIN_PANEL_WIDTH,
+	withExpanded,
 } from './panelStore';
 
 describe('clampPanelWidth', () => {
@@ -59,5 +60,31 @@ describe('clampDetailHeight', () => {
 	it('falls back to the default for a non-finite height', () => {
 		expect(clampDetailHeight(Number.NaN)).toBe(DEFAULT_DETAIL_HEIGHT);
 		expect(clampDetailHeight(Number.POSITIVE_INFINITY)).toBe(DEFAULT_DETAIL_HEIGHT);
+	});
+});
+
+/**
+ * Revealing a path (F19) expands a whole ancestor chain, most of which is
+ * usually open already — which is the entire reason `toggleExpanded` is the
+ * wrong tool for it.
+ */
+describe('withExpanded', () => {
+	it('adds every path', () => {
+		expect([...withExpanded(undefined, ['/p', '/p/src'])]).toEqual(['/p', '/p/src']);
+	});
+
+	it('leaves the ones already open open', () => {
+		const before = new Set(['/p', '/p/src']);
+		expect([...withExpanded(before, ['/p', '/p/src', '/p/src/lib'])]).toEqual([
+			'/p',
+			'/p/src',
+			'/p/src/lib',
+		]);
+	});
+
+	it('never mutates the set it was given', () => {
+		const before = new Set(['/p']);
+		withExpanded(before, ['/p/src']);
+		expect([...before]).toEqual(['/p']);
 	});
 });

@@ -183,6 +183,19 @@ describe('resolveLinks', () => {
 		expect([link.line, link.col]).toEqual([12, 3]);
 	});
 
+	it('does not link a directory the tree cannot show', async () => {
+		// `~/.claude/projects/` is real and interesting, and clicking it would do
+		// nothing — the tree only shows this project. Better not a link at all.
+		pathKinds.mockResolvedValue(['directory']);
+		expect(await resolveLinks('under /home/u/.claude/projects/', ctx)).toEqual([]);
+	});
+
+	it('still links a directory inside the project', async () => {
+		pathKinds.mockResolvedValue(['directory']);
+		const [link] = await resolveLinks('under /proj/sub/src/', ctx);
+		expect([link.path, link.kind]).toEqual(['/proj/sub/src', 'directory']);
+	});
+
 	it('reports a directory as a directory', async () => {
 		pathKinds.mockResolvedValue(['directory']);
 		const [link] = await resolveLinks('under src/components/', {

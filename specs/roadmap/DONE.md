@@ -3,6 +3,55 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Clickable file links in terminal output — roadmap item 15, spec `05-features.md` F19** —
+  2026-08-19, user ask, scoped in a clarify-needs interview. Ctrl/Cmd-click a path the agent
+  printed and it opens in the viewer, at the line if the path carried one; a directory reveals
+  itself in the tree instead. Same modifier gate as the other two kinds of link, and the
+  destination is the correction item 15 existed to make — a file the agent touched belongs in F7's
+  viewer, not in whatever the OS says owns `.ts`.
+
+  **The fork item 15 left open is settled, from the CLI binary rather than by inference.** Its only
+  OSC 8 emitter is the `link(url)` helper F5 already quotes, and it is used for URLs; nothing marks
+  up a path. Grepping 2.1.235 for `file://` finds ripgrep's `--hyperlink-format` templates vendored
+  inside it, which is a convincing false positive and not us. So the link provider is load-bearing
+  and OSC 8 contributes nothing here. The cost the entry feared — "a regex over every frame of a
+  busy TUI" — does not exist either: xterm calls `provideLinks` for the hovered line, on mouse
+  move.
+
+  **Three findings worth keeping.**
+
+  - **xterm's link-provider ordering is silent and load-bearing.**
+    `Linkifier._checkLinkProviderResult` shows provider N's links only once every earlier provider
+    has replied with something *falsy*, and `WebLinksAddon` always replies with an array — `[]`
+    when it found no URLs, which is truthy. So anything registered after it can never produce a
+    visible link: no error, the text simply doesn't underline, and the click falls through to the
+    TUI's mouse reporting. Found by doing exactly that. Ours is registered ahead of the addon,
+    which is safe in both directions because it excludes URL spans before tokenising and replies
+    `undefined` rather than `[]` — a contract now pinned by a test that says so.
+  - **Radix does not hand focus back to xterm.** Measured, not assumed: after Esc closed the
+    viewer, an `x` never reached the prompt. The terminal now refocuses on close, deferred a tick
+    because Radix restores focus during its own unmount, and only when the viewer was opened from
+    *that* terminal.
+  - **A string offset is not a cell offset.** A wide character is one character of
+    `translateToString` and two cells of buffer, so the underline drifts left by one cell per wide
+    character before the path — invisible in a Latin-only test. `cellAt` walks cells; a fake buffer
+    models exactly that case.
+
+  Verification was generous about what looks like a path and strict about what exists:
+  `path_kinds` answers file / directory / missing for a batch, once per hovered line, cached with
+  positives kept forever and negatives expiring after 10s — a file the agent just wrote must not be
+  unclickable for the rest of the session. `Makefile` is not a link, deliberately: a grammar that
+  accepts a bare word links the sentence "run the test" to a `test/` directory.
+
+- **IDE bridge — designed, not built — roadmap item 19, spec `05-features.md` F20, ADR-0017** —
+  2026-08-19. Not shipped code; recorded here because the research half is done and would otherwise
+  live in a chat log. The protocol was read out of CLI 2.1.235: `~/.claude/ide/<port>.lock` with the
+  port in the filename, a WebSocket carrying `X-Claude-Code-Ide-Authorization`, and
+  `CLAUDE_CODE_SSE_PORT` selecting among lockfiles rather than adding a search path. ADR-0017 holds
+  the decisions — one server per session so a request names its tab, path scoping as the boundary
+  that actually matters, and a read-only first slice that leaves ADR-0009 untouched — including the
+  narrow amendment to ADR-0004 that writing that one lockfile requires.
+
 - **A README about the product, a lockup to put at the top of it, and the licence that badge
   needed — part of roadmap item 18, specs `09-branding.md` §§ B4 / B5 / B5a** — 2026-08-19, user
   ask, scoped in a clarify-needs interview. The README was organised around how the app is built;

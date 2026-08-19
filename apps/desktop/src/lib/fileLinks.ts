@@ -247,6 +247,13 @@ export async function classify(paths: string[], now = Date.now()): Promise<Map<s
 	return known;
 }
 
+/** Is `path` inside `base`, or `base` itself? Prefix matching on a separator
+ *  boundary, so `/project2` is not inside `/project`. */
+function isUnder(path: string, base: string): boolean {
+	const root = base.endsWith('/') ? base.slice(0, -1) : base;
+	return path === root || path.startsWith(`${root}/`);
+}
+
 /** A candidate that turned out to be real, and therefore is a link. */
 export interface ResolvedLink extends PathCandidate {
 	/** Absolute, normalised. */
@@ -273,7 +280,15 @@ export async function resolveLinks(text: string, ctx: ResolveContext): Promise<R
 	candidates.forEach((candidate, i) => {
 		for (const path of options[i]) {
 			const kind = kinds.get(path);
-			if (kind === 'file' || kind === 'directory') {
+			if (kind === 'file') {
+				links.push({ ...candidate, path, kind });
+				return;
+			}
+			// A directory is only a link if the tree can show it, and the tree only
+			// shows this project. `~/.claude/projects/` exists and is interesting,
+			// and clicking it would do nothing at all — a link that underlines and
+			// then ignores you is worse than plain text.
+			if (kind === 'directory' && ctx.bases.some((base) => isUnder(path, base))) {
 				links.push({ ...candidate, path, kind });
 				return;
 			}
