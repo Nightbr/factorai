@@ -2,7 +2,7 @@ import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { BookOpen, GitBranch, Play, X } from 'lucide-react';
+import { BookOpen, GitBranch, Play, TriangleAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
@@ -57,6 +57,10 @@ function SessionView() {
 	// index row is the authority — it says where the transcript actually lives.
 	const session = sessionsQ.data?.find((s) => s.id === sessionId);
 	const isSubAgent = session?.subagentOf != null;
+
+	// Why this session's IDE bridge is unusable, if it is (F20). Undefined is
+	// the normal case and draws nothing.
+	const ideIssue = useTerminalStore((s) => s.ideIssues[sessionId]);
 
 	const live = useTerminalStore((s) => s.bySession[sessionId]);
 	const detach = useTerminalStore((s) => s.detach);
@@ -148,6 +152,26 @@ function SessionView() {
 				<span className="min-w-0 flex-1 truncate text-muted-foreground text-xs" title={sessionId}>
 					{isSubAgent ? 'sub-agent' : sessionLabel(sessionId, sessionsQ.data)}
 				</span>
+				{/* **The bridge is broken for this session** (F20). Nothing is drawn
+				    while it works: a badge for a healthy bridge is a label that is
+				    always on, and that is a label you stop reading. This is the one
+				    state worth a pixel, because an agent that *cannot* open a file
+				    looks exactly like an agent that chose not to.
+
+				    Immediately before the close control rather than out among the
+				    project and branch names: those say where you are, this says
+				    something is wrong, and the right-hand end is where this header
+				    already keeps the things you act on. */}
+				{ideIssue && (
+					<span
+						data-testid="session-ide-issue"
+						title={`Claude cannot open files in this window — ${ideIssue}`}
+						className="flex shrink-0 items-center gap-1 text-destructive text-xs"
+					>
+						<TriangleAlert className="size-3.5 shrink-0" aria-hidden />
+						<span>Bridge</span>
+					</span>
+				)}
 				{isSubAgent ? (
 					// No Stop/Restart: there is no process to stop, and restarting
 					// is the resume that cannot work (see isSubAgent above).

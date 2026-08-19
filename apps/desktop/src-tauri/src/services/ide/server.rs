@@ -13,6 +13,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener as StdTcpListener};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
@@ -50,11 +51,29 @@ const MCP_SUBPROTOCOL: &str = "mcp";
 /// notification, which by definition is not answered.
 pub type Handler = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
+/// Called `true` when a client completes the handshake and `false` when that
+/// connection ends.
+///
+/// Handshake rather than the `ide_connected` notification, even though the
+/// latter is what the CLI *says*: only the socket knows when a client goes
+/// away, so taking both edges from the same place is the only way the two
+/// cannot disagree. A client that authenticates and then says nothing is still
+/// attached, which is what the badge claims.
+pub type OnClient = Arc<dyn Fn(bool) + Send + Sync>;
+
 /// A live bridge for one session. Dropping it takes the lockfile and the
 /// listener with it.
 pub struct IdeServer {
 	addr: SocketAddr,
 	token: String,
+	/// Is a client attached right now?
+	///
+	/// The events are enough for a renderer that was listening; this is for one
+	/// that was not. A reload throws the renderer's state away while every PTY —
+	/// and every bridge — carries on, so without something to ask at boot the
+	/// header would claim Claude had gone. `terminal_list` exists for exactly
+	/// that reason on the PTY side; this is its counterpart.
+	attached: Arc<AtomicBool>,
 	claude_dir: PathBuf,
 	task: tauri::async_runtime::JoinHandle<()>,
 }
@@ -71,7 +90,12 @@ impl IdeServer {
 	/// Order matters on the way up too: the socket is listening before the
 	/// lockfile exists, so the CLI's TCP probe can never find a handle pointing
 	/// at nothing.
-	pub fn start(claude_dir: &Path, workspace_root: &str, handler: Handler) -> AppResult<Self> {
+	pub fn start(
+		claude_dir: &Path,
+		workspace_root: &str,
+		handler: Handler,
+		on_client: OnClient,
+	) -> AppResult<Self> {
 		let std_listener = StdTcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
 			.map_err(|e| AppError::Io(format!("binding the ide bridge: {e}")))?;
 		std_listener
@@ -86,6 +110,15 @@ impl IdeServer {
 		let token = lock.auth_token.clone();
 		lockfile::write(claude_dir, port, &lock)?;
 
+		// The caller's callback, plus the flag a late-arriving renderer reads.
+		// Wrapped here so the two can never disagree about the same edge.
+		let attached = Arc::new(AtomicBool::new(false));
+		let flag = attached.clone();
+		let on_client: OnClient = Arc::new(move |connected| {
+			flag.store(connected, Ordering::Relaxed);
+			(on_client)(connected);
+		});
+
 		let accept_token = token.clone();
 		let task = tauri::async_runtime::spawn(async move {
 			let listener = match TcpListener::from_std(std_listener) {
@@ -95,11 +128,11 @@ impl IdeServer {
 					return;
 				}
 			};
-			accept_loop(listener, accept_token, handler).await;
+			accept_loop(listener, accept_token, handler, on_client).await;
 		});
 
 		debug!(%port, %workspace_root, "ide bridge listening");
-		Ok(Self { addr, token, claude_dir: claude_dir.to_path_buf(), task })
+		Ok(Self { addr, token, attached, claude_dir: claude_dir.to_path_buf(), task })
 	}
 
 	pub fn port(&self) -> u16 {
@@ -120,6 +153,12 @@ impl IdeServer {
 	pub fn token(&self) -> &str {
 		&self.token
 	}
+
+	/// Is a client attached right now? For a renderer asking at boot, which
+	/// missed every event that got us here.
+	pub fn is_attached(&self) -> bool {
+		self.attached.load(Ordering::Relaxed)
+	}
 }
 
 impl Drop for IdeServer {
@@ -133,7 +172,7 @@ impl Drop for IdeServer {
 	}
 }
 
-async fn accept_loop(listener: TcpListener, token: String, handler: Handler) {
+async fn accept_loop(listener: TcpListener, token: String, handler: Handler, on_client: OnClient) {
 	loop {
 		let Ok((stream, peer)) = listener.accept().await else {
 			// A failed accept is usually the listener going away with us.
@@ -141,8 +180,9 @@ async fn accept_loop(listener: TcpListener, token: String, handler: Handler) {
 		};
 		let token = token.clone();
 		let handler = handler.clone();
+		let on_client = on_client.clone();
 		tauri::async_runtime::spawn(async move {
-			if let Err(e) = serve(stream, token, handler).await {
+			if let Err(e) = serve(stream, token, handler, on_client).await {
 				debug!(%peer, error = %e, "ide bridge connection ended");
 			}
 		});
@@ -160,6 +200,7 @@ async fn serve(
 	stream: tokio::net::TcpStream,
 	token: String,
 	handler: Handler,
+	on_client: OnClient,
 ) -> Result<(), tokio_tungstenite::tungstenite::Error> {
 	// The token is checked *during* the handshake, so an unauthorised client
 	// never reaches a WebSocket at all — it gets a 401 and a closed socket.
@@ -183,6 +224,12 @@ async fn serve(
 	};
 
 	let mut ws = accept_hdr_async(stream, check).await?;
+
+	// Attached from here to the end of this function, however it ends. `Attached`
+	// reports `false` from its `Drop`, so an error return, a panic and a clean
+	// close all clear the badge — a client that vanished must not leave the
+	// header claiming it is still there.
+	let _attached = Attached::new(on_client);
 
 	while let Some(message) = ws.next().await {
 		match message? {
@@ -213,6 +260,27 @@ fn offers_mcp(req: &Request) -> bool {
 		.filter_map(|v| v.to_str().ok())
 		.flat_map(|v| v.split(','))
 		.any(|p| p.trim().eq_ignore_ascii_case(MCP_SUBPROTOCOL))
+}
+
+/// Holds the "a client is attached" signal for the life of one connection.
+///
+/// A guard rather than a pair of calls because there are four ways out of the
+/// read loop — a close frame, a protocol error, the socket dying, the task being
+/// aborted at teardown — and only one of them is the one anybody writes the
+/// matching call after.
+struct Attached(OnClient);
+
+impl Attached {
+	fn new(on_client: OnClient) -> Self {
+		(on_client)(true);
+		Self(on_client)
+	}
+}
+
+impl Drop for Attached {
+	fn drop(&mut self) {
+		(self.0)(false);
+	}
 }
 
 /// Compare in time independent of how much of the token matched.

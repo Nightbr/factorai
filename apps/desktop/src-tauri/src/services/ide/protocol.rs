@@ -192,12 +192,17 @@ impl Mcp {
 		if (self.open_file)(request) {
 			tool_text(&format!("Opened {}", path.display()))
 		} else {
-			// Not an error. The human is looking at a different session, so the
-			// file is flagged where they will see it rather than thrown over what
-			// they are doing. The agent's ask was honoured at the level that
-			// keeps a human in the loop, and saying otherwise would invite it to
-			// retry.
-			tool_text(&format!("Marked {} for review in its session", path.display()))
+			// **Not shown, and said plainly.** The human is looking at a different
+			// session, and factorai has nowhere to put the request yet — the tab
+			// mark this used to claim was removed for colliding with the session
+			// status dot. Reporting "marked" while nothing is marked is the same
+			// confident falsehood `getDiagnostics` is kept out of the tool list to
+			// avoid, so this says what actually happened and lets the agent decide
+			// whether to mention it.
+			tool_text(&format!(
+				"Not shown: {} belongs to a session the human is not currently viewing.",
+				path.display()
+			))
 		}
 	}
 }
@@ -457,10 +462,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_background_session_reports_success_with_a_different_answer() {
-		// The UI declined to steal the viewport. That is not a failure: the file
-		// was surfaced where the human will see it, and telling the agent
-		// otherwise invites a retry that would be no more welcome.
+	fn a_background_session_is_told_the_file_was_not_shown() {
+		// The UI declined to steal the viewport, and there is nowhere else to put
+		// the request yet. Saying "marked" while nothing is marked is the same
+		// confident falsehood getDiagnostics is kept out of the list to avoid.
 		let f = fixture(false);
 		let file = f.project.path().join("a.rs");
 		std::fs::write(&file, "").unwrap();
@@ -472,8 +477,8 @@ mod tests {
 		);
 
 		let (text, is_error) = tool_result(&reply);
-		assert!(!is_error);
-		assert!(text.starts_with("Marked "), "{text}");
+		assert!(!is_error, "the call was well-formed; the answer is just no");
+		assert!(text.starts_with("Not shown:"), "{text}");
 	}
 
 	#[test]

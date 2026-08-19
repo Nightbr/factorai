@@ -1,4 +1,5 @@
 use tauri::State;
+use tracing::debug;
 
 use crate::error::AppResult;
 use crate::services::ide::ui_state::UiSnapshot;
@@ -19,5 +20,25 @@ use crate::state::AppState;
 #[tauri::command]
 pub fn ide_report_ui(state: State<'_, AppState>, snapshot: UiSnapshot) -> AppResult<()> {
 	state.ui.set(snapshot);
+	Ok(())
+}
+
+/// Ask every bridge to re-announce whether Claude is on it (F20).
+///
+/// Called once at boot, beside `terminal_list` and for the same reason: a
+/// renderer reload keeps every PTY and every bridge alive while throwing the
+/// renderer's own state away, so without this the header would report Claude
+/// gone from a session it is very much still driving.
+///
+/// Returns nothing on purpose — the answers come back as `ide:status` events,
+/// through the same listener that handles live ones, so a change racing this
+/// call lands in order behind it instead of having to be merged with it.
+#[tauri::command]
+pub fn ide_resync(state: State<'_, AppState>) -> AppResult<()> {
+	// Logged because "did the renderer ask?" is the first question when the
+	// header disagrees with reality, and a reload is invisible from this side
+	// otherwise.
+	debug!("renderer asked the ide bridges to re-announce");
+	state.terminals.resync_ide_status();
 	Ok(())
 }

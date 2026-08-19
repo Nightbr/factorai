@@ -53,17 +53,15 @@ interface TerminalState {
 	 *  Not persisted: it exists to invalidate a pooled terminal that only lives
 	 *  as long as the renderer does. */
 	restartEpoch: Record<string, number>;
-	/** Sessions whose agent asked to show you a file while you were looking
-	 *  somewhere else (F20).
+	/** sessionId → why its IDE bridge is unusable (F20).
 	 *
-	 *  The other half of the rule that an `openFile` for a background session
-	 *  must not seize the window: it has to land *somewhere*, or the bridge is
-	 *  telling the agent a file was surfaced when nothing was. A dot on the tab
-	 *  is the smallest thing that is true.
+	 *  **Only failures are kept.** A working bridge is the normal case and puts
+	 *  nothing on screen; the header's only job here is to say when the agent
+	 *  *cannot* open a file, since that otherwise looks exactly like an agent
+	 *  that chose not to.
 	 *
-	 *  **Not persisted.** It is a request about right now; restoring it next
-	 *  launch would point at a conversation that has moved on. */
-	attention: Set<string>;
+	 *  Not persisted: it describes a process that will not outlive the app. */
+	ideIssues: Record<string, string>;
 	attach: (sessionId: string, terminalId: TerminalId, projectId: string) => void;
 	/** Adopt the PTYs Rust already holds, from `terminal_list` at boot.
 	 *
@@ -76,12 +74,10 @@ interface TerminalState {
 	 *  younger than the request. Adopting each entry is also idempotent, which
 	 *  is what makes it safe under StrictMode's double-invoke. */
 	adoptLive: (live: TerminalStatusDto[]) => void;
-	/** Flag a session as wanting a look. */
-	flagAttention: (sessionId: string) => void;
-	/** Clear the flag — the human is here now. Idempotent, and returns the same
-	 *  state object when there was nothing set, so opening a tab you have open
-	 *  does not churn every subscriber. */
-	clearAttention: (sessionId: string) => void;
+	/** Record where a session's bridge stands. Returns the same state when
+	 *  nothing changed, so a repeated report — and `resync` re-announcing every
+	 *  bridge — costs no render. */
+	setIdeStatus: (sessionId: string, error: string | null) => void;
 	/** Move a tab, by session id, to the index of another. */
 	reorder: (sessionId: string, toIndex: number) => void;
 	/** Update status for the terminal with this id (`terminal:status`). */
@@ -126,19 +122,15 @@ export const useTerminalStore = create<TerminalState>()(
 			bySession: {},
 			tabs: [],
 			restartEpoch: {},
-			attention: new Set<string>(),
+			ideIssues: {},
 
-			flagAttention: (sessionId) =>
-				set((s) =>
-					s.attention.has(sessionId) ? s : { attention: new Set(s.attention).add(sessionId) },
-				),
-
-			clearAttention: (sessionId) =>
+			setIdeStatus: (sessionId, error) =>
 				set((s) => {
-					if (!s.attention.has(sessionId)) return s;
-					const next = new Set(s.attention);
-					next.delete(sessionId);
-					return { attention: next };
+					if ((s.ideIssues[sessionId] ?? null) === error) return s;
+					const next = { ...s.ideIssues };
+					if (error) next[sessionId] = error;
+					else delete next[sessionId];
+					return { ideIssues: next };
 				}),
 
 			attach: (sessionId, terminalId, projectId) =>

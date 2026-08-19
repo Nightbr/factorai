@@ -2726,26 +2726,62 @@ is a separate decision and a separate ADR (ADR-0017 § 6).
 
 Rust decides, and the renderer obeys, so the rule lives in one place. The bridge
 opens the viewer when the request's session is the one in front *and* the agent
-did not ask to stay out of the way; otherwise the session's **tab takes a small
-amber mark**, cleared by clicking it.
+did not ask to stay out of the way.
 
-That mark is not decoration. The ask has to land somewhere, or the bridge is
-telling the agent a file was surfaced when nothing was — the same dishonesty
-`getDiagnostics` is kept out of the tool list to avoid. It is its own mark
-rather than a change to the status badge, because "running" and "asking for you"
-are different facts and a session is frequently both.
+**Otherwise nothing happens, and the agent is told exactly that** — "not shown:
+that file belongs to a session the human is not currently viewing". Not an
+error: the call was well-formed and the answer is no.
+
+There *was* a mark on the background session's tab, and it was removed rather
+than recoloured. It used `--primary`, which is `--color-status-waiting`'s exact
+value, so it was indistinguishable from "this session is waiting for you" — on a
+tab that already carries a status badge. Where the request should land instead
+is **open**: the toast primitive roadmap item 7 wants is the likely home, since
+a transient event probably deserves a transient surface. Until then the bridge
+reports honestly rather than claiming a mark nobody can see, which is the same
+rule that keeps `getDiagnostics` out of the tool list.
 
 `ide_report_ui` is how Rust knows any of this: the renderer reports the active
 session and the open file whenever either changes. Fire-and-forget — a report
 that goes missing leaves a stale picture that errs towards marking a tab, which
 is the harmless direction.
 
-### It is visible
+### The header shows nothing until something is wrong
 
-A badge in the session header says the bridge is attached — `text-xs`, state
-rather than a control, the same voice as the git branch badge. A port that opens
-without telling anyone is the kind of thing you find out about from a firewall
-prompt.
+**A working bridge is invisible.** It was briefly a blue "connected" dot and
+that was the wrong instinct twice over: a badge for the healthy case is a label
+that is always on, which is a label you stop reading, and it spends header width
+on the state you never need to act on. Removed on user feedback the same day it
+landed.
+
+**A broken one gets a badge**, immediately before the close control — the
+right-hand end is where this header already keeps the things you act on, while
+the project and branch names on the left say where you are. It carries the
+reason in its tooltip, because "something is wrong" that does not say what is a
+worse header than no badge at all.
+
+That is the one state worth a pixel: **an agent that cannot open a file looks
+exactly like an agent that chose not to.** Everything else about the bridge
+belongs in the log.
+
+Reported today for the failure we can name without guessing — the bridge did not
+bind or could not write its handle, so every `openFile` for that session will
+silently do nothing. Two other shapes of "connection issue" are deliberately
+*not* reported yet, because neither can be told from normal behaviour without a
+timer and a threshold: **a client that never attaches** (indistinguishable from
+one that is still starting — the CLI's own autodetect polls for 30 seconds) and
+**one that detaches while the PTY lives on** (which is what `/ide` disconnect
+looks like). A badge that cries wolf on either is worse than the silence it
+replaced.
+
+**A reloaded renderer asks every bridge to re-announce** (`ide_resync`), because
+a reload throws the renderer's state away while every PTY and every bridge
+carries on — the same hole `terminal_list` fills for tabs. The answers come back
+as ordinary `ide:status` events rather than as a returned list, and that is what
+makes it correct rather than merely convenient: a returned list has to be merged
+with whatever arrives while the call is in flight, and nothing distinguishes a
+stale entry from a fresh one. Replaying down the same channel puts every update
+in one ordered queue with nothing to reconcile.
 
 There is **no off switch yet**, and that is the same shape as F18's restore
 preference: F11 is specified and unbuilt, so the switch lands there rather than
