@@ -705,6 +705,36 @@ the app palette. Links:
   viewer**, so a README's link to `docs/guide.md` just works.
 - `#anchor` → ignored for now.
 
+**Images in a rendered document go through `read_image` too** (fixed
+2026-08-19). `![logo](docs/logo.png)` had been rendering as a broken image, and
+no amount of correct markdown would have fixed it: a relative `src` is a path on
+disk, and the webview has no filesystem origin to resolve one against. So the
+`img` handler resolves the `src` the same way a link's `href` is resolved and
+reads the bytes through the same command the image viewer uses, arriving as a
+`data:` URL — which keeps the "one route into the filesystem" property below
+rather than opening the asset protocol for this.
+
+- **A remote `src` is left alone.** The webview can fetch that itself, and a
+  shields.io badge in a README is the common case.
+- **An SVG comes back through `read_file`**, since it has no magic bytes for
+  `read_image` to accept — the same split `SvgPreview` already makes, and it
+  gets the same `encodeURIComponent` data URL for the same reason.
+- **A missing file leaves its alt text**, in a dashed placeholder, rather than a
+  silent gap: the extension may have lied and the backend refused the bytes, and
+  either way the caption is the only thing left that says what was meant to be
+  there.
+- **`data:` and `file:` srcs never arrive.** react-markdown's default URL
+  sanitiser replaces them with an empty string, and we keep that default — an
+  empty `src` renders the placeholder, because `<img src="">` re-requests the
+  document itself.
+- **The fragment and query are dropped and percent-escapes decoded**, because a
+  `src` is a URL and its target here is a path: `![](my%20logo.png)` is a file
+  with a space in its name.
+
+A leading `/` resolves as a **filesystem** path, for images and links alike.
+There is no site root here to be relative to, so `/home/me/diagram.png` means
+that file.
+
 **Opening.** A **single** click on a file row opens the viewer; directories
 still toggle. "Open in default app" moved into the viewer header — it used to
 be the tree's double-click, which can't coexist with click-to-open, because
