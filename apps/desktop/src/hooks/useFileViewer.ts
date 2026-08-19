@@ -36,42 +36,99 @@ export function parseCommitRange(mode: DiffMode): { left: string | null; right: 
 	return { left: left || null, right };
 }
 
+/** A 1-based position, or null for "wherever the file starts".
+ *
+ *  1-based because that is what `foo.ts:42:7` means to everyone who writes one,
+ *  and what Monaco's `setPosition` expects — no off-by-one lives in between. */
+export interface ViewerPosition {
+	line: number;
+	col: number | null;
+}
+
+/** A line or column out of the URL. Rejects 0, negatives, fractions and
+ *  anything non-numeric, so a hand-edited URL cannot reach Monaco with a
+ *  position no file has. */
+export function parsePosition(value: unknown): number | undefined {
+	if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+	const n = Number(value);
+	return Number.isInteger(n) && n >= 1 ? n : undefined;
+}
+
+/** How the viewer is opened. All optional: the tree passes none of it, the
+ *  Changes tab passes `diff`, a terminal link (F19) passes a position. */
+export interface OpenOptions {
+	diff?: DiffMode;
+	line?: number;
+	col?: number;
+}
+
 /**
  * What the viewer is showing, held in the URL as `?file=<absolute path>` and
- * optionally `&diff=<mode>` (F7, F13).
+ * optionally `&diff=<mode>` (F7, F13) or `&line=`/`&col=` (F19).
  *
  * The URL rather than a store so it survives reload and HMR, so browser-back
  * closes the viewer, and because the per-project tab system grows out of the
  * same place — `?file=` becomes a list of open paths. `validateSearch` lives on
- * the root route, so every route inherits both params.
+ * the root route, so every route inherits all four params.
  */
 export function useFileViewer(): {
 	path: string | null;
 	diff: DiffMode | null;
-	open: (path: string, diff?: DiffMode) => void;
+	position: ViewerPosition | null;
+	open: (path: string, opts?: OpenOptions) => void;
 	close: () => void;
 } {
-	const search = useSearch({ strict: false }) as { file?: string; diff?: DiffMode };
+	const search = useSearch({ strict: false }) as {
+		file?: string;
+		diff?: DiffMode;
+		line?: number;
+		col?: number;
+	};
 	const navigate = useNavigate();
 
 	const open = useCallback(
-		(path: string, diff?: DiffMode) => {
-			// `diff: undefined` matters: opening a file from the tree after a diff
-			// must drop the mode, not inherit it.
-			void navigate({ to: '.', search: (prev) => ({ ...prev, file: path, diff }) });
+		(path: string, opts?: OpenOptions) => {
+			// Every field is spelled out, `undefined` included: opening a file from
+			// the tree after a diff must drop the mode, and clicking a plain path
+			// after a `foo.ts:42` link must drop the position. Inheriting either
+			// would put the viewer somewhere nobody asked it to go.
+			void navigate({
+				to: '.',
+				search: (prev) => ({
+					...prev,
+					file: path,
+					diff: opts?.diff,
+					line: opts?.line,
+					col: opts?.col,
+				}),
+			});
 		},
 		[navigate],
 	);
 
 	const close = useCallback(() => {
-		void navigate({ to: '.', search: (prev) => ({ ...prev, file: undefined, diff: undefined }) });
+		void navigate({
+			to: '.',
+			search: (prev) => ({
+				...prev,
+				file: undefined,
+				diff: undefined,
+				line: undefined,
+				col: undefined,
+			}),
+		});
 	}, [navigate]);
+
+	const line = search.file ? parsePosition(search.line) : undefined;
 
 	return {
 		path: search.file ?? null,
 		// A `diff` with no `file` is meaningless — treat it as absent rather than
 		// letting a hand-edited URL open a diff of nothing.
 		diff: search.file && isDiffMode(search.diff) ? search.diff : null,
+		// A column without a line is the same kind of nonsense, so the line is
+		// what gates the whole position.
+		position: line ? { line, col: parsePosition(search.col) ?? null } : null,
 		open,
 		close,
 	};

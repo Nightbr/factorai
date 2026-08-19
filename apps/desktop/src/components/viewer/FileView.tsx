@@ -9,6 +9,7 @@ import {
 	monaco,
 } from '@components/viewer/monaco';
 import { Button } from '@factorai/ui';
+import type { ViewerPosition } from '@hooks/useFileViewer';
 import { iconKeyFor } from '@lib/fileIcon';
 import { formatBytes } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
@@ -32,6 +33,9 @@ function basename(path: string): string {
 
 interface FileViewProps {
 	path: string;
+	/** Where to put the caret, from `&line=`/`&col=` (F19). Null opens at the
+	 *  top, which is what every other way in wants. */
+	position?: ViewerPosition | null;
 	/** Open another file in the viewer — used by relative markdown links. */
 	onOpenPath?: (path: string) => void;
 }
@@ -48,16 +52,22 @@ interface FileViewProps {
  * Routing is by extension because it is free; the *decision* is the backend's,
  * from the magic bytes. A `.png` that isn't one lands in the fallback card.
  */
-export function FileView({ path, onOpenPath }: FileViewProps) {
+export function FileView({ path, position, onOpenPath }: FileViewProps) {
 	if (iconKeyFor(basename(path)) === 'image') return <ImageView path={path} />;
-	return <TextFileView path={path} onOpenPath={onOpenPath} />;
+	return <TextFileView path={path} position={position} onOpenPath={onOpenPath} />;
 }
 
-function TextFileView({ path, onOpenPath }: FileViewProps) {
+function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 	// The user asked to see an oversized file anyway → read with no cap.
 	const [uncapped, setUncapped] = useState(false);
 	// Markdown and SVG open rendered; `preview` is ignored for everything else.
-	const [preview, setPreview] = useState(true);
+	//
+	// **Except when a position was asked for.** A link to `README.md:42` is a
+	// request for line 42, and the rendered page has no lines — it would open at
+	// the top with the position silently dropped. Source honours the ask, and the
+	// toggle is right there. Keyed off the initial value only: toggling to
+	// preview afterwards is the reader's decision and this must not undo it.
+	const [preview, setPreview] = useState(!position);
 
 	const fileQ = useQuery({
 		queryKey: queryKeys.file(path, uncapped),
@@ -89,7 +99,7 @@ function TextFileView({ path, onOpenPath }: FileViewProps) {
 					<Centered>This file is empty.</Centered>
 				)}
 				{file && !file.isBinary && file.contents.length > 0 && !showPreview && (
-					<Editor contents={file.contents} language={language} />
+					<Editor contents={file.contents} language={language} position={position ?? null} />
 				)}
 				{file && !file.isBinary && file.contents.length > 0 && showPreview && isMarkdown && (
 					<MarkdownView
@@ -177,13 +187,15 @@ function SvgPreview({ source, name }: { source: string; name: string }) {
 interface EditorProps {
 	contents: string;
 	language: string;
+	/** Caret target from `&line=`/`&col=` (F19), or null to open at the top. */
+	position: ViewerPosition | null;
 }
 
 /**
  * Monaco host. Mirrors the xterm lifecycle in `Terminal.tsx`: create in an
  * effect, dispose on unmount, never through React state.
  */
-function Editor({ contents, language }: EditorProps) {
+function Editor({ contents, language, position }: EditorProps) {
 	const hostRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -216,10 +228,29 @@ function Editor({ contents, language }: EditorProps) {
 			automaticLayout: true,
 			padding: { top: 8, bottom: 8 },
 		});
+
+		if (position) {
+			// Clamp rather than trust: the line came off a terminal line the agent
+			// printed, and the file may have shrunk since — `foo.ts:900` in stale
+			// output should land at the end of a 40-line file, not throw Monaco at
+			// a line that isn't there.
+			const lastLine = editor.getModel()?.getLineCount() ?? 1;
+			const line = Math.min(position.line, lastLine);
+			const column = position.col ?? 1;
+			editor.setPosition({ lineNumber: line, column });
+			// Centred rather than merely scrolled into view: a link is a jump, and
+			// landing on the last visible row shows you the line with no context
+			// above it, which is the half you usually need.
+			editor.revealLineInCenter(line);
+			// The caret is the only thing marking the destination, and Monaco puts
+			// it where it isn't visible until the editor has focus.
+			editor.focus();
+		}
+
 		return () => editor.dispose();
 		// Recreating on a language change is fine: the viewer is one file at a
 		// time and disposal is cheap next to the initial module load.
-	}, [contents, language]);
+	}, [contents, language, position]);
 
 	return <div ref={hostRef} className="h-full w-full" data-testid="file-view-editor" />;
 }

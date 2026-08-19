@@ -1,7 +1,7 @@
 import { Dialog, DialogClose, DialogContent, DialogTitle, IconButton } from '@factorai/ui';
 import { Check, Copy, ExternalLink, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
-import type { DiffMode } from '@hooks/useFileViewer';
+import type { DiffMode, ViewerPosition } from '@hooks/useFileViewer';
 import { openExternally } from '@lib/tauri';
 
 // Monaco is the heaviest thing in the app, and the viewer is the only thing
@@ -26,6 +26,8 @@ interface FileViewerModalProps {
 	path: string | null;
 	/** Diff mode from `&diff=`, or null to show the file itself (F13). */
 	diff: DiffMode | null;
+	/** Caret target from `&line=`/`&col=`, or null to open at the top (F19). */
+	position: ViewerPosition | null;
 	onClose: () => void;
 	/** Swap the viewer to another file — relative markdown links use this. */
 	onOpenPath: (path: string) => void;
@@ -38,7 +40,13 @@ interface FileViewerModalProps {
  * shell gets replaced. Dismissal (Esc, click-outside, the close button) all
  * route through `onClose`, which clears the URL param.
  */
-export function FileViewerModal({ path, diff, onClose, onOpenPath }: FileViewerModalProps) {
+export function FileViewerModal({
+	path,
+	diff,
+	position,
+	onClose,
+	onOpenPath,
+}: FileViewerModalProps) {
 	const [copied, setCopied] = useState(false);
 
 	if (!path) return null;
@@ -104,7 +112,7 @@ export function FileViewerModal({ path, diff, onClose, onOpenPath }: FileViewerM
 					{diff ? (
 						<DiffView path={path} mode={diff} />
 					) : (
-						<FileView path={path} onOpenPath={onOpenPath} />
+						<FileView path={path} position={position} onOpenPath={onOpenPath} />
 					)}
 				</Suspense>
 			</DialogContent>

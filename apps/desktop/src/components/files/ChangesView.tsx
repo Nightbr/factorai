@@ -69,7 +69,7 @@ function ChangeRow({ change }: { change: GitChange }) {
 			additions={change.additions}
 			deletions={change.deletions}
 			isBinary={change.isBinary}
-			onClick={() => open(change.path, diff)}
+			onClick={() => open(change.path, { diff })}
 		/>
 	);
 }
