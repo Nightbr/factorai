@@ -3,6 +3,39 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A README about the product, a lockup to put at the top of it, and the licence that badge
+  needed — part of roadmap item 18, specs `09-branding.md` §§ B4 / B5 / B5a** — 2026-08-19, user
+  ask, scoped in a clarify-needs interview. The README was organised around how the app is built;
+  it is now organised around what it does — three verb-led pillars (run / find / inspect), four
+  screenshots that match today's build rather than 2026-08-14's, and an alpha warning at the top
+  instead of a Status section two screens down. Install collapsed to six lines with the Gatekeeper
+  and glibc snags folded into a `<details>`; the dev commands moved to a new `CONTRIBUTING.md`
+  that routes to `AGENTS.md` rather than restating it. `LICENSE` is MIT — a public repo without
+  one is all rights reserved, which is not what a Releases page means to say.
+
+  **`docs/brand/factorai-lockup.svg` is the new asset** and B5a specifies it. It is the header
+  lockup from B8 drawn to a file, at the app's own proportions so the two cannot drift, in the
+  amber-dominant colourway B5 had drawn and rejected — rejected *as the icon default*, on the
+  grounds that it fights the UI beside it, which an asset that never appears in the UI does not
+  do. The default colourway is unusable here anyway: its housing is the ground colour, so it would
+  leave a floating F. The wordmark is Inter SemiBold outlined to paths, because GitHub has no
+  Inter and a live `<text>` element renders in whatever the reader's browser substitutes.
+
+  **Two things found while doing it, both fixed.** First, B4 claimed the brand "adopted the colour
+  that was there" and it was **false**: the mark is `#FFB020`, `--primary` was `oklch(78% 0.17 75)`
+  = `#F5A400`, three percent apart and sitting side by side in the header since the brand row
+  landed. Nothing compared them until the lockup had to pick one. The app moved to the brand value
+  (`oklch(81.3% 0.165 75)`, which round-trips exactly), not the reverse, because the mark is what
+  ships in other people's docks; `--color-status-waiting` moved with the accent, and the light
+  theme keeps its darker step since `#FFB020` on a 98% ground fails contrast — item 32's problem.
+
+  Second, **`scripts/qa/geometry.sh` has the same frame-offset bug `click.sh` does** and its
+  README does not say so. It reports the `wmctrl -lG` origin, which here is (+47, +73) off the
+  client area; cropping a screenshot to it slices into whatever sits behind the window, which on
+  this desktop is the *release* factorai. Captures for this work used `xwininfo -id <wid>`
+  instead. Filed in [`08-inconsistencies.md`](../08-inconsistencies.md) rather than fixed, since
+  the fix has callers.
+
 - **Open session tabs come back on launch, and a tab is now an open session — specs
   `05-features.md` §§ F16 / F11, `04-frontend.md`, `07-open-questions.md` Q24** — 2026-08-18, from
   the user ask of 2026-08-17 and the clarify-needs interview roadmap item 33 was gated on.
