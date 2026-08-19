@@ -228,11 +228,10 @@ export interface UiSnapshot {
 /**
  * A file, or a run of lines in one, handed to the agent as context (F20).
  *
- * **`lineStart`/`lineEnd` are 1-based and inclusive** — the CLI prints them
- * straight into its prompt as `@path#L12-18`. Deliberately *not* the same
- * convention as the viewer's internal ranges or as the protocol's
- * `selection_changed`, which is 0-based; the conversion happens once, where the
- * selection is read.
+ * **`lineStart`/`lineEnd` are 1-based and inclusive here** — the numbers the
+ * human selected and the viewer showed them. The wire is 0-based; Rust's
+ * `protocol::at_mentioned` is the single place that converts, and its doc
+ * comment carries the evidence for why.
  */
 export interface Mention {
 	path: string;

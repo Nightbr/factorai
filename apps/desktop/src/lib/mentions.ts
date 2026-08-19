@@ -1,7 +1,10 @@
 import type { Mention } from '@factorai/types';
 
-/** A Monaco selection, reduced to what a mention needs. Monaco's own line and
- *  column numbers are 1-based, which is already `at_mentioned`'s convention. */
+/** A Monaco selection, reduced to what a mention needs.
+ *
+ *  Monaco's line and column numbers are 1-based, and everything on this side
+ *  stays that way — it is what the label shows and what the reader selected.
+ *  The wire's 0-based quirk is converted once, in Rust. */
 export interface LineSelection {
 	startLine: number;
 	endLine: number;
