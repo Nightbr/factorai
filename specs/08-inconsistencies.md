@@ -20,6 +20,11 @@ answer as Q22, so nothing about the tab strip is contradictory any more. Buildin
 F18 then added **C5** and re-measured E1's numbers, and F11's interview added
 **C6**. Five left.
 
+**Status 2026-08-19:** **C7** added while refreshing the README — the QA
+screenshot helper carries a bug its own README documents for a sibling script
+and not for it. Six left, and it is another one found by using the thing rather
+than by reading it.
+
 Worth noting what those two have in common: **both were found by reading the code a
 spec described, not by reading specs against each other.** C5 and C6 are each a
 claim that was true when written and quietly stopped being true, and neither would
@@ -28,7 +33,7 @@ during feature work rather than in scheduled passes.
 
 ---
 
-## Still open — five decisions
+## Still open — six decisions
 
 Everything else compiled on 2026-08-15 has been resolved and deleted, per the
 rule above. What remains needs a call rather than an edit.
@@ -86,6 +91,25 @@ them real bugs: this is an argument for the `tests/regression/` lane, not agains
 writing tests. Either the budget is wrong or the suite has outgrown its lane — § 2d also promises a heavier
 `tests/regression/` lane that was never created, which is probably the real
 answer. See TODO item 10.
+
+**C7 — `scripts/qa/geometry.sh` has `click.sh`'s frame-offset bug, and its README
+says only `click.sh` does.** Found 2026-08-19 while capturing the README
+screenshots. That file already documents, at length, that `click.sh`'s origin is
+frame-relative rather than content-relative — (+47, +73) on this WM — because
+`_resolve_wid.sh` returns what `wmctrl -lG` reports for the decoration window.
+`geometry.sh` reads **the same helper** and is listed in the "What works" table
+with a plain ✓, so a caller that trusts it to crop a screenshot gets a rectangle
+shifted down and right, containing whatever sits behind the window. On this
+desktop that is the *release* factorai, complete with live agent sessions — a
+screenshot of the wrong app that still looks plausible, which is the worst
+failure mode available.
+
+The captures for the README worked around it with `xwininfo -id <wid>`, the same
+source the README already prescribes for clicks. The decision this needs: whether
+`_resolve_wid.sh` should return the client-area origin (fixing `click.sh` and
+`geometry.sh` together, and invalidating every coordinate anyone has written
+down against the current behaviour), or whether both callers should convert. Not
+fixed here because it has callers and this was a docs change.
 
 ---
 
