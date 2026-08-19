@@ -445,7 +445,21 @@ test.describe('file viewer', () => {
 		await page.goto(`${page.url().split('?')[0]}?file=${encodeURIComponent(`${ROOT}/Cargo.toml`)}`);
 
 		const button = page.getByTestId('viewer-add-to-claude');
-		await expect(button).toHaveText('Add file to Claude');
+		await expect(button).toHaveText('Add file to agent context');
+
+		// **Bottom right, past the metadata.** Everything to the left of the
+		// spacer describes the file; this is the one control in the row that
+		// *does* something. Asserted on geometry rather than on the DOM order,
+		// because the thing that would break it is a stray second `flex-1`
+		// leaving the button stranded mid-row — which reads fine in the markup.
+		const readOnly = page.getByTestId('file-viewer').getByText('read-only');
+		const [buttonBox, readOnlyBox] = await Promise.all([
+			button.boundingBox(),
+			readOnly.boundingBox(),
+		]);
+		expect(buttonBox && readOnlyBox).toBeTruthy();
+		if (!buttonBox || !readOnlyBox) throw new Error('both are visible');
+		expect(buttonBox.x).toBeGreaterThan(readOnlyBox.x + readOnlyBox.width);
 
 		await button.click();
 		const calls = await page.evaluate(() =>

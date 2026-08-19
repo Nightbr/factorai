@@ -127,7 +127,7 @@ test.describe('file tree panel', () => {
  * selection rather than navigating, and a modal thrown over the tree on every
  * ctrl-click would make the whole thing unusable.
  */
-test.describe('add files to Claude', () => {
+test.describe('add files to agent context', () => {
 	/** Every `ide_mention` call so far, flattened to the paths it carried. */
 	function mentioned(page: Page) {
 		return page.evaluate(() =>
@@ -154,7 +154,7 @@ test.describe('add files to Claude', () => {
 		const panel = await openSessionThenPanel(page);
 
 		await panel.getByRole('button', { name: 'README.md' }).click({ button: 'right' });
-		await page.getByRole('menuitem', { name: 'Add to Claude' }).click();
+		await page.getByRole('menuitem', { name: 'Add to agent context' }).click();
 
 		expect(await mentioned(page)).toEqual([
 			{ sessionId: 'session-uuid-001', paths: [`${ROOT}/README.md`] },
@@ -179,7 +179,7 @@ test.describe('add files to Claude', () => {
 		// well, and ctrl-click adds rather than starts over — which is what every
 		// file manager does. The count in the label is what makes that visible
 		// before you commit to it, and it is why the label carries one.
-		await page.getByRole('menuitem', { name: 'Add 3 items to Claude' }).click();
+		await page.getByRole('menuitem', { name: 'Add 3 items to agent context' }).click();
 
 		const calls = await mentioned(page);
 		expect(calls).toHaveLength(1);
@@ -197,7 +197,7 @@ test.describe('add files to Claude', () => {
 		await panel.getByRole('button', { name: 'logo.png' }).click({ modifiers: ['Shift'] });
 
 		await panel.getByRole('button', { name: 'logo.png' }).click({ button: 'right' });
-		await page.getByRole('menuitem', { name: /Add \d+ items to Claude/ }).click();
+		await page.getByRole('menuitem', { name: /Add \d+ items to agent context/ }).click();
 
 		// Cargo.toml, README.md, knip.jsonc, logo.png — the fixture's order.
 		const calls = await mentioned(page);
@@ -218,7 +218,7 @@ test.describe('add files to Claude', () => {
 
 		await panel.getByRole('button', { name: 'README.md' }).click({ button: 'right' });
 
-		const row = page.getByRole('menuitem', { name: /Add to Claude/ });
+		const row = page.getByRole('menuitem', { name: /Add to agent context/ });
 		await expect(row).toBeVisible();
 		await expect(row).toHaveAttribute('aria-disabled', 'true');
 	});

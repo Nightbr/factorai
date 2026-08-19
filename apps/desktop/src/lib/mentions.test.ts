@@ -40,9 +40,9 @@ describe('mentionRange', () => {
 
 describe('mentionLabel', () => {
 	it('names the range, so you know what you are about to send', () => {
-		expect(mentionLabel(null)).toBe('Add file to Claude');
-		expect(mentionLabel({ start: 5, end: 5 })).toBe('Add line 5 to Claude');
-		expect(mentionLabel({ start: 12, end: 18 })).toBe('Add lines 12–18 to Claude');
+		expect(mentionLabel(null)).toBe('Add file to agent context');
+		expect(mentionLabel({ start: 5, end: 5 })).toBe('Add line 5 to agent context');
+		expect(mentionLabel({ start: 12, end: 18 })).toBe('Add lines 12–18 to agent context');
 	});
 });
 

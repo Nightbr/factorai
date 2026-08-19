@@ -35,9 +35,9 @@ export function mentionRange(
 
 /** How the footer names what it is about to send. */
 export function mentionLabel(range: { start: number; end: number } | null): string {
-	if (!range) return 'Add file to Claude';
-	if (range.start === range.end) return `Add line ${range.start} to Claude`;
-	return `Add lines ${range.start}–${range.end} to Claude`;
+	if (!range) return 'Add file to agent context';
+	if (range.start === range.end) return `Add line ${range.start} to agent context`;
+	return `Add lines ${range.start}–${range.end} to agent context`;
 }
 
 /** What goes on the wire for this file and selection. */

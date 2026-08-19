@@ -52,7 +52,7 @@ export function FileTreeNode({ entry, root, projectId, depth, siblings }: FileTr
 	const toggleSelected = usePanelStore((s) => s.toggleSelected);
 	const selectRange = usePanelStore((s) => s.selectRange);
 	const { open: openViewer } = useFileViewer();
-	// Which agent "Add to Claude" would hand these to: the session in front, and
+	// Which agent "Add to agent context" would hand these to: the session in front, and
 	// nothing when the human is on the project list or in settings (F20).
 	const { sessionId: activeSessionId } = useParams({ strict: false }) as { sessionId?: string };
 	const decorations = useGitDecorations();
