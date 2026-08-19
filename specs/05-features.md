@@ -2787,11 +2787,54 @@ There is **no off switch yet**, and that is the same shape as F18's restore
 preference: F11 is specified and unbuilt, so the switch lands there rather than
 becoming half of someone else's feature. Recorded in roadmap item 4.
 
+### Handing files to the agent
+
+The other direction, and the thing that makes this a bridge rather than a remote
+control: **right-click files in the tree → "Add to Claude"**, which arrives in
+the agent's prompt box as `@path`, or `@path#L12-18` for a run of lines.
+
+**`at_mentioned`, not `selection_changed`, and the modal is why.** VS Code
+streams your editor selection continuously and the CLI renders it in its footer
+("4 lines selected · In foo.ts"). Our viewer is a modal you must dismiss before
+you can type, so anything living only in the footer is one keystroke from being
+forgotten — and the footer is *behind* the modal while you are selecting, so you
+never see the feedback at the moment you act. Text in the prompt survives the
+viewer closing and is visible in what you are about to send.
+
+**The two line conventions are opposite.** `at_mentioned` is 1-based inclusive,
+because the CLI prints it verbatim as `#L12` and its own guard is
+`if (lineStart && lineEnd)` — a zero reads as absent. `selection_changed`, if it
+is ever added, is 0-based. Nothing about the field names says which is which, so
+each has a test.
+
+**Selection lives in the tree, and a modified click never navigates.** Plain
+click is unchanged — select and open. Ctrl/Cmd-click toggles a row into the
+selection; shift-click takes the run between the anchor and the row. Neither
+opens the viewer nor expands a directory: you are building a set to hand over,
+and a modal thrown over the tree on every ctrl-click would make the gesture
+unusable.
+
+**Shift-click ranges stop at a directory boundary**, falling back to selecting
+the one row. The tree is recursive and every node fetches its own listing, so
+there is no flat list of what is visible — a range across directories would mean
+lifting every lazily-loaded listing out of its node, which is its own piece of
+work. A parent already holds its children in order, so siblings cost nothing.
+
+Right-clicking inside a selection acts on all of it and outside one replaces it,
+the way every file manager behaves. The menu row names the count — "Add 3 items
+to Claude" — because a gesture that sends more than you meant is worse than one
+you have to repeat.
+
+**It fails loudly**, unlike the rest of the bridge. No session in front and the
+row is disabled rather than hidden; no bridge, or Claude not attached, and the
+call errors. This is a gesture the human just made and is watching for, so
+"nothing happened" has to be visible.
+
 ### Not in this feature
 
-`selection_changed` and `at_mentioned` — the outbound half, where selecting code
-in the viewer becomes context for the agent. It is what makes this a bridge
-rather than a remote control, and it needs a selection model the viewer does not
-have. Its own roadmap entry.
+`selection_changed` — the ambient half, where merely selecting in the viewer
+tells the agent what you are looking at. Deferred rather than dropped: it is
+what the CLI's footer is built for, and it needs the viewer to report a live
+selection. Its own roadmap entry.
 
 **Roadmap.** Item 19.
