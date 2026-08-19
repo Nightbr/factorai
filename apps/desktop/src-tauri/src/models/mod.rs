@@ -240,6 +240,26 @@ pub struct ImageContents {
 	pub size: u64,
 }
 
+/// One PDF's bytes, for pdf.js to parse in the renderer (F7).
+///
+/// Shaped like [`ImageContents`] minus the `mime`: there is exactly one type
+/// this can be, because `read_pdf` refuses anything that isn't `%PDF-`, so a
+/// field restating it would be a constant crossing the bridge.
+///
+/// No page count either. Counting pages means parsing the document, and the
+/// renderer is about to do that anyway — pdf.js reports `numPages` from the
+/// same bytes. A second, weaker PDF parser in Rust could only ever disagree
+/// with it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PdfContents {
+	pub path: String,
+	/// Standard base64 of the whole file.
+	pub base64: String,
+	/// True size on disk, in bytes.
+	pub size: u64,
+}
+
 /// Which side of git a blob is read from (F13). The worktree isn't here: that
 /// side is `read_file`, which already handles caps, binaries and lossy UTF-8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

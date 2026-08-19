@@ -155,6 +155,7 @@ pub fn run() {
 			commands::files::list_dir,
 			commands::files::read_file,
 			commands::files::read_image,
+			commands::files::read_pdf,
 			commands::files::path_kinds,
 			commands::ide::ide_report_ui,
 			commands::ide::ide_resync,
