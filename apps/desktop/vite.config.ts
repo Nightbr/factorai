@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vite';
 import pkg from './package.json' with { type: 'json' };
+import { pdfjsAssets } from './vite/pdfjsAssets';
 
 // Stamped into the bundle so the crash screen can name the build it came from
 // (components/layout/ErrorBoundary.tsx). A build-time constant rather than a
@@ -28,7 +29,10 @@ export default defineConfig({
 	// lib/fileIcon.ts into React components at build time (ADR-0006). Only the
 	// icons we import statically end up in the bundle — nothing is fetched at
 	// runtime, which a Tauri app with no network access requires.
-	plugins: [tailwindcss(), react(), Icons({ compiler: 'jsx', jsx: 'react' })],
+	// `pdfjsAssets` stages pdf.js's fonts, CMaps and WASM decoders into
+	// `public/pdfjs/` — see that file for why they can't be left in
+	// node_modules (ADR-0018).
+	plugins: [tailwindcss(), react(), Icons({ compiler: 'jsx', jsx: 'react' }), pdfjsAssets()],
 	clearScreen: false,
 	optimizeDeps: {
 		// Monaco arrives through a lazy chunk, so Vite would only discover it the
@@ -42,6 +46,10 @@ export default defineConfig({
 			// above: discovered lazily, it would reload the page the first time
 			// someone opened a .json file.
 			'monaco-editor/languages/features/json/tokenization',
+			// pdf.js arrives through a lazier chunk still — only when a PDF is
+			// opened — so it would otherwise prebundle and reload the page at
+			// exactly that moment. Same reasoning as Monaco's three above.
+			'pdfjs-dist',
 		],
 	},
 	server: {

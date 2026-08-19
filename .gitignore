@@ -46,3 +46,8 @@ apps/desktop/test-results/
 # Scratch output from the `playwright` MCP server (.mcp.json), which writes
 # here when an agent drives a browser from a conversation.
 /.playwright-mcp/
+
+# pdf.js side-car assets (fonts, CMaps, WASM decoders), staged into public/ at
+# startup by vite/pdfjsAssets.ts. ~4MB copied out of node_modules — it belongs
+# in the build, not the history. See ADR-0018.
+apps/desktop/public/pdfjs/

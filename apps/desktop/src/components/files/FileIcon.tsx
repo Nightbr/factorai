@@ -41,6 +41,7 @@ import Log from '~icons/vscode-icons/file-type-log';
 import Lua from '~icons/vscode-icons/file-type-lua';
 import Markdown from '~icons/vscode-icons/file-type-markdown';
 import Npm from '~icons/vscode-icons/file-type-npm';
+import Pdf from '~icons/vscode-icons/file-type-pdf2';
 import Php from '~icons/vscode-icons/file-type-php';
 import Pnpm from '~icons/vscode-icons/file-type-pnpm';
 import Poetry from '~icons/vscode-icons/file-type-poetry';
@@ -110,6 +111,7 @@ const BY_KEY: Record<IconKey, IconComponent> = {
 	lua: Lua,
 	markdown: Markdown,
 	npm: Npm,
+	pdf: Pdf,
 	php: Php,
 	pnpm: Pnpm,
 	poetry: Poetry,
