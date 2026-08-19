@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::models::{DirListing, FileContents, ImageContents};
+use crate::models::{DirListing, FileContents, ImageContents, PathKind};
 use crate::services::files;
 
 /// List one directory for the project file tree. `root` is the project root,
@@ -26,4 +26,15 @@ pub fn read_file(path: String, max_bytes: Option<usize>) -> AppResult<FileConten
 #[tauri::command]
 pub fn read_image(path: String, max_bytes: Option<usize>) -> AppResult<ImageContents> {
 	files::read_image(&path, max_bytes)
+}
+
+/// Classify a batch of paths for the terminal's link provider (F19): file,
+/// directory, or missing, in the order asked.
+///
+/// One call per hovered terminal line rather than one per candidate, and it
+/// never errors — see `services::files::path_kinds` for why "missing" is the
+/// only failure this question has.
+#[tauri::command]
+pub fn path_kinds(paths: Vec<String>) -> Vec<PathKind> {
+	files::path_kinds(&paths)
 }

@@ -14,7 +14,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{DirEntry, DirListing, FileContents, ImageContents};
+use crate::models::{DirEntry, DirListing, FileContents, ImageContents, PathKind};
 use crate::services::git::IgnoreChecker;
 
 /// Upper bound on entries returned for a single directory. Generated
@@ -297,6 +297,35 @@ pub(crate) fn contents_from_bytes(
 		is_binary: false,
 		truncated,
 		line_count,
+	}
+}
+
+/// Classify a batch of paths for the terminal's link provider (F19).
+///
+/// Batched because the caller is: xterm hands `provideLinks` one hovered line,
+/// which may hold several candidates, and one round trip per line beats one per
+/// token. Order is the caller's, so it can zip the answers straight back onto
+/// the ranges it found.
+///
+/// **Nothing here fails.** Every way of not being an openable path — absent,
+/// unreadable, a socket — collapses to [`PathKind::Missing`], because a link
+/// that isn't one is the whole of what the renderer does with the answer.
+///
+/// Symlinks are followed: a link to a file is a file, which is what a reader
+/// means by clicking one. `list_dir`'s escape-flagging exists to stop the tree
+/// *browsing* out of a project, and opening one file the agent just named is
+/// not that.
+pub fn path_kinds(paths: &[String]) -> Vec<PathKind> {
+	paths.iter().map(|p| path_kind(p)).collect()
+}
+
+fn path_kind(path: &str) -> PathKind {
+	// `metadata` rather than `symlink_metadata`: see the note above about
+	// following links.
+	match fs::metadata(path) {
+		Ok(m) if m.is_dir() => PathKind::Directory,
+		Ok(m) if m.is_file() => PathKind::File,
+		_ => PathKind::Missing,
 	}
 }
 
@@ -621,5 +650,53 @@ mod tests {
 
 		assert!(matches!(list_dir(missing.to_str().unwrap(), None), Err(AppError::NotFound(_))));
 		assert!(matches!(list_dir(file.to_str().unwrap(), None), Err(AppError::InvalidInput(_))));
+	}
+
+	#[test]
+	fn path_kinds_answers_in_the_order_it_was_asked() {
+		let dir = tempdir().unwrap();
+		let file = dir.path().join("a.txt");
+		File::create(&file).unwrap();
+		let subdir = dir.path().join("sub");
+		fs::create_dir(&subdir).unwrap();
+
+		// Order is the contract: the caller zips this back onto the ranges it
+		// found on one terminal line.
+		let asked = vec![
+			dir.path().join("nope.txt").to_string_lossy().into_owned(),
+			file.to_string_lossy().into_owned(),
+			subdir.to_string_lossy().into_owned(),
+		];
+
+		assert_eq!(
+			path_kinds(&asked),
+			vec![PathKind::Missing, PathKind::File, PathKind::Directory]
+		);
+	}
+
+	#[test]
+	fn path_kinds_follows_a_symlink_to_what_it_points_at() {
+		let dir = tempdir().unwrap();
+		let file = dir.path().join("real.txt");
+		File::create(&file).unwrap();
+		let link = dir.path().join("link.txt");
+		std::os::unix::fs::symlink(&file, &link).unwrap();
+		let dangling = dir.path().join("dangling.txt");
+		std::os::unix::fs::symlink(dir.path().join("gone.txt"), &dangling).unwrap();
+
+		// A link to a file is a file — that is what clicking one means. A link
+		// to nothing is Missing rather than an error, like everything else here.
+		assert_eq!(
+			path_kinds(&[
+				link.to_string_lossy().into_owned(),
+				dangling.to_string_lossy().into_owned(),
+			]),
+			vec![PathKind::File, PathKind::Missing]
+		);
+	}
+
+	#[test]
+	fn path_kinds_of_nothing_is_nothing() {
+		assert!(path_kinds(&[]).is_empty());
 	}
 }
