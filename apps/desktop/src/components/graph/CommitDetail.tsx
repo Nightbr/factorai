@@ -156,7 +156,9 @@ export function CommitDetail({ projectPath, sha, onSelectSha }: CommitDetailProp
 										// Git's own range notation, both ends explicit, so nothing in
 										// the renderer has to resolve `sha^`. A root commit has no left
 										// side, so the empty tree stands in for it.
-										onClick={() => open(file.path, `${detail.diffParent ?? ''}..${detail.sha}`)}
+										onClick={() =>
+											open(file.path, { diff: `${detail.diffParent ?? ''}..${detail.sha}` })
+										}
 									/>
 								))}
 							</ul>

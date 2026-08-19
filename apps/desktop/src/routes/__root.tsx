@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { QuitConfirm } from '@components/dialog/QuitConfirm';
 import { AppShell } from '@components/layout/AppShell';
 import { FileViewerModal } from '@components/viewer/FileViewerModal';
-import { type DiffMode, isDiffMode, useFileViewer } from '@hooks/useFileViewer';
+import { type DiffMode, isDiffMode, parsePosition, useFileViewer } from '@hooks/useFileViewer';
 import { useNativeContextMenu } from '@hooks/useNativeContextMenu';
 import { useSessionsSync } from '@hooks/useSessionsSync';
 import { cmd, events } from '@lib/tauri';
@@ -79,6 +79,7 @@ function RootLayout() {
 			<FileViewerModal
 				path={viewer.path}
 				diff={viewer.diff}
+				position={viewer.position}
 				onClose={viewer.close}
 				onOpenPath={viewer.open}
 			/>
@@ -94,9 +95,15 @@ export const rootRoute = createRootRoute({
 	// knowing which route is mounted. See hooks/useFileViewer.ts.
 	// `&diff=` turns the same viewer into a diff of that file (F13); the modes
 	// are validated here so a hand-edited URL can't reach the editor.
-	validateSearch: (search: Record<string, unknown>): { file?: string; diff?: DiffMode } => ({
+	// `&line=` / `&col=` place the cursor (F19), 1-based, validated for the same
+	// reason — Monaco should never be handed a position no file has.
+	validateSearch: (
+		search: Record<string, unknown>,
+	): { file?: string; diff?: DiffMode; line?: number; col?: number } => ({
 		file: typeof search.file === 'string' && search.file ? search.file : undefined,
 		diff: isDiffMode(search.diff) ? search.diff : undefined,
+		line: parsePosition(search.line),
+		col: parsePosition(search.col),
 	}),
 	component: RootLayout,
 });
