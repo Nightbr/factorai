@@ -43,14 +43,40 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   unclickable for the rest of the session. `Makefile` is not a link, deliberately: a grammar that
   accepts a bare word links the sentence "run the test" to a `test/` directory.
 
-- **IDE bridge — designed, not built — roadmap item 19, spec `05-features.md` F20, ADR-0017** —
-  2026-08-19. Not shipped code; recorded here because the research half is done and would otherwise
-  live in a chat log. The protocol was read out of CLI 2.1.235: `~/.claude/ide/<port>.lock` with the
-  port in the filename, a WebSocket carrying `X-Claude-Code-Ide-Authorization`, and
+- **IDE bridge, read-only half — roadmap item 19, spec `05-features.md` F20, ADR-0017** —
+  2026-08-19, shipped in v0.16.0. factorai presents itself to the `claude` CLI as its editor: the
+  agent connects over a per-session socket and can ask for a file, which opens in the viewer at the
+  line it named. That is the *push* half of `00-overview.md`'s operating model — the agent asks and
+  the human decides in place — and it is the first thing the app does that isn't the human going to
+  look.
+
+  The protocol was read out of CLI 2.1.235 rather than inferred: `~/.claude/ide/<port>.lock` with
+  the port in the *filename*, a WebSocket carrying `X-Claude-Code-Ide-Authorization`, and
   `CLAUDE_CODE_SSE_PORT` selecting among lockfiles rather than adding a search path. ADR-0017 holds
-  the decisions — one server per session so a request names its tab, path scoping as the boundary
-  that actually matters, and a read-only first slice that leaves ADR-0009 untouched — including the
-  narrow amendment to ADR-0004 that writing that one lockfile requires.
+  the decisions, including the narrow amendment to ADR-0004 that writing that one lockfile needs.
+  Three tools — `openFile`, `getWorkspaceFolders`, `getOpenEditors` — and `getDiagnostics`
+  deliberately absent, because with no diagnostics source a tool that always answers "no problems"
+  is a false one the agent acts on. Nothing writes, so ADR-0009 is untouched.
+
+  **The conformance pass paid for itself on its first run, which is the whole argument for having
+  one.** Everything was green — ten socket tests against a real client and a real handshake — and
+  the real `claude` found the lockfile, probed the port, connected, completed the handshake and
+  **reset with nothing sent**. One header: the CLI builds its socket as
+  `new WebSocket(url, { protocols: ["mcp"] })`, and a client offered no subprotocol in return is
+  entitled to treat the connection as unusable. No test caught it because our own test client never
+  asked for one. That is the gap only a run against the shipped binary can close, and it is why
+  ADR-0017 asks for the pass by name.
+
+  **Two indicators were built and both were wrong, on user feedback.** A tab mark for "the agent
+  wants you in that session" used `--primary`, which is `--color-status-waiting`'s *exact* value —
+  so it was indistinguishable from "waiting for input", on a tab already carrying a status badge. A
+  blue "connected" dot replaced it in the header and was wrong for a better reason: a badge for the
+  healthy case is a label that is always on, and that is a label you stop reading. What shipped is
+  the inverse — nothing while it works, a badge with the reason when the bridge is broken, because
+  an agent that *cannot* open a file looks exactly like one that chose not to.
+
+  Still open, in item 19: the write path (`openDiff`, its own ADR), a threshold for reporting a
+  client that never attaches, and where an `openFile` for a background session should land.
 
 - **A README about the product, a lockup to put at the top of it, and the licence that badge
   needed — part of roadmap item 18, specs `09-branding.md` §§ B4 / B5 / B5a** — 2026-08-19, user
