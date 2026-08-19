@@ -40,7 +40,7 @@ const DOTFILE = /^\.[A-Za-z][\w.-]*$/;
 const DOTTED = /^[\w@+~-][\w@+~.-]*\.[A-Za-z][\w-]{0,8}$/;
 
 /** Where a candidate sits in the text it was found in, and what it says. */
-export interface PathCandidate {
+interface PathCandidate {
 	/** Offset of the first character, into the text passed to `findCandidates`. */
 	start: number;
 	/** Offset one past the last character, suffix included. */

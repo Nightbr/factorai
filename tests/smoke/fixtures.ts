@@ -327,6 +327,14 @@ export function fixtureWithFileTree(): TestFixture {
 				size: 12_582_912,
 				truncated: true,
 			}),
+			// Long enough that `&line=` has somewhere off-screen to land (F19).
+			// Deliberately **not** in `dirListings`: it is reached by URL, which is
+			// also how a terminal link reaches a file — through `?file=`, not
+			// through the tree.
+			[`${root}/src/deep.ts`]: contents(
+				`${root}/src/deep.ts`,
+				`${Array.from({ length: 400 }, (_, i) => `const line${i + 1} = ${i + 1};`).join('\n')}\n`,
+			),
 		},
 		// `broken.png` is deliberately missing: the mock rejects an unlisted
 		// image path exactly as the backend rejects wrong magic bytes.

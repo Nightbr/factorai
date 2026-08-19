@@ -189,6 +189,12 @@ function SessionView() {
 						sessionId={sessionId}
 						projectId={projectId}
 						projectCwd={projectCwd}
+						// Where a relative path in the output resolves from (F19).
+						// Recorded in the transcript, so it is only ever different from
+						// the project root for a resumed session started in a
+						// subdirectory — which is exactly the case the fallback exists
+						// for.
+						sessionCwd={session?.cwd ?? null}
 					/>
 				</div>
 			)}
