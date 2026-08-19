@@ -28,7 +28,8 @@ use uuid::Uuid;
 use crate::agents::claude;
 use crate::error::{AppError, AppResult};
 use crate::services::claude_cli::find_claude_binary;
-use crate::services::ide::protocol::Mcp;
+use crate::services::ide::protocol::{self, Mcp, Mention};
+use crate::services::ide::scope;
 use crate::services::ide::server::IdeServer;
 use crate::services::ide::ui_state::UiState;
 use crate::services::osc_title::TitleScanner;
@@ -185,6 +186,10 @@ struct TerminalHandle {
 	killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 	status: Mutex<TerminalStatus>,
 	last_activity: AtomicI64,
+	/// The directory this session runs in, and the root every IDE-bridge path is
+	/// checked against. Kept on the handle because the bridge's scope has to
+	/// outlive the spawn call that computed it.
+	cwd: PathBuf,
 	/// This session's IDE bridge (F20), held so its lifetime is the PTY's:
 	/// dropping the handle drops the server, which removes the lockfile and
 	/// stops the listener — so the reaping ADR-0017 promises rides on the
@@ -281,6 +286,42 @@ impl TerminalManager {
 	/// whatever happened to its transcript on disk.
 	pub fn live_session_ids(&self) -> HashSet<String> {
 		self.terminals.iter().map(|e| e.value().session_id.clone()).collect()
+	}
+
+	/// Hand files to one session's agent as `at_mentioned` notifications (F20).
+	///
+	/// Scope-checked per path against that session's own project, the same way
+	/// `openFile` is on the way in. The direction of travel does not change the
+	/// boundary — a renderer bug that offered a path outside the project would
+	/// otherwise leak its name to the agent.
+	///
+	/// Loud on failure, unlike the rest of the bridge: this is a gesture the
+	/// human just made and is watching for, so "nothing happened" has to be
+	/// something they can see rather than a line in a log.
+	pub fn mention(&self, session_id: &str, mentions: &[Mention]) -> AppResult<()> {
+		let entry =
+			self.terminals.iter().find(|e| e.value().session_id == session_id).ok_or_else(
+				|| AppError::NotFound(format!("session {session_id} is not running")),
+			)?;
+		let handle = entry.value();
+
+		let Some(server) = handle.ide.server() else {
+			return Err(AppError::InvalidInput(
+				"this session has no editor bridge, so there is nothing to send to".into(),
+			));
+		};
+		if !server.is_attached() {
+			return Err(AppError::InvalidInput(
+				"Claude is not connected to this session yet".into(),
+			));
+		}
+
+		let root = handle.cwd.clone();
+		for mention in mentions {
+			let path = scope::resolve_within(&root, &mention.path)?;
+			server.notify(protocol::at_mentioned(&path, mention));
+		}
+		Ok(())
 	}
 
 	/// Re-announce every bridge's current state (F20).
@@ -523,6 +564,7 @@ impl TerminalManager {
 			// dot did before F10, so a launch looks no different than it used to.
 			status: Mutex::new(TerminalStatus::Working),
 			last_activity: AtomicI64::new(now_ms()),
+			cwd: cwd_path.clone(),
 			ide,
 		});
 

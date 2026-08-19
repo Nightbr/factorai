@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
+use tokio::sync::broadcast;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::http::header::{HeaderValue, SEC_WEBSOCKET_PROTOCOL};
@@ -61,11 +62,23 @@ pub type Handler = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// attached, which is what the badge claims.
 pub type OnClient = Arc<dyn Fn(bool) + Send + Sync>;
 
+/// How many outbound notifications may queue before the slowest connection
+/// starts losing the oldest.
+///
+/// These are user gestures — "send this file to Claude" — so the queue only
+/// fills if the socket has stopped draining, which means the client is gone or
+/// wedged. Dropping the oldest is right for that: a mention nobody can receive
+/// is not worth stalling the app over, and `broadcast` tells the reader it
+/// lagged so it can say so.
+const OUTBOUND_QUEUE: usize = 64;
+
 /// A live bridge for one session. Dropping it takes the lockfile and the
 /// listener with it.
 pub struct IdeServer {
 	addr: SocketAddr,
 	token: String,
+	/// Notifications waiting to go out to whoever is attached.
+	outbound: broadcast::Sender<String>,
 	/// Is a client attached right now?
 	///
 	/// The events are enough for a renderer that was listening; this is for one
@@ -119,6 +132,9 @@ impl IdeServer {
 			(on_client)(connected);
 		});
 
+		let (outbound, _) = broadcast::channel(OUTBOUND_QUEUE);
+		let accept_outbound = outbound.clone();
+
 		let accept_token = token.clone();
 		let task = tauri::async_runtime::spawn(async move {
 			let listener = match TcpListener::from_std(std_listener) {
@@ -128,11 +144,11 @@ impl IdeServer {
 					return;
 				}
 			};
-			accept_loop(listener, accept_token, handler, on_client).await;
+			accept_loop(listener, accept_token, handler, on_client, accept_outbound).await;
 		});
 
 		debug!(%port, %workspace_root, "ide bridge listening");
-		Ok(Self { addr, token, attached, claude_dir: claude_dir.to_path_buf(), task })
+		Ok(Self { addr, token, outbound, attached, claude_dir: claude_dir.to_path_buf(), task })
 	}
 
 	pub fn port(&self) -> u16 {
@@ -159,6 +175,17 @@ impl IdeServer {
 	pub fn is_attached(&self) -> bool {
 		self.attached.load(Ordering::Relaxed)
 	}
+
+	/// Push one JSON-RPC notification to whoever is attached.
+	///
+	/// **Silently does nothing when nobody is**, and that is the caller's cue
+	/// rather than an error to propagate: `broadcast::send` fails only when
+	/// there are no receivers, which is exactly "Claude is not connected to this
+	/// session". The UI already knows that state — it is what the header badge
+	/// is about — so the command checks it up front and this stays infallible.
+	pub fn notify(&self, message: String) {
+		let _ = self.outbound.send(message);
+	}
 }
 
 impl Drop for IdeServer {
@@ -172,7 +199,13 @@ impl Drop for IdeServer {
 	}
 }
 
-async fn accept_loop(listener: TcpListener, token: String, handler: Handler, on_client: OnClient) {
+async fn accept_loop(
+	listener: TcpListener,
+	token: String,
+	handler: Handler,
+	on_client: OnClient,
+	outbound: broadcast::Sender<String>,
+) {
 	loop {
 		let Ok((stream, peer)) = listener.accept().await else {
 			// A failed accept is usually the listener going away with us.
@@ -181,8 +214,9 @@ async fn accept_loop(listener: TcpListener, token: String, handler: Handler, on_
 		let token = token.clone();
 		let handler = handler.clone();
 		let on_client = on_client.clone();
+		let rx = outbound.subscribe();
 		tauri::async_runtime::spawn(async move {
-			if let Err(e) = serve(stream, token, handler, on_client).await {
+			if let Err(e) = serve(stream, token, handler, on_client, rx).await {
 				debug!(%peer, error = %e, "ide bridge connection ended");
 			}
 		});
@@ -201,6 +235,7 @@ async fn serve(
 	token: String,
 	handler: Handler,
 	on_client: OnClient,
+	mut outbound: broadcast::Receiver<String>,
 ) -> Result<(), tokio_tungstenite::tungstenite::Error> {
 	// The token is checked *during* the handshake, so an unauthorised client
 	// never reaches a WebSocket at all — it gets a 401 and a closed socket.
@@ -223,7 +258,7 @@ async fn serve(
 		Err(err)
 	};
 
-	let mut ws = accept_hdr_async(stream, check).await?;
+	let ws = accept_hdr_async(stream, check).await?;
 
 	// Attached from here to the end of this function, however it ends. `Attached`
 	// reports `false` from its `Drop`, so an error return, a panic and a clean
@@ -231,19 +266,42 @@ async fn serve(
 	// header claiming it is still there.
 	let _attached = Attached::new(on_client);
 
-	while let Some(message) = ws.next().await {
-		match message? {
-			Message::Text(text) => {
-				if let Some(reply) = handler(&text) {
-					ws.send(Message::Text(reply.into())).await?;
+	// Split so a push from the app and a message from the client can be waited on
+	// together. Without this the socket only speaks when spoken to, and a
+	// notification would sit until the CLI happened to ask something.
+	let (mut sink, mut stream) = ws.split();
+
+	loop {
+		tokio::select! {
+			incoming = stream.next() => {
+				let Some(message) = incoming else { break };
+				match message? {
+					Message::Text(text) => {
+						if let Some(reply) = handler(&text) {
+							sink.send(Message::Text(reply.into())).await?;
+						}
+					}
+					// The CLI speaks JSON text. Binary is not part of the protocol,
+					// and answering something we did not understand is worse than
+					// silence.
+					Message::Binary(_) => debug!("ide bridge ignored a binary frame"),
+					Message::Close(_) => break,
+					// tungstenite answers pings itself.
+					_ => {}
 				}
 			}
-			// The CLI speaks JSON text. Binary is not part of the protocol, and
-			// answering something we did not understand is worse than silence.
-			Message::Binary(_) => debug!("ide bridge ignored a binary frame"),
-			Message::Close(_) => break,
-			// tungstenite answers pings itself.
-			_ => {}
+			push = outbound.recv() => {
+				match push {
+					Ok(text) => sink.send(Message::Text(text.into())).await?,
+					// The queue overflowed, so this connection missed some. Say so
+					// rather than pretend: a dropped mention is a file the human
+					// thinks they sent.
+					Err(broadcast::error::RecvError::Lagged(n)) => {
+						warn!(dropped = n, "ide bridge could not keep up; notifications were lost");
+					}
+					Err(broadcast::error::RecvError::Closed) => break,
+				}
+			}
 		}
 	}
 	Ok(())

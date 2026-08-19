@@ -158,6 +158,7 @@ pub fn run() {
 			commands::files::path_kinds,
 			commands::ide::ide_report_ui,
 			commands::ide::ide_resync,
+			commands::ide::ide_mention,
 			commands::git::git_status,
 			commands::git::git_blob,
 			commands::git::git_graph,
