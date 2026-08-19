@@ -276,8 +276,10 @@ Concrete rules:
   which of the two it is. Added 2026-08-18 on user feedback — tab names and
   the sidebar's session rows were `text-xs`, which sized the things you
   navigate by for glancing at. Hand-written sizes (`text-[11px]`) are how the
-  scale erodes; the two exceptions left are deliberate micro-marks, the dev
-  badge and a 16px avatar's initials.
+  scale erodes; the one exception left is a deliberate micro-mark, a 16px
+  avatar's initials. The dev badge was the other until 2026-08-19, when it
+  stopped hand-rolling a 10px bold mono block and took F18's ref-chip shape
+  instead — see `DevBadge`.
 - **Anything clickable shows `cursor: pointer`.** Tailwind v4's
   Preflight sets `cursor: default` on buttons, so this does not happen
   by itself. It is one base rule in

@@ -336,7 +336,8 @@ export const CHIP_CLASSES: Record<GitRefKind, string> = {
 
 /** Shared badge geometry: the border, radius, padding and the icon gap. Split
  *  from the per-kind colour so a new kind cannot accidentally get a different
- *  shape. */
+ *  shape — and imported by the top bar's `DevBadge` too, which is a chip in
+ *  everything but hue. */
 export const CHIP_SHAPE =
 	'inline-flex items-center gap-1 rounded border px-1 py-px font-medium text-xs leading-tight';
 

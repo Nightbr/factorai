@@ -115,7 +115,6 @@
 	--color-input: var(--input);
 	--color-ring: var(--ring);
 	--color-dev: var(--dev);
-	--color-dev-foreground: var(--dev-foreground);
 	--color-lane-0: var(--lane-0);
 	--color-lane-1: var(--lane-1);
 	--color-lane-2: var(--lane-2);
@@ -187,9 +186,10 @@
 
 	/* Development-build marker. Violet on purpose: it is the one hue the rest
 	   of the palette never uses, so a dev window is told apart from the
-	   release one at a glance rather than read. */
+	   release one at a glance rather than read. One value, no `-foreground`
+	   pair: the badge is a chip in F18's shape — border, 12% tint and text all
+	   mixed from this hue — so nothing is ever set *on* solid violet. */
 	--dev: oklch(68% 0.19 300);
-	--dev-foreground: oklch(16% 0.008 250);
 
 	/* Categorical scale — see docs/adr/0012-categorical-colour-tokens.md.
 	   Everything above is *semantic*: there is one right answer for any given
@@ -251,7 +251,6 @@
 	--input: oklch(94% 0.006 250);
 	--ring: oklch(58% 0.17 75);
 	--dev: oklch(52% 0.21 300);
-	--dev-foreground: oklch(98% 0.004 250);
 
 	/* The categorical scale again, against a 98% background instead of a 16% one.
 	   Not a tint of the dark values: lightness drops by ~20 points and chroma
