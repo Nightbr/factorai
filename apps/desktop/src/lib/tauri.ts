@@ -13,6 +13,7 @@ import type {
 	IndexerProgressEvent,
 	Mention,
 	PathKind,
+	PdfContents,
 	Project,
 	QuitRequestedEvent,
 	SearchHit,
@@ -84,6 +85,11 @@ export const cmd = {
 	 *  the binary card. */
 	readImage: (path: string, maxBytes?: number | null) =>
 		invoke<ImageContents>('read_image', { path, maxBytes }),
+	/** Read a PDF for the viewer (F7). Rejects anything that doesn't start
+	 *  `%PDF-`, so a `.pdf` that is really a zip falls back to the binary card
+	 *  instead of failing inside pdf.js. */
+	readPdf: (path: string, maxBytes?: number | null) =>
+		invoke<PdfContents>('read_pdf', { path, maxBytes }),
 	/** Classify a batch of paths for the terminal's link provider (F19), in the
 	 *  order given. Never rejects: everything that isn't an openable path comes
 	 *  back `missing`. */
@@ -360,6 +366,9 @@ interface TestFixture {
 	/** Images keyed by absolute path, for the F7 viewer. An image-looking path
 	 *  that isn't listed here rejects, which is the binary-card fallback. */
 	images?: Record<string, ImageContents>;
+	/** PDFs keyed by absolute path, for the F7 viewer. Same rule as `images`:
+	 *  a `.pdf` path that isn't listed rejects, reaching the binary card. */
+	pdfs?: Record<string, PdfContents>;
 	/** Repository state keyed by project path, for the F13 Changes tab. */
 	gitStatuses?: Record<string, GitStatus>;
 	/** Blobs keyed by `<rev>:<absolute path>`, for diff fixtures. `<rev>` is
@@ -508,6 +517,14 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// reaches the fall-back-to-binary-card path without inventing bytes.
 			if (!image) throw { kind: 'InvalidInput', message: `not a displayable image: ${path}` };
 			return image as unknown as T;
+		}
+		case 'read_pdf': {
+			const path = String(args?.path ?? '');
+			const pdf = fx?.pdfs?.[path];
+			// Undeclared means "not a PDF", the same way an undeclared image isn't
+			// one — a fixture reaches the binary card by leaving the file out.
+			if (!pdf) throw { kind: 'InvalidInput', message: `not a PDF: ${path}` };
+			return pdf as unknown as T;
 		}
 		case 'ide_mention':
 			// No bridge in browser-only mode. Resolving rather than rejecting keeps

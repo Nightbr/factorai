@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::models::{DirListing, FileContents, ImageContents, PathKind};
+use crate::models::{DirListing, FileContents, ImageContents, PathKind, PdfContents};
 use crate::services::files;
 
 /// List one directory for the project file tree. `root` is the project root,
@@ -26,6 +26,14 @@ pub fn read_file(path: String, max_bytes: Option<usize>) -> AppResult<FileConten
 #[tauri::command]
 pub fn read_image(path: String, max_bytes: Option<usize>) -> AppResult<ImageContents> {
 	files::read_image(&path, max_bytes)
+}
+
+/// Read one PDF as base64 for the viewer (F7). Rejects anything that doesn't
+/// start `%PDF-`, so the caller falls back to the binary card instead of handing
+/// pdf.js bytes it will only fail to parse.
+#[tauri::command]
+pub fn read_pdf(path: String, max_bytes: Option<usize>) -> AppResult<PdfContents> {
+	files::read_pdf(&path, max_bytes)
 }
 
 /// Classify a batch of paths for the terminal's link provider (F19): file,

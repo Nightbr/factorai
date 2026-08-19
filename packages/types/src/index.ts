@@ -301,6 +301,22 @@ export interface ImageContents {
 	size: number;
 }
 
+/**
+ * One PDF's bytes, for pdf.js to parse in the renderer (F7).
+ *
+ * `ImageContents` without the `mime`: `read_pdf` refuses anything that isn't
+ * `%PDF-`, so the type is a constant and sending it would be restating the
+ * command's own precondition. No page count either — pdf.js reports `numPages`
+ * from these same bytes, and a second answer could only disagree with it.
+ */
+export interface PdfContents {
+	path: string;
+	/** Standard base64 of the whole file. */
+	base64: string;
+	/** Size on disk, in bytes. */
+	size: number;
+}
+
 // ── IPC events (Rust → JS) ──────────────────────────────────────────────────
 
 export interface IndexerProgressEvent {

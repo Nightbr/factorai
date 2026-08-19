@@ -11,7 +11,7 @@ commands/
                       #   list_import_candidates, resolve_project_path, pin_project
   sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
-  files.rs            # read_file, read_image, list_dir, path_kinds
+  files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
   git.rs              # git_status, git_blob
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
   settings.rs         # get_setting, set_setting
@@ -25,7 +25,7 @@ services/
   terminal.rs         # TerminalManager — owns PTYs
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
-  files.rs            # list_dir, read_file, read_image, path_kinds
+  files.rs            # list_dir, read_file, read_image, read_pdf, path_kinds
   child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
                       #   strip, and CLAUDE_CODE_CHILD_SESSION
   shell_path.rs       # ask the login shell what the user's PATH really is
@@ -112,6 +112,11 @@ read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, b
 // never from the extension. Refuses a non-image or an oversized file rather
 // than truncating — half a PNG is a decode error, not a smaller PNG.
 read_image(path: String, max_bytes: Option<usize>) -> ImageContents
+// PDFs for the viewer (F7): the whole file as base64 for pdf.js to parse in the
+// renderer. Refuses anything not starting `%PDF-`, and anything over its own
+// 32MB cap — larger than an image's because a scan legitimately is. No mime (it
+// can only be one thing) and no page count (pdf.js reads it from these bytes).
+read_pdf(path: String, max_bytes: Option<usize>) -> PdfContents
 list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped, git-ignored flagged
 // Batch stat for the terminal's link provider (F19): is each of these a file,
 // a directory, or nothing? One call per hovered line, so it takes a list.

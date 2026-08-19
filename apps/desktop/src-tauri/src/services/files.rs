@@ -14,7 +14,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{DirEntry, DirListing, FileContents, ImageContents, PathKind};
+use crate::models::{DirEntry, DirListing, FileContents, ImageContents, PathKind, PdfContents};
 use crate::services::git::IgnoreChecker;
 
 /// Upper bound on entries returned for a single directory. Generated
@@ -212,6 +212,27 @@ pub const DEFAULT_MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 /// that makes sense for text makes none here.
 pub fn read_image(path: &str, max_bytes: Option<usize>) -> AppResult<ImageContents> {
 	let cap = max_bytes.unwrap_or(DEFAULT_MAX_IMAGE_BYTES);
+	let (bytes, size) = read_whole_capped(path, cap, "image")?;
+
+	let mime = sniff_image_mime(&bytes)
+		.ok_or_else(|| AppError::InvalidInput(format!("not a displayable image: {path}")))?;
+
+	Ok(ImageContents {
+		path: path.to_string(),
+		mime: mime.to_string(),
+		base64: B64.encode(&bytes),
+		size,
+	})
+}
+
+/// A whole file, refused rather than truncated when it is over `cap`.
+///
+/// The half of `read_file` that binary previews need and the rest of it that
+/// they don't: no null sniffing, no lossy UTF-8, and no cut-at-the-cap, because
+/// half a PNG is not a smaller PNG and half a PDF is not a shorter document —
+/// both are decode errors. `kind` names the thing in the refusal so the message
+/// reads as a sentence about what the user opened.
+fn read_whole_capped(path: &str, cap: usize, kind: &str) -> AppResult<(Vec<u8>, u64)> {
 	let p = Path::new(path);
 
 	let meta = fs::metadata(p).map_err(|e| match e.kind() {
@@ -225,7 +246,7 @@ pub fn read_image(path: &str, max_bytes: Option<usize>) -> AppResult<ImageConten
 	let size = meta.len();
 	if size as usize > cap {
 		return Err(AppError::InvalidInput(format!(
-			"image is {size} bytes, larger than the {cap}-byte limit"
+			"{kind} is {size} bytes, larger than the {cap}-byte limit"
 		)));
 	}
 
@@ -234,15 +255,35 @@ pub fn read_image(path: &str, max_bytes: Option<usize>) -> AppResult<ImageConten
 		_ => AppError::Io(format!("{path}: {e}")),
 	})?;
 
-	let mime = sniff_image_mime(&bytes)
-		.ok_or_else(|| AppError::InvalidInput(format!("not a displayable image: {path}")))?;
+	Ok((bytes, size))
+}
 
-	Ok(ImageContents {
-		path: path.to_string(),
-		mime: mime.to_string(),
-		base64: B64.encode(&bytes),
-		size,
-	})
+/// A PDF's first bytes. Every conforming file starts with this, and the version
+/// digits that follow it are pdf.js's problem rather than ours.
+const PDF_MAGIC: &[u8] = b"%PDF-";
+
+/// Cap for PDFs, distinct again from the image cap.
+///
+/// Larger than an image's 16MB because a scanned document legitimately is —
+/// every page is a photograph — and still a cap for the same base64 reason.
+pub const DEFAULT_MAX_PDF_BYTES: usize = 32 * 1024 * 1024;
+
+/// Read one PDF as base64, for pdf.js to parse in the renderer (F7).
+///
+/// The same bargain `read_image` strikes: the viewer routes here *by* extension
+/// so it never reads a 200MB video to find out it isn't a document, and the
+/// verdict is taken from the bytes — a `.pdf` that is really a zip is refused
+/// here rather than reaching pdf.js, which would fail with an error about
+/// structure that says nothing to the person who clicked the file.
+pub fn read_pdf(path: &str, max_bytes: Option<usize>) -> AppResult<PdfContents> {
+	let cap = max_bytes.unwrap_or(DEFAULT_MAX_PDF_BYTES);
+	let (bytes, size) = read_whole_capped(path, cap, "PDF")?;
+
+	if !bytes.starts_with(PDF_MAGIC) {
+		return Err(AppError::InvalidInput(format!("not a PDF: {path}")));
+	}
+
+	Ok(PdfContents { path: path.to_string(), base64: B64.encode(&bytes), size })
 }
 
 /// The MIME for these bytes, or `None` if they aren't an image we display.
@@ -417,6 +458,65 @@ mod tests {
 		let dir = tempdir().unwrap();
 		let path = dir.path().join("gone.png").to_string_lossy().to_string();
 		assert!(matches!(read_image(&path, None), Err(AppError::NotFound(_))));
+	}
+
+	/// Enough of a PDF for `read_pdf`, which reads the magic bytes and nothing
+	/// else — the document only has to parse in the renderer, and the fixture
+	/// that does parse lives on that side (`tests/smoke/fixtures.ts`).
+	const TINY_PDF: &[u8] = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\ntrailer<</Root 1 0 R>>\n%%EOF\n";
+
+	#[test]
+	fn reads_a_pdf_as_base64() {
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "spec.pdf", TINY_PDF);
+
+		let pdf = read_pdf(&path, None).expect("read");
+
+		assert_eq!(pdf.size, TINY_PDF.len() as u64);
+		assert_eq!(B64.decode(pdf.base64).unwrap(), TINY_PDF);
+	}
+
+	#[test]
+	fn a_pdf_by_name_only_is_refused_here_rather_than_in_pdfjs() {
+		// A zip named .pdf. pdf.js would reject it too, with a message about
+		// document structure that means nothing to whoever clicked the file.
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "liar.pdf", b"PK\x03\x04\x14\x00\x00\x00");
+
+		let err = read_pdf(&path, None).unwrap_err();
+		assert!(format!("{err}").contains("not a PDF"), "expected a refusal, got {err}");
+	}
+
+	#[test]
+	fn an_oversized_pdf_is_refused_and_the_message_says_pdf() {
+		// Same bargain as an image: refused whole, no "show anyway". The refusal
+		// names the kind, because the reader sees this sentence.
+		let dir = tempdir().unwrap();
+		let mut big = TINY_PDF.to_vec();
+		big.resize(4096, 0);
+		let path = write_bytes(dir.path(), "big.pdf", &big);
+
+		let err = read_pdf(&path, Some(1024)).unwrap_err();
+		let message = format!("{err}");
+		assert!(message.contains("larger than"), "got {message}");
+		assert!(message.contains("PDF is"), "got {message}");
+	}
+
+	#[test]
+	fn a_missing_pdf_is_not_found_rather_than_io() {
+		let dir = tempdir().unwrap();
+		let path = dir.path().join("gone.pdf").to_string_lossy().to_string();
+		assert!(matches!(read_pdf(&path, None), Err(AppError::NotFound(_))));
+	}
+
+	#[test]
+	fn a_directory_named_like_a_pdf_is_invalid_input() {
+		// `foo.pdf/` is a legal directory name, and the tree will happily route a
+		// click on it here if its icon key says pdf.
+		let dir = tempdir().unwrap();
+		fs::create_dir(dir.path().join("bundle.pdf")).unwrap();
+		let path = dir.path().join("bundle.pdf").to_string_lossy().to_string();
+		assert!(matches!(read_pdf(&path, None), Err(AppError::InvalidInput(_))));
 	}
 
 	#[test]
