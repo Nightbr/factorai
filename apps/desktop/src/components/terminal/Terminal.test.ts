@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	createOscLinkHandler,
+	type FileLinkTargets,
+	onFileLinkActivated,
 	onLinkActivated,
 	proposeGeometry,
 } from '@components/terminal/Terminal';
+import type { ResolvedLink } from '@lib/fileLinks';
 
 function click(mods: Partial<MouseEvent> = {}): MouseEvent {
 	return { ctrlKey: false, metaKey: false, ...mods } as MouseEvent;
@@ -113,5 +116,76 @@ describe('proposeGeometry', () => {
 	it('never proposes a grid too small to render into', () => {
 		// xterm's own floor. A pane dragged to nothing must not propose 0 columns.
 		expect(proposeGeometry(3, 4, 7.8, 17)).toEqual({ cols: 2, rows: 1 });
+	});
+});
+
+/**
+ * File links — the third kind (F19). Same gate, different destination: a path
+ * the agent printed belongs in our viewer, not in whatever the OS says owns
+ * `.ts`.
+ */
+describe('onFileLinkActivated', () => {
+	function targets(): FileLinkTargets & {
+		openInViewer: ReturnType<typeof vi.fn>;
+		revealInTree: ReturnType<typeof vi.fn>;
+	} {
+		return { openInViewer: vi.fn(), revealInTree: vi.fn() };
+	}
+
+	function link(over: Partial<ResolvedLink> = {}): ResolvedLink {
+		return {
+			start: 0,
+			end: 10,
+			raw: 'src/a.ts',
+			path: '/proj/src/a.ts',
+			kind: 'file',
+			line: null,
+			col: null,
+			...over,
+		};
+	}
+
+	it('opens a file in the viewer on a modifier click', () => {
+		const t = targets();
+
+		onFileLinkActivated(click({ ctrlKey: true }), link(), t);
+
+		expect(t.openInViewer).toHaveBeenCalledWith('/proj/src/a.ts', {
+			line: undefined,
+			col: undefined,
+		});
+	});
+
+	it('carries a :line:col through to the viewer', () => {
+		const t = targets();
+
+		onFileLinkActivated(click({ metaKey: true }), link({ line: 42, col: 7 }), t);
+
+		expect(t.openInViewer).toHaveBeenCalledWith('/proj/src/a.ts', { line: 42, col: 7 });
+	});
+
+	it('reveals a directory in the tree instead of opening an empty editor', () => {
+		const t = targets();
+
+		onFileLinkActivated(
+			click({ ctrlKey: true }),
+			link({ kind: 'directory', path: '/proj/src' }),
+			t,
+		);
+
+		expect(t.revealInTree).toHaveBeenCalledWith('/proj/src');
+		expect(t.openInViewer).not.toHaveBeenCalled();
+	});
+
+	it('applies the same plain-click gate as the other two kinds', () => {
+		// The ambush argument is stronger here, not weaker: a near-fullscreen
+		// viewer over the terminal you were reading is more disruptive than a
+		// browser opening beside it.
+		const t = targets();
+
+		onFileLinkActivated(click(), link(), t);
+
+		expect(t.openInViewer).not.toHaveBeenCalled();
+		expect(t.revealInTree).not.toHaveBeenCalled();
 	});
 });

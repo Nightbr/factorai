@@ -61,9 +61,15 @@ interface PanelState {
 	/** Is the file tree panel showing? Persisted. */
 	open: boolean;
 	/** Which tab is showing. Persisted app-wide rather than per project: a tab
-	 *  choice is a habit, not a fact about a project. Never changed
+	 *  choice is a habit, not a fact about a project. Not changed
 	 *  programmatically — a strip that moves under you while you type into the
-	 *  terminal below it is worse than no strip (Q18). */
+	 *  terminal below it is worse than no strip (Q18).
+	 *
+	 *  **One exception, added with F19**: revealing a directory you just clicked
+	 *  in the terminal switches to `files`. The rule above is about a surface
+	 *  moving *while you type*; this is the direct answer to a click you just
+	 *  made, and taking you to a tree that isn't showing would be no answer at
+	 *  all. `useRevealInTree` is the only caller allowed to do it. */
 	tab: PanelTab;
 	/** Panel width in px. Persisted. */
 	width: number;
@@ -89,6 +95,10 @@ interface PanelState {
 	setWidth: (width: number) => void;
 	setDetailHeight: (height: number) => void;
 	toggleExpanded: (projectId: string, path: string) => void;
+	/** Expand all of these, idempotently. Revealing a path needs this rather
+	 *  than `toggleExpanded`: most of the ancestors are usually open already,
+	 *  and toggling would close exactly the ones you needed. */
+	expandAll: (projectId: string, paths: string[]) => void;
 	/** Expand the root once, the first time this project's tree is shown. A
 	 *  project with an existing (even empty) entry has been seeded already, so a
 	 *  deliberate collapse-all is not undone on the next render. */
@@ -127,6 +137,14 @@ export const usePanelStore = create<PanelState>()(
 				set((s) => {
 					const next = new Set(s.expandedByProject[projectId] ?? []);
 					if (!next.delete(path)) next.add(path);
+					return { expandedByProject: { ...s.expandedByProject, [projectId]: next } };
+				}),
+
+			expandAll: (projectId, paths) =>
+				set((s) => {
+					if (!paths.length) return s;
+					const next = new Set(s.expandedByProject[projectId] ?? []);
+					for (const path of paths) next.add(path);
 					return { expandedByProject: { ...s.expandedByProject, [projectId]: next } };
 				}),
 

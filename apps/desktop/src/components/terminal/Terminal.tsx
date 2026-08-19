@@ -4,9 +4,13 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal as XTerm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
+import { createFileLinkProvider } from '@components/terminal/fileLinkProvider';
+import { useFileViewer } from '@hooks/useFileViewer';
+import { useRevealInTree } from '@hooks/useRevealInTree';
 import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
-import { cmd, events, openExternally } from '@lib/tauri';
+import type { ResolveContext, ResolvedLink } from '@lib/fileLinks';
+import { cmd, events, homeDir, openExternally } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 
 /**
@@ -53,6 +57,42 @@ export function createOscLinkHandler(open: (uri: string) => void = openExternall
 	activate: (event: MouseEvent, uri: string) => void;
 } {
 	return { activate: (event, uri) => onLinkActivated(event, uri, open) };
+}
+
+/** Where a resolved file link goes: the viewer for a file, the tree for a
+ *  directory. Passed in rather than imported so this stays testable without a
+ *  router, and so the terminal knows nothing about either destination. */
+export interface FileLinkTargets {
+	openInViewer: (path: string, position: { line?: number; col?: number }) => void;
+	revealInTree: (path: string) => void;
+}
+
+/**
+ * What a modifier-click on a **path** does (F19).
+ *
+ * The third kind of link in this terminal, and it takes the same gate as the
+ * other two on purpose — see `onLinkActivated`. The ambush argument is if
+ * anything stronger here: throwing a near-fullscreen viewer over the terminal
+ * you were reading is more disruptive than opening a browser beside it.
+ *
+ * The destination is the only thing that differs. A file the agent touched
+ * belongs in the viewer (F7), not in whatever the OS says owns `.ts` — that is
+ * the correction roadmap item 15 exists to make.
+ */
+export function onFileLinkActivated(
+	event: MouseEvent,
+	link: ResolvedLink,
+	targets: FileLinkTargets,
+): void {
+	if (!event.ctrlKey && !event.metaKey) return;
+	if (link.kind === 'directory') {
+		targets.revealInTree(link.path);
+		return;
+	}
+	targets.openInViewer(link.path, {
+		line: link.line ?? undefined,
+		col: link.col ?? undefined,
+	});
 }
 
 // ── Sizing the grid ────────────────────────────────────────────────────────
@@ -346,10 +386,56 @@ interface TerminalProps {
 	sessionId: string;
 	projectId: string;
 	projectCwd: string | null;
+	/** The cwd recorded in this session's transcript, when there is one. First
+	 *  base a relative path in the output resolves against (F19). */
+	sessionCwd: string | null;
 }
 
-export function Terminal({ sessionId, projectId, projectCwd }: TerminalProps) {
+export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: TerminalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
+	const { open: openInViewer } = useFileViewer();
+	const revealInTree = useRevealInTree(projectId, projectCwd);
+
+	// Read through a ref inside `provideLinks`, which runs on mouse move and
+	// must not be re-registered every time a query resolves.
+	const targetsRef = useRef<FileLinkTargets>({ openInViewer: () => {}, revealInTree });
+	targetsRef.current = {
+		openInViewer: (path, position) => openInViewer(path, position),
+		revealInTree,
+	};
+
+	// The base chain, same shape. `home` is resolved once and cached by the
+	// bridge; until it lands, a `~/` path just isn't a link yet.
+	const homeRef = useRef<string | null>(null);
+	useEffect(() => {
+		void homeDir().then((h) => {
+			homeRef.current = h;
+		});
+	}, []);
+
+	const contextRef = useRef<ResolveContext>({ bases: [], home: null });
+	contextRef.current = {
+		// Session cwd first, then the project root. Today these are the same
+		// string for a fresh session — `attachPty` spawns with `projectCwd` — and
+		// differ only for a resumed session started in a subdirectory.
+		bases: [sessionCwd, projectCwd].filter((b): b is string => Boolean(b)),
+		home: homeRef.current,
+	};
+
+	// Registered per mount rather than with the pooled terminal: it needs the
+	// router and the panel store, and a terminal nobody is looking at has
+	// nothing to hover.
+	useEffect(() => {
+		const entry = getOrCreateTerm(sessionId);
+		const provider = entry.term.registerLinkProvider(
+			createFileLinkProvider(
+				entry.term,
+				() => contextRef.current,
+				(event, link) => onFileLinkActivated(event, link, targetsRef.current),
+			),
+		);
+		return () => provider.dispose();
+	}, [sessionId]);
 
 	useEffect(() => {
 		const container = containerRef.current;

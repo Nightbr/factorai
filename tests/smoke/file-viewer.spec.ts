@@ -358,4 +358,47 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByText('JSON', { exact: true })).toBeVisible();
 		await expect(viewer.getByText('Plain Text')).toHaveCount(0);
 	});
+
+	/**
+	 * `&line=` (F19). The terminal's link provider can't be driven from this lane
+	 * — there is no PTY in browser-only mode — but the contract it depends on is
+	 * a URL param on the root route, and that is reachable by typing one. Which
+	 * is also the point of holding viewer state in the URL.
+	 */
+	test('@smoke ?line= opens the file scrolled to that line', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		const file = encodeURIComponent(`${ROOT}/src/deep.ts`);
+		await page.goto(`/#/?file=${file}&line=300`);
+
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+
+		// Monaco renders only what is on screen, so the line being in the DOM at
+		// all is the assertion: it was scrolled to, not merely opened.
+		await expect(viewer.getByText('const line300 = 300;')).toBeVisible();
+		await expect(viewer.getByText('const line1 = 1;', { exact: true })).toHaveCount(0);
+	});
+
+	test('@smoke a line past the end of the file lands at the end, not nowhere', async ({ page }) => {
+		// The number came off output the agent printed, and the file may have
+		// shrunk since. Stale `deep.ts:9000` should show the end of the file
+		// rather than throwing Monaco at a line that isn't there.
+		await installMockBridge(page, fixtureWithFileTree());
+		const file = encodeURIComponent(`${ROOT}/src/deep.ts`);
+		await page.goto(`/#/?file=${file}&line=9000`);
+
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+		await expect(viewer.getByText('const line400 = 400;')).toBeVisible();
+	});
+
+	test('@smoke a nonsense line is ignored rather than obeyed', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		const file = encodeURIComponent(`${ROOT}/src/deep.ts`);
+		await page.goto(`/#/?file=${file}&line=-4`);
+
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+		await expect(viewer.getByText('const line1 = 1;', { exact: true })).toBeVisible();
+	});
 });

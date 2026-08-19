@@ -56,7 +56,7 @@ export function parsePosition(value: unknown): number | undefined {
 
 /** How the viewer is opened. All optional: the tree passes none of it, the
  *  Changes tab passes `diff`, a terminal link (F19) passes a position. */
-export interface OpenOptions {
+interface OpenOptions {
 	diff?: DiffMode;
 	line?: number;
 	col?: number;
