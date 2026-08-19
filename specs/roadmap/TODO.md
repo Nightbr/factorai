@@ -518,7 +518,8 @@ What is left:
   (F20 § "Handing files to the agent"); this is the other one, where merely
   selecting in the viewer tells the agent what you are looking at and its footer
   says "4 lines selected · In foo.ts". Deferred rather than dropped — note its
-  lines are **0-based**, the opposite of `at_mentioned`'s.
+  its lines are 0-based on the wire — the same as `at_mentioned`'s, which was
+  established the hard way (F20).
 - **Shift-click ranges across directories in the tree.** They stop at a
   directory boundary today because the tree is recursive and each node fetches
   its own listing, so nothing holds a flat list of what is visible. Wider ranges

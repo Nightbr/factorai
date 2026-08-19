@@ -58,11 +58,9 @@ pub type OpenEditors = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
 #[serde(rename_all = "camelCase")]
 pub struct Mention {
 	pub path: String,
-	/// **1-based, inclusive.** The CLI renders these straight into the prompt as
-	/// `@path#L12-18`, and its own guard is `if (lineStart && lineEnd)` — a
-	/// zero would read as absent. Note this is the opposite convention from
-	/// `selection_changed`, whose lines are 0-based; the two are not
-	/// interchangeable and a test pins each.
+	/// **1-based and inclusive — what the human selected**, which is also what
+	/// the viewer's label shows them. The wire wants something else; see
+	/// [`at_mentioned`], which is the one place that converts.
 	pub line_start: Option<u32>,
 	pub line_end: Option<u32>,
 }
@@ -71,13 +69,28 @@ pub struct Mention {
 ///
 /// Built here rather than in the command so the wire shape lives with the rest
 /// of the protocol, and so it can be asserted without a socket.
+///
+/// **The wire is 0-based, and this is the only place that knows it.** The CLI
+/// adds one before printing, so sending the numbers the human selected renders
+/// a range one line further down the file than the one they highlighted.
+///
+/// That was shipped wrong once and found by watching it: a selection the
+/// viewer labelled "lines 10–13" arrived as `@biome.json#L11-14`, twice, with
+/// different ranges each time. The earlier belief that this field was 1-based
+/// came from reading a renderer in the binary that turns out to sit on the
+/// far side of the conversion — which is why the fix is pinned by a test that
+/// states the observation rather than the inference.
+fn to_wire_line(line: u32) -> u32 {
+	line.saturating_sub(1)
+}
+
 pub fn at_mentioned(path: &Path, mention: &Mention) -> String {
 	let mut params = json!({ "filePath": path.to_string_lossy() });
 	// Both or neither: the CLI tests them together, and half a range would
 	// render as a whole-file mention while looking like it carried a selection.
 	if let (Some(start), Some(end)) = (mention.line_start, mention.line_end) {
-		params["lineStart"] = json!(start);
-		params["lineEnd"] = json!(end);
+		params["lineStart"] = json!(to_wire_line(start));
+		params["lineEnd"] = json!(to_wire_line(end));
 	}
 	encode(json!({ "jsonrpc": "2.0", "method": "at_mentioned", "params": params }))
 }
@@ -605,14 +618,24 @@ mod tests {
 		}
 
 		#[test]
-		fn a_range_is_one_based_because_the_cli_prints_it_verbatim() {
-			// The opposite convention from `selection_changed`, whose lines are
-			// 0-based. Selecting the first line of a file must read `#L1`, and the
-			// CLI's own guard is `if (lineStart && lineEnd)` — a 0 would read as
-			// absent and silently become a whole-file mention.
-			let p = params(&at_mentioned(Path::new("/p/a.rs"), &mention(Some(1), Some(4))));
-			assert_eq!(p["lineStart"], 1);
-			assert_eq!(p["lineEnd"], 4);
+		fn a_range_goes_out_zero_based_because_the_cli_adds_one_before_printing() {
+			// **Observed, not inferred.** Sending the human's own 1-based numbers
+			// rendered a range one line too far down: a selection the viewer
+			// labelled "lines 10–13" arrived in the prompt as `#L11-14`. Twice,
+			// with different ranges. So the field matches `selection_changed`'s
+			// 0-based convention after all.
+			let p = params(&at_mentioned(Path::new("/p/a.rs"), &mention(Some(10), Some(13))));
+			assert_eq!(p["lineStart"], 9, "the human selected line 10");
+			assert_eq!(p["lineEnd"], 12, "…through line 13");
+		}
+
+		#[test]
+		fn the_first_line_of_a_file_does_not_underflow() {
+			// Line 1 is 0 on the wire. `saturating_sub` is what stops a `u32`
+			// wrapping to four billion if anything ever hands us a 0.
+			let p = params(&at_mentioned(Path::new("/p/a.rs"), &mention(Some(1), Some(1))));
+			assert_eq!(p["lineStart"], 0);
+			assert_eq!(p["lineEnd"], 0);
 		}
 
 		#[test]

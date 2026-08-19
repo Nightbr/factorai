@@ -2808,11 +2808,19 @@ forgotten — and the footer is *behind* the modal while you are selecting, so y
 never see the feedback at the moment you act. Text in the prompt survives the
 viewer closing and is visible in what you are about to send.
 
-**The two line conventions are opposite.** `at_mentioned` is 1-based inclusive,
-because the CLI prints it verbatim as `#L12` and its own guard is
-`if (lineStart && lineEnd)` — a zero reads as absent. `selection_changed`, if it
-is ever added, is 0-based. Nothing about the field names says which is which, so
-each has a test.
+**The wire is 0-based; everything above it is 1-based** — and getting that
+backwards shipped, briefly, before being caught by watching it. A selection the
+viewer labelled "lines 10–13" arrived in the prompt as `@biome.json#L11-14`: the
+CLI adds one before printing, so sending the numbers the human selected points
+one line further down the file than the one they highlighted.
+
+The earlier belief came from reading a renderer in the binary that prints
+`#L${lineStart}` verbatim — which turns out to sit on the *far side* of the
+conversion. **A schema read out of a binary tells you the shape, not the
+convention**, and only running it tells you the second. The single conversion
+lives in `protocol::at_mentioned`, pinned by a test that states the observation
+rather than the inference; a selection starting on line 1 therefore goes out as
+a literal `0`, which was checked against the real CLI and is not dropped.
 
 **Selection lives in the tree, and a modified click never navigates.** Plain
 click is unchanged — select and open. Ctrl/Cmd-click toggles a row into the
