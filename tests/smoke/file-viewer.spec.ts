@@ -281,6 +281,33 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
 	});
 
+	test('@smoke markdown images resolve against the file they are in', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const md = page.getByTestId('file-viewer').getByTestId('markdown-view');
+		// A relative src cannot load as a URL — the webview has no filesystem
+		// origin — so neither of these paints unless the path was resolved and the
+		// bytes read through a command.
+		const logo = md.getByAltText('the logo');
+		await expect(logo).toHaveAttribute('src', /^data:image\/png;base64,/);
+		// Decoded, not merely present — same reason as the image view above.
+		await expect
+			.poll(() => logo.evaluate((el: HTMLImageElement) => el.naturalWidth))
+			.toBeGreaterThan(0);
+		// SVG is text, so it comes back through read_file rather than read_image.
+		const mark = md.getByAltText('the mark');
+		await expect(mark).toHaveAttribute('src', /^data:image\/svg\+xml,/);
+		await expect
+			.poll(() => mark.evaluate((el: HTMLImageElement) => el.naturalWidth))
+			.toBeGreaterThan(0);
+		// And a file that isn't there leaves the alt text behind, not a gap.
+		await expect(md.getByTestId('markdown-image-missing')).toHaveText('a gap');
+	});
+
 	test('@smoke a relative markdown link opens that file in the viewer', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

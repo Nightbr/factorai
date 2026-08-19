@@ -296,6 +296,15 @@ export function fixtureWithFileTree(): TestFixture {
 					'A test project. See [the guide](docs/guide.md) or',
 					'[the website](https://example.com).',
 					'',
+					// One image per branch of the resolver: a raster read through
+					// read_image, an SVG read through read_file, and one whose file is
+					// absent, where the alt text stands in for it.
+					'![the logo](logo.png)',
+					'',
+					'![the mark](./mark.svg)',
+					'',
+					'![a gap](img/gone.png)',
+					'',
 					'| Package | Purpose |',
 					'| --- | --- |',
 					'| `foo-core` | Shared helpers |',

@@ -1,6 +1,11 @@
+import { iconKeyFor } from '@lib/fileIcon';
+import { queryKeys } from '@lib/queryKeys';
+import { cmd, openExternally } from '@lib/tauri';
+import type { FileContents, ImageContents } from '@factorai/types';
+import { useQuery } from '@tanstack/react-query';
+import { ImageOff } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { openExternally } from '@lib/tauri';
 
 /**
  * Rendered markdown for the file viewer (F7).
@@ -10,9 +15,14 @@ import { openExternally } from '@lib/tauri';
  * `rehype-raw`.
  */
 
-/** Resolve a relative markdown link against the directory of the file it's in. */
+/**
+ * Resolve a relative markdown link or image against the file it appears in.
+ *
+ * A leading `/` is a **filesystem** path, not a site root: there is no site
+ * here, and a document that writes `/home/me/diagram.png` means that file.
+ */
 export function resolveRelative(fromFile: string, href: string): string {
-	const dir = fromFile.slice(0, fromFile.lastIndexOf('/'));
+	const dir = href.startsWith('/') ? '' : fromFile.slice(0, fromFile.lastIndexOf('/'));
 	const segments = `${dir}/${href}`.split('/');
 	const out: string[] = [];
 	for (const segment of segments) {
@@ -21,6 +31,48 @@ export function resolveRelative(fromFile: string, href: string): string {
 		else out.push(segment);
 	}
 	return `/${out.join('/')}`;
+}
+
+/**
+ * The local file an image `src` points at, or null if it doesn't point at one.
+ *
+ * Null covers both halves of "not ours": a remote URL, which the webview can
+ * fetch by itself, and an empty string, which is what react-markdown's URL
+ * sanitiser leaves behind for a `data:` or `file:` src (we keep that default).
+ *
+ * The fragment and query are dropped and percent-escapes decoded, because a
+ * `src` is a URL and a path on disk is not — `![](my%20logo.png)` is a file
+ * with a space in its name.
+ */
+export function localImageSrc(fromFile: string, src: string): string | null {
+	const url = src.trim();
+	if (!url || /^[a-z][a-z0-9+.-]*:/i.test(url)) return null;
+	const bare = url.replace(/[?#].*$/, '');
+	if (!bare) return null;
+	let decoded = bare;
+	try {
+		decoded = decodeURI(bare);
+	} catch {
+		// A stray `%` is a literal `%` in a filename, not a broken escape.
+	}
+	return resolveRelative(fromFile, decoded);
+}
+
+function basename(path: string): string {
+	const i = path.lastIndexOf('/');
+	return i >= 0 ? path.slice(i + 1) : path;
+}
+
+/** The `data:` URL for a local image, or null if the bytes aren't displayable. */
+function dataUrl(read: ImageContents | FileContents): string | null {
+	// `read_image` answers with bytes and a MIME type it sniffed; `read_file`
+	// answers with text, which is only an image at all because it is SVG.
+	if ('base64' in read) return `data:${read.mime};base64,${read.base64}`;
+	if (read.isBinary || read.contents.length === 0) return null;
+	// `encodeURIComponent`, not base64: `btoa` throws on anything outside
+	// Latin-1, and an SVG with an accent in a label is ordinary. Same reasoning
+	// as `SvgPreview` in `FileView`.
+	return `data:image/svg+xml,${encodeURIComponent(read.contents)}`;
 }
 
 interface MarkdownViewProps {
@@ -72,11 +124,85 @@ export function MarkdownView({ source, path, onOpenPath }: MarkdownViewProps) {
 								{children}
 							</a>
 						),
+						img: ({ src, alt, title }) => (
+							<MarkdownImage src={src ?? ''} alt={alt ?? ''} title={title} from={path} />
+						),
 					}}
 				>
 					{source}
 				</Markdown>
 			</div>
 		</div>
+	);
+}
+
+/**
+ * An image in a markdown document.
+ *
+ * A relative `src` is a path on disk, and the webview cannot load one: it has
+ * no filesystem origin to resolve against, so `![logo](logo.png)` renders as a
+ * broken image no matter how correct the markdown is. So local images go
+ * through the same commands the image viewer uses and arrive as a `data:` URL,
+ * which is also the reason there is no second route into the filesystem here
+ * (see F7's "base64 through a command, not the asset protocol").
+ *
+ * A remote `src` is left alone — that one the webview can fetch, and a badge in
+ * a README is the common case.
+ */
+function MarkdownImage({
+	src,
+	alt,
+	title,
+	from,
+}: {
+	src: string;
+	alt: string;
+	title?: string;
+	from: string;
+}) {
+	const local = localImageSrc(from, src);
+	if (local) return <LocalImage path={local} alt={alt} title={title} />;
+	// Nothing to load and nothing to fetch: an `<img src="">` re-requests the
+	// document itself, so say what is missing instead.
+	if (!src) return <MissingImage label={alt} />;
+	return <img src={src} alt={alt} title={title} />;
+}
+
+function LocalImage({ path, alt, title }: { path: string; alt: string; title?: string }) {
+	// SVG is the one image that is also text: it has no magic bytes, so
+	// `read_image` refuses it and `read_file` is the way in. Same split the
+	// viewer already makes between `ImageView` and `SvgPreview`.
+	const isSvg = iconKeyFor(basename(path)) === 'svg';
+
+	const imageQ = useQuery({
+		queryKey: isSvg ? queryKeys.file(path, false) : queryKeys.image(path),
+		queryFn: (): Promise<ImageContents | FileContents> =>
+			isSvg ? cmd.readFile(path) : cmd.readImage(path),
+		// A document open in the viewer is a snapshot, like the text around it.
+		staleTime: Number.POSITIVE_INFINITY,
+		retry: false,
+	});
+
+	// Nothing while it loads: these are local reads, and a placeholder that
+	// reflows the paragraph a frame later is worse than a beat of nothing.
+	if (imageQ.isPending) return null;
+
+	const url = imageQ.data ? dataUrl(imageQ.data) : null;
+	// Missing, or the extension lied and the backend refused the bytes. Either
+	// way the reader gets the alt text rather than a silent gap.
+	if (!url) return <MissingImage label={alt || basename(path)} />;
+
+	return <img src={url} alt={alt} title={title} data-testid="markdown-image" />;
+}
+
+function MissingImage({ label }: { label: string }) {
+	return (
+		<span
+			data-testid="markdown-image-missing"
+			className="not-prose inline-flex items-center gap-1.5 rounded border border-border border-dashed px-2 py-1 align-middle text-muted-foreground text-xs"
+		>
+			<ImageOff className="size-3.5 shrink-0" />
+			{label || 'image'}
+		</span>
 	);
 }
