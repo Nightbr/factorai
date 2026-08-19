@@ -110,8 +110,22 @@ derived from a glyph, but "most" is not a thing to build a trademark on.
 | Amber | `#FFB020` | the mark, and the app's existing accent |
 | Mercury | `#F4F5F8` | the mark on dark, in one-colour contexts |
 
-The amber is the accent the app already uses; the brand did not invent a colour,
-it adopted the one that was there.
+The amber is the accent the app uses — `--primary`, `--accent`, `--ring` and
+`--color-status-waiting` in `packages/ui/src/styles/globals.css`, all
+`oklch(81.3% 0.165 75)`, which round-trips to `#FFB020` exactly.
+
+**That sentence used to say the brand "adopted the colour that was there", and
+it was not true.** The app's amber was `oklch(78% 0.17 75)` — `#F5A400` — a
+visible three percent darker than the mark it sat next to in the header. Nobody
+noticed until the lockup (B5a) had to pick one and the two turned out to
+disagree. Fixed 2026-08-19 by moving **the app** to the brand value rather than
+the reverse: the mark is the half that ships inside other people's docks and
+release pages, where it cannot be corrected later.
+
+The **light theme keeps its own darker amber** (`oklch(58% 0.17 75)`) and should.
+`#FFB020` on a 98% ground fails contrast; a light theme needs a separate step,
+which is roadmap item 32's job. One brand amber does not mean one token value in
+every theme.
 
 ---
 
