@@ -68,13 +68,32 @@ fn connect(
 	tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
 	tungstenite::Error,
 > {
+	connect_offering(port, token, None).map(|(socket, _)| socket)
+}
+
+/// Connect, optionally offering a subprotocol, and keep the handshake response
+/// so a test can read what was selected.
+fn connect_offering(
+	port: u16,
+	token: Option<&str>,
+	protocols: Option<&str>,
+) -> Result<
+	(
+		tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+		tungstenite::handshake::client::Response,
+	),
+	tungstenite::Error,
+> {
 	use tungstenite::client::IntoClientRequest;
 
 	let mut request = format!("ws://127.0.0.1:{port}").into_client_request().unwrap();
 	if let Some(token) = token {
 		request.headers_mut().insert("x-claude-code-ide-authorization", token.parse().unwrap());
 	}
-	tungstenite::connect(request).map(|(socket, _)| socket)
+	if let Some(protocols) = protocols {
+		request.headers_mut().insert("sec-websocket-protocol", protocols.parse().unwrap());
+	}
+	tungstenite::connect(request)
 }
 
 #[test]
@@ -198,5 +217,56 @@ fn the_scope_is_anchored_to_this_sessions_project_and_not_its_neighbour() {
 	assert!(
 		resolve_within(b.project.path(), a_file.to_str().unwrap()).is_err(),
 		"a bridge must not resolve a path belonging to another session's project"
+	);
+}
+
+/// **The regression this file exists for as much as the auth ones.**
+///
+/// The CLI builds its socket as `new WebSocket(url, { protocols: ["mcp"], … })`.
+/// A client that offers a subprotocol and is handed a handshake without one may
+/// treat the connection as unusable — and this one does, resetting immediately
+/// after a *successful* handshake. From the server's side that looks like a
+/// connection that opened and vanished with nothing sent, which is what it
+/// looked like for the first run against the real binary.
+///
+/// Every other test here passed while this was broken, because our own client
+/// never asked for a subprotocol.
+#[test]
+fn the_mcp_subprotocol_is_echoed_when_the_client_offers_it() {
+	let h = harness();
+
+	let (_ws, response) =
+		connect_offering(h.server.port(), Some(h.server.token()), Some("mcp")).expect("connects");
+
+	assert_eq!(
+		response.headers().get("sec-websocket-protocol").and_then(|v| v.to_str().ok()),
+		Some("mcp"),
+	);
+}
+
+#[test]
+fn a_subprotocol_is_not_invented_when_none_was_offered() {
+	// The same violation in the other direction: selecting one the client never
+	// asked for breaks a client that is happy without any.
+	let h = harness();
+
+	let (_ws, response) =
+		connect_offering(h.server.port(), Some(h.server.token()), None).expect("connects");
+
+	assert!(response.headers().get("sec-websocket-protocol").is_none());
+}
+
+#[test]
+fn a_subprotocol_list_containing_mcp_is_matched() {
+	// Clients may offer several, comma-separated.
+	let h = harness();
+
+	let (_ws, response) =
+		connect_offering(h.server.port(), Some(h.server.token()), Some("other, mcp"))
+			.expect("connects");
+
+	assert_eq!(
+		response.headers().get("sec-websocket-protocol").and_then(|v| v.to_str().ok()),
+		Some("mcp"),
 	);
 }

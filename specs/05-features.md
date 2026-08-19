@@ -2633,17 +2633,24 @@ rather than because it is being added.
 
 ## F20 — IDE bridge: the agent opens files in our viewer
 
-**Status: built, not yet conformance-tested against a real CLI.** Roadmap item
-19 and [ADR-0017](../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
-which holds the decisions and the reasoning behind each. This section is the
+**Status: built, and the CLI connects — observed 2026-08-19 against 2.1.235.**
+Roadmap item 19 and
+[ADR-0017](../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
+which hold the decisions and the reasoning behind each. This section is the
 behaviour they add up to.
 
-Every piece is in place and unit-tested — lockfile, path scope, authenticated
-socket, MCP layer, and the wiring that starts a bridge with each PTY. **What has
-not happened is the pass with the actual `claude` binary**, which is the only
-thing that can prove we match a program that ships weekly, and it is the
-remaining item on roadmap 19. Until then, treat "the CLI connects" as designed
-rather than observed.
+The conformance pass earned its place immediately. Everything was unit-tested
+and green, and the first run against the real binary connected, completed the
+handshake and **reset**, with nothing sent — because the CLI builds its socket
+as `new WebSocket(url, { protocols: ["mcp"], … })` and we were not echoing
+`Sec-WebSocket-Protocol`. No test caught it, because our own test client never
+asked for a subprotocol. Fixed and pinned; the log now reads `ide bridge
+initialised` and `claude connected to the ide bridge`.
+
+**What is still unobserved is a tool call.** `initialize`, the notifications and
+the lifecycle are exercised end to end; `openFile` reaching the viewer from the
+agent's side has only been driven by unit tests. Record the CLI version with any
+future pass — this one was 2.1.235.
 
 **Behavior.** factorai presents itself to the `claude` CLI as an editor. The
 agent asks us to show a file; it opens in the viewer (F7), at the line if the
