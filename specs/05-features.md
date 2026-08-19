@@ -818,6 +818,75 @@ mode is what earns the write-up here, not the dependency.
 A refused clipboard write says **"Copy failed"** rather than showing a tick.
 A silent failure means pasting stale content somewhere else and not knowing.
 
+**PDFs are rendered too**, by pdf.js, page by page onto canvas (ADR-0018).
+
+The webview will not do this for us. WKWebView has Apple's PDF viewer built in
+and WebKitGTK has nothing, so the one-line `<iframe>` renders on macOS and shows
+a blank pane on Linux — F16's drag-and-drop bug with the platforms swapped. So
+pdf.js is bundled, along with its worker and the four asset sets it resolves at
+runtime (standard fonts, CMaps, WASM decoders, ICC profile), because there is no
+network here for any of them to come from. `vite/pdfjsAssets.ts` stages them into
+`public/pdfjs/`; ADR-0018 has the rest.
+
+- **Routed by extension, decided by magic bytes**, the same split images get.
+  `pdf` is an icon key like any other, so the file tree's icon and the viewer's
+  choice cannot disagree. `read_pdf` refuses anything not starting `%PDF-`, and
+  a `.pdf` that is really a zip lands on the binary card rather than inside
+  pdf.js's parser, which would fail with a sentence about document structure.
+- **Its own chunk, below the viewer's.** `FileView` reaches `PdfView` through
+  `React.lazy`, so opening a source file loads Monaco and not a PDF
+  implementation. `ImageView` stays a static import: a few hundred lines, no
+  dependency.
+- **Oversized is refused, not truncated**, at 32MB — larger than the image cap
+  because a scan legitimately is, and no "Show anyway", because half a PDF is
+  not a shorter document.
+- **Continuous vertical scroll**, all pages in one scroll container. Every page
+  is measured at scale 1 in one pass before anything rasterises, so its box is
+  reserved up front and the scrollbar is honest from the first paint; only the
+  pages within one of the current page hold a canvas, and the rest keep their
+  empty box. A 400-page document costs what a 4-page one does, which is the
+  whole reason this isn't `ImageView` with a page number bolted on.
+- **Crisp, and fast to zoom.** Canvases rasterise at `devicePixelRatio × zoom`.
+  A zoom step re-renders, and a render already in flight is cancelled rather
+  than awaited — pdf.js rejects the cancelled one, which is the normal case and
+  not an error.
+- **Text is selectable**, through pdf.js's text layer over each page. Its
+  positioning rules are upstream's, copied into `pdfTextLayer.css` rather than
+  imported: `pdf_viewer.css` is 6347 lines of Firefox's own viewer — `:root`
+  blocks, XFA widgets, `button` rules — and pulling all of it in to get 145
+  lines would land in this app's cascade. A colocated test reads the installed
+  package and fails if the copy drifts. There is no find bar yet; see
+  `roadmap/TODO.md`.
+- **Fit-width on open**, measured from the *widest* page so a landscape figure
+  can't open overflowing sideways. Zoom steps ×1.25 between 0.5 and 4 — narrower
+  than the image viewer's 0.25–8, which exists to look at a screenshot's pixels.
+  Clicking the readout returns to fit, and fit is stored as "no chosen scale"
+  rather than a number, so resizing the pane re-fits instead of holding a scale
+  that has stopped fitting.
+- **The wheel scrolls; Cmd/Ctrl+wheel zooms.** Deliberately the opposite of the
+  image viewer, where a bare wheel zooms because that pane has nothing to
+  scroll. This one is a document. Cmd +/− stays with F15's webview zoom.
+- **Pages are white paper on the dim stage**, not recoloured for the dark
+  theme. A PDF is a fixed-layout artefact; inverting it would turn every
+  photograph and chart in it into a negative.
+- **An encrypted PDF asks for its password**, in the pane, and forgets it when
+  the viewer closes — reopening asks again. A wrong one re-prompts with
+  "Incorrect password." Nothing is stored: this app writes no secrets.
+
+**Two bugs found building this, both invisible to type checking.** A single
+`GlobalWorkerOptions.workerPort` is *one* Worker and pdf.js takes ownership of
+it, so tearing one document down killed the next with "PDFWorker.create - the
+worker is being destroyed" — a `workerSrc` URL gives each document its own.
+And the fit-width scale was read off a ref during render, where it is still null
+on the render that mounts the pane, so every document opened at 100%; the pane
+width is state now, measured by a `ResizeObserver`, which also covers the stage
+reading zero wide while the modal is still animating open — the same trap
+Monaco's `automaticLayout` note describes.
+
+**A changed `.pdf` in the Changes tab keeps `DiffView`'s binary dead end.**
+Diffing two rendered documents is a feature of its own — which side, aligned
+how, what counts as a change — and it is in `roadmap/TODO.md`, not here.
+
 **Edge cases.**
 - Binary (null byte in the first 8KB) → "Cannot preview binary file (N
   bytes)" plus an open-in-default-app button. The same card, with the reason

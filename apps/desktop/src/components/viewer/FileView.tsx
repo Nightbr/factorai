@@ -18,7 +18,7 @@ import { cmd } from '@lib/tauri';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Code2, Eye, Sparkles } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
 /**
  * Read-only view of one file (specs/05-features.md F7).
@@ -43,6 +43,16 @@ interface FileViewProps {
 }
 
 /**
+ * pdf.js is a PDF implementation, ~1MB of it, and this is the only thing that
+ * wants one — so it gets a chunk of its own *below* the viewer's (ADR-0018).
+ * Opening a source file loads Monaco and not this. `ImageView` stays a static
+ * import: it is a few hundred lines and no dependency.
+ */
+const PdfView = lazy(() =>
+	import('@components/viewer/PdfView').then((m) => ({ default: m.PdfView })),
+);
+
+/**
  * Dispatch on what kind of file this is, before any hook runs.
  *
  * An image never goes through `read_file`: that would read the bytes only to
@@ -51,11 +61,22 @@ interface FileViewProps {
  * viewer and the file tree's icon can never disagree, and it keeps `svg` out,
  * which maps to its own key and is better served as source.
  *
+ * A PDF is the same bargain again: `read_file` would find a null byte in the
+ * first 8KB and hand back the binary card, which is what a `.pdf` used to get.
+ *
  * Routing is by extension because it is free; the *decision* is the backend's,
  * from the magic bytes. A `.png` that isn't one lands in the fallback card.
  */
 export function FileView({ path, position, onOpenPath }: FileViewProps) {
-	if (iconKeyFor(basename(path)) === 'image') return <ImageView path={path} />;
+	const iconKey = iconKeyFor(basename(path));
+	if (iconKey === 'image') return <ImageView path={path} />;
+	if (iconKey === 'pdf') {
+		return (
+			<Suspense fallback={<Centered>Loading PDF viewer…</Centered>}>
+				<PdfView path={path} />
+			</Suspense>
+		);
+	}
 	return <TextFileView path={path} position={position} onOpenPath={onOpenPath} />;
 }
 

@@ -18,6 +18,9 @@ export const queryKeys = {
 	/** One image's bytes. Its own namespace, not a `file` variant: the two come
 	 *  from different commands and only one of them is ever right for a path. */
 	image: (path: string) => ['image', path] as const,
+	/** One PDF's bytes. Its own namespace for the same reason `image` is: the
+	 *  path decides which command answers, and only one ever does. */
+	pdf: (path: string) => ['pdf', path] as const,
 	/** Repository state for one project. **One key per project, shared by the
 	 *  Changes tab and the tree's decorations** — they read the same poll, which
 	 *  is why the interval follows the panel rather than the tab (Q20). */
