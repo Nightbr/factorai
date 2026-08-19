@@ -2633,10 +2633,17 @@ rather than because it is being added.
 
 ## F20 — IDE bridge: the agent opens files in our viewer
 
-**Status: designed, not built.** Roadmap item 19 and
-[ADR-0017](../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
+**Status: built, not yet conformance-tested against a real CLI.** Roadmap item
+19 and [ADR-0017](../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
 which holds the decisions and the reasoning behind each. This section is the
 behaviour they add up to.
+
+Every piece is in place and unit-tested — lockfile, path scope, authenticated
+socket, MCP layer, and the wiring that starts a bridge with each PTY. **What has
+not happened is the pass with the actual `claude` binary**, which is the only
+thing that can prove we match a program that ships weekly, and it is the
+remaining item on roadmap 19. Until then, treat "the CLI connects" as designed
+rather than observed.
 
 **Behavior.** factorai presents itself to the `claude` CLI as an editor. The
 agent asks us to show a file; it opens in the viewer (F7), at the line if the
@@ -2707,6 +2714,24 @@ is a separate decision and a separate ADR (ADR-0017 § 6).
   already encodes the sibling rule that a surface must not move under you while
   you type. The call succeeds either way — it asked us to surface a file, and we
   did, at the level the human can act on.
+
+### Where an `openFile` lands
+
+Rust decides, and the renderer obeys, so the rule lives in one place. The bridge
+opens the viewer when the request's session is the one in front *and* the agent
+did not ask to stay out of the way; otherwise the session's **tab takes a small
+amber mark**, cleared by clicking it.
+
+That mark is not decoration. The ask has to land somewhere, or the bridge is
+telling the agent a file was surfaced when nothing was — the same dishonesty
+`getDiagnostics` is kept out of the tool list to avoid. It is its own mark
+rather than a change to the status badge, because "running" and "asking for you"
+are different facts and a session is frequently both.
+
+`ide_report_ui` is how Rust knows any of this: the renderer reports the active
+session and the open file whenever either changes. Fire-and-forget — a report
+that goes missing leaves a stale picture that errs towards marking a tab, which
+is the harmless direction.
 
 ### It is visible
 

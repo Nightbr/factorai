@@ -8,6 +8,7 @@ import type {
 	GitStatus,
 	ImageContents,
 	ImportCandidate,
+	IdeOpenFileEvent,
 	IndexerProgressEvent,
 	PathKind,
 	Project,
@@ -22,6 +23,7 @@ import type {
 	TerminalId,
 	TerminalStatusDto,
 	TerminalStatusEvent,
+	UiSnapshot,
 } from '@factorai/types';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { type UnlistenFn, listen as tauriListen } from '@tauri-apps/api/event';
@@ -84,6 +86,10 @@ export const cmd = {
 	 *  order given. Never rejects: everything that isn't an openable path comes
 	 *  back `missing`. */
 	pathKinds: (paths: string[]) => invoke<PathKind[]>('path_kinds', { paths }),
+	/** Tell the backend what is on screen, so the IDE bridge can answer for it
+	 *  rather than guess (F20). Fire-and-forget: a report that goes missing
+	 *  leaves a stale-but-honest picture. */
+	ideReportUi: (snapshot: UiSnapshot) => invoke<void>('ide_report_ui', { snapshot }),
 
 	/** Repository state for the Changes tab and the tree's decorations (F13).
 	 *  A project outside a repository resolves with `repoRoot: null` rather
@@ -291,6 +297,9 @@ export const events = {
 		listen<TerminalExitEvent>('terminal:exit', cb),
 	onQuitRequested: (cb: (p: QuitRequestedEvent) => void) =>
 		listen<QuitRequestedEvent>('app:quit-requested', cb),
+	/** The agent asked to show a file, through the IDE bridge (F20). */
+	onIdeOpenFile: (cb: (p: IdeOpenFileEvent) => void) =>
+		listen<IdeOpenFileEvent>('ide:open-file', cb),
 };
 
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
@@ -485,6 +494,9 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			if (!image) throw { kind: 'InvalidInput', message: `not a displayable image: ${path}` };
 			return image as unknown as T;
 		}
+		case 'ide_report_ui':
+			// Nothing listens in browser-only mode — there is no bridge to inform.
+			return undefined as unknown as T;
 		case 'path_kinds': {
 			const paths = (args?.paths ?? []) as string[];
 			// Derived from the fixtures a test already declares rather than from a

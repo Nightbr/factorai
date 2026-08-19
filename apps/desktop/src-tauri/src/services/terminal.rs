@@ -28,6 +28,9 @@ use uuid::Uuid;
 use crate::agents::claude;
 use crate::error::{AppError, AppResult};
 use crate::services::claude_cli::find_claude_binary;
+use crate::services::ide::protocol::Mcp;
+use crate::services::ide::server::IdeServer;
+use crate::services::ide::ui_state::UiState;
 use crate::services::osc_title::TitleScanner;
 
 pub type TerminalId = String;
@@ -97,6 +100,19 @@ pub struct TerminalStatusEvent {
 	pub last_activity: i64,
 }
 
+/// The agent asked us to show a file (F20). `frontmost` is already decided
+/// here, from whether this session is the one in front — the renderer obeys
+/// rather than re-deciding, so one rule lives in one place.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdeOpenFileEvent {
+	pub session_id: String,
+	pub path: String,
+	pub line: Option<u32>,
+	/// True: open the viewer. False: mark the tab and leave the human alone.
+	pub frontmost: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalExitEvent {
@@ -107,6 +123,7 @@ pub struct TerminalExitEvent {
 type DataCb = Arc<dyn Fn(TerminalDataEvent) + Send + Sync>;
 type StatusCb = Arc<dyn Fn(TerminalStatusEvent) + Send + Sync>;
 type ExitCb = Arc<dyn Fn(TerminalExitEvent) + Send + Sync>;
+type IdeOpenCb = Arc<dyn Fn(IdeOpenFileEvent) + Send + Sync>;
 
 struct TerminalHandle {
 	session_id: String,
@@ -125,6 +142,12 @@ struct TerminalHandle {
 	killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 	status: Mutex<TerminalStatus>,
 	last_activity: AtomicI64,
+	/// This session's IDE bridge (F20), held only so its lifetime is the PTY's.
+	/// Dropping the handle drops the server, which removes the lockfile and
+	/// stops the listener — so the reaping ADR-0017 promises rides on the
+	/// teardown ADR-0005 already guarantees, rather than on a second one that
+	/// could be forgotten. `None` when the bridge failed to start.
+	_ide: Option<IdeServer>,
 }
 
 #[derive(Clone)]
@@ -138,16 +161,24 @@ pub struct TerminalManager {
 	claude_dir: PathBuf,
 	/// Override for tests. None → use `find_claude_binary()` at spawn time.
 	binary_override: Option<PathBuf>,
+	/// What the renderer has on screen, for the bridge's answers (F20).
+	ui: Arc<UiState>,
+	on_ide_open: IdeOpenCb,
 }
 
 impl TerminalManager {
-	pub fn for_app(app: AppHandle, claude_dir: PathBuf) -> Self {
+	pub fn for_app(app: AppHandle, claude_dir: PathBuf, ui: Arc<UiState>) -> Self {
 		let app_data = app.clone();
 		let app_status = app.clone();
-		let app_exit = app;
+		let app_exit = app.clone();
+		let app_ide = app;
 		Self {
 			terminals: Arc::new(DashMap::new()),
 			claude_dir,
+			ui,
+			on_ide_open: Arc::new(move |e| {
+				let _ = app_ide.emit("ide:open-file", e);
+			}),
 			on_data: Arc::new(move |e| {
 				let _ = app_data.emit("terminal:data", e);
 			}),
@@ -174,6 +205,8 @@ impl TerminalManager {
 			on_exit,
 			claude_dir,
 			binary_override: None,
+			ui: Arc::new(UiState::default()),
+			on_ide_open: Arc::new(|_| {}),
 		}
 	}
 
@@ -233,6 +266,45 @@ impl TerminalManager {
 			}
 		}
 		Uuid::new_v4().to_string()
+	}
+
+	/// Stand up this session's IDE bridge (F20).
+	///
+	/// The two answers that depend on the UI are resolved here rather than in
+	/// the protocol, because this is the only layer that knows which session it
+	/// is: `openFile` on a session that is not in front marks its tab instead of
+	/// taking the window, and `getOpenEditors` reports what the viewer is
+	/// actually showing rather than a stub.
+	fn start_bridge(&self, session_id: &str, cwd: &Path) -> AppResult<IdeServer> {
+		let ui_for_open = self.ui.clone();
+		let ui_for_editors = self.ui.clone();
+		let on_open = self.on_ide_open.clone();
+		let session = session_id.to_string();
+
+		let mcp = Mcp::new(
+			cwd.to_path_buf(),
+			Arc::new(move |req| {
+				// The agent may ask not to be intrusive, and the human may be
+				// looking at something else. Either is enough to mark rather than
+				// open, and the renderer is told the outcome rather than asked to
+				// work it out again.
+				let frontmost = req.make_frontmost && ui_for_open.is_active(&session);
+				(on_open)(IdeOpenFileEvent {
+					session_id: session.clone(),
+					path: req.path.to_string_lossy().into_owned(),
+					line: req.line,
+					frontmost,
+				});
+				frontmost
+			}),
+			Arc::new(move || ui_for_editors.open_files()),
+		);
+
+		IdeServer::start(
+			&self.claude_dir,
+			&cwd.to_string_lossy(),
+			Arc::new(move |text| mcp.handle(text)),
+		)
 	}
 
 	/// Spawn `claude` for a session in a PTY. Returns the new terminal id.
@@ -299,6 +371,28 @@ impl TerminalManager {
 		// xterm.js renders best as xterm-256color.
 		cmd.env("TERM", "xterm-256color");
 
+		// **The IDE bridge (F20), and it must never be able to break a session.**
+		// A failure here is logged and dropped: a session with no editor attached
+		// is exactly what every session was until this landed, whereas refusing to
+		// spawn `claude` because a socket would not bind would trade the whole
+		// feature for one of its conveniences.
+		//
+		// The port goes into the child's environment, which is also what makes the
+		// CLI *look*: `CLAUDE_CODE_SSE_PORT` being set is by itself enough to turn
+		// its auto-connect on, and it pins which lockfile is chosen when a VS Code
+		// is open on the same machine — the CLI otherwise connects only when
+		// exactly one candidate matches.
+		let ide = match self.start_bridge(&opts.session_id, &cwd_path) {
+			Ok(server) => {
+				cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
+				Some(server)
+			}
+			Err(e) => {
+				warn!(error = %e, "ide bridge did not start; the session runs without one");
+				None
+			}
+		};
+
 		let pty_system = native_pty_system();
 		let pair = pty_system
 			.openpty(PtySize {
@@ -338,6 +432,7 @@ impl TerminalManager {
 			// dot did before F10, so a launch looks no different than it used to.
 			status: Mutex::new(TerminalStatus::Working),
 			last_activity: AtomicI64::new(now_ms()),
+			_ide: ide,
 		});
 
 		self.terminals.insert(id.clone(), handle.clone());

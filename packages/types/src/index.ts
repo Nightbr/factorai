@@ -203,6 +203,37 @@ export interface DirListing {
 export type PathKind = 'file' | 'directory' | 'missing';
 
 /**
+ * What the renderer has on screen, reported to the backend so the IDE bridge
+ * can answer honestly rather than guess (F20). Mirrors Rust's `UiSnapshot`.
+ *
+ * Two of the bridge's answers depend on it and Rust cannot see the UI:
+ * `getOpenEditors` has to name real files, and an `openFile` for a session that
+ * is not in front marks its tab instead of taking the window.
+ */
+export interface UiSnapshot {
+	/** The session whose tab is in front, or null when the human is somewhere
+	 *  that isn't a session. */
+	activeSession: string | null;
+	/** What the viewer is showing (`?file=`), if anything. */
+	openFile: string | null;
+}
+
+/**
+ * The agent asked us to show a file (F20).
+ *
+ * `frontmost` is decided in Rust, from whether this session is the one in front
+ * *and* whether the agent asked to be intrusive. The renderer obeys rather than
+ * re-deciding, so the rule lives in one place.
+ */
+export interface IdeOpenFileEvent {
+	sessionId: string;
+	path: string;
+	/** 1-based, straight into the viewer's `&line=`. */
+	line: number | null;
+	frontmost: boolean;
+}
+
+/**
  * A file's contents for the viewer (F7).
  *
  * No `mime`: the viewer resolves a language from the extension via Monaco's

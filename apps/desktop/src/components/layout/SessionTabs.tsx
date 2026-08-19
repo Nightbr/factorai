@@ -55,6 +55,7 @@ const DRAG_START_PX = 4;
 export function SessionTabs() {
 	const bySession = useTerminalStore((s) => s.bySession);
 	const openTabs = useTerminalStore((s) => s.tabs);
+	const attention = useTerminalStore((s) => s.attention);
 	const reorder = useTerminalStore((s) => s.reorder);
 	const detach = useTerminalStore((s) => s.detach);
 	const { sessionId: activeId } = useParams({ strict: false }) as { sessionId?: string };
@@ -113,6 +114,10 @@ export function SessionTabs() {
 
 	const openSession = useCallback(
 		(sessionId: string, projectId: string) => {
+			// Being here is the answer to the ask, so the mark goes now rather than
+			// on arrival — the navigate below is a no-op for the tab you are already
+			// on, and a flag you cannot clear by clicking it is worse than none.
+			useTerminalStore.getState().clearAttention(sessionId);
 			// **A stopped tab is a restart** (F16). Without this you would land on the
 			// pooled xterm's dead pane — or, for a tab restored from a previous run,
 			// on nothing at all — and a navigate to the route you are already on does
@@ -251,6 +256,7 @@ export function SessionTabs() {
 								project={projectById.get(projectId)}
 								title={titles.get(id) ?? shortId(id)}
 								isActive={id === activeId}
+								needsAttention={attention.has(id)}
 								onOpen={openSession}
 								onRequestClose={requestClose}
 								onNudge={nudge}
@@ -279,6 +285,8 @@ interface SessionTabProps {
 	project: Project | undefined;
 	title: string;
 	isActive: boolean;
+	/** The agent asked to show you a file here while you were elsewhere (F20). */
+	needsAttention: boolean;
 	onOpen: (sessionId: string, projectId: string) => void;
 	onRequestClose: (sessionId: string, projectId: string) => void;
 	onNudge: (sessionId: string, delta: -1 | 1) => void;
@@ -303,6 +311,7 @@ function SessionTab({
 	project,
 	title,
 	isActive,
+	needsAttention,
 	onOpen,
 	onRequestClose,
 	onNudge,
@@ -373,6 +382,18 @@ function SessionTab({
 				status={status}
 			/>
 			<span className="min-w-0 flex-1 truncate">{title}</span>
+			{/* The agent wants you to look at something here (F20). Its own mark
+			    rather than a change to the status badge: "running" and "asking for
+			    you" are different facts and a session is often both. Amber because
+			    that is the accent this app asks with, and after the title so it
+			    never shifts the text as it appears and disappears. */}
+			{needsAttention && (
+				<span
+					aria-label="The agent asked to show you a file"
+					title="The agent asked to show you a file"
+					className="size-1.5 shrink-0 rounded-full bg-primary"
+				/>
+			)}
 			{/* Only where the pointer already is, or on the active tab: a row of
 			    permanent × buttons is a row of accidents waiting. */}
 			<button
