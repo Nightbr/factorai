@@ -2,6 +2,7 @@
 	"name": "factorai",
 	"private": true,
 	"description": "Agentic Development Environment (ADE) for the AI era",
+	"license": "MIT",
 	"scripts": {
 		"dev": "turbo dev",
 		"build": "turbo build",
