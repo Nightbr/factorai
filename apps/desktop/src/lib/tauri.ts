@@ -136,6 +136,31 @@ export async function openExternally(path: string): Promise<void> {
 }
 
 /**
+ * The user's home directory, for expanding `~` in a terminal link (F19).
+ *
+ * Lazily imported for the same reason as `openExternally`, and **null in
+ * browser-only mode rather than a guess**: there is no home directory there, so
+ * a `~/` path simply isn't a link, which is the honest answer and keeps the
+ * mock layer from inventing a filesystem.
+ *
+ * Resolved once and cached — it cannot change while the app is running, and the
+ * caller is a mouse-move handler.
+ */
+let homeDirCache: Promise<string | null> | undefined;
+
+export function homeDir(): Promise<string | null> {
+	homeDirCache ??= (async () => {
+		if (!isTauri()) return null;
+		// `core:default` carries `core:path:default`, which is what allows this.
+		const { homeDir: resolve } = await import('@tauri-apps/api/path');
+		// A home directory we can't resolve is one `~` doesn't expand against —
+		// no worse than browser-only mode, and not worth a toast.
+		return resolve().catch(() => null);
+	})();
+	return homeDirCache;
+}
+
+/**
  * Put an image on the system clipboard (F7).
  *
  * **Not `navigator.clipboard.write`.** WebKitGTK implements `writeText` — the
