@@ -138,7 +138,7 @@ every theme.
 | `factorai-icon-1024.png` | raster master, for release art and anywhere a PNG is required |
 | `factorai-icon-256.png` | raster master at icon scale |
 | `factorai-lockup.svg` | mark + wordmark on a dark ground — **the master for the lockup** (B5a) |
-| `factorai-lockup.png` | 450 × 160, the README hero; a 2× raster of the above |
+| `factorai-lockup.png` | 400 × 160, the README hero; a 2× raster of the above |
 
 `factorai-mark.svg` is the reference for the one-colour cut; the renderer draws
 it from a component rather than loading this file (B8).
@@ -171,17 +171,32 @@ guaranteed Inter: a README, a release page, a social card.
 **It is the header lockup from B8, drawn to a file.** The proportions are not
 invented for it — they are the app's, so the two surfaces cannot drift:
 
-| | App (`Brand.tsx`) | Lockup (720 × 256 viewBox) |
+| | App (`Brand.tsx`) | Lockup (640 × 256 viewBox) |
 |---|---|---|
-| Mark | `size-4` — 16px | 128 |
-| Wordmark | `text-sm` — 14px | 112 (0.875 × mark) |
-| Gap | `gap-2` — 8px | 64 (0.5 × mark) |
-| Tracking | `tracking-tight` | −0.025em |
+| Mark | `size-4.5` — 18px | 128 |
+| Wordmark | `text-sm` — 14px | 99.6 (14⁄18 × mark) |
+| Gap | `gap-2` — 8px | 56.9 (8⁄18 × mark) |
+| Weight | `font-bold` | Inter Bold (700) |
+| Tracking | `tracking-[-0.04em]` | −0.040em |
+| Condense | — | **6%**, and only here |
 
-Padding is 0.5 × mark on three sides and **68.85 on the right**, not 64. That is
-not a mistake and not optical correction: the canvas is pinned to 720 × 256
-(45:16) so a 2× raster is exactly 450 × 160 rather than a rounded 157.5, and the
+**The mark is `size-4.5`, not `size-4`** — it grew by two pixels in
+`83afd5a` — and the first cut of the lockup used 16, which made its wordmark
+0.875 × the mark instead of 0.778. That is a 12% oversized wordmark, and it is
+half of why the first attempt read loose and soft; the weight was the other
+half. Ratios here are written as fractions of the *app's* pixel values rather
+than as decimals so that the next such change is a one-line edit and an obvious
+one.
+
+Padding is 0.5 × mark on three sides and **66.9 on the right**, not 64. That is
+not a mistake and not optical correction: the canvas is pinned to 640 × 256
+(5:2) so a 2× raster is exactly 400 × 160 rather than a rounded 157.5, and the
 slack lands on the right where a narrow `i` wants a little more air anyway.
+
+Checked rather than assumed: measured off a capture of the running header
+against the exported PNG, the lockup's wordmark-to-mark width ratio is within
+**2.7%** of the app's and its gap within **1.3%**. The residual is the condense
+below, minus the ~3% the app gets free from hinting.
 
 **The colourway is amber-dominant** — amber housing, the F and the ports cutting
 to the `#272B31` ground. The default colourway cannot be used here: its housing
@@ -190,19 +205,43 @@ floating F. This is the one place B5's rejected drawing is correct, because the
 objection to it — that it fights the UI it sits beside — does not apply to an
 asset that never appears in the UI.
 
-**The wordmark is outlined, not set.** Inter SemiBold converted to paths, for
-the reason B3 gives about the F plus a plainer one: GitHub has no Inter, so an
-SVG with a live `<text>` element renders in whatever the reader's browser
-substitutes. The three kern pairs Inter applies to this string — `fa` −37,
-`to` −20, `ra` −19, in font units — are baked into the path positions. They were
-**measured out of Chromium** rather than read from GPOS, by differencing
-`measureText` on each pair against its glyphs alone; the outlines were then
-checked against live-text rendering of the same string and agree to
-antialiasing.
+**The 6% condense is the lockup's alone, and it is a correction rather than a
+style.** The wordmark was first drawn semibold at −0.025em, straight from the
+app's classes, and read soft and wide beside the mark — "handwritten" was the
+word used. The cause is that the two are never seen at the same size. At 14px
+FreeType grid-fits Inter: stems snap to whole pixels, so they thicken, curves
+flatten, and the advances round down. That is what the app looks like, and it
+is denser and squarer than Inter's outlines actually are. Blown up to 112 the
+true drawing shows and the same font reads softer.
 
-Regenerating it needs Inter SemiBold and a glyph outliner. It should not need
-doing: the file is a master, the wordmark is not going to change, and nothing
-downstream derives from it the way the icons derive from `factorai-icon.svg`.
+So the weight and tracking moved on **both** surfaces — the name is still set
+one way, B8's rule holds — and the vector additionally condenses 6% to stand in
+for the narrowing that hinting does to the app for free. Measured on a capture,
+the app's wordmark is ~3% narrower per unit cap height than the unhinted
+outlines; 6% at 112 is the eye's answer to that, not the arithmetic's.
+
+**Do not add the condense to `Brand.tsx`.** Inter's static cuts have no width
+axis, so `font-stretch` is a no-op and the only route is `transform: scaleX()`,
+which does not affect layout — the element keeps its unscaled width and leaves
+a gap the dev badge then sits 3px too far from. The distortion is also a real
+one: an x-scale thins the vertical stems relative to the horizontals, which is
+cheap to accept once in an asset and not worth carrying in the UI for a
+difference of under 3px.
+
+**The wordmark is outlined, not set.** Inter Bold converted to paths, for the
+reason B3 gives about the F plus a plainer one: GitHub has no Inter, so an SVG
+with a live `<text>` element renders in whatever the reader's browser
+substitutes. The three kern pairs Inter applies to this string at weight 700 —
+`fa` −40, `to` −20, `ra` −28, in font units — are baked into the path positions.
+They were **measured out of Chromium** rather than read from GPOS, by
+differencing `measureText` on each pair against its glyphs alone; the outlines
+were then checked against live-text rendering of the same string and agree to
+antialiasing. The values differ per weight, so a weight change means
+re-measuring them.
+
+Regenerating it needs Inter Bold and a glyph outliner. It should not need doing
+often: the file is a master, and nothing downstream derives from it the way the
+icons derive from `factorai-icon.svg`.
 
 ---
 
@@ -286,10 +325,19 @@ rounded square. `usePortsMaskId` derives one from `useId` and strips its colons,
 which a `url(#…)` reference is better off without.
 
 **Wordmark rule: the name is set one way in this app.** `factor` in the
-surrounding text colour, `ai` in `--primary`. It reads, selects and copies as
-one word. Anywhere the product is named in chrome — header, empty state, about
-box — uses `BrandWordmark` rather than spelling the string out, so there is
-exactly one place to change it.
+surrounding text colour, `ai` in `--primary`, **bold at −0.04em**. It reads,
+selects and copies as one word. Anywhere the product is named in chrome —
+header, empty state, about box — uses `BrandWordmark` rather than spelling the
+string out, so there is exactly one place to change it.
+
+The weight and the tracking are both off the app's usual scale, and both are
+deliberate. Semibold at `tracking-tight` was what shipped first; beside a mark
+that is one flat amber shape with a 45° cut, a text-weight wordmark reads as a
+caption rather than as half a logo. −0.04em is the only arbitrary tracking value
+in the app: `tracking-tight` (−0.025em) is too loose at this weight and
+`tracking-tighter` (−0.05em) starts closing the `a` and `o` counters at 14px.
+Changing either means changing B5a's lockup with it, and re-measuring its kern
+pairs, which are weight-specific.
 
 The header lockup was checked against a full tab strip, which was the open
 question when this was scoped: mark, wordmark and dev badge hold the left end

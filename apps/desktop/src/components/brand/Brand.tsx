@@ -72,10 +72,21 @@ function BrandMark({ className }: { className?: string }) {
  *
  * One text node, split by a span: it still selects, copies and reads as
  * "factorai".
+ *
+ * **Bold at −0.04em, which is not the `tracking-tight` scale step.** Set
+ * semibold at −0.025em this read soft beside the mark — the mark is one flat
+ * amber shape with a 45° cut, and a text-weight wordmark next to it looks like
+ * a caption rather than half a logo. The arbitrary tracking is deliberate and
+ * is the only one in the app: −0.025em is too loose here and `tracking-tighter`
+ * at −0.05em starts closing the `a` and `o` counters at 14px.
+ *
+ * `specs/09-branding.md` B5a carries the same numbers for the exported lockup,
+ * which adds a 6% condense this does not — see there for why that correction
+ * belongs to the vector and not to the UI.
  */
 export function BrandWordmark({ className }: { className?: string }) {
 	return (
-		<span className={cn('font-semibold text-sm tracking-tight', className)}>
+		<span className={cn('font-bold text-sm tracking-[-0.04em]', className)}>
 			factor<span className="text-primary">ai</span>
 		</span>
 	);

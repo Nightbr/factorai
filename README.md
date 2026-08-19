@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/brand/factorai-lockup.png" alt="factorai" width="225">
+<img src="docs/brand/factorai-lockup.png" alt="factorai" width="200">
 
 ### IDE is dead. Long live the ADE
 
