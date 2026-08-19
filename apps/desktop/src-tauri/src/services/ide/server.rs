@@ -19,6 +19,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tokio_tungstenite::tungstenite::http::header::{HeaderValue, SEC_WEBSOCKET_PROTOCOL};
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
@@ -30,6 +31,20 @@ use crate::error::{AppError, AppResult};
 /// lookups are case-insensitive but the constant should not invite a
 /// case-sensitive rewrite.
 const AUTH_HEADER: &str = "x-claude-code-ide-authorization";
+
+/// The subprotocol the CLI asks for, and **it has to be answered**.
+///
+/// It builds its socket as `new WebSocket(url, { protocols: ["mcp"], … })`. A
+/// client that offers a subprotocol and gets a handshake back without one is
+/// entitled to treat the connection as unusable, and this one does: it resets
+/// immediately, having completed the handshake, so from our side it looks like
+/// a connection that opened and vanished with nothing sent.
+///
+/// **Found by the conformance pass, not by a test.** Every unit test here
+/// passed while this was broken, because our own client never asked for a
+/// subprotocol — which is exactly the gap ADR-0017 says only a run against the
+/// real binary can close.
+const MCP_SUBPROTOCOL: &str = "mcp";
 
 /// Turns one request message into an optional reply. `None` for a
 /// notification, which by definition is not answered.
@@ -151,6 +166,14 @@ async fn serve(
 	let check = |req: &Request, res: Response| -> Result<Response, ErrorResponse> {
 		let presented = req.headers().get(AUTH_HEADER).and_then(|v| v.to_str().ok()).unwrap_or("");
 		if tokens_match(presented, &token) {
+			let mut res = res;
+			// Echoed only when it was offered. Selecting a subprotocol the client
+			// never asked for is the same protocol violation in the other
+			// direction, and would break a client that is happy without one.
+			if offers_mcp(req) {
+				res.headers_mut()
+					.insert(SEC_WEBSOCKET_PROTOCOL, HeaderValue::from_static(MCP_SUBPROTOCOL));
+			}
 			return Ok(res);
 		}
 		warn!("ide bridge rejected a connection with a bad or missing token");
@@ -177,6 +200,19 @@ async fn serve(
 		}
 	}
 	Ok(())
+}
+
+/// Did the client offer the `mcp` subprotocol?
+///
+/// A client may send several, comma-separated, and may repeat the header — the
+/// spec allows both spellings, so both are read rather than the convenient one.
+fn offers_mcp(req: &Request) -> bool {
+	req.headers()
+		.get_all(SEC_WEBSOCKET_PROTOCOL)
+		.iter()
+		.filter_map(|v| v.to_str().ok())
+		.flat_map(|v| v.split(','))
+		.any(|p| p.trim().eq_ignore_ascii_case(MCP_SUBPROTOCOL))
 }
 
 /// Compare in time independent of how much of the token matched.

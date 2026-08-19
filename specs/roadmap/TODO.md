@@ -496,9 +496,22 @@ read-only first slice that leaves ADR-0009 untouched. Its relationship to item
 15 is settled too: that shipped, and this routes what the CLI drives by protocol
 while F19 covers everything it merely prints.
 
-What remains is the code, in this order: the lockfile and its reaping, the
-handshake and `tests/ide_ws_scope.rs`, then the four tools. Then a manual
-conformance pass against the real CLI, recording the version.
+**Built 2026-08-19, and the CLI connects** (observed against 2.1.235): lockfile
+and its reaping, the authenticated handshake and `tests/ide_ws_scope.rs`, the
+MCP layer with three tools, and the wiring that starts a bridge with each PTY.
+The conformance pass paid for itself on the first run — see F19's neighbour in
+`05-features.md` for the `Sec-WebSocket-Protocol` finding that every green unit
+test had missed.
+
+What is left:
+
+- **A tool call observed end to end.** `openFile` reaching the viewer has only
+  been driven by unit tests; the connection and handshake have not.
+- **The session-header badge**, so an open port is visible. Specified in F20 and
+  not yet built.
+- **The off switch**, which belongs to item 4's `prefsStore`.
+- **`openDiff` and the write path** — its own ADR, and the thing that supersedes
+  part of ADR-0009.
 
 The original entry, kept because it is the argument for doing it at all:
 
