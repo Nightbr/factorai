@@ -2,6 +2,7 @@ use tauri::State;
 use tracing::debug;
 
 use crate::error::AppResult;
+use crate::services::ide::protocol::Mention;
 use crate::services::ide::ui_state::UiSnapshot;
 use crate::state::AppState;
 
@@ -41,4 +42,27 @@ pub fn ide_resync(state: State<'_, AppState>) -> AppResult<()> {
 	debug!("renderer asked the ide bridges to re-announce");
 	state.terminals.resync_ide_status();
 	Ok(())
+}
+
+/// Hand files — or a run of lines in one — to a session's agent (F20).
+///
+/// Becomes an `at_mentioned` notification per entry, which the CLI turns into
+/// `@path` or `@path#L12-18` in its prompt box. Explicit rather than ambient:
+/// the human picked these, and they land somewhere visible that survives the
+/// viewer being closed.
+///
+/// **Every path is scope-checked**, exactly as `openFile` is. The direction of
+/// travel does not change the boundary: a renderer bug that offered a path
+/// outside the project would otherwise leak its name to the agent.
+///
+/// Fails loudly, unlike most of the bridge. This one is a gesture the human
+/// just made and is watching for, so a mention that goes nowhere has to say so
+/// rather than be swallowed.
+#[tauri::command]
+pub fn ide_mention(
+	state: State<'_, AppState>,
+	session_id: String,
+	mentions: Vec<Mention>,
+) -> AppResult<()> {
+	state.terminals.mention(&session_id, &mentions)
 }

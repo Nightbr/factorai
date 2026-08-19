@@ -16,7 +16,7 @@
 //! the write path, and they are a separate decision with a separate ADR
 //! (ADR-0017 § 6). ADR-0009's "everything is read-only" stands untouched.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -52,6 +52,35 @@ pub type OpenFile = Arc<dyn Fn(OpenFileRequest) -> bool + Send + Sync>;
 
 /// Absolute paths the human currently has open, for `getOpenEditors`.
 pub type OpenEditors = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
+
+/// A file — or a run of lines in one — the human is handing to the agent (F20).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mention {
+	pub path: String,
+	/// **1-based, inclusive.** The CLI renders these straight into the prompt as
+	/// `@path#L12-18`, and its own guard is `if (lineStart && lineEnd)` — a
+	/// zero would read as absent. Note this is the opposite convention from
+	/// `selection_changed`, whose lines are 0-based; the two are not
+	/// interchangeable and a test pins each.
+	pub line_start: Option<u32>,
+	pub line_end: Option<u32>,
+}
+
+/// The `at_mentioned` notification for one mention, ready to send.
+///
+/// Built here rather than in the command so the wire shape lives with the rest
+/// of the protocol, and so it can be asserted without a socket.
+pub fn at_mentioned(path: &Path, mention: &Mention) -> String {
+	let mut params = json!({ "filePath": path.to_string_lossy() });
+	// Both or neither: the CLI tests them together, and half a range would
+	// render as a whole-file mention while looking like it carried a selection.
+	if let (Some(start), Some(end)) = (mention.line_start, mention.line_end) {
+		params["lineStart"] = json!(start);
+		params["lineEnd"] = json!(end);
+	}
+	encode(json!({ "jsonrpc": "2.0", "method": "at_mentioned", "params": params }))
+}
 
 /// One session's view of the protocol.
 pub struct Mcp {
@@ -538,5 +567,73 @@ mod tests {
 		)
 		.unwrap();
 		assert_eq!(reply["id"], "abc-1");
+	}
+
+	/// `at_mentioned`'s wire shape, which the CLI turns straight into prompt
+	/// text. Read out of CLI 2.1.235:
+	///
+	/// ```js
+	/// if (e.lineStart && e.lineEnd)
+	///   n = e.lineStart === e.lineEnd ? `@${r}#L${e.lineStart} ` : `@${r}#L${e.lineStart}-${e.lineEnd} `;
+	/// else n = `@${r} `;
+	/// ```
+	mod mentions {
+		use std::path::Path;
+
+		use super::*;
+
+		fn params(json: &str) -> Value {
+			let v: Value = serde_json::from_str(json).unwrap();
+			assert_eq!(v["jsonrpc"], "2.0");
+			assert_eq!(v["method"], "at_mentioned");
+			// A notification has no id — an `at_mentioned` carrying one would be
+			// a request the CLI never answers.
+			assert!(v.get("id").is_none());
+			v["params"].clone()
+		}
+
+		fn mention(line_start: Option<u32>, line_end: Option<u32>) -> Mention {
+			Mention { path: "/p/a.rs".into(), line_start, line_end }
+		}
+
+		#[test]
+		fn a_whole_file_carries_no_range() {
+			let p = params(&at_mentioned(Path::new("/p/a.rs"), &mention(None, None)));
+			assert_eq!(p["filePath"], "/p/a.rs");
+			assert!(p.get("lineStart").is_none());
+			assert!(p.get("lineEnd").is_none());
+		}
+
+		#[test]
+		fn a_range_is_one_based_because_the_cli_prints_it_verbatim() {
+			// The opposite convention from `selection_changed`, whose lines are
+			// 0-based. Selecting the first line of a file must read `#L1`, and the
+			// CLI's own guard is `if (lineStart && lineEnd)` — a 0 would read as
+			// absent and silently become a whole-file mention.
+			let p = params(&at_mentioned(Path::new("/p/a.rs"), &mention(Some(1), Some(4))));
+			assert_eq!(p["lineStart"], 1);
+			assert_eq!(p["lineEnd"], 4);
+		}
+
+		#[test]
+		fn half_a_range_is_sent_as_no_range_at_all() {
+			// The CLI tests the two together, so a lone `lineStart` renders as a
+			// whole-file mention anyway. Dropping it here makes the wire say what
+			// the reader will see, instead of carrying a number that does nothing.
+			for m in [mention(Some(3), None), mention(None, Some(9))] {
+				let p = params(&at_mentioned(Path::new("/p/a.rs"), &m));
+				assert!(p.get("lineStart").is_none(), "{p}");
+				assert!(p.get("lineEnd").is_none(), "{p}");
+			}
+		}
+
+		#[test]
+		fn the_path_sent_is_the_resolved_one_not_what_was_asked_for() {
+			// The command hands us the canonicalised path, and that is what has
+			// been scope-checked. Sending the caller's string instead would put an
+			// unchecked path on the wire.
+			let p = params(&at_mentioned(Path::new("/real/a.rs"), &mention(None, None)));
+			assert_eq!(p["filePath"], "/real/a.rs");
+		}
 	}
 }

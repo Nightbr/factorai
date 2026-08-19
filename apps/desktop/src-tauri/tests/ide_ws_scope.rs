@@ -313,3 +313,34 @@ fn a_refused_client_never_counts_as_attached() {
 
 	assert!(h.clients.lock().is_empty());
 }
+
+/// Outbound notifications (F20). The socket only ever spoke when spoken to
+/// until this landed, so "the app pushes and the client receives" is the whole
+/// thing worth asserting.
+#[test]
+fn a_notification_reaches_an_attached_client() {
+	let h = harness();
+	let mut ws = connect(h.server.port(), Some(h.server.token())).expect("connects");
+
+	h.server.notify(r#"{"jsonrpc":"2.0","method":"at_mentioned"}"#.to_string());
+
+	let got = ws.read().unwrap();
+	assert!(got.into_text().unwrap().contains("at_mentioned"));
+}
+
+#[test]
+fn a_push_with_nobody_attached_is_dropped_rather_than_queued() {
+	// `broadcast` only delivers to receivers that already exist, so a mention
+	// sent while Claude is away does **not** arrive when it reconnects. That is
+	// the right behaviour — a file you handed over five minutes ago is not what
+	// you meant by "add this to the conversation" — and it is why the command
+	// refuses up front instead of relying on this.
+	let h = harness();
+	h.server.notify(r#"{"jsonrpc":"2.0","method":"at_mentioned"}"#.to_string());
+
+	let mut ws = connect(h.server.port(), Some(h.server.token())).expect("connects");
+	if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = ws.get_mut() {
+		tcp.set_read_timeout(Some(Duration::from_millis(300))).unwrap();
+	}
+	assert!(ws.read().is_err(), "nothing should be waiting for a client that arrives later");
+}
