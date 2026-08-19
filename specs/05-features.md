@@ -2830,6 +2830,18 @@ row is disabled rather than hidden; no bridge, or Claude not attached, and the
 call errors. This is a gesture the human just made and is watching for, so
 "nothing happened" has to be visible.
 
+**Lines come from the viewer**, through a control in its footer rather than its
+header: the footer is the only place that knows the selection, and the label has
+to name the range — "Add lines 12–18 to Claude" — because a control that sends
+more than you highlighted is worse than one you press twice. Absent rather than
+disabled with no session in front; in a row of metadata a greyed control reads
+as broken.
+
+A selection ending at **column 1 does not include that line**. Dragging from 12
+to the start of 19 highlights nothing on 19, so `#L12-19` would claim a line the
+reader never touched — every editor trims this, and the CLI's own footer
+arithmetic does the same subtraction on `selection_changed`.
+
 ### Not in this feature
 
 `selection_changed` — the ambient half, where merely selecting in the viewer

@@ -12,10 +12,12 @@ import { Button } from '@factorai/ui';
 import type { ViewerPosition } from '@hooks/useFileViewer';
 import { iconKeyFor } from '@lib/fileIcon';
 import { formatBytes } from '@lib/format';
+import { type LineSelection, mentionFor, mentionLabel, mentionRange } from '@lib/mentions';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
 import { useQuery } from '@tanstack/react-query';
-import { Code2, Eye } from 'lucide-react';
+import { useParams } from '@tanstack/react-router';
+import { Code2, Eye, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 /**
@@ -60,6 +62,15 @@ export function FileView({ path, position, onOpenPath }: FileViewProps) {
 function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 	// The user asked to see an oversized file anyway → read with no cap.
 	const [uncapped, setUncapped] = useState(false);
+	// What is selected in the editor, for the footer's hand-to-Claude control
+	// (F20). Held here rather than in the editor because the footer is what
+	// renders it, and the editor is recreated on every content change.
+	const [selection, setSelection] = useState<LineSelection | null>(null);
+	// Which agent it would go to: the session in front, and none when the viewer
+	// was opened from somewhere that is not a session.
+	const { sessionId } = useParams({ strict: false }) as { sessionId?: string };
+	const [sendState, setSendState] = useState<'idle' | 'sent' | 'failed'>('idle');
+	const range = mentionRange(selection);
 	// Markdown and SVG open rendered; `preview` is ignored for everything else.
 	//
 	// **Except when a position was asked for.** A link to `README.md:42` is a
@@ -99,7 +110,12 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 					<Centered>This file is empty.</Centered>
 				)}
 				{file && !file.isBinary && file.contents.length > 0 && !showPreview && (
-					<Editor contents={file.contents} language={language} position={position ?? null} />
+					<Editor
+						contents={file.contents}
+						language={language}
+						position={position ?? null}
+						onSelection={setSelection}
+					/>
 				)}
 				{file && !file.isBinary && file.contents.length > 0 && showPreview && isMarkdown && (
 					<MarkdownView
@@ -115,6 +131,36 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 
 			{file && !file.isBinary && (
 				<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
+					{/* **Hand this to the agent** (F20). In the footer rather than the
+					    header because this is the only place that knows the selection,
+					    and because the label has to name the range — a control that
+					    sends more than you highlighted is worse than one you press
+					    twice. Absent with no session in front: there is nothing to
+					    send to, and a disabled control in a row of metadata reads as
+					    broken rather than unavailable. */}
+					{sessionId && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="-ml-1 h-6 gap-1.5 px-2 text-xs"
+							data-testid="viewer-add-to-claude"
+							onClick={() => {
+								setSendState('idle');
+								void cmd
+									.ideMention(sessionId, [mentionFor(path, range)])
+									.then(() => setSendState('sent'))
+									.catch(() => setSendState('failed'));
+								setTimeout(() => setSendState('idle'), 1600);
+							}}
+						>
+							<Sparkles className="size-3.5" />
+							{sendState === 'sent'
+								? 'Sent to Claude'
+								: sendState === 'failed'
+									? 'Claude is not connected'
+									: mentionLabel(range)}
+						</Button>
+					)}
 					{previewable && (
 						<Button
 							variant="ghost"
@@ -189,13 +235,16 @@ interface EditorProps {
 	language: string;
 	/** Caret target from `&line=`/`&col=` (F19), or null to open at the top. */
 	position: ViewerPosition | null;
+	/** Report what is selected, so the footer can offer to hand it to the agent
+	 *  (F20). Null for a bare cursor — that is not a range. */
+	onSelection?: (selection: LineSelection | null) => void;
 }
 
 /**
  * Monaco host. Mirrors the xterm lifecycle in `Terminal.tsx`: create in an
  * effect, dispose on unmount, never through React state.
  */
-function Editor({ contents, language, position }: EditorProps) {
+function Editor({ contents, language, position, onSelection }: EditorProps) {
 	const hostRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -247,10 +296,28 @@ function Editor({ contents, language, position }: EditorProps) {
 			editor.focus();
 		}
 
-		return () => editor.dispose();
+		// Monaco's line and column numbers are 1-based, which is already what an
+		// `@file#L12-18` mention wants — the conversion happens once, in
+		// `lib/mentions`, and nothing else has to know about the convention.
+		const selectionSub = editor.onDidChangeCursorSelection(({ selection }) => {
+			onSelection?.(
+				selection.isEmpty()
+					? null
+					: {
+							startLine: selection.startLineNumber,
+							endLine: selection.endLineNumber,
+							endColumn: selection.endColumn,
+						},
+			);
+		});
+
+		return () => {
+			selectionSub.dispose();
+			editor.dispose();
+		};
 		// Recreating on a language change is fine: the viewer is one file at a
 		// time and disposal is cheap next to the initial module load.
-	}, [contents, language, position]);
+	}, [contents, language, position, onSelection]);
 
 	return <div ref={hostRef} className="h-full w-full" data-testid="file-view-editor" />;
 }

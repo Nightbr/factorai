@@ -428,4 +428,43 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
 		await expect(viewer.getByText('const line1 = 1;', { exact: true })).toBeVisible();
 	});
+
+	/**
+	 * Handing the open file to the agent (F20).
+	 *
+	 * The control lives in the footer because that is the only place that knows
+	 * the selection, and its label names the range — a control that sends more
+	 * than you highlighted is worse than one you press twice.
+	 */
+	test('@smoke offers the whole file when nothing is selected', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		// Through a session, so there is an agent to send to.
+		await page.locator('aside').first().getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		await page.goto(`${page.url().split('?')[0]}?file=${encodeURIComponent(`${ROOT}/Cargo.toml`)}`);
+
+		const button = page.getByTestId('viewer-add-to-claude');
+		await expect(button).toHaveText('Add file to Claude');
+
+		await button.click();
+		const calls = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'ide_mention')
+				.map((c) => c.args?.mentions),
+		);
+		expect(calls).toEqual([[{ path: `${ROOT}/Cargo.toml` }]]);
+	});
+
+	test('@smoke there is nothing to send to outside a session', async ({ page }) => {
+		// Absent rather than disabled: in a row of metadata a greyed control
+		// reads as broken rather than unavailable.
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
+		await expect(page.getByTestId('viewer-add-to-claude')).toHaveCount(0);
+	});
 });
