@@ -19,6 +19,7 @@ import type {
 	GitStatus,
 	ImageContents,
 	ImportCandidate,
+	PdfContents,
 	Project,
 	SearchHit,
 	SessionPage,
@@ -225,6 +226,63 @@ function image(path: string, over: Partial<ImageContents> = {}): ImageContents {
 	return { path, mime: 'image/png', base64: ONE_PIXEL_PNG, size: 70, ...over };
 }
 
+/**
+ * A real two-page PDF — 850 bytes, with a correct xref table, two Helvetica
+ * pages reading "Page one" and "Page two".
+ *
+ * Genuine bytes rather than a stub for the same reason `ONE_PIXEL_PNG` is:
+ * pdf.js actually parses this in a worker, and a fixture it rejects would test
+ * the error path while claiming to test rendering. Two pages, not one, so the
+ * page counter has something to count.
+ */
+const TWO_PAGE_PDF =
+	'JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIg' +
+	'Pj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUiA0IDAgUl0g' +
+	'L0NvdW50IDIgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAg' +
+	'UiAvTWVkaWFCb3ggWzAgMCAzMDAgMjAwXSAvQ29udGVudHMgNSAwIFIgL1Jlc291cmNlcyA8' +
+	'PCAvRm9udCA8PCAvRjEgNyAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUg' +
+	'L1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAzMDAgMjAwXSAvQ29udGVudHMg' +
+	'NiAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNyAwIFIgPj4gPj4gPj4KZW5kb2Jq' +
+	'CjUgMCBvYmoKPDwgL0xlbmd0aCAzOSA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDMwIDEwMCBU' +
+	'ZCAoUGFnZSBvbmUpIFRqIEVUCmVuZHN0cmVhbQplbmRvYmoKNiAwIG9iago8PCAvTGVuZ3Ro' +
+	'IDM5ID4+CnN0cmVhbQpCVCAvRjEgMjQgVGYgMzAgMTAwIFRkIChQYWdlIHR3bykgVGogRVQK' +
+	'ZW5kc3RyZWFtCmVuZG9iago3IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBl' +
+	'MSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2' +
+	'NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDAwNjQgMDAwMDAgbiAKMDAwMDAw' +
+	'MDEyNyAwMDAwMCBuIAowMDAwMDAwMjUzIDAwMDAwIG4gCjAwMDAwMDAzNzkgMDAwMDAgbiAK' +
+	'MDAwMDAwMDQ2OCAwMDAwMCBuIAowMDAwMDAwNTU3IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1Np' +
+	'emUgOCAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNjI3CiUlRU9GCg==';
+
+/**
+ * A real RC4-encrypted one-page PDF whose user password is `letmein`.
+ *
+ * Genuine encryption, not a flag: pdf.js decides this is locked by failing to
+ * derive a key, so a fixture that merely claimed to be encrypted would never
+ * reach the unlock path at all. One page, reading "Secret page" once open.
+ */
+const LOCKED_PDF =
+	'JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIg' +
+	'Pj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50' +
+	'IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVk' +
+	'aWFCb3ggWzAgMCAzMDAgMjAwXSAvQ29udGVudHMgNSAwIFIgL1Jlc291cmNlcyA8PCAvRm9u' +
+	'dCA8PCAvRjEgNCAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL0ZvbnQg' +
+	'L1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago1IDAgb2Jq' +
+	'Cjw8IC9MZW5ndGggNDIgPj4Kc3RyZWFtClSvYyRzgd/ZKApEOzX0LNmbU/23GbCYhm/jGv0b' +
+	'ERuz4rvEgqEsUWBZGQplbmRzdHJlYW0KZW5kb2JqCjYgMCBvYmoKPDwgL0ZpbHRlciAvU3Rh' +
+	'bmRhcmQgL1YgMSAvUiAyIC9PIDw4MTcxOTZjOGM0MTM2MzlmNjM4YmQ1NDA5ZDI2ZWE4ODhj' +
+	'NDkwNThmNmEzM2Q2NDBjNTlmMGI0YTQyZTUyNDlkPiAvVSA8YmU1MThlOTAxZTQ3ZjVkNDRh' +
+	'ZGI2MzM2ZjIxZGJmZmZkNGU2ODg2ZTJkYmZhMmNhZmM4MGViNGM4NjQwMjY0NT4gL1AgLTEg' +
+	'Pj4KZW5kb2JqCnhyZWYKMCA3CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAw' +
+	'MCBuIAowMDAwMDAwMDY0IDAwMDAwIG4gCjAwMDAwMDAxMjEgMDAwMDAgbiAKMDAwMDAwMDI0' +
+	'NyAwMDAwMCBuIAowMDAwMDAwMzE3IDAwMDAwIG4gCjAwMDAwMDA0MDkgMDAwMDAgbiAKdHJh' +
+	'aWxlcgo8PCAvU2l6ZSA3IC9Sb290IDEgMCBSIC9FbmNyeXB0IDYgMCBSIC9JRCBbPDAwMDEw' +
+	'MjAzMDQwNTA2MDcwODA5MGEwYjBjMGQwZTBmPiA8MDAwMTAyMDMwNDA1MDYwNzA4MDkwYTBi' +
+	'MGMwZDBlMGY+XSA+PgpzdGFydHhyZWYKNjA0CiUlRU9GCg==';
+
+function pdf(path: string, over: Partial<PdfContents> = {}): PdfContents {
+	return { path, base64: TWO_PAGE_PDF, size: 850, ...over };
+}
+
 function contents(path: string, text: string, over: Partial<FileContents> = {}): FileContents {
 	return {
 		path,
@@ -273,6 +331,8 @@ export function fixtureWithFileTree(): TestFixture {
 				entry(root, 'logo.png'),
 				entry(root, 'mark.svg'),
 				entry(root, 'broken.png'),
+				entry(root, 'spec.pdf'),
+				entry(root, 'locked.pdf'),
 				entry(root, 'data.bin'),
 				entry(root, 'huge.log'),
 				entry(root, 'main.py'),
@@ -348,6 +408,12 @@ export function fixtureWithFileTree(): TestFixture {
 		// `broken.png` is deliberately missing: the mock rejects an unlisted
 		// image path exactly as the backend rejects wrong magic bytes.
 		images: { [`${root}/logo.png`]: image(`${root}/logo.png`) },
+		// `notreally.pdf` is missing for the same reason on the PDF side: routed
+		// here by extension, refused by the backend for its magic bytes.
+		pdfs: {
+			[`${root}/spec.pdf`]: pdf(`${root}/spec.pdf`),
+			[`${root}/locked.pdf`]: pdf(`${root}/locked.pdf`, { base64: LOCKED_PDF, size: 898 }),
+		},
 	};
 }
 
