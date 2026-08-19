@@ -612,6 +612,21 @@ because F7 already commits to them:
   sniffed from the magic bytes, and the viewer renders it in an `<img>`. The asset protocol lost
   because its path scope is static and ours is "whatever project you opened". SVG is still
   source-only, deliberately.
+- ~~**PDF preview.**~~ **Shipped 2026-08-19** — pdf.js, bundled, continuous scroll with a text
+  layer (F7, ADR-0018). Four follow-ups were scoped out of it deliberately, in the order they are
+  worth doing:
+  - **A find bar.** `Cmd+F` across the document, with match highlighting and next/prev. The text
+    layer is already there, so this is a match index and a scroll-to-match rather than new
+    plumbing. Wait for item 13's project-wide search to settle the find-bar shape first — two
+    find UIs that don't match each other is worse than one arriving later.
+  - **Go-to-page.** A number box beside the counter. Small, and only obviously worth it once a
+    document long enough to want it is in front of someone.
+  - **Outline sidebar**, from `getOutline()` — real navigation for a spec or a book. Needs a
+    layout decision the pane doesn't currently have room for.
+  - **Rendered PDF diff.** A changed `.pdf` in the Changes tab dead-ends on "Cannot preview binary
+    file" today. Two `PdfView`s scroll-synced by page is the obvious shape; the open questions are
+    what "changed" means for a page (any pixel? any text?) and whether an added or deleted page
+    should align against nothing on the other side. Not started, and not blocking anything.
 
 ## 24. `DESIGN.md` — one home for the design rules
 

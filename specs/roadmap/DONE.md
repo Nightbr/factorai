@@ -3,6 +3,56 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **PDF preview in the file viewer — spec `05-features.md` F7, ADR-0018** — 2026-08-19, user ask,
+  scoped in a clarify-needs interview. A `.pdf` used to reach `read_file`, hit a null byte in the
+  first 8KB and dead-end on "Cannot preview binary file" — the app handing the document to another
+  app. It now renders: continuous scroll, selectable text, fit-width zoom, and a password prompt
+  for an encrypted one.
+
+  **The cheap version works on exactly one of our two platforms.** WKWebView has Apple's PDF
+  viewer built in; WebKitGTK has none. So an `<iframe>` fed the bytes renders on macOS and shows a
+  blank pane on Linux — F16's HTML5 drag-and-drop bug with the platforms swapped, and shipped for
+  the same reason it was: QA happens on one machine. pdf.js is bundled instead, and ADR-0018 closes
+  the `<iframe>` route explicitly so a future WebKitGTK doesn't quietly reopen it.
+
+  **pdf.js needs four asset sets on disk, not the two the plan assumed.** `standard_fonts/` and
+  `cmaps/` were expected; `wasm/` (JBIG2 and JPEG2000 decoders, plus qcms) and `iccs/` were found
+  by reading the package. That matters because a scanned PDF — the case the 32MB cap exists for —
+  is usually JBIG2 or JPX inside, and this webview has no network for any of it to come from.
+  `vite/pdfjsAssets.ts` stages all four into `public/pdfjs/` at startup, version-stamped so it is
+  free after the first run and self-correcting on an upgrade, and gitignored because 4MB of
+  node_modules belongs in the build rather than the history.
+
+  **Three findings worth keeping.**
+
+  - **`GlobalWorkerOptions.workerPort` cannot serve two documents.** It is one `Worker` and pdf.js
+    takes ownership: destroying a loading task terminates it, and the next document fails with
+    "PDFWorker.create - the worker is being destroyed". React's development double-effect makes it
+    fire immediately — open, destroy, open — so nothing rendered at all. `?worker&url` plus
+    `workerSrc` keeps the worker bundled *and* gives each document its own.
+  - **A ref read during render is not a measurement.** Fit-width came from
+    `stageRef.current?.clientWidth`, which is null on the render that mounts the stage, so every
+    document opened at 100% with no error anywhere. Caught by the zoom smoke test, which reset to
+    fit and got a different number than it opened with. The pane width is state now, from a
+    `ResizeObserver` — which also covers the stage measuring **zero while the modal is still
+    animating open**, the same trap Monaco's `automaticLayout` note describes. Pages are held back
+    until it has a width, so the first paint is already fitted rather than snapping.
+  - **`pdf_viewer.css` is 6347 lines of Firefox's viewer.** Importing it to get the 145-line
+    `.textLayer` block would drop `:root` blocks, XFA widgets and `button` rules into this app's
+    cascade. So the block is copied into `pdfTextLayer.css` — and then formatted by biome like every
+    other CSS file here, the same call the vendored shadcn primitives got, which is why the drift
+    test compares rules with the whitespace dropped rather than byte for byte.
+
+  Verified against real pdf.js rather than a mock: the smoke fixtures are a genuine two-page
+  document and a genuine RC4-encrypted one (password `letmein`), so the worker, the asset paths and
+  the decryption path are all exercised by `pnpm e2e`. `vite:build` confirms the other half — the
+  hashed worker chunk and the `/pdfjs/*` URLs land in `PdfView`'s own chunk, 428KB of it, separate
+  from the viewer's and never fetched until a PDF is opened.
+
+  Deferred, in `TODO.md` § 21: a find bar (waiting on item 13 to settle the find-bar shape),
+  go-to-page, an outline sidebar, and rendered PDF diffing — a changed `.pdf` in the Changes tab
+  still dead-ends on the binary card.
+
 - **Clickable file links in terminal output — roadmap item 15, spec `05-features.md` F19** —
   2026-08-19, user ask, scoped in a clarify-needs interview. Ctrl/Cmd-click a path the agent
   printed and it opens in the viewer, at the line if the path carried one; a directory reveals
