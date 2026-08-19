@@ -71,9 +71,13 @@
 	   green is fine, amber is your move, and grey is inert. `stopped` held the
 	   red at hue 25 until 2026-08-18 — it was the loudest colour in the app,
 	   spent on the one state that asks nothing of you, so it took over the grey
-	   that `-idle` left behind when F10 deleted that state. */
+	   that `-idle` left behind when F10 deleted that state.
+
+	   `waiting` is the accent's exact value and moves with it — "your move" is
+	   the same signal the accent carries everywhere else, and two ambers three
+	   percent apart would read as a mistake rather than a distinction. */
 	--color-status-working: oklch(68% 0.17 150);
-	--color-status-waiting: oklch(78% 0.17 75);
+	--color-status-waiting: oklch(81.3% 0.165 75);
 	--color-status-stopped: oklch(55% 0.01 250);
 
 	/* Working activity indicator */
@@ -155,18 +159,30 @@
 	--card-foreground: oklch(96% 0.004 250);
 	--popover: oklch(18% 0.008 250);
 	--popover-foreground: oklch(96% 0.004 250);
-	--primary: oklch(78% 0.17 75);
+
+	/* The amber is the brand's, exactly: oklch(81.3% 0.165 75) round-trips to
+	   #FFB020, which is what `docs/brand/factorai-icon.svg` fills the F with.
+	   It used to be oklch(78% 0.17 75) — #F5A400 — while `specs/09-branding.md`
+	   B4 claimed the brand "adopted the colour that was there". It hadn't; the
+	   two were a visible 3% apart in lightness, and the icon beside the header
+	   proved it. Corrected 2026-08-19 by moving the app, not the mark, since
+	   the mark is the thing that ships in other people's docks.
+
+	   The light theme's amber is deliberately NOT this value — #FFB020 on a 98%
+	   ground is unreadable. A light theme needs its own darker step, and that
+	   is roadmap item 32's problem, not this token's. */
+	--primary: oklch(81.3% 0.165 75);
 	--primary-foreground: oklch(16% 0.008 250);
 	--secondary: oklch(22% 0.008 250);
 	--secondary-foreground: oklch(82% 0.006 250);
 	--muted: oklch(20% 0.008 250);
 	--muted-foreground: oklch(56% 0.006 250);
-	--accent: oklch(78% 0.17 75);
+	--accent: oklch(81.3% 0.165 75);
 	--accent-foreground: oklch(16% 0.008 250);
 	--destructive: oklch(58% 0.22 25);
 	--border: oklch(25% 0.008 250);
 	--input: oklch(22% 0.008 250);
-	--ring: oklch(78% 0.17 75);
+	--ring: oklch(81.3% 0.165 75);
 	--radius: 0.5rem;
 
 	/* Development-build marker. Violet on purpose: it is the one hue the rest
