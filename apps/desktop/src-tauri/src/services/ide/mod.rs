@@ -6,9 +6,11 @@
 //! PTYs against one project so neither the client pid nor the workspace folder
 //! would distinguish them.
 //!
-//! Built in slices. This one is the two pieces that have to be right before a
-//! socket exists at all: the handle the CLI finds us by ([`lockfile`]) and the
-//! boundary a connected client cannot cross ([`scope`]).
+//! Built in slices. [`lockfile`] is the handle the CLI finds us by, [`scope`]
+//! is the boundary a connected client cannot cross, and [`server`] is the
+//! transport and the door. What the messages *mean* — the MCP layer — arrives
+//! next, injected into the server as a handler so the two stay separable.
 
 pub mod lockfile;
 pub mod scope;
+pub mod server;
