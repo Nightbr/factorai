@@ -44,7 +44,17 @@ libc = "0.2.186"
 git2 = { version = "0.21", default-features = false }
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-clipboard-manager = "2.3.2"
+# The IDE bridge's transport (F20, ADR-0017 § 4). No default features: those
+# carry `connect` and four TLS backends, and this only ever *accepts* plaintext
+# connections on loopback. `handshake` is the one piece we need — it is where
+# the auth header is inspected before the socket is upgraded.
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+# `StreamExt` / `SinkExt` for the IDE bridge's socket. Already in the tree under
+# tokio-tungstenite; named here because we call its traits directly. No default
+# features — `async-await` and the executor helpers are not used.
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "sink"] }
 
 [dev-dependencies]
 regex = "1.13.1"
 tempfile = "3"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
