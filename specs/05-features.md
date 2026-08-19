@@ -2790,8 +2790,15 @@ becoming half of someone else's feature. Recorded in roadmap item 4.
 ### Handing files to the agent
 
 The other direction, and the thing that makes this a bridge rather than a remote
-control: **right-click files in the tree → "Add to Claude"**, which arrives in
-the agent's prompt box as `@path`, or `@path#L12-18` for a run of lines.
+control: **right-click files in the tree → "Add to agent context"**, which
+arrives in the agent's prompt box as `@path`, or `@path#L12-18` for a run of
+lines.
+
+The label says *agent*, not *Claude*, and that is the same rule the bridge's own
+badge follows: Claude is the only agent factorai drives today, but ADR-0011
+already generalised "an agent's store" past it and `00-overview.md` puts agents
+at the centre rather than one vendor. A control named after today's
+implementation is a rename waiting to happen.
 
 **`at_mentioned`, not `selection_changed`, and the modal is why.** VS Code
 streams your editor selection continuously and the CLI renders it in its footer
@@ -2822,7 +2829,8 @@ work. A parent already holds its children in order, so siblings cost nothing.
 
 Right-clicking inside a selection acts on all of it and outside one replaces it,
 the way every file manager behaves. The menu row names the count — "Add 3 items
-to Claude" — because a gesture that sends more than you meant is worse than one
+to agent context" — because a gesture that sends more than you meant is worse than
+one
 you have to repeat.
 
 **It fails loudly**, unlike the rest of the bridge. No session in front and the
@@ -2832,7 +2840,8 @@ call errors. This is a gesture the human just made and is watching for, so
 
 **Lines come from the viewer**, through a control in its footer rather than its
 header: the footer is the only place that knows the selection, and the label has
-to name the range — "Add lines 12–18 to Claude" — because a control that sends
+to name the range — "Add lines 12–18 to agent context" — because a control that
+sends
 more than you highlighted is worse than one you press twice. Absent rather than
 disabled with no session in front; in a row of metadata a greyed control reads
 as broken.

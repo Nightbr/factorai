@@ -95,7 +95,7 @@ interface PanelState {
 	 *  path that existed last session may be gone, and restoring a half-open
 	 *  tree of stale paths is worse than starting collapsed. */
 	expandedByProject: Record<string, Set<string>>;
-	/** Selected rows, for highlight and for what "add to Claude" acts on (F20).
+	/** Selected rows, for highlight and for what "add to agent context" acts on (F20).
 	 *
 	 *  A set rather than one path since multi-select landed. Not persisted, like
 	 *  `expandedByProject` and for the same reason: it names paths that may not

@@ -131,36 +131,6 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 
 			{file && !file.isBinary && (
 				<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
-					{/* **Hand this to the agent** (F20). In the footer rather than the
-					    header because this is the only place that knows the selection,
-					    and because the label has to name the range — a control that
-					    sends more than you highlighted is worse than one you press
-					    twice. Absent with no session in front: there is nothing to
-					    send to, and a disabled control in a row of metadata reads as
-					    broken rather than unavailable. */}
-					{sessionId && (
-						<Button
-							variant="ghost"
-							size="sm"
-							className="-ml-1 h-6 gap-1.5 px-2 text-xs"
-							data-testid="viewer-add-to-claude"
-							onClick={() => {
-								setSendState('idle');
-								void cmd
-									.ideMention(sessionId, [mentionFor(path, range)])
-									.then(() => setSendState('sent'))
-									.catch(() => setSendState('failed'));
-								setTimeout(() => setSendState('idle'), 1600);
-							}}
-						>
-							<Sparkles className="size-3.5" />
-							{sendState === 'sent'
-								? 'Sent to Claude'
-								: sendState === 'failed'
-									? 'Claude is not connected'
-									: mentionLabel(range)}
-						</Button>
-					)}
 					{previewable && (
 						<Button
 							variant="ghost"
@@ -182,9 +152,13 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 					</span>
 					<span aria-hidden="true">·</span>
 					<span>read-only</span>
+
+					{/* One spacer, not one per right-hand item: two would leave whatever
+					    sits between them floating in the middle of the row. */}
+					<span className="flex-1" />
+
 					{file.truncated && (
 						<>
-							<span className="flex-1" />
 							{/* No byte count here on purpose: the cap lives in Rust and
 							    restating it in the renderer would drift. */}
 							<span className="text-primary">truncated</span>
@@ -197,6 +171,41 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 								Show anyway
 							</Button>
 						</>
+					)}
+
+					{/* **Hand this to the agent** (F20). In the footer rather than the
+					    header because this is the only place that knows the selection,
+					    and because the label has to name the range — a control that
+					    sends more than you highlighted is worse than one you press
+					    twice.
+
+					    Far right, away from the metadata: everything to the left of the
+					    spacer describes the file, and this is the one thing here that
+					    *does* something. Absent with no session in front, since there
+					    is nothing to send to and a disabled control in a row of
+					    metadata reads as broken rather than unavailable. */}
+					{sessionId && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="-mr-1 h-6 gap-1.5 px-2 text-xs"
+							data-testid="viewer-add-to-claude"
+							onClick={() => {
+								setSendState('idle');
+								void cmd
+									.ideMention(sessionId, [mentionFor(path, range)])
+									.then(() => setSendState('sent'))
+									.catch(() => setSendState('failed'));
+								setTimeout(() => setSendState('idle'), 1600);
+							}}
+						>
+							<Sparkles className="size-3.5" />
+							{sendState === 'sent'
+								? 'Added to context'
+								: sendState === 'failed'
+									? 'The agent is not connected'
+									: mentionLabel(range)}
+						</Button>
 					)}
 				</footer>
 			)}

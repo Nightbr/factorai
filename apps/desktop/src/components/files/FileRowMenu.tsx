@@ -10,7 +10,7 @@ import { usePanelStore } from '@store/panelStore';
 
 /** Whether a menu action worked, for the transient mark the row shows after —
  *  the menu has closed by then and cannot report anything itself. Named for the
- *  outcome rather than for copying since "Add to Claude" reports through it
+ *  outcome rather than for copying since "Add to agent context" reports through it
  *  too. */
 export type RowOutcome = 'yes' | 'failed';
 
@@ -18,12 +18,12 @@ export type RowOutcome = 'yes' | 'failed';
  *  Naming the count is the difference between a menu item you trust and one you
  *  try once to find out what it does. */
 function addLabel(entry: DirEntry, enabled: boolean): string {
-	if (!enabled) return 'Add to Claude — no session open';
+	if (!enabled) return 'Add to agent context — no session open';
 	const selected = usePanelStore.getState().selectedPaths;
 	if (selected.has(entry.path) && selected.size > 1) {
-		return `Add ${selected.size} items to Claude`;
+		return `Add ${selected.size} items to agent context`;
 	}
-	return entry.isDir ? 'Add folder to Claude' : 'Add to Claude';
+	return entry.isDir ? 'Add folder to agent context' : 'Add to agent context';
 }
 
 interface FileRowMenuProps {
@@ -38,7 +38,7 @@ interface FileRowMenuProps {
 	/** True while this row's menu is open — gates the `read_file` below. */
 	menuOpen: boolean;
 	/** The session in front, or null when the human is not in one. Decides
-	 *  whether "Add to Claude" can do anything (F20). */
+	 *  whether "Add to agent context" can do anything (F20). */
 	activeSessionId: string | null;
 }
 

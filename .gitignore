@@ -37,6 +37,10 @@ coverage/
 
 # Playwright
 /test-results/
+# Playwright writes here too when it is invoked from inside the app package
+# rather than the repo root, which is easy to do by accident and lands a
+# `.last-run.json` in a commit.
+apps/desktop/test-results/
 /playwright-report/
 /playwright/.cache/
 # Scratch output from the `playwright` MCP server (.mcp.json), which writes
