@@ -35,6 +35,10 @@ parking_lot = "0.12"
 base64 = "0.22"
 portable-pty = "0.8"
 dashmap = "6"
+# One call: `kill(pid, 0)` to tell a live editor lockfile from a crashed one
+# (services/ide/lockfile). Already in the tree via tokio and portable-pty, so
+# this makes an existing transitive dependency explicit rather than adding one.
+libc = "0.2.186"
 # No default features: they pull ssh2 / openssl / http transport in for network
 # operations we never perform — every call reads a local repository (ADR-0009).
 git2 = { version = "0.21", default-features = false }

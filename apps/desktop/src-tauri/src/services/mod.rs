@@ -2,6 +2,7 @@ pub mod child_env;
 pub mod claude_cli;
 pub mod files;
 pub mod git;
+pub mod ide;
 pub mod indexer;
 pub mod jsonl;
 pub mod osc_title;
