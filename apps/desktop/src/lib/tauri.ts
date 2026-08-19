@@ -9,6 +9,7 @@ import type {
 	ImageContents,
 	ImportCandidate,
 	IndexerProgressEvent,
+	PathKind,
 	Project,
 	QuitRequestedEvent,
 	SearchHit,
@@ -79,6 +80,10 @@ export const cmd = {
 	 *  the binary card. */
 	readImage: (path: string, maxBytes?: number | null) =>
 		invoke<ImageContents>('read_image', { path, maxBytes }),
+	/** Classify a batch of paths for the terminal's link provider (F19), in the
+	 *  order given. Never rejects: everything that isn't an openable path comes
+	 *  back `missing`. */
+	pathKinds: (paths: string[]) => invoke<PathKind[]>('path_kinds', { paths }),
 
 	/** Repository state for the Changes tab and the tree's decorations (F13).
 	 *  A project outside a repository resolves with `repoRoot: null` rather
@@ -454,6 +459,19 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// reaches the fall-back-to-binary-card path without inventing bytes.
 			if (!image) throw { kind: 'InvalidInput', message: `not a displayable image: ${path}` };
 			return image as unknown as T;
+		}
+		case 'path_kinds': {
+			const paths = (args?.paths ?? []) as string[];
+			// Derived from the fixtures a test already declares rather than from a
+			// field of its own: anything the viewer can open is a file, anything
+			// the tree can list is a directory. So a terminal link to a fixture
+			// file works without the test saying so twice, and the two can never
+			// disagree about what exists.
+			return paths.map((path) => {
+				if (fx?.files?.[path] || fx?.images?.[path]) return 'file';
+				if (fx?.dirListings?.[path]) return 'directory';
+				return 'missing';
+			}) as unknown as T;
 		}
 		case 'git_status': {
 			const projectPath = String(args?.projectPath ?? '');

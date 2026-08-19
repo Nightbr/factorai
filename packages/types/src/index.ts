@@ -194,6 +194,15 @@ export interface DirListing {
 }
 
 /**
+ * What a path on disk turned out to be, for the terminal's link provider (F19).
+ *
+ * Three states and no error case: the only question is "can I usefully open
+ * this", and a broken symlink, a permission error and a path that was never
+ * there all answer it the same way. Mirrors Rust's `PathKind`.
+ */
+export type PathKind = 'file' | 'directory' | 'missing';
+
+/**
  * A file's contents for the viewer (F7).
  *
  * No `mime`: the viewer resolves a language from the extension via Monaco's

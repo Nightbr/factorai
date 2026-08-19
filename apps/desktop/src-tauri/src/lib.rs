@@ -136,6 +136,7 @@ pub fn run() {
 			commands::files::list_dir,
 			commands::files::read_file,
 			commands::files::read_image,
+			commands::files::path_kinds,
 			commands::git::git_status,
 			commands::git::git_blob,
 			commands::git::git_graph,

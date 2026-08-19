@@ -181,6 +181,21 @@ pub struct DirListing {
 	pub truncated: bool,
 }
 
+/// What a path on disk turns out to be, for the terminal's link provider (F19).
+///
+/// Three states and no error case on purpose. The only question the caller has
+/// is "can I usefully open this", and there is nothing it would do differently
+/// with a *reason* — a broken symlink, a permission error and a path that was
+/// never there all mean the same thing to a link that therefore isn't one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PathKind {
+	File,
+	Directory,
+	/// Absent, unreadable, or neither a file nor a directory.
+	Missing,
+}
+
 /// A file's contents for the viewer. Mirrors `@factorai/types` `FileContents`.
 /// See specs/05-features.md F7.
 ///
