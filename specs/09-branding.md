@@ -122,7 +122,9 @@ it adopted the one that was there.
 | `factorai-icon.svg` | full colour, **the master** — every shipped icon derives from this |
 | `factorai-mark.svg` | one colour, `fill="currentColor"`, the F punched clean out of the housing |
 | `factorai-icon-1024.png` | raster master, for release art and anywhere a PNG is required |
-| `factorai-icon-256.png` | the README header |
+| `factorai-icon-256.png` | raster master at icon scale |
+| `factorai-lockup.svg` | mark + wordmark on a dark ground — **the master for the lockup** (B5a) |
+| `factorai-lockup.png` | 450 × 160, the README hero; a 2× raster of the above |
 
 `factorai-mark.svg` is the reference for the one-colour cut; the renderer draws
 it from a component rather than loading this file (B8).
@@ -141,7 +143,52 @@ copy one file across is more machinery than the copy is worth;
 
 An amber-dominant colourway — amber housing, dark F — was drawn and rejected as
 the default. It wins the dock but fights every UI it sits next to, and factorai
-is a tool you leave open all day.
+is a tool you leave open all day. **It is not dead, though: it is what the
+lockup uses**, for the reason B5a gives.
+
+---
+
+## B5a — The lockup
+
+`factorai-lockup.svg` is the mark and the wordmark set as one asset, for
+contexts outside the app that have no `currentColor` to inherit and no
+guaranteed Inter: a README, a release page, a social card.
+
+**It is the header lockup from B8, drawn to a file.** The proportions are not
+invented for it — they are the app's, so the two surfaces cannot drift:
+
+| | App (`Brand.tsx`) | Lockup (720 × 256 viewBox) |
+|---|---|---|
+| Mark | `size-4` — 16px | 128 |
+| Wordmark | `text-sm` — 14px | 112 (0.875 × mark) |
+| Gap | `gap-2` — 8px | 64 (0.5 × mark) |
+| Tracking | `tracking-tight` | −0.025em |
+
+Padding is 0.5 × mark on three sides and **68.85 on the right**, not 64. That is
+not a mistake and not optical correction: the canvas is pinned to 720 × 256
+(45:16) so a 2× raster is exactly 450 × 160 rather than a rounded 157.5, and the
+slack lands on the right where a narrow `i` wants a little more air anyway.
+
+**The colourway is amber-dominant** — amber housing, the F and the ports cutting
+to the `#272B31` ground. The default colourway cannot be used here: its housing
+*is* `#272B31`, so on the dark ground a lockup needs it would vanish and leave a
+floating F. This is the one place B5's rejected drawing is correct, because the
+objection to it — that it fights the UI it sits beside — does not apply to an
+asset that never appears in the UI.
+
+**The wordmark is outlined, not set.** Inter SemiBold converted to paths, for
+the reason B3 gives about the F plus a plainer one: GitHub has no Inter, so an
+SVG with a live `<text>` element renders in whatever the reader's browser
+substitutes. The three kern pairs Inter applies to this string — `fa` −37,
+`to` −20, `ra` −19, in font units — are baked into the path positions. They were
+**measured out of Chromium** rather than read from GPOS, by differencing
+`measureText` on each pair against its glyphs alone; the outlines were then
+checked against live-text rendering of the same string and agree to
+antialiasing.
+
+Regenerating it needs Inter SemiBold and a glyph outliner. It should not need
+doing: the file is a master, the wordmark is not going to change, and nothing
+downstream derives from it the way the icons derive from `factorai-icon.svg`.
 
 ---
 
@@ -154,6 +201,8 @@ is a tool you leave open all day.
   destroys the silhouette, which is the whole argument for this mark.
 - **No effects.** No gradient, shadow, glow, stroke, bevel or rotation.
 - **Do not recolour the F** to anything but the amber or `currentColor`.
+  Cutting it to transparency is not a recolour — that is what the one-colour
+  mark and the lockup both do, and what lets the ground show through.
 - **Do not rebuild the F from a font.** See B3.
 
 ---
