@@ -13,13 +13,20 @@
 export const PDF_ZOOM_MIN = 0.5;
 export const PDF_ZOOM_MAX = 4;
 
-/** Fit-width — what the view opens at — is `null` rather than a number: the
- *  scale is measured from the pane, so it has to be recomputed on every resize,
- *  and a stored number would silently stop being "fit" the moment the pane
- *  changed. `fitWidthScale` below turns it into one. */
+/**
+ * What the view opens at, and what the readout resets to.
+ *
+ * **100%, meaning one CSS pixel per PDF point — the page at its authored size.**
+ * Fit-width was built first and dropped on the user's call: a scale derived from
+ * the pane is a different number in every pane, so the same document opens
+ * looking different depending on the panel divider, and "100%" is the one
+ * reading that means something on its own. The cost is that a page wider than
+ * the pane can start off-screen to the right, which the stage scrolls to.
+ */
+export const PDF_ZOOM_DEFAULT = 1;
 
 export function clampPdfZoom(scale: number): number {
-	if (!Number.isFinite(scale)) return 1;
+	if (!Number.isFinite(scale)) return PDF_ZOOM_DEFAULT;
 	return Math.min(PDF_ZOOM_MAX, Math.max(PDF_ZOOM_MIN, scale));
 }
 
@@ -32,21 +39,6 @@ export function stepPdfZoom(scale: number, direction: 1 | -1): number {
 
 export function pdfZoomPercent(scale: number): string {
 	return `${Math.round(scale * 100)}%`;
-}
-
-/**
- * The scale at which the widest page fills the pane.
- *
- * Measured off the *widest* page rather than the first: a document with one
- * landscape figure in it would otherwise open with that page overflowing
- * sideways, and a horizontal scrollbar in a reader is a bug you have to
- * discover by scrolling.
- *
- * Clamped like any other scale, so a very narrow pane can't ask for 0.1×.
- */
-export function fitWidthScale(paneWidth: number, widestPage: number, gutter: number): number {
-	if (paneWidth <= 0 || widestPage <= 0) return 1;
-	return clampPdfZoom((paneWidth - gutter) / widestPage);
 }
 
 /**

@@ -54,7 +54,7 @@ test.describe('pdf viewer', () => {
 		await expect(viewer.locator('.textLayer').first()).toContainText('Page one');
 	});
 
-	test('@smoke zoom steps and resets to fit width', async ({ page }) => {
+	test('@smoke opens at 100%, steps, and the readout resets', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
 
@@ -62,19 +62,18 @@ test.describe('pdf viewer', () => {
 		const readout = viewer.getByTestId('pdf-zoom-readout');
 		const page1 = viewer.getByTestId('pdf-page').first();
 
-		const fitWidth = (await page1.boundingBox())?.width ?? 0;
-		expect(fitWidth).toBeGreaterThan(100);
-		const fitPercent = await readout.textContent();
+		// 100% is one CSS pixel per PDF point, so the fixture's 300pt page is 300px
+		// wide however wide the pane is.
+		await expect(readout).toHaveText('100%');
+		expect((await page1.boundingBox())?.width ?? 0).toBeCloseTo(300, 0);
 
 		await viewer.getByRole('button', { name: 'Zoom in' }).click();
-		await expect
-			.poll(async () => (await page1.boundingBox())?.width ?? 0)
-			.toBeGreaterThan(fitWidth);
-		await expect(readout).not.toHaveText(fitPercent ?? '');
+		await expect(readout).toHaveText('125%');
+		await expect.poll(async () => (await page1.boundingBox())?.width ?? 0).toBeGreaterThan(300);
 
-		// The readout is the reset, back to the fit-width the view opened at.
+		// The readout is the reset, back to the size the view opened at.
 		await readout.click();
-		await expect(readout).toHaveText(fitPercent ?? '');
+		await expect(readout).toHaveText('100%');
 	});
 
 	test('@smoke an encrypted PDF asks for its password, and opens with it', async ({ page }) => {

@@ -6,7 +6,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
 - **PDF preview in the file viewer — spec `05-features.md` F7, ADR-0018** — 2026-08-19, user ask,
   scoped in a clarify-needs interview. A `.pdf` used to reach `read_file`, hit a null byte in the
   first 8KB and dead-end on "Cannot preview binary file" — the app handing the document to another
-  app. It now renders: continuous scroll, selectable text, fit-width zoom, and a password prompt
+  app. It now renders: continuous scroll, selectable text, zoom from 100%, and a password prompt
   for an encrypted one.
 
   **The cheap version works on exactly one of our two platforms.** WKWebView has Apple's PDF
@@ -30,13 +30,15 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
     "PDFWorker.create - the worker is being destroyed". React's development double-effect makes it
     fire immediately — open, destroy, open — so nothing rendered at all. `?worker&url` plus
     `workerSrc` keeps the worker bundled *and* gives each document its own.
-  - **A ref read during render is not a measurement.** Fit-width came from
-    `stageRef.current?.clientWidth`, which is null on the render that mounts the stage, so every
-    document opened at 100% with no error anywhere. Caught by the zoom smoke test, which reset to
-    fit and got a different number than it opened with. The pane width is state now, from a
-    `ResizeObserver` — which also covers the stage measuring **zero while the modal is still
-    animating open**, the same trap Monaco's `automaticLayout` note describes. Pages are held back
-    until it has a width, so the first paint is already fitted rather than snapping.
+  - **A ref read during render is not a measurement.** The view opened fit-width first, and the
+    fit scale came from `stageRef.current?.clientWidth` — null on the render that mounts the stage,
+    so every document silently opened at 100% instead. Caught by the zoom smoke test, which reset
+    to fit and got a different number than it opened with. Measuring it properly needed
+    `ResizeObserver` state, because the stage also reads **zero while the modal is still animating
+    open** — the trap Monaco's `automaticLayout` note describes. **All of it then came out**: the
+    user's call is that a PDF opens at 100%, since a pane-derived scale reads differently in every
+    pane. Worth keeping anyway — the next thing in this app that measures a pane inside the modal
+    meets both halves of this.
   - **`pdf_viewer.css` is 6347 lines of Firefox's viewer.** Importing it to get the 145-line
     `.textLayer` block would drop `:root` blocks, XFA widgets and `button` rules into this app's
     cascade. So the block is copied into `pdfTextLayer.css` — and then formatted by biome like every
