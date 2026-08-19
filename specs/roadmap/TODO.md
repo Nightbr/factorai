@@ -514,6 +514,15 @@ What is left:
   CLI's autodetect polls for 30s) and one that detaches while the PTY lives on
   (what `/ide` disconnect looks like). Both are real failures worth catching and
   neither is worth a badge that cries wolf; decide the threshold deliberately.
+- **`selection_changed`, the ambient half.** Handing files over is explicit now
+  (F20 § "Handing files to the agent"); this is the other one, where merely
+  selecting in the viewer tells the agent what you are looking at and its footer
+  says "4 lines selected · In foo.ts". Deferred rather than dropped — note its
+  lines are **0-based**, the opposite of `at_mentioned`'s.
+- **Shift-click ranges across directories in the tree.** They stop at a
+  directory boundary today because the tree is recursive and each node fetches
+  its own listing, so nothing holds a flat list of what is visible. Wider ranges
+  mean lifting those listings out of their nodes.
 - **Where an `openFile` for a background session should land.** Nothing happens
   today and the agent is told so. A tab mark was tried and removed for colliding
   with the session status dot; the toast primitive item 7 wants is the likely
