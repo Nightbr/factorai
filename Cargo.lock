@@ -873,6 +873,7 @@ dependencies = [
  "dashmap",
  "dirs 5.0.1",
  "git2",
+ "libc",
  "notify",
  "notify-debouncer-mini",
  "parking_lot",
