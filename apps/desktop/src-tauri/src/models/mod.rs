@@ -523,3 +523,34 @@ pub struct GitCommitDetail {
 	pub total: usize,
 	pub truncated: bool,
 }
+
+/// A setting Rust reads, keyed by a mirrored union rather than a free string
+/// (F11, ADR-0013). Preferences only the renderer reads do not come through
+/// here — they live in `prefsStore` on localStorage.
+///
+/// **Why an enum and not a `String`.** A free-form key is `any` wearing a
+/// different hat: nothing catches a typo, a misspelled key silently reads as
+/// "unset", and "what settings exist?" becomes a grep instead of a type. Two
+/// commands over an enum still scale to any number of keys, which is the reason
+/// not to write one typed command per setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SettingKey {
+	/// Absolute path to the `claude` binary. Unset → the three-tier probe in
+	/// `services::claude_cli` decides.
+	ClaudeBinaryPath,
+}
+
+impl SettingKey {
+	/// The `settings.key` column value this key is stored under.
+	///
+	/// Deliberately *not* the serde name: the dotted namespace is the convention
+	/// migration `0001` set for that table, and it is what an operator poking at
+	/// the database with `sqlite3` sees. The mapping lives here alone, so the two
+	/// vocabularies cannot drift.
+	pub fn column(self) -> &'static str {
+		match self {
+			SettingKey::ClaudeBinaryPath => "claude.binary",
+		}
+	}
+}
