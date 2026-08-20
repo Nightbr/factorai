@@ -1183,9 +1183,14 @@ sites, both OSC-driven.
 ## F11 — Settings
 
 **Rewritten 2026-08-17** from the clarify-needs interview roadmap item 4 was
-gated on. Not built yet. The previous version of this section named a
-`/settings` route, four sections and `tauri-plugin-store`; all three are
+gated on, and **shipped 2026-08-20**. The previous version of this section named
+a `/settings` route, four sections and `tauri-plugin-store`; all three are
 changed, and the reasoning is below rather than in a commit message.
+
+**What the build settled that the design left open** — three things, each in its
+section below: what `installed` means when `--version` doesn't answer, what Save
+does with a path nobody blurred, and where the restore switch is actually
+honoured.
 
 **The problem it solves is not "the app needs settings".** It is that **three
 features in a row have arrived needing somewhere to put a preference and found
@@ -1288,13 +1293,28 @@ preferences took and the Rust-readable one didn't, with no way to tell which.
 - **Validates on blur** with the same `version_for()` probe the detector uses,
   showing the version or the failure inline. An invalid path **disables Save** with
   the reason: the point of validating before you depend on it is not writing it.
+- **Save re-checks a path nobody blurred.** Typing and clicking Save straight
+  after would otherwise write a path that had never been probed — blur is where
+  the *feedback* happens, not where the guarantee lives. A path already known bad
+  greys the button out; an unknown one is checked by Save itself, which fails with
+  the reason and writes nothing.
+- **A resolved path whose `--version` fails is accepted, and says so.**
+  `installed` means the binary resolved, not that it answered: a wrapper script or
+  a hanging `--version` is a real state, and letting a version probe veto a binary
+  that spawns sessions perfectly well would be the same mistake as `check_cli`
+  ignoring the override. The row reads "Found, but it reported no version" and
+  Save is enabled.
 - **Running sessions are unaffected** and the row says so. The binary is resolved
   at spawn, so there is nothing to restart, and offering to kill live Claude
   sessions as a side effect of editing a text field would be a strange place to put
   that question.
 
 **Editor.** The diff-mode default (inline vs side-by-side), arriving out of
-`panelStore`.
+`panelStore`. **The diff footer's own toggle writes the same value**, which it
+already did — flipping it there is a choice about how you read diffs, and two
+places disagreeing about what "default" means would be worse than one that both
+set. A toggle made behind an open modal is picked up the next time it opens
+rather than moving under a draft.
 
 **Confirmations.** Two switches, both **on by default**: closing a session with
 the `X`, and closing a tab by middle-click. They were roadmap item 22 until it
@@ -1304,7 +1324,12 @@ what gives this modal enough content to be worth opening, and what proves
 `SettingRow` against a real group rather than one text field.
 
 **Sessions.** One switch, **on by default**: restore open session tabs on launch
-(F16). Added 2026-08-18, and it is the one section here whose feature shipped
+(F16). **Honoured at `terminalStore`'s hydration**, by dropping the persisted
+tabs on the way in rather than declining to write them on the way out — so the
+switch describes *launch*, and nothing has to be remembered at quit. Turning it
+back on does not bring that list back: those tabs were not open, so the next
+launch restores what you had then, and a shadow copy of a list nobody is looking
+at would be a second source of truth for one boolean's sake. Added 2026-08-18, and it is the one section here whose feature shipped
 first — restore landed unconditionally because this surface did not exist yet, so
 the switch arrives after the behaviour and must default on or it changes what
 people already have. The heading is *Sessions* rather than *Startup* because the
@@ -1455,8 +1480,8 @@ a tree of stale paths is worse than starting collapsed.
 layout versus preference — a width you dragged is not something you set in a
 settings page, so it stays here. What *does* leave is `diffInline`, which was
 parked here for want of anywhere better and is a real preference; it moves to
-`prefsStore` with a one-time read-across, and this store bumps to v2 to drop the
-key.
+`prefsStore` with a one-time read-across, and this store bumps to **v3** to drop
+the key (it was already at v2, for `detailHeight`'s raised default).
 
 **Freshness.** No watcher. Each directory query has a 15s staleTime and
 opts into refetch-on-window-focus (the app default is off), plus the

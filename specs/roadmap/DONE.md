@@ -3,6 +3,62 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Settings — spec `05-features.md` F11, Q24, ADR-0013, roadmap item 4** — 2026-08-20. The
+  app's first place to put a preference. `?settings=claude|editor|confirmations|sessions` on the
+  root route drives a medium modal with the nav in a left column, an explicit Save, and a gear in
+  `TopBar`. Four sections: the Claude binary and its override, the diff-mode default, the two
+  close-confirm switches (roadmap item 22, which folded into this) and F16's restore-tabs switch.
+
+  **The problem it solved was not "the app needs settings".** Three features in a row had arrived
+  needing somewhere to put a preference and found nowhere — the close-confirm toggles, item 31's
+  release channel, and a diff mode parked in `panelStore` with a comment apologising for it. Two of
+  those are now rows; the third is a row and a match arm when somebody wants it.
+
+  **Preferences live in three places and "who reads this?" decides** (ADR-0013). Layout you dragged
+  stays in `panelStore`/`sidebarStore`/`zoomStore`; preferences the renderer alone reads go in the
+  new `prefsStore`; anything **Rust** reads goes in the SQLite `settings` table through
+  `get_setting`/`set_setting`, keyed by a mirrored `SettingKey` union. `tauri-plugin-store` — a
+  dependency in both manifests, registered in `lib.rs`, with no caller on either side since M0 —
+  is removed rather than finally used: it is async, so every persisted value would have flashed its
+  default for a frame.
+
+  **Five things worth keeping.**
+
+  - **`check_cli` calling the finder directly is how a settings page lies.** The override had to be
+    a parameter on `find_claude_binary`, not a field on `TerminalManager`, or the page would have
+    reported "not installed" for a binary sessions were spawning from perfectly well. It reaches
+    the spawn through a callback read *per spawn* — which is also what makes "running sessions are
+    unaffected" true without anything having to invalidate a cache.
+  - **`installed` means the binary resolved, not that `--version` answered.** A wrapper script or a
+    hanging `--version` is a real state, and letting a version probe veto a working binary is the
+    same class of mistake as ignoring the override. The row says "Found, but it reported no
+    version" and Save stays enabled.
+  - **Validating on blur is where the feedback is, not where the guarantee is.** Typing a path and
+    clicking Save straight after would have written something never probed, so Save re-checks an
+    unknown path itself and fails with the reason. A path already known bad greys the button out.
+  - **The `diffInline` handover needed its own module, and this is the interesting bug.** Both
+    stores are `zustand/persist` on localStorage and both hydrate at import time, and `panelStore`'s
+    v3 migration rewrites `factorai.panel` without the key — so a snapshot taken lazily inside
+    `prefsStore` would read the old value *or* read nothing depending on which file Vite loaded
+    first. `store/diffInlineHandover.ts` is imported by both, which is what makes the read
+    provably precede either write. Thirty lines for one boolean, because silently resetting
+    somebody's choice is not the kind of small that is fine.
+  - **The restore switch is honoured at hydration, not at quit.** Dropping the persisted tabs on
+    the way in means the switch describes *launch* and nothing has to be remembered when the window
+    closes. It defaults **on**, and that default is settled by history rather than taste: restore
+    shipped unconditionally in F16 because this surface did not exist yet.
+
+  **The stale plan this deleted.** `03-backend-rust.md` described caching the resolved binary and
+  version back into `settings` as `claude.binary`/`claude.version`/`claude.resolved`. It was never
+  built and now must not be: `claude.binary` holds the *user's override*, and a cache sharing that
+  key could not tell a probe's guess from somebody's choice.
+
+  Verified in the real window as well as in Playwright — the detected row read
+  `/home/nightbringer/.local/bin/claude · 2.1.237`, a bad override showed its error and disabled
+  Save, a good one round-tripped through the `settings` table, and clearing the field deleted the
+  row. Click-outside was checked both ways: it dismisses a clean modal and does nothing to a dirty
+  one.
+
 - **PDF preview in the file viewer — spec `05-features.md` F7, ADR-0018** — 2026-08-19, user ask,
   scoped in a clarify-needs interview. A `.pdf` used to reach `read_file`, hit a null byte in the
   first 8KB and dead-end on "Cannot preview binary file" — the app handing the document to another

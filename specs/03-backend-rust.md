@@ -14,7 +14,7 @@ commands/
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
   git.rs              # git_status, git_blob
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
-  settings.rs         # get_setting, set_setting
+  settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
 agents/
   mod.rs              # Discovered, display_name_for_path — the store-agnostic bits
   claude.rs           # Claude's directory encoding, transcript paths, discovery
@@ -95,7 +95,9 @@ terminal_resize(id: TerminalId, cols: u16, rows: u16) -> ()
 terminal_kill(id: TerminalId) -> ()
 terminal_list() -> Vec<TerminalStatusDto>
 // Probes for the claude binary so the UI can explain a missing CLI rather than
-// failing at spawn time.
+// failing at spawn time. Honours the F11 override, so this and the spawn path
+// can never name different binaries — which is why it lives in `settings.rs`
+// rather than beside the terminal commands.
 check_claude_cli() -> ClaudeCliStatus
 // The renderer's answer to `app:quit-requested`: kill every PTY, then let the
 // window close (ADR-0005).
@@ -140,10 +142,13 @@ write_claude_md(project_path: String, contents: String) -> ()
 list_plans(project_path: String) -> Vec<PlanRef>
 read_plan(path: String) -> String
 
-// settings (F11) — PLANNED, not registered yet (roadmap item 4). The key is a
-// mirrored union, not a free string; the value is a String the caller parses.
+// settings (F11). The key is a mirrored union, not a free string; the value is
+// a String, and `None` means unset.
 get_setting(key: SettingKey) -> Option<String>
 set_setting(key: SettingKey, value: Option<String>) -> ()
+// Probe one path as if it were the binary override, without saving it — what
+// the settings page's override field validates with on blur.
+validate_claude_binary(path: String) -> ClaudeCliStatus
 ```
 
 ## Tauri events (Rust → JS only)
@@ -446,17 +451,19 @@ $HOME/.nvm/versions/node/*/bin/claude   # glob, sorted, deepest version first
 ```
 
 After resolution, validate by running `claude --version` with a 2s
-timeout. Cache the resolved path + version in `settings` table:
+timeout.
 
-| key                | value                        |
-| ------------------ | ---------------------------- |
-| `claude.binary`    | `/opt/homebrew/bin/claude`   |
-| `claude.version`   | `0.2.34`                     |
-| `claude.resolved`  | `1730000000` (unix ms)       |
+**Nothing is cached, and that plan is dropped.** This section used to describe
+writing `claude.binary`, `claude.version` and `claude.resolved` back to the
+`settings` table as a resolution cache, re-validated at launch. It was never
+built, and F11 is why it should not be: `claude.binary` now holds the **user's
+override** — a value nobody but a human writes — and a cache sharing that key
+could not tell a probe's guess from somebody's choice. The probe is a `which`
+plus a `--version` and runs at spawn time; that is cheap enough not to need a
+cache, and a cache is what would go stale the day `claude` moves.
 
-Re-validate on app launch (cheap: `stat` + version check). The user can
-override `claude.binary` via the settings DB key; expose this as a
-runtime override only (no settings UI for MVP).
+The override *is* exposed in the UI as of F11 (§ F11 in `05-features.md`), which
+supersedes this section's "runtime override only, no settings UI for MVP".
 
 ### `CLAUDE_HOME` and projects dir
 
@@ -667,8 +674,10 @@ follows `git_blob`'s rule — a file absent at that commit is an answer.
 
 ### `settings`
 
-Two commands over the `settings` table migration `0001` created, backing F11's
-Rust-readable half. Preferences the renderer alone reads do **not** come through
+**Shipped 2026-08-20 with F11.** Three commands over the `settings` table
+migration `0001` created, backing F11's Rust-readable half — the two below plus
+`validate_claude_binary`, and `check_claude_cli` moved into the same module
+because it is the one command whose answer the table changes. Preferences the renderer alone reads do **not** come through
 here — they live in `prefsStore` on localStorage (ADR-0013).
 
 `get_setting(key) -> Option<String>` and `set_setting(key, value)`.
@@ -690,9 +699,15 @@ value that happens to be empty, and would break the probe.
 
 Keys, as of F11:
 
-| `SettingKey` | Read by | Notes |
-| --- | --- | --- |
-| `claudeBinaryPath` | `find_claude_binary` | Absolute path. Unset → the three-tier probe |
+| `SettingKey` | Row key | Read by | Notes |
+| --- | --- | --- | --- |
+| `claudeBinaryPath` | `claude.binary` | `find_claude_binary` | Absolute path. Unset → the three-tier probe |
+
+**The serde name and the row key differ on purpose.** The dotted namespace is
+what this table was created with and what an operator sees in `sqlite3`; the
+mapping lives in `SettingKey::column()` alone. Adding a key means adding a
+variant *and* a match arm, which is the point — neither can be forgotten
+silently.
 
 Roadmap item 31's release channel is the second key and the reason this half ships
 now rather than waiting for a second caller.
@@ -711,7 +726,18 @@ are the point:
   stay as they are.
 
 `TerminalManager::binary_override` keeps its current meaning (a test seam) and is
-not overloaded to carry a user setting.
+not overloaded to carry a user setting. The user's path reaches the spawn through
+a **callback** — `with_user_binary(Arc<dyn Fn() -> Option<PathBuf>>)`, wired to
+the table in `lib.rs`, the same shape as the indexer's `live_ids`. Read per
+spawn, which is what makes "running sessions are unaffected, the next one uses
+the new path" true without anything having to invalidate a cache.
+
+**`installed` means the binary resolved, not that `--version` answered.** A
+resolved path with `version: None` is a real state — a wrapper script, a
+half-finished install, a `--version` that hangs — and the settings page presents
+it as such. Folding it into `installed: false` would let a version probe veto a
+binary that spawns sessions perfectly well, which is the same class of mistake as
+`check_cli` ignoring the override.
 
 ## State management
 

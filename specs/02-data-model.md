@@ -287,14 +287,27 @@ nothing else — it exists so a migration runs once.
 
 ### `settings`
 
-| col   | type    | notes                       |
-| ----- | ------- | --------------------------- |
-| key   | TEXT PK |                             |
-| value | TEXT    | JSON-encoded scalar / blob  |
+| col   | type    | notes                                        |
+| ----- | ------- | -------------------------------------------- |
+| key   | TEXT PK | dotted namespace, e.g. `claude.binary`       |
+| value | TEXT    | the value itself; **no row means unset**     |
 
 For things that need ACID and queries — and, since F11, **specifically for the
 settings Rust reads**. Written through `get_setting` / `set_setting` keyed by a
 mirrored `SettingKey` union, not a free string (`03-backend-rust.md` § `settings`).
+
+**The value is a plain `String`, not JSON.** Migration `0001`'s comment says
+"JSON-encoded scalar" and predates any caller; F11 built it as a string, because
+every key so far is a scalar and the one thing a JSON column would buy — a
+structured preference — is exactly what belongs in `prefsStore` instead. The
+comment in the migration was corrected in place when the first caller landed
+(a comment, so no re-run: migrations are keyed by name).
+
+**`SettingKey`'s serde name and the row key are deliberately different** —
+`claudeBinaryPath` on the wire, `claude.binary` in the column. The dotted
+namespace is the convention this table was created with and what somebody
+reading it with `sqlite3` sees; the mapping lives in `SettingKey::column()`
+alone, so the two vocabularies cannot drift.
 
 **Corrected 2026-08-17.** This used to end "UI prefs go in `tauri-plugin-store`
 instead (file-backed JSON, simpler)". That plugin is **removed** — it was a
