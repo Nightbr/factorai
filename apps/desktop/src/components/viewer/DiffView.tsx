@@ -8,7 +8,7 @@ import { formatBytes } from '@lib/format';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { ensureTheme, FACTORAI_DARK, languageForFile, monaco } from '@components/viewer/monaco';
-import { usePanelStore } from '@store/panelStore';
+import { usePrefsStore } from '@store/prefsStore';
 
 /**
  * Diff of one file between two revisions (specs/05-features.md F8, F13).
@@ -76,8 +76,8 @@ function basename(path: string): string {
 }
 
 export function DiffView({ path, mode }: DiffViewProps) {
-	const inline = usePanelStore((s) => s.diffInline);
-	const setInline = usePanelStore((s) => s.setDiffInline);
+	const inline = usePrefsStore((s) => s.diffInline);
+	const setInline = usePrefsStore((s) => s.setDiffInline);
 	const { left, right } = sidesFor(path, mode);
 
 	const leftQ = useQuery({

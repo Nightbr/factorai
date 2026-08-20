@@ -20,6 +20,7 @@ import type {
 	SessionPage,
 	SessionSummary,
 	SessionsChangedEvent,
+	SettingKey,
 	SpawnOpts,
 	TerminalDataEvent,
 	TerminalExitEvent,
@@ -134,7 +135,22 @@ export const cmd = {
 	gitBlobAt: (path: string, commit: string, maxBytes?: number | null) =>
 		invoke<FileContents | null>('git_blob_at', { path, commit, maxBytes }),
 
+	/** One setting Rust reads, or null when it has never been set (F11).
+	 *  Preferences only this side reads live in `prefsStore`, not here. */
+	getSetting: (key: SettingKey) => invoke<string | null>('get_setting', { key }),
+	/** Write one setting. **`null` deletes it**, which is not the same as an
+	 *  empty string: unset is what sends the binary lookup back to its probe. */
+	setSetting: (key: SettingKey, value: string | null) =>
+		invoke<void>('set_setting', { key, value }),
+	/** Where `claude` is and what version it reports, **honouring the override**
+	 *  — so this and the spawn path can never name different binaries. */
 	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
+	/** Probe one path as if it were the override, without saving it — what the
+	 *  settings page's override field validates with on blur. No fallback to the
+	 *  probe, so a typo comes back `installed: false` instead of showing a tick
+	 *  beside a path that does not work. */
+	validateClaudeBinary: (path: string) =>
+		invoke<ClaudeCliStatus>('validate_claude_binary', { path }),
 	/** The session id to open for a "new session" in this project — a fresh
 	 *  uuid, or a live one that has never been messaged. See ADR-0008. */
 	startSession: (projectId: string) => invoke<string>('start_session', { projectId }),
@@ -386,6 +402,17 @@ interface TestFixture {
 	/** Path the folder picker returns for "Add project" (F1). Absent means the
 	 *  picker was cancelled — a native dialog can't be driven from a test. */
 	folderPick?: string;
+	/** The `settings` table (F11). Mutated by `set_setting`, so a test can Save
+	 *  and then assert on what the next read returns. */
+	settings?: Partial<Record<SettingKey, string>>;
+	/** What the three-tier probe finds when nothing is overridden. Absent means
+	 *  no `claude` on this machine, which is the honest browser-only answer. */
+	claudeCli?: ClaudeCliStatus;
+	/** Paths that are a working `claude`, mapped to the version they report — a
+	 *  null version being the "found it, couldn't run --version" state. Anything
+	 *  not listed validates as not installed, which is how a test reaches the
+	 *  bad-path branch of the override field. */
+	claudeBinaries?: Record<string, string | null>;
 }
 
 /** One mocked command call, recorded in order while a fixture is installed. */
@@ -410,6 +437,16 @@ declare global {
 
 function testFixture(): TestFixture | undefined {
 	return typeof window !== 'undefined' ? window.__FACTORAI_TEST__ : undefined;
+}
+
+/** What the two Claude-CLI commands answer for one path, from the fixture's
+ *  `claudeBinaries` map. An unlisted path is not an install — that is the branch
+ *  the settings page's inline error hangs off. */
+function claudeStatusFor(path: string, fx: TestFixture | undefined): ClaudeCliStatus {
+	if (!path || !fx?.claudeBinaries || !(path in fx.claudeBinaries)) {
+		return { installed: false, binaryPath: null, version: null };
+	}
+	return { installed: true, binaryPath: path, version: fx.claudeBinaries[path] ?? null };
 }
 
 async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Promise<T> {
@@ -616,8 +653,37 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			if (project) project.pinned = pinned;
 			return undefined as unknown as T;
 		}
-		case 'check_claude_cli':
-			return { installed: false, binaryPath: null, version: null } as unknown as T;
+		case 'get_setting': {
+			const key = String(args?.key ?? '') as SettingKey;
+			// Absent is a real answer — it is what "no override, keep probing"
+			// looks like, and the settings page's placeholder depends on it.
+			return (fx?.settings?.[key] ?? null) as unknown as T;
+		}
+		case 'set_setting': {
+			// Written back into the fixture so a test can reopen the modal and see
+			// what Save did, the way the real table would.
+			const key = String(args?.key ?? '') as SettingKey;
+			const value = args?.value;
+			if (fx) {
+				fx.settings ??= {};
+				if (typeof value === 'string') fx.settings[key] = value;
+				else delete fx.settings[key];
+			}
+			return undefined as unknown as T;
+		}
+		case 'check_claude_cli': {
+			// Honours the override exactly as the real command does, so a fixture
+			// that sets one sees the settings page report it.
+			const override = fx?.settings?.claudeBinaryPath;
+			if (override) return claudeStatusFor(override, fx) as unknown as T;
+			return (fx?.claudeCli ?? {
+				installed: false,
+				binaryPath: null,
+				version: null,
+			}) as unknown as T;
+		}
+		case 'validate_claude_binary':
+			return claudeStatusFor(String(args?.path ?? ''), fx) as unknown as T;
 		case 'start_session':
 			// The real command may hand back a live never-messaged session instead
 			// of a fresh id (it probes the transcript on disk). The mock always

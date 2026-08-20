@@ -1,3 +1,4 @@
+import { legacyDiffInline } from '@store/diffInlineHandover';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -105,10 +106,6 @@ interface PanelState {
 	/** The row a shift-click measures its range from — the last one selected
 	 *  outright or toggled. Null when nothing has been clicked yet. */
 	anchorPath: string | null;
-	/** Diff viewer: inline (unified) rather than side-by-side. Persisted.
-	 *  Parked here until `prefsStore` exists (roadmap item 4); it migrates with
-	 *  `open`/`width` when F11 lands. */
-	diffInline: boolean;
 	/** Height of the commit detail docked under the graph, in px. Persisted: it
 	 *  is a preference about how much history you want to see at once, and it
 	 *  survives a reload the same way `width` does (F18). */
@@ -117,7 +114,6 @@ interface PanelState {
 	toggle: () => void;
 	setOpen: (open: boolean) => void;
 	setTab: (tab: PanelTab) => void;
-	setDiffInline: (inline: boolean) => void;
 	setWidth: (width: number) => void;
 	setDetailHeight: (height: number) => void;
 	toggleExpanded: (projectId: string, path: string) => void;
@@ -143,10 +139,11 @@ interface PanelState {
 /** Exactly what `partialize` writes, and therefore what `migrate` is handed and
  *  must hand back. Named so the two cannot drift: a field added to one and not
  *  the other is a migration that silently drops a preference. */
-type PersistedPanelState = Pick<
-	PanelState,
-	'open' | 'width' | 'tab' | 'diffInline' | 'detailHeight'
->;
+type PersistedPanelState = Pick<PanelState, 'open' | 'width' | 'tab' | 'detailHeight'>;
+
+/** `factorai.panel` as v2 wrote it. Only the v2→v3 migration below sees this
+ *  shape, and it exists so the field it drops can be named rather than cast. */
+type PanelStateV2 = PersistedPanelState & { diffInline?: boolean };
 
 export const usePanelStore = create<PanelState>()(
 	persist(
@@ -157,13 +154,11 @@ export const usePanelStore = create<PanelState>()(
 			expandedByProject: {},
 			selectedPaths: new Set<string>(),
 			anchorPath: null,
-			diffInline: false,
 			detailHeight: DEFAULT_DETAIL_HEIGHT,
 
 			toggle: () => set((s) => ({ open: !s.open })),
 			setOpen: (open) => set({ open }),
 			setTab: (tab) => set({ tab }),
-			setDiffInline: (diffInline) => set({ diffInline }),
 			setWidth: (width) => set({ width: clampPanelWidth(width) }),
 			setDetailHeight: (height) => set({ detailHeight: clampDetailHeight(height) }),
 
@@ -219,7 +214,7 @@ export const usePanelStore = create<PanelState>()(
 		}),
 		{
 			name: 'factorai.panel',
-			version: 2,
+			version: 3,
 			/**
 			 * v1 → v2: `DEFAULT_DETAIL_HEIGHT` went 200 → 280.
 			 *
@@ -232,13 +227,28 @@ export const usePanelStore = create<PanelState>()(
 			 * number is one somebody dragged to, and overwriting a deliberate choice
 			 * to deliver a new default is the worse failure of the two — it is also
 			 * unrecoverable, since nothing records what they had.
+			 *
+			 * v2 → v3: `diffInline` leaves for `prefsStore` (F11, ADR-0013). It is a
+			 * preference, not layout — nobody drags a diff mode — and it was parked
+			 * here for want of anywhere better. **Dropping the key is all this
+			 * does**; carrying the value across is `diffInlineHandover`'s job,
+			 * because the store that needs it is the other one and it has to read it
+			 * before this migration rewrites the entry.
 			 */
 			migrate: (persisted, version) => {
-				const state = persisted as PersistedPanelState | undefined;
-				if (state && version < 2 && state.detailHeight === LEGACY_DEFAULT_DETAIL_HEIGHT) {
-					return { ...state, detailHeight: DEFAULT_DETAIL_HEIGHT };
+				const state = persisted as PanelStateV2 | undefined;
+				if (!state) return state;
+				let next = state;
+				if (version < 2 && next.detailHeight === LEGACY_DEFAULT_DETAIL_HEIGHT) {
+					next = { ...next, detailHeight: DEFAULT_DETAIL_HEIGHT };
 				}
-				return state;
+				if (version < 3 && 'diffInline' in next) {
+					// Read before this line runs, at module scope, by both stores.
+					legacyDiffInline();
+					const { diffInline: _gone, ...rest } = next;
+					next = rest;
+				}
+				return next;
 			},
 			// Only the preferences round-trip to storage. Sets aren't
 			// JSON-serialisable anyway, and see `expandedByProject` above.
@@ -246,7 +256,6 @@ export const usePanelStore = create<PanelState>()(
 				open: s.open,
 				width: s.width,
 				tab: s.tab,
-				diffInline: s.diffInline,
 				detailHeight: s.detailHeight,
 			}),
 		},

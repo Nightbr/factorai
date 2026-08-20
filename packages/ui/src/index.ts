@@ -17,6 +17,8 @@ export * from './components/ui/label';
 export * from './components/ui/scroll-area';
 export * from './components/ui/select';
 export * from './components/ui/separator';
+export * from './components/ui/setting-row';
+export * from './components/ui/switch';
 export * from './components/ui/tabs';
 export * from './components/ui/textarea';
 export * from './components/ui/tooltip';
