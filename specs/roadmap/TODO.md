@@ -710,6 +710,10 @@ often and on its own.
 
 Written from having just done it end to end, so the gaps below are observed rather than imagined.
 
+**Item 36 is the distribution half and is deliberately separate**: a Homebrew cask, plus the step
+that bumps it after `publish`. It belongs beside this item rather than inside it — this one is about
+the pipeline being trustworthy, that one is about macOS staying unsigned.
+
 ### 31a. What the current process actually leaves to a human
 
 The pipeline works — `release.yml` is tag-driven, rewrites the three version fields from the tag,
@@ -913,3 +917,45 @@ unless `CLAUDE_CODE_DISABLE_NOTIFICATION_PRESENCE_CHECK` is set, and its idle no
 delayed by default (`messageIdleNotifThresholdMs`, which is **not** reachable through `--settings` —
 verified). None of that is needed if the trigger is item 34's edge, which is instant. Do not
 reintroduce the CLI's notification channel for this; it is slower than the signal we already have.
+
+## 36. A Homebrew cask, because the macOS build will stay unsigned
+
+**Filed 2026-08-20**, out of the question "how complex is signing for macOS, and I don't want an
+Apple developer account". The answer to the first half is *not very* — tolaria does it in about
+thirty lines of YAML (`release-build-artifacts.yml`: import a `.p12` into a temporary keychain,
+then hand Tauri `APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` and let
+it notarize and staple; its `bundle.macOS` is `{}`). The answer to the second half is that the
+certificate has to be a **Developer ID Application** one, which Apple issues only to paid
+Developer Program members — a policy wall, not a technical one. A free Apple ID's Personal Team
+signs for local development and cannot produce one.
+
+**So this item is what we do instead of paying.** `brew install --cask --no-quarantine factorai`
+is the only free way to *remove* the Gatekeeper step rather than explain it, and it composes with
+the updater we already ship.
+
+Two dead ends, closed here so nobody re-explores them: a **self-signed** certificate is free and
+Gatekeeper treats it exactly as unsigned, and an explicit **ad-hoc** `codesign` step changes
+nothing because the linker already ad-hoc signs on Apple Silicon.
+
+- [ ] A tap repo — `Nightbr/homebrew-factorai` — holding `Casks/factorai.rb`: version, the
+      universal `.dmg`'s URL, its sha256.
+- [ ] A job in `release.yml` **after `publish`**, bumping the cask from the published asset. It has
+      to be after, because the sha256 is of the artifact that was actually uploaded, and it has to
+      be idempotent, because re-running a release job is normal here (see item 31 and the `v0.10.1`
+      post-mortem in `release.yml`'s header).
+- [ ] **`auto_updates true` in the cask.** Not cosmetic: factorai replaces its own bundle in place
+      (F14), so without it Homebrew and the app disagree about what is installed and `brew upgrade`
+      fights the updater. This is the flag casks for self-updating apps carry.
+
+**Be honest about what it buys.** `--no-quarantine` is a flag the *user* passes; a cask cannot
+force it. So this **moves** the bypass rather than deleting it — but it moves it into a command
+they were going to paste anyway, instead of a dialog they meet after the download. That is the
+whole of the win, and it is worth having.
+
+**What it does not decide.** Whether to eventually pay. Notarization is the only thing that removes
+the step instead of relocating it, and a notarized build makes this cask *nicer* (drop the flag)
+rather than redundant — so this item is not an argument against that one. Revisit when factorai has
+users who aren't its author.
+
+**Linux is unaffected.** The AppImage carries no equivalent problem and stays as it is; there is
+deliberately no `.deb` (F14 — the updater cannot replace one in place).
