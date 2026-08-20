@@ -2,14 +2,8 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::commands::projects::project_path;
 use crate::error::AppResult;
-use crate::services::claude_cli::{check_cli, ClaudeCliStatus};
 use crate::services::terminal::{SpawnOpts, TerminalStatusDto};
 use crate::state::AppState;
-
-#[tauri::command]
-pub fn check_claude_cli() -> ClaudeCliStatus {
-	check_cli()
-}
 
 /// The session id to open for a "new session" in this project.
 ///

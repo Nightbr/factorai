@@ -19,11 +19,11 @@
 			"entry": ["src/main.tsx", "src/**/*.test.ts"],
 			"project": ["src/**/*.ts", "src/**/*.tsx"],
 			"ignoreDependencies": [
-				// The JS halves of plugins registered on the Rust side. Nothing in
-				// the renderer imports them yet; `plugin-store` is what F11's
-				// `prefsStore` will use (roadmap item 4).
+				// The JS half of a plugin registered on the Rust side. Nothing in the
+				// renderer imports it. `plugin-store` used to be listed here for
+				// F11's `prefsStore`; F11 shipped on localStorage instead and the
+				// dependency is gone (ADR-0013).
 				"@tauri-apps/plugin-fs",
-				"@tauri-apps/plugin-store",
 				// Icon data. `unplugin-icons` resolves `~icons/vscode-icons/*` and
 				// `~icons/simple-icons/*` out of these at build time (ADR-0006) —
 				// there is no import to find. simple-icons carries the two forge

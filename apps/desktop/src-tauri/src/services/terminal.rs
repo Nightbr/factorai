@@ -168,6 +168,8 @@ type StatusCb = Arc<dyn Fn(TerminalStatusEvent) + Send + Sync>;
 type ExitCb = Arc<dyn Fn(TerminalExitEvent) + Send + Sync>;
 type IdeOpenCb = Arc<dyn Fn(IdeOpenFileEvent) + Send + Sync>;
 type IdeStatusCb = Arc<dyn Fn(IdeStatusEvent) + Send + Sync>;
+/// Asks for the user's configured `claude` path, once per spawn (F11).
+type BinaryOverrideCb = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
 
 struct TerminalHandle {
 	session_id: String,
@@ -207,8 +209,22 @@ pub struct TerminalManager {
 	/// Claude's config dir, for locating session transcripts. Spawn decisions
 	/// read the filesystem rather than the index, so they can't go stale.
 	claude_dir: PathBuf,
-	/// Override for tests. None → use `find_claude_binary()` at spawn time.
+	/// Override for tests. None → resolve the binary at spawn time.
+	///
+	/// A test seam, deliberately *not* overloaded to carry the user's F11
+	/// setting: that one arrives through `user_binary` below, so a test that
+	/// pins a fake `claude` and a user who pinned a real one stay two separate
+	/// facts.
 	binary_override: Option<PathBuf>,
+	/// The user's configured binary path, read at **spawn time** (F11).
+	///
+	/// A callback rather than a value because it is a setting that can change
+	/// while the app runs, and resolving it per spawn is what makes "running
+	/// sessions are unaffected, the next one uses the new path" true without
+	/// anything having to invalidate a cache. Same shape as the indexer's
+	/// `live_ids`, and for the same reason: the manager needs an answer from a
+	/// database it should not hold.
+	user_binary: Option<BinaryOverrideCb>,
 	/// What the renderer has on screen, for the bridge's answers (F20).
 	ui: Arc<UiState>,
 	on_ide_open: IdeOpenCb,
@@ -242,6 +258,7 @@ impl TerminalManager {
 				let _ = app_exit.emit("terminal:exit", e);
 			}),
 			binary_override: None,
+			user_binary: None,
 		}
 	}
 
@@ -258,10 +275,18 @@ impl TerminalManager {
 			on_exit,
 			claude_dir,
 			binary_override: None,
+			user_binary: None,
 			ui: Arc::new(UiState::default()),
 			on_ide_open: Arc::new(|_| {}),
 			on_ide_status: Arc::new(|_| {}),
 		}
+	}
+
+	/// Where to read the user's configured binary path from, per spawn (F11).
+	/// Wired to the `settings` table in `lib.rs`.
+	pub fn with_user_binary(mut self, cb: BinaryOverrideCb) -> Self {
+		self.user_binary = Some(cb);
+		self
 	}
 
 	/// Override the binary the manager will spawn. For tests only.
@@ -465,7 +490,10 @@ impl TerminalManager {
 			None => {
 				let bin = match &self.binary_override {
 					Some(p) => p.clone(),
-					None => find_claude_binary()?,
+					None => {
+						let configured = self.user_binary.as_ref().and_then(|cb| cb());
+						find_claude_binary(configured.as_deref())?
+					}
 				};
 				let mut v = vec![bin.to_string_lossy().to_string()];
 				v.push(session_flag(&self.claude_dir, &cwd_path, &opts.session_id).into());

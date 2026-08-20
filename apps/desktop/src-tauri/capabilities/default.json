@@ -12,7 +12,6 @@
 		"dialog:default",
 		"fs:default",
 		"process:default",
-		"store:default",
 		"updater:default",
 		"process:allow-restart",
 		"core:webview:allow-set-webview-zoom"

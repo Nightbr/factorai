@@ -47,7 +47,6 @@ pub fn run() {
 		.plugin(tauri_plugin_fs::init())
 		.plugin(tauri_plugin_process::init())
 		.plugin(tauri_plugin_updater::Builder::new().build())
-		.plugin(tauri_plugin_store::Builder::default().build())
 		.setup(|app| {
 			let data_dir = app.path().app_data_dir().expect("failed to resolve app_data_dir");
 			let db = Db::open(&data_dir).expect("failed to open db");
@@ -83,7 +82,14 @@ pub fn run() {
 
 			// Terminals first: the indexer's reap pass asks them what is live
 			// before it deletes the row of a session whose transcript is gone.
-			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone(), ui.clone());
+			// The binary override is read per spawn, out of the `settings` table
+			// (F11) — so editing it changes the next session without touching the
+			// ones already running, and `claude_cli` keeps no database of its own.
+			let settings_db = db.clone();
+			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone(), ui.clone())
+				.with_user_binary(Arc::new(move || {
+					services::settings::claude_binary_override(&settings_db)
+				}));
 			let live = terminals.clone();
 			let indexer = Arc::new(
 				Indexer::for_app(db.clone(), cd.clone(), app.handle().clone())
@@ -165,7 +171,10 @@ pub fn run() {
 			commands::git::git_graph,
 			commands::git::git_commit,
 			commands::git::git_blob_at,
-			commands::terminal::check_claude_cli,
+			commands::settings::get_setting,
+			commands::settings::set_setting,
+			commands::settings::check_claude_cli,
+			commands::settings::validate_claude_binary,
 			commands::terminal::start_session,
 			commands::terminal::terminal_spawn,
 			commands::terminal::terminal_write,
