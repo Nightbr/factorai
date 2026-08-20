@@ -19,10 +19,12 @@ use crate::services::jsonl::EventIter;
 /// `-Users-alice-code-foo`.
 pub fn encode_path(p: &Path) -> String {
 	let mut s = p.to_string_lossy().to_string();
-	while s.ends_with('/') {
+	while s.ends_with('/') || s.ends_with('\\') {
 		s.pop();
 	}
-	s.replace('/', "-")
+	let trimmed = s.trim_start_matches(['/', '\\', '?']);
+	let sanitized = trimmed.replace(['/', '\\', ':'], "-");
+	format!("-{sanitized}")
 }
 
 /// Best-effort decode. Ambiguous when the original path contained a literal `-`

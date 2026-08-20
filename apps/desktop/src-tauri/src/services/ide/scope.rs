@@ -158,6 +158,7 @@ mod tests {
 		assert!(resolve_within(&root, escape.to_str().unwrap()).is_err());
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn a_symlink_pointing_out_of_the_project_is_refused() {
 		// The reason canonicalize is used at all. A textual check passes this.
@@ -173,6 +174,7 @@ mod tests {
 		assert!(resolve_within(&root, link.to_str().unwrap()).is_err());
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn a_symlink_inside_the_project_is_fine() {
 		let dir = tempdir().unwrap();

@@ -458,6 +458,7 @@ mod tests {
 		assert_eq!(opened[0].path, file.canonicalize().unwrap());
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn openfile_outside_the_project_is_refused_and_never_reaches_the_ui() {
 		let f = fixture(true);
@@ -473,6 +474,7 @@ mod tests {
 		assert!(f.opened.lock().is_empty(), "the boundary holds before the callback");
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn a_refusal_is_a_tool_error_not_a_transport_error() {
 		// The distinction MCP draws: the call was well-formed and the answer is
@@ -541,6 +543,7 @@ mod tests {
 		assert!(!f.opened.lock()[0].make_frontmost);
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn getworkspacefolders_answers_this_sessions_project() {
 		let f = fixture(true);

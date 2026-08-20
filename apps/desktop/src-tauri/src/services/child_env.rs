@@ -76,21 +76,24 @@
 //! off in any `claude` that inherits it. See [`AGENT_MARKERS`].
 
 use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
 
 use portable_pty::CommandBuilder;
 
+#[cfg(unix)]
 use super::shell_path;
 
 /// Set by the AppImage runtime and meaningless once the paths they describe
 /// are gone. Leaving `APPIMAGE` behind while `APPDIR` is dropped would be
 /// worse than either: a tool that checks one and uses the other would follow
 /// it straight into a directory we just removed from every search path.
+#[cfg(unix)]
 const APPIMAGE_MARKERS: &[&str] = &["APPDIR", "APPIMAGE", "ARGV0", "OWD"];
 
 /// What the AppImage runtime calls its squashfuse mountpoint, under `$TMPDIR`.
 /// See [`is_runtime_mount_entry`] for why a path component and not a full path.
+#[cfg(unix)]
 const RUNTIME_MOUNT_PREFIX: &[u8] = b".mount_";
 
 /// How Claude Code marks a process it spawned itself, and describes *us* rather
@@ -152,6 +155,7 @@ impl EnvChanges {
 	/// shell that inherited *our* `PATH`, and both zsh and bash extend the one
 	/// they are given rather than build a fresh one — so under an AppImage the
 	/// answer comes back with `$APPDIR/usr/bin` still on the front of it.
+	#[cfg(unix)]
 	pub fn with_path(mut self, path: &OsStr, appdir: Option<&Path>) -> Self {
 		let key = OsStr::new("PATH");
 		self.remove.retain(|k| k != key);
@@ -169,19 +173,48 @@ impl EnvChanges {
 }
 
 /// The changes for this process's environment.
+///
+/// On Unix this also strips AppImage runtime directories and pins `PATH` to
+/// the login shell's answer. On Windows only the cross-platform
+/// [`AGENT_MARKERS`] are removed — AppImages do not exist there.
+#[cfg(unix)]
 pub fn changes_for_current_env() -> EnvChanges {
 	let appdir = std::env::var_os("APPDIR").map(PathBuf::from);
 	changes(std::env::vars_os(), appdir.as_deref())
 		.with_path(shell_path::child_path(), appdir.as_deref())
 }
 
-/// The testable half of [`changes_for_current_env`]. `appdir` is `$APPDIR` —
-/// `None` when not running from an AppImage, which disables the path-based rule
-/// but not the by-name [`AGENT_MARKERS`] one.
+/// Windows stub: only the cross-platform agent-marker removal applies.
+#[cfg(windows)]
+pub fn changes_for_current_env() -> EnvChanges {
+	changes_markers_only(std::env::vars_os())
+}
+
+/// Windows-only: remove [`AGENT_MARKERS`] from `vars` and nothing else.
+#[cfg(windows)]
+fn changes_markers_only<I>(vars: I) -> EnvChanges
+where
+	I: IntoIterator<Item = (OsString, OsString)>,
+{
+	let mut out = EnvChanges::default();
+	for (key, _) in vars {
+		if AGENT_MARKERS.iter().any(|m| key == OsStr::new(m)) {
+			out.remove.push(key);
+		}
+	}
+	out
+}
+
+/// The testable half of [`changes_for_current_env`] (Unix only). `appdir` is
+/// `$APPDIR` — `None` when not running from an AppImage, which disables the
+/// path-based rule but not the by-name [`AGENT_MARKERS`] one.
+#[cfg(unix)]
 pub fn changes<I>(vars: I, appdir: Option<&Path>) -> EnvChanges
 where
 	I: IntoIterator<Item = (OsString, OsString)>,
 {
+	use std::os::unix::ffi::OsStrExt;
+
 	// Deliberately *not* an early return when there is no `$APPDIR`: the agent
 	// markers below have nothing to do with AppImages and have to go on every
 	// platform and every build.
@@ -225,7 +258,9 @@ where
 /// A blank or root `$APPDIR` would make "inside $APPDIR" true of the whole
 /// filesystem and strip the environment to nothing. It should never happen;
 /// treating it as "not an AppImage" means it can't be a catastrophe if it does.
+#[cfg(unix)]
 fn usable_appdir(appdir: Option<&Path>) -> Option<&Path> {
+	use std::os::unix::ffi::OsStrExt;
 	appdir.filter(|d| {
 		let bytes = d.as_os_str().as_bytes();
 		!bytes.is_empty() && bytes != b"/"
@@ -241,7 +276,9 @@ fn usable_appdir(appdir: Option<&Path>) -> Option<&Path> {
 /// rejoining would quietly rewrite anything that happens to contain one —
 /// `LS_COLORS`, a connection string, a `GTK_THEME=Adwaita:dark`. Only values we
 /// have actually found something to remove from get rebuilt.
+#[cfg(unix)]
 fn strip_appimage_entries(value: &OsStr, appdir: Option<&Path>) -> Option<OsString> {
+	use std::os::unix::ffi::{OsStrExt, OsStringExt};
 	let prefix = appdir.map(|d| d.as_os_str().as_bytes());
 	let ours = |entry: &&[u8]| is_appimage_entry(entry, prefix);
 	let bytes = value.as_bytes();
@@ -269,6 +306,7 @@ fn strip_appimage_entries(value: &OsStr, appdir: Option<&Path>) -> Option<OsStri
 /// that is not named like one — `--appimage-extract-and-run` sets it to a
 /// `squashfs-root` directory. The shape covers the mounts `$APPDIR` cannot know
 /// about, which is every layer of a nested launch but the newest.
+#[cfg(unix)]
 fn is_appimage_entry(entry: &[u8], appdir: Option<&[u8]>) -> bool {
 	if let Some(prefix) = appdir {
 		if is_inside(entry, prefix) {
@@ -283,6 +321,7 @@ fn is_appimage_entry(entry: &[u8], appdir: Option<&[u8]>) -> bool {
 /// The runtime names its squashfuse mountpoint `$TMPDIR/.mount_<prefix><rand>`,
 /// so a `.mount_*` path component is the tell. Matched on the component rather
 /// than on `/tmp/.mount_`, because `TMPDIR` is the user's to set.
+#[cfg(unix)]
 fn is_runtime_mount_entry(entry: &[u8]) -> bool {
 	entry.split(|b| *b == b'/').any(|c| c.starts_with(RUNTIME_MOUNT_PREFIX))
 }
@@ -294,11 +333,12 @@ fn is_runtime_mount_entry(entry: &[u8]) -> bool {
 /// sibling mount anyway, so this no longer decides that entry's fate — it
 /// decides *which* rule takes it, and keeps `$APPDIR` from over-reaching on a
 /// mountpoint that is not named like one at all.
+#[cfg(unix)]
 fn is_inside(entry: &[u8], prefix: &[u8]) -> bool {
 	entry.starts_with(prefix) && matches!(entry.get(prefix.len()), None | Some(b'/'))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
 	use super::*;
 

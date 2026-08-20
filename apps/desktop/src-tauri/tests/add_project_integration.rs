@@ -26,14 +26,13 @@ fn make_indexer(db: Db, claude_dir: PathBuf) -> Indexer {
 /// A `~/.claude/projects/<encoded>/<session>.jsonl` for `cwd`, as Claude would
 /// leave behind after a session there.
 fn write_claude_session(claude_dir: &Path, cwd: &Path, session_id: &str) {
-	let encoded = format!("-{}", cwd.to_string_lossy().trim_start_matches('/').replace('/', "-"));
-	let project_dir = claude_dir.join("projects").join(&encoded);
+	let project_dir = factorai_lib::agents::claude::transcript_dir(claude_dir, cwd);
 	std::fs::create_dir_all(&project_dir).expect("mkdir project");
-	let cwd = cwd.to_string_lossy();
+	let cwd_json = serde_json::to_string(&cwd.to_string_lossy()).unwrap();
 	std::fs::write(
 		project_dir.join(format!("{session_id}.jsonl")),
 		format!(
-			r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd}","message":{{"role":"user","content":"hello"}}}}"#
+			r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"hello"}}}}"#
 		),
 	)
 	.expect("write session");
@@ -211,6 +210,7 @@ fn adding_twice_is_idempotent_and_keeps_the_pin() {
 	assert!(second.pinned);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_path_through_a_symlink_resolves_to_the_folder_it_points_at() {
 	let tmp = TempDir::new().unwrap();

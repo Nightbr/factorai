@@ -36,10 +36,13 @@ fn make_folder(tmp: &Path, name: &str) -> PathBuf {
 
 /// Claude's store directory for a folder.
 fn store_dir(claude_dir: &Path, cwd: &Path) -> PathBuf {
-	let encoded = format!("-{}", cwd.to_string_lossy().trim_start_matches('/').replace('/', "-"));
-	let dir = claude_dir.join("projects").join(encoded);
+	let dir = factorai_lib::agents::claude::transcript_dir(claude_dir, cwd);
 	std::fs::create_dir_all(&dir).expect("mkdir store");
 	dir
+}
+
+fn json_cwd(cwd: &Path) -> String {
+	serde_json::to_string(&cwd.to_string_lossy()).unwrap()
 }
 
 /// Construct a fake Claude home with one project and one session, and put the
@@ -50,12 +53,12 @@ fn fixture_one_session(tmp: &Path, db: &Db) -> (PathBuf, PathBuf, PathBuf, Strin
 	let project_dir = store_dir(&claude_dir, &cwd);
 
 	let session_id = "11111111-2222-3333-4444-555555555555";
-	let cwd_str = cwd.to_string_lossy();
+	let cwd_json = json_cwd(&cwd);
 	let user_msg = format!(
-		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"Help me with React hooks"}}}}"#
+		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"Help me with React hooks"}}}}"#
 	);
 	let assistant_msg = format!(
-		r#"{{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-01T00:00:05Z","cwd":"{cwd_str}","message":{{"role":"assistant","content":[{{"type":"text","text":"Sure, here's a useEffect example"}}]}}}}"#
+		r#"{{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-01T00:00:05Z","cwd":{cwd_json},"message":{{"role":"assistant","content":[{{"type":"text","text":"Sure, here's a useEffect example"}}]}}}}"#
 	);
 	write_session(&project_dir, session_id, &[&user_msg, &assistant_msg]);
 	add_project_in(db, cwd.to_str().unwrap()).expect("add project");
@@ -262,9 +265,9 @@ fn malformed_jsonl_line_is_skipped_not_fatal() {
 	let project_dir = store_dir(&claude_dir, &cwd);
 
 	let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-	let cwd_str = cwd.to_string_lossy();
+	let cwd_json = json_cwd(&cwd);
 	let good = format!(
-		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"hi"}}}}"#
+		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"hi"}}}}"#
 	);
 	let bad = r#"{this is not valid json"#;
 	let good2 = r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","content":"reply"}}"#;
@@ -366,14 +369,14 @@ fn a_renamed_session_keeps_the_name_the_user_chose() {
 	let cwd = make_folder(tmp.path(), "renamed");
 	let project_dir = store_dir(&claude_dir, &cwd);
 	let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-	let cwd_str = cwd.to_string_lossy();
+	let cwd_json = json_cwd(&cwd);
 
 	write_session(
 		&project_dir,
 		session_id,
 		&[
 			&format!(
-				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"first thing I said"}}}}"#
+				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"first thing I said"}}}}"#
 			),
 			// Claude names it, then the user renames it, then Claude renames it
 			// again — which happens, and must not win.
@@ -414,14 +417,14 @@ fn the_latest_rename_is_the_one_that_shows() {
 	let cwd = make_folder(tmp.path(), "twice");
 	let project_dir = store_dir(&claude_dir, &cwd);
 	let session_id = "11112222-3333-4444-5555-666677778888";
-	let cwd_str = cwd.to_string_lossy();
+	let cwd_json = json_cwd(&cwd);
 
 	write_session(
 		&project_dir,
 		session_id,
 		&[
 			&format!(
-				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"hello"}}}}"#
+				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"hello"}}}}"#
 			),
 			&format!(
 				r#"{{"type":"custom-title","customTitle":"First name","sessionId":"{session_id}"}}"#
@@ -457,14 +460,14 @@ fn an_empty_custom_title_falls_back_instead_of_blanking_the_row() {
 	let cwd = make_folder(tmp.path(), "blank");
 	let project_dir = store_dir(&claude_dir, &cwd);
 	let session_id = "99998888-7777-6666-5555-444433332222";
-	let cwd_str = cwd.to_string_lossy();
+	let cwd_json = json_cwd(&cwd);
 
 	write_session(
 		&project_dir,
 		session_id,
 		&[
 			&format!(
-				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"what I actually asked"}}}}"#
+				r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"what I actually asked"}}}}"#
 			),
 			&format!(r#"{{"type":"custom-title","customTitle":"   ","sessionId":"{session_id}"}}"#),
 		],
@@ -604,12 +607,13 @@ fn write_subagent(
 
 /// The events a sub-agent transcript opens with, taken from a real file.
 fn subagent_events(cwd: &str) -> Vec<String> {
+	let cwd_json = serde_json::to_string(cwd).unwrap();
 	vec![
 		format!(
-			r#"{{"parentUuid":null,"isSidechain":true,"promptId":"p1","agentId":"agent-1111","type":"user","timestamp":"2026-08-15T19:02:00Z","cwd":"{cwd}","message":{{"role":"user","content":"Explore the repo"}}}}"#
+			r#"{{"parentUuid":null,"isSidechain":true,"promptId":"p1","agentId":"agent-1111","type":"user","timestamp":"2026-08-15T19:02:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"Explore the repo"}}}}"#
 		),
 		format!(
-			r#"{{"parentUuid":"u1","isSidechain":true,"agentId":"agent-1111","type":"assistant","timestamp":"2026-08-15T19:03:00Z","cwd":"{cwd}","message":{{"role":"assistant","content":[{{"type":"text","text":"Found it"}}]}}}}"#
+			r#"{{"parentUuid":"u1","isSidechain":true,"agentId":"agent-1111","type":"assistant","timestamp":"2026-08-15T19:03:00Z","cwd":{cwd_json},"message":{{"role":"assistant","content":[{{"type":"text","text":"Found it"}}]}}}}"#
 		),
 	]
 }
@@ -749,9 +753,9 @@ fn the_first_session_in_a_freshly_added_folder_indexes_from_the_watcher() {
 	// after the project did.
 	let project_dir = store_dir(&claude_dir, &cwd);
 	let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-	let cwd_str = cwd.to_string_lossy();
+	let cwd_json = json_cwd(&cwd);
 	let user_msg = format!(
-		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"Start here"}}}}"#
+		r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":{cwd_json},"message":{{"role":"user","content":"Start here"}}}}"#
 	);
 	write_session(&project_dir, session_id, &[&user_msg]);
 

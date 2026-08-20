@@ -45,38 +45,54 @@
 //! whole; see [`super::child_env`], which is where this gets applied.
 
 use std::ffi::{OsStr, OsString};
+#[cfg(unix)]
 use std::io::Read;
+#[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::{Command, Stdio};
+#[cfg(unix)]
 use std::sync::{mpsc, OnceLock};
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 use tracing::{info, warn};
 
 /// Markers around the answer, so the shell's own chatter can be discarded.
+#[cfg(unix)]
 const START: &str = "__FACTORAI_PATH_START__";
+#[cfg(unix)]
 const END: &str = "__FACTORAI_PATH_END__";
 
 /// Where to look when the shell cannot be asked. Both Homebrew prefixes are
 /// here on purpose: Apple Silicon puts it in `/opt/homebrew`, Intel in
 /// `/usr/local`, and a floor that only knows one of them is a floor that drops
 /// half of macOS through it.
+///
+/// On Windows this constant is unused but kept so imports in `child_env` compile
+/// without platform guards.
 pub const FALLBACK_PATH: &str =
 	"/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-
-/// Long enough for a slow `~/.zshrc` (nvm alone can take a second), short
-/// enough that a shell which is never going to answer doesn't hold a session
-/// launch. Only ever paid once.
-const RESOLVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Programs whose absence means the resolved `PATH` is not usable, checked at
 /// startup so the diagnosis is in the log rather than three layers down inside
 /// a hook error. `bash` is what hooks shell out to; `node` is what stdio MCP
 /// servers are.
+#[cfg(unix)]
 const EXPECTED: &[&str] = &["bash", "node"];
 
+/// Long enough for a slow `~/.zshrc` (nvm alone can take a second), short
+/// enough that a shell which is never going to answer doesn't hold a session
+/// launch. Only ever paid once.
+#[cfg(unix)]
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[cfg(unix)]
 static CHILD_PATH: OnceLock<OsString> = OnceLock::new();
 
 /// The `PATH` every child process gets. Resolved on first call and cached.
@@ -84,12 +100,26 @@ static CHILD_PATH: OnceLock<OsString> = OnceLock::new();
 /// [`warm`] normally wins this race off the main thread; a caller arriving
 /// while that is still in flight blocks on it rather than resolving a second
 /// time, which is what `OnceLock` is for.
+///
+/// On Windows the GUI process already has the full user `PATH` (there is no
+/// login-shell barrier), so this just returns the inherited value.
+#[cfg(unix)]
 pub fn child_path() -> &'static OsStr {
 	CHILD_PATH.get_or_init(resolve).as_os_str()
 }
 
+/// Windows: the inherited PATH is already correct. Return it as a leaked
+/// static so the return type matches the Unix signature.
+#[cfg(windows)]
+pub fn child_path() -> &'static OsStr {
+	use std::sync::OnceLock;
+	static WIN_PATH: OnceLock<OsString> = OnceLock::new();
+	WIN_PATH.get_or_init(|| std::env::var_os("PATH").unwrap_or_default()).as_os_str()
+}
+
 /// Resolve and cache off the caller's thread, and say in the log if the answer
 /// looks unusable. Called from `setup()`: the window must not wait on a shell.
+#[cfg(unix)]
 pub fn warm() {
 	std::thread::spawn(|| {
 		let path = child_path();
@@ -107,6 +137,11 @@ pub fn warm() {
 	});
 }
 
+/// Windows: no shell probe needed.
+#[cfg(windows)]
+pub fn warm() {}
+
+#[cfg(unix)]
 fn resolve() -> OsString {
 	let shell = login_shell();
 	match path_from_shell(&shell, RESOLVE_TIMEOUT) {
@@ -121,6 +156,7 @@ fn resolve() -> OsString {
 	}
 }
 
+#[cfg(unix)]
 fn login_shell() -> PathBuf {
 	match std::env::var_os("SHELL") {
 		Some(s) if !s.is_empty() => PathBuf::from(s),
@@ -131,6 +167,7 @@ fn login_shell() -> PathBuf {
 /// Ask one shell. `None` for every failure mode — unspawnable, timed out, no
 /// sentinels, nothing usable between them — because they all mean the same
 /// thing to the caller.
+#[cfg(unix)]
 fn path_from_shell(shell: &Path, timeout: Duration) -> Option<OsString> {
 	let script = format!("printf '%s' \"{START}${{PATH}}{END}\"");
 	let mut child = Command::new(shell)
@@ -175,12 +212,14 @@ fn path_from_shell(shell: &Path, timeout: Duration) -> Option<OsString> {
 /// The bytes between the sentinels, sanitised. Bytes, not `str`: a `PATH` is
 /// not required to be UTF-8 and lossy-converting one would corrupt the entry
 /// it touched rather than fail.
+#[cfg(unix)]
 fn extract(out: &[u8]) -> Option<OsString> {
 	let after_start = &out[find(out, START.as_bytes())? + START.len()..];
 	let value = &after_start[..find(after_start, END.as_bytes())?];
 	sanitize(value)
 }
 
+#[cfg(unix)]
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 	haystack.windows(needle.len()).position(|w| w == needle)
 }
@@ -189,6 +228,7 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// entry means the current directory — a session's cwd is a project checkout,
 /// so that is a program-execution hazard rather than a cosmetic flaw, and
 /// `PATH=""` is worse than having asked nothing at all.
+#[cfg(unix)]
 fn sanitize(value: &[u8]) -> Option<OsString> {
 	let kept: Vec<&[u8]> = value.split(|b| *b == b':').filter(|e| !e.is_empty()).collect();
 	if kept.is_empty() {
@@ -199,17 +239,19 @@ fn sanitize(value: &[u8]) -> Option<OsString> {
 
 /// First executable named `name` in `path`. Deliberately not `which`, which
 /// would answer for *our* `PATH` and so could never see the problem.
+#[cfg(unix)]
 fn which_in(path: &OsStr, name: &str) -> Option<PathBuf> {
 	std::env::split_paths(path).map(|dir| dir.join(name)).find(|p| is_executable(p))
 }
 
+#[cfg(unix)]
 fn is_executable(p: &Path) -> bool {
 	std::fs::metadata(p)
 		.map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 		.unwrap_or(false)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
 	use std::os::unix::ffi::OsStrExt;
 
