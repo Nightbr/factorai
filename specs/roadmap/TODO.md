@@ -19,12 +19,14 @@ is not here, it shipped, and `DONE.md`'s entry for it names the number.
 
 **Where things stand.** M0–M3 shipped — scaffold, read-only browser, embedded terminal with
 kill-on-quit, FTS5 search. M4 is one item from done: the **CLAUDE.md / plans** half, which is
-**item 2**. M5 has not started — no settings modal, no keybinding scheme, no titlebar, no release
-pipeline — and **items 4–8 are M5 in the order it should be built**.
+**item 2**. M5 has started: **item 4 (settings, F11) shipped 2026-08-20** and items 5–8 are the
+rest of it in the order it should be built — no keybinding scheme, no titlebar, no release
+pipeline yet.
 
-**Item 4 is the one with dependents.** Items 31 (the channel picker), 32 (the theme control), 33
-(the restore switch) and 35 (the notification toggle) all wait on the surface it creates, and each
-of them is otherwise unblocked in part — read them for which half can land first.
+**Item 4 was the one with dependents, and they are unblocked.** Items 31 (the channel picker), 32
+(the theme control) and 35 (the notification toggle) were waiting on the surface it creates; the
+switch item 33 wanted shipped with it. Each of those now needs a `SettingRow` and a section
+heading rather than a settings feature — read them for what is left.
 
 **A position is where a slot happened to be free, never a claim about priority.** Items 12–14 —
 the `Cmd+P` / `Cmd+Shift+F` / `Cmd+G` navigation trio — are high priority despite sitting
@@ -72,86 +74,6 @@ takes the cheaper route it should have anyway —
 also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
 it still describes the tab.
 
-## 4. M5 — Settings (F11) and a real `prefsStore`
-
-**Specified 2026-08-17, not built.** The clarify-needs pass this entry called for has happened, so
-the design is [`05-features.md` § F11](../05-features.md) and this entry is sequencing again.
-Decisions went to **Q24** (URL-driven modal, medium, explicit Save, `Cmd+,` idempotent, the entry
-point) and [ADR-0013](../../docs/adr/0013-preferences-storage-split.md) (the storage split, and
-`tauri-plugin-store` removed). **If this entry and F11 disagree, F11 wins.**
-
-**What the interview changed, since three of these were not what the entry assumed.**
-
-- **Not a route — a modal, with its state in the URL.** The route's real advantages were deep
-  links, reload survival and back-closes, and all three come from the URL rather than from being a
-  route. `FileViewerModal` already proves it with `?file=`.
-- **`tauri-plugin-store` is removed, not finally used.** It is async, so it would flash default
-  widths and zoom on every launch; and once Rust-readable settings go to SQLite nothing wants a
-  JSON file. This entry's first checkbox said "`prefsStore` on `tauri-plugin-store`" — that is the
-  line that changed.
-- **`panelStore`'s `open`/`width` do not migrate.** The line is layout versus preference. Only
-  `diffInline` moves.
-- **Three sections, not four.** Appearance holds nothing until theme lands (item 32) and Advanced
-  holds nothing until item 31's channel exists. (A fourth, **Sessions**, arrived 2026-08-18 out of
-  item 33. The count was never the point — having content is.)
-- **Item 22 folds into this item** rather than following it — see below.
-
-**What the build is, in the order it should be done.**
-
-- [ ] **Rust first.** `SettingKey` as a mirrored union, `get_setting`/`set_setting` over the
-      `settings` table migration `0001` already created, and `find_claude_binary(override)` +
-      `check_cli(override)` so **every** caller honours the override. Tests: round-trip, `None`
-      deleting the row, the override winning over the probe, and the probe still working when it is
-      absent.
-- [ ] Types in `packages/types`, plus the `cmd` wrappers and `mockInvoke` cases.
-- [ ] **Remove `tauri-plugin-store`**: both manifests and the `lib.rs` registration.
-- [ ] `prefsStore` (`factorai.prefs`), with the one-time `diffInline` read-across out of
-      `factorai.panel`, and `panelStore` to v2 dropping the key.
-- [ ] Vendor shadcn **Switch** (`@radix-ui/react-switch`, pinned exact) and add **`SettingRow`** to
-      `@factorai/ui` — label / description / control, built once so no future preference invents
-      its own row.
-- [ ] **`settingsDraft`**, pure: diff a draft against saved preferences, report which sections are
-      dirty. This is where the interesting logic goes so it is testable in vitest rather than a
-      browser.
-- [ ] The modal: `?settings=` on the root route's `validateSearch`, left nav, Save/Cancel,
-      click-outside disabled while dirty, per-section dirty dots.
-- [ ] The four sections — Claude (detected + override, validating on blur), Editor (diff default),
-      Confirmations (the two close-confirm switches — see below), **Sessions**.
-- [ ] **Sessions holds one switch: F16's restore-open-tabs-on-launch, defaulting ON.** Item 33
-      shipped that behaviour unconditionally because this surface did not exist yet, so the switch
-      arrives *after* the feature and must default on or it silently changes what people already
-      have. It is the only preference here whose default is settled by history rather than taste.
-- [ ] The gear in `TopBar`, right of the tabs and left of the panel toggle.
-- [ ] **Two** `@smoke` tests: the gear opens and `?settings=editor` deep-links; Save persists and
-      Cancel discards. Everything else goes to item 10 rather than a suite already at 130 (E1).
-
-**The close-confirm switches are this item's Confirmations section**, and were their own entry
-(item 22) until 2026-08-17. They were blocked on this item's *surface* and nothing else, so
-shipping them apart would leave a decided preference queued behind a page with one text field in
-it — and they are what proves `SettingRow` against a real group. The `X` + shared-dialog half
-already shipped (2026-08-16, `DONE.md`). Three things about them are reasoning rather than design,
-so they live here rather than in F11:
-
-- **It does not contradict § 1 of `AGENTS.md`.** "Every irreversible action keeps its confirmation"
-  binds *the app* — it forbids factorai deciding on its own that an ask isn't worth it. A human
-  turning it off is the fourth verb in `00-overview.md` § "The operating model": setting the rules
-  agents run under. The rule stands; the human is allowed to set it.
-- **The quit dialog is not covered by it.** F5 calls the window-close confirm mandatory and
-  ADR-0005 makes kill-on-quit non-optional; that dialog is about losing *every* live session at
-  once. The preference wires to the per-session path only.
-- **Two switches, no master switch, both on by default.** The `X` and a tab's `×` are one row —
-  the same deliberate gesture on a close affordance you aimed at. Middle-click is the second,
-  because it has no aim to it and someone who finds the confirm tedious on a deliberate `×` may
-  still want the question on a stray wheel-click. A general switch plus per-action overrides would
-  produce a matrix with a dead cell and a UI that greys rows out to explain itself.
-
-**Item 31 is still not blocked whole.** Its channel *picker* is one row in a section that does not
-exist yet; the rest of that item — the process work, the alpha manifest, the automatic builds —
-needs no settings surface and can land in either order.
-
-**Size:** roughly 250–350 lines of Rust, ~40 of types, ~100 in `@factorai/ui`, ~650 in the
-renderer, plus the docs. Two to four commits, smaller than F18.
-
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 
 `05-features.md` § "Keyboard shortcuts" lists six bindings; **none are wired**. The table is not
@@ -163,11 +85,12 @@ swallows a keystroke breaks typing to Claude.
 - [ ] `Cmd/Ctrl + N` → new session in the active project. F6 shipped the buttons and explicitly
       left this unwired; it's the cheapest win in the table.
 - [ ] `Cmd/Ctrl + K` (focus search), `Cmd/Ctrl + W` (kill active terminal),
-      `Cmd/Ctrl + ,` (settings). **Item 4 deliberately does not wire this one** and leaves it here:
-      adding a seventh one-off `useEffect` that this pass would immediately delete is the churn this
-      item exists to end, and it would have to get the terminal-focus rule right on its own. Per
-      Q24 the binding **opens and focuses, and does nothing when settings is already open** — both
-      target platforms treat that key as idempotent, and the modal already has two dismissals.
+      `Cmd/Ctrl + ,` (settings). **F11 shipped without wiring this one**, deliberately, and it is
+      still here: adding a seventh one-off `useEffect` that this pass would immediately delete is
+      the churn this item exists to end, and it would have to get the terminal-focus rule right on
+      its own. The modal exists and `useSettingsModal().open()` is the whole call. Per Q24 the
+      binding **opens and focuses, and does nothing when settings is already open** — both target
+      platforms treat that key as idempotent, and the modal already has two dismissals.
 - [ ] A binding for the file-tree toggle. **`Ctrl+B` is unavailable** — readline's back-a-char
       and tmux's prefix (Q15). Pick something that survives a terminal-focused window, or accept
       that the toggle stays mouse-only and say so in F12.
@@ -528,7 +451,8 @@ What is left:
   today and the agent is told so. A tab mark was tried and removed for colliding
   with the session status dot; the toast primitive item 7 wants is the likely
   home, since a transient event probably deserves a transient surface.
-- **The off switch**, which belongs to item 4's `prefsStore`.
+- **The off switch**, which is now a `SettingRow` in F11's modal — `prefsStore` and the
+  Confirmations/Sessions pattern exist, so this is a row and a boolean rather than a surface.
 - **`openDiff` and the write path** — its own ADR, and the thing that supersedes
   part of ADR-0009.
 
@@ -676,7 +600,7 @@ Ruled out, both verified on the real window rather than reasoned about:
   the wedge was.
 
 **The likely real fix is client-side decorations**, which is why this is worth doing next to
-**item 4 / M5's custom titlebar** rather than on its own. With `decorations: false` the app owns
+**item 6 / M5's custom titlebar** rather than on its own. With `decorations: false` the app owns
 the whole frame: it declares its shadow margins through `_GTK_FRAME_EXTENTS`, draws the shadow
 itself, and rounds the corners inside a region it controls — which is exactly how every GTK4 app
 gets clean rounded corners on this desktop. Doing it as part of the titlebar work means one change
@@ -873,21 +797,18 @@ Plausible answers, to be chosen rather than assumed:
 
 Consequences to settle:
 
-- [x] **Where does the channel live? — settled 2026-08-17: it is a preference, so the picker is
-      ⛔ blocked on item 4.** The channel is a `get_setting`/`set_setting` customer, since the
-      updater endpoint is chosen in Rust at runtime — which also restores the argument for building
-      item 4's Rust half, left with a single caller when the keep-awake item was disqualified.
+- [x] **Where does the channel live? — settled 2026-08-17, and unblocked 2026-08-20 when item 4
+      shipped.** The channel is a `get_setting`/`set_setting` customer, since the updater endpoint
+      is chosen in Rust at runtime — and that pair now exists, keyed by `SettingKey`, so this
+      channel is **a second variant, a match arm and one `SettingRow`** rather than a surface.
+      It also needs F11's first new section: **Advanced**, which is deliberately absent until it
+      has content (an empty section reads as a bug).
 
-      **Only the picker is blocked, and that distinction is the useful part of this item.**
-      Everything in 31a, the alpha manifest, the automatic builds and the versioning scheme need no
-      UI at all and can land first. What waits is the row that lets you *choose* — so sequence this
-      as: process work and alpha builds now, channel switch when item 4 lands. Do **not** invent a
-      one-off settings surface to unblock it; that is precisely the mess item 4 exists to prevent,
-      and the close-confirm switches have been waiting for the same reason.
+      Everything in 31a, the alpha manifest, the automatic builds and the versioning scheme still
+      need no UI at all and can land in any order beside it.
 
       Until the picker exists, an alpha build is one someone installed deliberately — which is a
-      fine first state, and an argument for shipping the channel *plumbing* early so the picker is
-      a row rather than a project when it can finally be built.
+      fine first state.
 - [ ] **Alpha versioning.** The manifest `version` must be valid SemVer. `0.9.1-alpha.3` sorts
       correctly above `0.9.0`; a date-based scheme needs checking against the comparator, not
       assumed. Whatever is picked has to keep alpha ahead of production without ever overtaking the
@@ -929,9 +850,10 @@ Three unbuilt things, and the CSS is the part that is already done:
 judged in it. F18's lane colours are the sharpest case: eight categorical hues chosen against a 16%
 background, with light values written but never once looked at. Expect real corrections there.
 
-**Where the control goes is already decided** — F11's Appearance section, which exists as a heading
-the moment this lands and is deliberately absent until then. So this item owns the theme; item 4
-owns the place to put it.
+**Where the control goes is already decided, and the place to put it now exists** — F11 shipped
+2026-08-20 with four sections and the `SettingRow` primitive, and **Appearance is deliberately not
+one of them** because it would hold nothing until this lands. So the settings work here is a
+section constant, a `Select` and a `prefsStore` key; everything else in this item is the feature.
 
 ## 34. Session status — the unread axis, and two upgrades worth waiting for
 
@@ -964,13 +886,15 @@ nothing but keeping a string the parser already has.
 **User ask, 2026-08-18, filed with the session-status work (item 34) and deliberately split from it.** When a session goes
 `working` → `waiting_input` while you are not looking at it, notify the OS.
 
-**Depends on item 4**, and this is the user's own condition — "wait the setting modal to control
-enable of desktop notif". A notification nobody can switch off is a bug, and F11 is where the switch
-belongs rather than a fourth feature inventing its own home for a preference.
+**Depended on item 4, which shipped 2026-08-20** — the user's condition was "wait the setting modal
+to control enable of desktop notif", and it is met: a notification nobody can switch off is a bug,
+and the switch is now a `SettingRow` beside the other four preferences rather than a home this
+feature has to invent. Which section it goes in is the only open question (Sessions is about the
+unit of work, so probably there rather than a new one).
 
 **The edge it fires on already exists.** F10's title parser produces exactly the
 `working` → `waiting_input` transition this needs (shipped 2026-08-18), so there is no detection
-work here at all — item 4 is the only thing this is actually waiting on.
+work here at all — **nothing is blocking this item now.**
 
 **What it actually costs**, since the trigger is free:
 

@@ -417,10 +417,17 @@ cargo test
 ### Tauri gotchas (macOS + Linux)
 
 - GUI-launched processes don't inherit shell PATH on macOS. Use
-  `find_claude_binary()` with login-shell fallback (see
-  `specs/annex-A-tolaria-patterns.md` § A.1).
-- `tauri-plugin-store` writes to `app_data_dir` per platform. Don't
-  hardcode paths.
+  `find_claude_binary(override)` with login-shell fallback (see
+  `specs/annex-A-tolaria-patterns.md` § A.1). The override is the user's
+  setting and every caller passes it — a probe that ignores it is how the
+  settings page comes to report "not installed" for the binary sessions are
+  spawning from (F11).
+- **Preferences go in one of three places, and "who reads this?" decides**
+  (ADR-0013): layout you dragged in `panelStore`/`sidebarStore`/`zoomStore`,
+  preferences the renderer alone reads in `prefsStore`, anything **Rust** reads
+  in the SQLite `settings` table. All three localStorage stores are synchronous
+  on purpose. `tauri-plugin-store` was the documented answer and is **removed** —
+  it is async, so every persisted value flashed its default for a frame.
 - The DevTools window is enabled via the `devtools` cargo feature on
   Tauri 2; it's already on in our `Cargo.toml`.
 - **Turborepo 2.x runs tasks in strict env mode**, so anything not in

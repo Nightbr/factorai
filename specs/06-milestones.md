@@ -133,7 +133,11 @@ toolchain wired up.
 **Goal.** Ready to use day-to-day; first tagged release.
 
 **Deliverables.**
-- Settings UI (theme, fonts, claude path, projects dir override).
+- ~~Settings UI~~ **shipped 2026-08-20** (F11, roadmap item 4): the claude path
+  override, the diff-mode default, the close confirms and F16's restore switch.
+  **Theme and fonts are not in it** — theme is its own roadmap item (nothing sets
+  `data-theme` yet, so the light palette has never rendered), and fonts were never
+  specced anywhere else. A projects-dir override is still not planned.
 - **Custom window titlebar.** Drop the OS decorations
   (`decorations: false`) and reimplement minimise / maximise / close in
   `TopBar`, which is already full-window width for exactly this reason.

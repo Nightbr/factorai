@@ -28,9 +28,23 @@ Three tiers, in order:
 3. Probe a known list of candidate paths (homebrew, npm-global, mise,
    asdf, nvm versions, `.local/bin`, `.claude/local`).
 
-Validate by running `claude --version` with a 2s timeout. Cache the
-result in the `settings` table. Full implementation sketch lives in
-`03-backend-rust.md`.
+Validate by running `claude --version` with a 2s timeout. Full
+implementation sketch lives in `03-backend-rust.md`.
+
+**Amended 2026-08-20, with F11: there is a tier 0, and there is no cache.**
+
+- **Tier 0 is the user's override**, `SettingKey::ClaudeBinaryPath`, checked
+  before the three above and with **no fallback to them** — a typo that quietly
+  resolved to whatever the probe found would show a working version beside a path
+  that does not work. It is a parameter on `find_claude_binary`, so every caller
+  passes it and the settings page cannot disagree with the spawn.
+- **The caching claim is a plan that was dropped**, and is struck from this
+  answer rather than left to be trusted. It said "cache the result in the
+  `settings` table", nothing ever wrote it, and F11 makes it wrong rather than
+  merely unbuilt: `claude.binary` now holds the *user's override*, so a cache
+  sharing that key could not tell a probe's guess from somebody's choice. The
+  probe is a `which` plus a `--version` at spawn time, which is cheap enough not
+  to want one — and a cache is what would go stale the day `claude` moves.
 
 ---
 
@@ -399,7 +413,8 @@ this one.
 
 ## Q24 — What shape is the settings surface? → **URL-driven modal, medium, explicit Save**
 
-**Decision (2026-08-17, from the F11 interview).** A **modal**, not a route, with
+**Decision (2026-08-17, from the F11 interview). Built 2026-08-20, as decided.**
+A **modal**, not a route, with
 its open state and section in the **URL** as `?settings=claude|editor|confirmations`.
 Medium width with the section nav in a left column. (`sessions` joined that list
 2026-08-18 with F16's restore switch. What this question decided is the shape;

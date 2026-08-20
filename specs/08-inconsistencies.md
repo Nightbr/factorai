@@ -52,26 +52,6 @@ looking at half the callers. → probably a `tsconfig.tests.json` plus a
 as its own task or the app's `include` grows, and on how many existing errors it
 surfaces (not yet measured).
 
-**C6 — Two claims about the claude-binary escape hatch that the code does not
-make.** Found 2026-08-17 during F11's interview.
-
-- Roadmap item 4 described the path override as *"the escape hatch the three-tier
-  probe's failure message already promises"*. It promises nothing:
-  `find_claude_binary` fails with a bare `AppError::NotFound("claude CLI not
-  found")`, with no mention of a setting, and there is **no settings tier at all**
-  in the probe — F11 adds one.
-- Q2 says the probe result is *"cached in the `settings` table"*. Nothing writes
-  that table, and `check_cli()` re-probes on every call. The `claude.version` the
-  migration's own comment names has never been stored.
-
-Neither is load-bearing today, and F11 makes the first one true. → decide whether
-Q2's caching claim is a **plan that was dropped** (then say so where Q2 can be
-read, since ADRs and settled questions are what agents trust) or a **plan still
-wanted** (then it is a second `SettingKey` and belongs on item 4's list). Not
-folded into F11 unasked, because caching a probe result has its own
-invalidation question — when does a cached path get re-probed? — and that is a
-decision, not an edit.
-
 **C3 — Read-only, except where we plan to write.** ADR-0009 states
 *"Everything is read-only. No staging, no discard, no commit"*. TODO item 19
 (IDE emulation) applies hunks to the working tree. Needs a **superseding ADR**,

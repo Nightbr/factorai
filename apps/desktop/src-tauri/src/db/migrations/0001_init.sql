@@ -27,10 +27,13 @@ CREATE TABLE IF NOT EXISTS sessions (
 	cwd         TEXT                          -- first non-null cwd seen in events
 );
 
--- Generic key/value config (claude.binary path, claude.version, etc.)
+-- Generic key/value config. Keyed by a dotted namespace (`claude.binary`);
+-- written only through get_setting/set_setting, which key it off the mirrored
+-- `SettingKey` union (F11). A comment corrected in place when the first caller
+-- landed: the value is the string itself, not JSON. See specs/02-data-model.md.
 CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
-	value TEXT NOT NULL                       -- JSON-encoded scalar
+	value TEXT NOT NULL                       -- no row means unset
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id, updated_at DESC);

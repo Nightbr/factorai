@@ -17,7 +17,7 @@ apps/desktop/src/
 ├── components/
 │   ├── layout/
 │   │   ├── AppShell.tsx     # top bar + sidebar | content | panel
-│   │   ├── TopBar.tsx       # brand, reserved space, panel toggle
+│   │   ├── TopBar.tsx       # brand, session tabs, settings gear, panel toggle
 │   │   ├── Sidebar.tsx      # projects, search input, status dots, new-session +
 │   │   ├── PanelResizer.tsx # drag handle for the right panel
 │   │   ├── PanelEmpty.tsx   # the one line a panel tab shows instead of a list
@@ -33,6 +33,9 @@ apps/desktop/src/
 │   │   ├── FileTreePanel.tsx        # right panel: header + root node
 │   │   ├── FileTreeNode.tsx         # one row, recursive, lazy list_dir
 │   │   └── FileIcon.tsx             # icon-key → SVG (ADR-0006)
+│   ├── settings/
+│   │   ├── SettingsModal.tsx        # the shell, the nav and Save (F11)
+│   │   └── ClaudeSection.tsx        # detected binary + the override field
 │   ├── viewer/
 │   │   ├── monaco.ts                # sole Monaco import site + theme
 │   │   ├── FileView.tsx             # one file, read-only, host-agnostic
@@ -48,12 +51,14 @@ apps/desktop/src/
 │   └── prefsStore.ts        # user preferences, localStorage (ADR-0013)
 ├── hooks/
 │   ├── useActiveProject.ts  # project the current route is about
-│   └── useFileViewer.ts     # ?file= &line= — what the viewer shows, and where
+│   ├── useFileViewer.ts     # ?file= &line= — what the viewer shows, and where
+│   └── useSettingsModal.ts  # ?settings= — which settings section is open (F11)
 ├── lib/
 │   ├── tauri.ts             # typed invoke + listen wrappers
 │   ├── queryKeys.ts
 │   ├── fileIcon.ts          # filename → icon key (pure)
 │   ├── fileLinks.ts         # terminal text → an openable path (F19, pure + cache)
+│   ├── settingsDraft.ts     # which sections hold an edit (F11, pure)
 │   └── format.ts
 └── styles/
     └── globals.css          # imports @factorai/ui/styles
@@ -267,12 +272,29 @@ has not survived contact: `theme` is deferred to its own roadmap item (nothing s
 `lastProjectId` is not a preference and no feature asked for it, and the two widths
 stay in their layout stores.
 
-Keys, as of F11:
+Keys, as shipped with F11:
 
-- `diffInline: boolean` — the diff viewer's default, arriving from `panelStore`
-  with a one-time read-across.
-- `confirmCloseSession: boolean` — default `true` (roadmap item 4, Confirmations).
-- `confirmMiddleClickTab: boolean` — default `true` (roadmap item 4, Confirmations).
+- `diffInline: boolean` — default `false`. The diff viewer's default, arriving
+  from `panelStore` with a one-time read-across.
+- `confirmCloseSession: boolean` — default `true`. Ask before closing a working
+  session with the `×`.
+- `confirmCloseMiddleClick: boolean` — default `true`. The same question for a
+  middle-click, which is its own switch because a wheel-click has no aim to it.
+- `restoreTabs: boolean` — default `true`, and that default is settled by history
+  rather than taste: F16's restore shipped unconditionally, so the switch must not
+  change what people already have.
+
+The store exposes `applyPrefs(next)` — one write for a whole Save, so a
+half-applied save cannot exist — plus `setDiffInline`, because the diff footer's
+own toggle sets the same value.
+
+**The `diffInline` read-across is its own module** (`store/diffInlineHandover.ts`),
+imported by *both* stores. Both hydrate at import time and `panelStore`'s v3
+migration rewrites `factorai.panel` without the key, so which one touches storage
+first is decided by module order — a snapshot taken lazily inside `prefsStore`
+would read the value or read nothing depending on which file Vite loaded first.
+Thirty lines to protect one boolean, because silently resetting a choice somebody
+made is not the kind of small that is fine.
 
 Settings Rust must read are **not** here; they go through `get_setting` /
 `set_setting` into the SQLite `settings` table.
@@ -298,15 +320,26 @@ React entirely — so it gets a plain `Map` cache in `lib/fileLinks.ts` rather t
 a query key. Nothing renders from it: the answer decides whether a range becomes
 a link, and xterm owns that painting.
 
-## Viewer search params
+## Search params on the root route
 
 `?file=` is the open path (F7). `&diff=` turns it into a diff (F13). **`&line=`
 and `&col=` place the cursor** (F19) — validated on the root route with the
 other two, so a hand-edited URL cannot reach Monaco with a negative line, and
 dropped whenever `file` is absent, since a position in no file is not a state.
 
-Both new params are 1-based, matching what `foo.ts:42:7` means to everyone who
-writes it and what Monaco's `setPosition` expects.
+Both position params are 1-based, matching what `foo.ts:42:7` means to everyone
+who writes it and what Monaco's `setPosition` expects.
+
+**`?settings=claude|editor|confirmations|sessions`** opens the settings modal at
+one section (F11), validated the same way — a section nobody has built is not a
+section, so `?settings=appearance` opens nothing. It is a modal *and* a URL
+deliberately: the URL is where deep links, reload survival and browser-back-closes
+come from, and none of them needed a route. `hooks/useSettingsModal.ts` reads and
+writes it, exactly as `useFileViewer` does for `?file=`.
+
+Both modals are mounted on the **root** route, beside `QuitConfirm`, because both
+are app-level rather than route-level — which is also what lets a hook update the
+param without knowing which route is showing.
 
 ## Terminal component
 
