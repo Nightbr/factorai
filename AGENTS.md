@@ -473,11 +473,21 @@ cargo test
   `GDK_*` set outright. Every process the app spawns used to inherit
   that, so a `claude` session started from a release build could not run
   `python3` (`No module named 'encodings'`) or any other GTK binary.
-  `services/child_env` now strips it on the way into a PTY — see
+  `services/child_env` strips it on the way into a PTY — see
   `specs/03-backend-rust.md` § `TerminalManager`. **This also applies to
   you**: an agent session running inside the release app has that env,
   so `pnpm dev` dies with a `WebKitNetworkProcess` spawn error until you
-  clear it. `env | grep .mount_` is the tell.
+  clear it. `env | grep -c .mount_` is the tell, and **expect zero**.
+- **If it is not zero, note which mounts** before working around it.
+  Until 2026-08-20 the strip matched only `$APPDIR` — the mount the app
+  itself runs from — so a factorai launched from inside an older factorai
+  passed the *older* mounts straight through to every session. Three
+  mounts existed on the machine, one was stripped, two leaked, and
+  `pnpm dev` died from a build that already had the module. The rule now
+  also matches any `.mount_*` path component, so a leak is a new bug
+  rather than that one; the workaround is `env -u` the poisoned vars and
+  filter `.mount_` out of `PATH` / `XDG_DATA_DIRS` rather than unsetting
+  those wholesale.
 
 ### Helpful files when picking up work
 
