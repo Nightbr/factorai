@@ -155,10 +155,25 @@ export interface SpawnOpts {
 }
 
 export interface ClaudeCliStatus {
+	/** The binary resolved — **not** that `claude --version` answered. A
+	 *  resolved path with a null `version` is a real state (a wrapper script, a
+	 *  half-finished install), and the settings page says so rather than calling
+	 *  a binary that spawns sessions perfectly well "not installed". */
 	installed: boolean;
 	binaryPath: string | null;
 	version: string | null;
 }
+
+/**
+ * A setting **Rust** reads, written through `get_setting` / `set_setting`
+ * (F11, ADR-0013). Mirrors the Rust enum of the same name.
+ *
+ * Preferences only the renderer reads are not here — they live in `prefsStore`
+ * on localStorage, which is synchronous and so paints them on the first frame.
+ * A union rather than a free string for the reason `GitRev` is one: a
+ * misspelled key would otherwise read as "unset" with nothing to catch it.
+ */
+export type SettingKey = 'claudeBinaryPath';
 
 export interface QuitRequestedEvent {
 	liveCount: number;
