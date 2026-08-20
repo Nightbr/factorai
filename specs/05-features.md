@@ -1435,7 +1435,15 @@ project it shows follows the route (`/projects/$id` or
   restating the unmissable, and once F11's gear landed beside it the two
   neighbouring icons disagreed about what a header icon looks like.
 - Panel header: a `Files | Changes | Graph` tab strip (F13, F18), then collapse-all,
-  refresh, close. The tree keeps its layout, spacing, icons and indentation
+  refresh, close. **Refresh spins while its refetch is in flight** — added
+  2026-08-20; before that a click on a large repository was indistinguishable
+  from a click on nothing until rows changed, or didn't. It watches
+  `useIsFetching` on the same key it invalidates, so the spin reports work rather
+  than reassuring on a fixed timer, and it stops on a **rotation boundary**
+  (`animationiteration`, not a timeout): a 20ms refetch is one clean turn instead
+  of a one-frame flash ending at an arbitrary angle, and a slow one is a whole
+  number of turns. Both the Files and Graph buttons use it; Changes has no button
+  because it polls at 3s. The tree keeps its layout, spacing, icons and indentation
   exactly as they are — no indent guides, no folder icons, no compact folders,
   no hover actions. The only thing git adds to the tree is **paint**:
   - a changed file's name takes a status colour (modified, untracked,
@@ -1664,6 +1672,14 @@ What the code now does, in the order the space runs out:
    **hides outright** and the badge is its mark alone, via a container query on the
    footer cell. Truncation alone gets you a pill reading `Upd…`, which is a broken
    word rather than a degradation.
+
+**The badge does not resize the footer.** The row is a fixed 36px (`h-9`, the
+file panel header's height) rather than one that hugs its content — fixed
+2026-08-20. The badge is 24px tall and everything else in the footer is 18px or
+less, so the footer grew by 6px the moment an update staged itself: the sidebar
+shifting under you to announce something the badge was already announcing, and a
+second, wordless way of saying the same thing that the width work above went to
+some trouble to keep quiet.
 
 Checking and downloading are silent by design. An announcement you can't act on
 yet ("downloading 43%…") is noise beside a running agent, and the useful moment

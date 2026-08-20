@@ -1,7 +1,7 @@
 import type { DirEntry } from '@factorai/types';
-import { useQueryClient } from '@tanstack/react-query';
+import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { ChevronsDownUp, RefreshCw, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { IconButton } from '@factorai/ui';
 import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
@@ -53,7 +53,6 @@ function PanelBody() {
 	const setOpen = usePanelStore((s) => s.setOpen);
 	const collapseAll = usePanelStore((s) => s.collapseAll);
 	const seedRoot = usePanelStore((s) => s.seedRoot);
-	const queryClient = useQueryClient();
 
 	useEffect(() => {
 		if (projectId && root) seedRoot(projectId, root);
@@ -80,26 +79,14 @@ function PanelBody() {
 						>
 							<ChevronsDownUp />
 						</IconButton>
-						<IconButton
-							aria-label="Refresh tree"
-							title="Refresh tree"
-							onClick={() => queryClient.invalidateQueries({ queryKey: ['dir'] })}
-						>
-							<RefreshCw />
-						</IconButton>
+						<RefreshButton label="Refresh tree" queryKey={['dir']} />
 					</>
 				)}
 				{tab === 'graph' && (
 					// The graph polls at 30s, not the Changes tab's 3s, so an explicit
 					// refresh is the answer for a commit that just landed while you were
 					// looking at it (F18).
-					<IconButton
-						aria-label="Refresh graph"
-						title="Refresh graph"
-						onClick={() => queryClient.invalidateQueries({ queryKey: ['git-graph'] })}
-					>
-						<RefreshCw />
-					</IconButton>
+					<RefreshButton label="Refresh graph" queryKey={['git-graph']} />
 				)}
 				<IconButton
 					aria-label="Close file tree"
@@ -141,6 +128,56 @@ function PanelBody() {
 				</div>
 			)}
 		</>
+	);
+}
+
+/**
+ * A refresh affordance that spins while the data it refetches is in flight.
+ *
+ * The panel's two refresh buttons used to invalidate and look identical
+ * afterwards, so on a repository large enough for the walk to take a moment the
+ * only feedback was rows changing — or not, if nothing had. `useIsFetching` on
+ * the same key the click invalidates is what makes the spin *report* rather than
+ * merely reassure: it turns for exactly as long as there is work.
+ *
+ * **It stops on a rotation boundary**, via `animationiteration` rather than a
+ * timer. A refetch that resolves in 20ms would otherwise flash a spinner for one
+ * frame and stop the icon at whatever angle it reached, which reads as a glitch;
+ * letting the current turn finish means the shortest possible refresh is one
+ * clean rotation and a long one is a whole number of them. 600ms is that turn —
+ * fast enough to look like a response to the click, slow enough to be a rotation
+ * and not a blur.
+ *
+ * The spin is deliberately **not** behind `motion-safe:`, which would be the
+ * house instinct: with the animation suppressed no `animationiteration` ever
+ * fires, so the state that the event clears would latch on forever. A spinner is
+ * also the essential-feedback case rather than decoration, and like
+ * `StatusDot`'s pulse it moves only while something is actually happening.
+ */
+function RefreshButton({ label, queryKey }: { label: string; queryKey: readonly unknown[] }) {
+	const queryClient = useQueryClient();
+	const fetching = useIsFetching({ queryKey }) > 0;
+	const [spinning, setSpinning] = useState(false);
+
+	return (
+		<IconButton
+			aria-label={label}
+			title={label}
+			aria-busy={spinning}
+			onClick={() => {
+				setSpinning(true);
+				void queryClient.invalidateQueries({ queryKey });
+			}}
+		>
+			{/* The handler is re-attached every render, so it closes over the current
+			    `fetching` — no ref needed to read it from inside the animation. */}
+			<RefreshCw
+				className={spinning ? 'animate-spin [animation-duration:600ms]' : undefined}
+				onAnimationIteration={() => {
+					if (!fetching) setSpinning(false);
+				}}
+			/>
+		</IconButton>
 	);
 }
 

@@ -328,6 +328,22 @@ Concrete rules:
   miss, and it made two neighbouring icons in the same row disagree about
   what a header icon looks like. State that a surface already shows needs
   `aria-pressed`, not a second colour. Added on user feedback.
+- **A chrome row gets an explicit height, never one derived from its tallest
+  child.** The top bar is `h-10.5`, the file panel header and the sidebar footer
+  are `h-9`. A row sized by `py-*` moves the moment a taller child appears in it,
+  and the thing that appears is by definition the thing you were already looking
+  at: the sidebar footer grew 6px when F14's badge staged an update, shifting the
+  whole sidebar to announce something the badge was announcing anyway. Added
+  2026-08-20 on user feedback.
+- **A manual refresh reports while it works.** The panel's Files and Graph
+  buttons spin their icon for as long as `useIsFetching` on the key they
+  invalidate says there is work — not on a fixed timer, which reassures rather
+  than reports. It stops on a **rotation boundary** (`animationiteration`, not a
+  timeout), so a 20ms refetch is one clean turn instead of a one-frame flash
+  ending at an arbitrary angle. It is deliberately **not** behind `motion-safe:`,
+  which would be the instinct: with the animation suppressed the
+  `animationiteration` that clears the state never fires, so the state latches on
+  forever.
 
 ### Backend
 

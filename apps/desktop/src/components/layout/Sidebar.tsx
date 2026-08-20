@@ -283,7 +283,16 @@ export function Sidebar() {
 				</ul>
 			</nav>
 
-			<footer className="flex items-center gap-2 border-t border-border py-1.5 pr-1.5 pl-3 text-muted-foreground text-xs">
+			{/* **A fixed height, not `py-*`.** The updater's badge is 24px tall and
+			    everything else in this row is 18px or less, so a footer that hugged
+			    its content grew by 6px the moment an update staged itself — the whole
+			    sidebar shifting under you to announce something the badge was already
+			    announcing. `h-9` is the file panel header's height, and it is the
+			    badge's 24px plus the padding it wants. */}
+			<footer
+				data-testid="sidebar-footer"
+				className="flex h-9 shrink-0 items-center gap-2 border-t border-border pr-1.5 pl-3 text-muted-foreground text-xs"
+			>
 				{/* Indexing is transient and worth saying; "Idle" was a label for the
 				    absence of news. In its place, the updater — the one background
 				    thing whose state you might actually want to poke. */}

@@ -99,6 +99,26 @@ test.describe('update badge', () => {
 		expect(zoomBox.width).toBeGreaterThan(0);
 	});
 
+	test('@smoke the badge does not change the footer height', async ({ page }) => {
+		// The footer used to hug its content, and the badge is 24px against an 18px
+		// row — so staging an update grew the footer by 6px and shifted the whole
+		// sidebar to say something the badge was already saying (F14).
+		const footer = page.getByTestId('sidebar-footer');
+
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+		await expect(page.getByTestId('update-check')).toBeVisible();
+		const atRest = await footer.boundingBox();
+
+		await installMockBridge(page, { ...fixtureOneProjectOneSession(), updateReady: '0.2.0' });
+		await page.reload();
+		await expect(page.getByTestId('update-badge')).toBeVisible();
+		const staged = await footer.boundingBox();
+
+		if (!atRest || !staged) throw new Error('footer not laid out');
+		expect(staged.height).toBe(atRest.height);
+	});
+
 	test('@smoke Later dismisses without restarting', async ({ page }) => {
 		await installMockBridge(page, { ...fixtureOneProjectOneSession(), updateReady: '0.2.0' });
 		await page.goto('/');
