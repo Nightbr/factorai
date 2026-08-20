@@ -10,9 +10,21 @@ import {
 } from '@factorai/ui';
 import { AlertTriangle } from 'lucide-react';
 
+/** Which gesture asked to close. They are two rows in the settings page, so
+ *  they are two values here (F11). */
+export type CloseGesture = 'button' | 'middle-click';
+
+/** The two switches in the Confirmations section, as this function needs them.
+ *  Spelled out rather than taking the whole `Prefs`, so the rule below stays
+ *  readable and its tests need no store. */
+export interface CloseConfirmPrefs {
+	confirmCloseSession: boolean;
+	confirmCloseMiddleClick: boolean;
+}
+
 /**
  * Whether closing a session should ask first — **only while Claude is
- * working** (F10).
+ * working**, and only if you have left the question on (F10, F11).
  *
  * This is the ask F10 came from: the dialog below warns that "any work in
  * progress is lost", and until there was a status to consult it said that about
@@ -20,6 +32,17 @@ import { AlertTriangle } from 'lucide-react';
  *
  * `undefined` means no live PTY, so there is nothing to kill and nothing to ask
  * about.
+ *
+ * **The preference does not contradict `AGENTS.md` § 1.** "Every irreversible
+ * action keeps its confirmation" binds *the app* — it forbids factorai deciding
+ * on its own that an ask isn't worth it. A human turning it off is the fourth
+ * verb in `00-overview.md` § "The operating model": setting the rules agents run
+ * under. The quit dialog is not covered by it and stays mandatory (F5,
+ * ADR-0005) — that one is about losing every live session at once.
+ *
+ * **Two switches, no master switch.** The `×` and middle-click are separate
+ * because middle-click has no aim to it: somebody who finds the question tedious
+ * on a deliberate `×` may still want it on a stray wheel-click.
  *
  * **Known gap, accepted in F10.** A session parked on a permission prompt reads
  * as `waiting_input`, because Claude's title says idle while a dialog is open —
@@ -31,8 +54,13 @@ import { AlertTriangle } from 'lucide-react';
  * dialog itself is shared: two surfaces deciding this separately would drift on
  * *when* to ask exactly as they once drifted on whether to.
  */
-export function needsCloseConfirm(status: TerminalStatus | undefined): boolean {
-	return status === 'working';
+export function needsCloseConfirm(
+	status: TerminalStatus | undefined,
+	gesture: CloseGesture,
+	prefs: CloseConfirmPrefs,
+): boolean {
+	if (status !== 'working') return false;
+	return gesture === 'middle-click' ? prefs.confirmCloseMiddleClick : prefs.confirmCloseSession;
 }
 
 interface CloseSessionConfirmProps {

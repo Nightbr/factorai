@@ -11,6 +11,7 @@ import { disposeTerminal, restartSession, Terminal } from '@components/terminal/
 import { useGitBranch } from '@hooks/useGitBranch';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
+import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { rootRoute } from './__root';
 
@@ -69,6 +70,12 @@ function SessionView() {
 	// store rather than here because the tab strip restarts sessions too (F16),
 	// and it cannot reach a `useState` in this component.
 	const restartEpoch = useTerminalStore((s) => s.restartEpoch[sessionId] ?? 0);
+	// Read as two scalars and assembled in the handler, not through a selector
+	// that builds an object — that would hand zustand a new reference on every
+	// store read.
+	const confirmCloseSession = usePrefsStore((s) => s.confirmCloseSession);
+	const confirmCloseMiddleClick = usePrefsStore((s) => s.confirmCloseMiddleClick);
+	const confirmPrefs = { confirmCloseSession, confirmCloseMiddleClick };
 	// The confirm is open while this is true. Killing a live agent is
 	// irreversible, and this header used to do it on one unguarded click —
 	// see `00-overview.md` § "The operating model".
@@ -183,10 +190,14 @@ function SessionView() {
 					<IconButton
 						aria-label="Close session"
 						title="Close session"
-						// Asks only while Claude is working (F10). `needsCloseConfirm` is
-						// shared with the tab strip so the two cannot disagree about when.
+						// Asks only while Claude is working, and only if you left the
+						// question on (F10, F11). `needsCloseConfirm` is shared with the
+						// tab strip so the two cannot disagree about when — and this is
+						// the `×` gesture, the same one a tab's close button is.
 						onClick={() =>
-							needsCloseConfirm(live.status) ? setClosing(true) : void closeSession(live.terminalId)
+							needsCloseConfirm(live.status, 'button', confirmPrefs)
+								? setClosing(true)
+								: void closeSession(live.terminalId)
 						}
 					>
 						<X />

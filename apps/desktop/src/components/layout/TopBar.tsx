@@ -2,8 +2,9 @@ import { Brand } from '@components/brand/Brand';
 import { DevBadge } from '@components/layout/DevBadge';
 import { SessionTabs } from '@components/layout/SessionTabs';
 import { IconButton } from '@factorai/ui';
+import { useSettingsModal } from '@hooks/useSettingsModal';
 import { usePanelStore } from '@store/panelStore';
-import { PanelRight } from 'lucide-react';
+import { PanelRight, Settings } from 'lucide-react';
 
 /**
  * Full-window header. Deliberately spans above the sidebar too: this is the
@@ -14,6 +15,7 @@ import { PanelRight } from 'lucide-react';
 export function TopBar() {
 	const open = usePanelStore((s) => s.open);
 	const toggle = usePanelStore((s) => s.toggle);
+	const settings = useSettingsModal();
 
 	return (
 		<header className="flex h-10.5 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
@@ -32,6 +34,21 @@ export function TopBar() {
 			<div className="flex min-w-0 flex-1 items-center">
 				<SessionTabs />
 			</div>
+
+			{/* Settings is app-level chrome, so it lives here rather than in the
+			    sidebar footer — which is also already over-full (F14). Left of the
+			    panel toggle, and item 6's window controls sit at the window's outer
+			    edge, so this moves once by a fixed offset when they land rather than
+			    competing for the same pixels. */}
+			<IconButton
+				size="md"
+				aria-label="Settings"
+				title="Settings"
+				data-testid="open-settings"
+				onClick={() => settings.open()}
+			>
+				<Settings />
+			</IconButton>
 
 			<IconButton
 				size="md"

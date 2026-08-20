@@ -2,10 +2,13 @@ import { createRootRoute, Outlet, useParams } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { QuitConfirm } from '@components/dialog/QuitConfirm';
 import { AppShell } from '@components/layout/AppShell';
+import { SettingsModal } from '@components/settings/SettingsModal';
 import { FileViewerModal } from '@components/viewer/FileViewerModal';
 import { type DiffMode, isDiffMode, parsePosition, useFileViewer } from '@hooks/useFileViewer';
 import { useNativeContextMenu } from '@hooks/useNativeContextMenu';
 import { useSessionsSync } from '@hooks/useSessionsSync';
+import { useSettingsModal } from '@hooks/useSettingsModal';
+import { isSettingsSection, type SettingsSection } from '@lib/settingsDraft';
 import { cmd, events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { useTerminalStore } from '@store/terminalStore';
@@ -13,6 +16,7 @@ import { useTerminalStore } from '@store/terminalStore';
 function RootLayout() {
 	const setProgress = useIndexerStore((s) => s.setProgress);
 	const viewer = useFileViewer();
+	const settings = useSettingsModal();
 	const { sessionId } = useParams({ strict: false }) as { sessionId?: string };
 
 	// The `ide:open-file` listener is registered once for the app's life, so it
@@ -154,6 +158,11 @@ function RootLayout() {
 				onClose={viewer.close}
 				onOpenPath={viewer.open}
 			/>
+			<SettingsModal
+				section={settings.section}
+				onSection={settings.open}
+				onClose={settings.close}
+			/>
 			<QuitConfirm />
 		</>
 	);
@@ -168,13 +177,22 @@ export const rootRoute = createRootRoute({
 	// are validated here so a hand-edited URL can't reach the editor.
 	// `&line=` / `&col=` place the cursor (F19), 1-based, validated for the same
 	// reason — Monaco should never be handed a position no file has.
+	// `?settings=` opens the settings modal at one section (F11), here for the
+	// same reasons `?file=` is: deep links, reload survival, back-closes.
 	validateSearch: (
 		search: Record<string, unknown>,
-	): { file?: string; diff?: DiffMode; line?: number; col?: number } => ({
+	): {
+		file?: string;
+		diff?: DiffMode;
+		line?: number;
+		col?: number;
+		settings?: SettingsSection;
+	} => ({
 		file: typeof search.file === 'string' && search.file ? search.file : undefined,
 		diff: isDiffMode(search.diff) ? search.diff : undefined,
 		line: parsePosition(search.line),
 		col: parsePosition(search.col),
+		settings: isSettingsSection(search.settings) ? search.settings : undefined,
 	}),
 	component: RootLayout,
 });
