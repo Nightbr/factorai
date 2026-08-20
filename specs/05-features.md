@@ -1405,6 +1405,12 @@ project it shows follows the route (`/projects/$id` or
   Open state and width persist (see below). No keyboard shortcut yet:
   `Ctrl+B` is readline's back-a-char and tmux's prefix, so binding it would
   break typing in the embedded claude terminal.
+- **The button does not brighten while the panel is open** — changed 2026-08-20
+  on user feedback, and it did until then. Every icon in the top bar is one
+  colour, `IconButton`'s default; the open state rides on `aria-pressed` and on
+  the fact that a 288px panel is either there or it is not. The colour was
+  restating the unmissable, and once F11's gear landed beside it the two
+  neighbouring icons disagreed about what a header icon looks like.
 - Panel header: a `Files | Changes | Graph` tab strip (F13, F18), then collapse-all,
   refresh, close. The tree keeps its layout, spacing, icons and indentation
   exactly as they are — no indent guides, no folder icons, no compact folders,
@@ -2217,8 +2223,11 @@ resting colour is `--secondary-foreground` (82%, the same hue two steps quieter)
 and the row under the pointer takes full `--foreground`.
 
 A **selected** row keeps full foreground without waiting for a hover: selection
-is a state, not a hover, which is the reasoning the panel toggle already carries
-(F12) and the same rule as pinned rows keeping their affordances on show.
+is a state, not a hover — the same rule as pinned rows keeping their affordances
+on show. (This used to cite the panel toggle's open state as the precedent. That
+went away on 2026-08-20: the rule holds for a row in a list, where the resting
+colour is all you have to tell rows apart, and not for a header icon whose state
+is a whole panel being on screen. See F12.)
 
 ### The node is its author
 
