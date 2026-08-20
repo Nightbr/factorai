@@ -550,5 +550,8 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		};
 	}, [sessionId, projectId, projectCwd]);
 
-	return <div ref={containerRef} className="h-full w-full bg-[#0c0e12] p-2" />;
+	// `p-2` is also the slack the rows paint into at a fractional zoom — see the
+	// last-column rule in the desktop app's stylesheet, which is written against
+	// this 8px — and `overflow-hidden` is what keeps that spill inside the pane.
+	return <div ref={containerRef} className="h-full w-full overflow-hidden bg-[#0c0e12] p-2" />;
 }

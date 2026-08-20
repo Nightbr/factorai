@@ -469,6 +469,29 @@ three separate faults that happened to stack in the same 30px.
   function. Measured on the browser lane: the grid went from 983px to 999px of
   1002px available, the remaining 3px being sub-cell remainder.
 
+**The last column, at a fractional zoom** (2026-08-20). Characters cut in half
+down the right edge of the pane at 120%. Neither the sizing above nor a lost
+column: xterm's DOM renderer sets each row to exactly the grid's width with
+`overflow: hidden`, then makes the text fill it by giving every span a
+`letter-spacing` of `cellWidth - measuredCharWidth`. The two inputs are measured
+differently — `cellWidth` from `OffscreenCanvas.measureText` (nominal, and
+zoom-invariant), `measuredCharWidth` from laying out 32 characters and reading
+the **integer** `offsetWidth`. At zoom 1 that run reads 250px for 249.61 and the
+correction comes out negative, so the text is narrower than the grid; at 1.2 it
+reads 249 for 249.51 and the correction is positive, so every character is drawn
+0.0157px too wide. Over 130 columns that is 2px more text than the row will
+show, and the last glyph loses a quarter of itself. Whether it happens is a coin
+flip on where `32 x advance` falls against an integer — in WebKitGTK, zooms 1.2
+and 1.5 clip and 1.0 and 2.0 don't, which is why this never reproduced at 100%.
+
+The fix is 8px of horizontal slack on the row's clip box rather than a chase
+after the metric — the terminal's own `p-2`, which the container now also
+declares `overflow-hidden` so the spill cannot leave the pane. Measured in the
+renderer under WebKitGTK at zoom 1.2: the worst row (114 spans, a colour change
+per character) went from 3.11px past its clip box to 4.88px inside it. Rows
+still clip vertically, deliberately: nothing accumulates down a column, and a
+tall glyph should be cut rather than bleed into the row below.
+
 Each site carries the full reasoning — the two CSS files and the sizing section
 of `Terminal.tsx`.
 

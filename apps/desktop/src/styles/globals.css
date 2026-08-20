@@ -52,3 +52,50 @@
 .xterm .xterm-viewport {
 	scrollbar-width: none;
 }
+
+/* ── The last column is not clipped at a fractional zoom ───────────────────── */
+/* **Characters cut in half down the right edge of the agent's pane, at 120%
+   zoom** (reported 2026-08-20). Not our sizing arithmetic — `Terminal.tsx`
+   computes the grid correctly, and no choice of `cols` fixes this, because the
+   overflow is proportional to `cols` and so survives losing a column.
+
+   xterm's DOM renderer sets each row to exactly the grid's width with
+   `overflow: hidden`, then makes the text fill that width by giving every span
+   a `letter-spacing` of `cellWidth - measuredCharWidth`. The two inputs come
+   from different measurements and disagree:
+
+   - `cellWidth` comes from `OffscreenCanvas.measureText`, which is nominal and
+     zoom-invariant: 7.8px for our 13px JetBrains Mono, at any zoom.
+   - `measuredCharWidth` comes from `WidthCache`, which lays out 32 characters
+     in a real span and reads **`offsetWidth`** — an *integer*. At zoom 1 that
+     run is 249.61px wide and reads as 250 (7.8125/char), so the correction is
+     negative and the text ends up ~2px narrower than the grid. At zoom 1.2 the
+     same run is 249.51px and reads as 249 (7.78125/char), so the correction is
+     *positive* and every character is drawn 0.0157px wider than its cell.
+
+   That is a rounding error of 1/64px per character, which is invisible until it
+   accumulates: over 130 columns the row's text is 2px wider than the row's own
+   clip box, and the rightmost glyph loses its last quarter. Whether it happens
+   at all is a coin flip on where `32 × advance` falls relative to an integer —
+   measured in WebKitGTK, zooms 1.2 and 1.5 clip, 1.0 and 2.0 don't.
+
+   So give the row a few pixels of horizontal slack rather than chasing the
+   metric. `content-box` matters: Preflight makes every element `border-box`, so
+   padding on an element whose width xterm sets inline would *shrink* the text
+   area and clip harder.
+
+   **8px is the terminal's own padding** — the `p-2` on the container in
+   `Terminal.tsx`, which also carries `overflow-hidden` so this can never paint
+   outside the pane. Worst case measured (1490px pane, zoom 1.5) spends 4.5px of
+   it. Past roughly 500 columns the drift would exceed the slack and the glyph
+   would clip again, which needs a ~4000px-wide terminal.
+
+   Horizontal only, and deliberately still clipping vertically: row heights are
+   exact CSS lengths that the browser stacks, so nothing accumulates down the
+   column, and a tall glyph should still be cut rather than bleed into the row
+   below. `overflow-x` alone cannot express that — `visible` beside a non-visible
+   `overflow-y` computes to `auto`, which clips anyway and offers a scrollbar. */
+.xterm .xterm-rows > div {
+	box-sizing: content-box;
+	padding-right: 8px;
+}
