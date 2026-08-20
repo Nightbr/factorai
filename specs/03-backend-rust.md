@@ -294,15 +294,47 @@ belonging to a different program. Observed: `PYTHONHOME=$APPDIR/usr/` kills any
 `LD_LIBRARY_PATH=$APPDIR/usr/lib/…` makes another GTK binary load *our*
 WebKitGTK, which then can't find its own helper processes.
 
-The rule is one sentence — **drop the path-list entries that live inside
-`$APPDIR`**, and unset anything left empty — because AppRun builds each of them
-as `$APPDIR/…:$ORIGINAL`, so removing our entries leaves exactly what the user
-had. No list of variable names is hardcoded: AppRun's set has grown before, and
-a name list would silently stop covering it. A value with no `$APPDIR` entry is
-passed through byte for byte rather than split and rejoined, so the rewrite
-can't touch a `GTK_THEME=Adwaita:dark` or an `LS_COLORS`. `APPDIR` / `APPIMAGE`
-/ `ARGV0` / `OWD` go too — leaving one behind while the paths it names are gone
-is worse than either.
+The rule is one sentence — **drop the path-list entries that live inside an
+AppImage runtime mount**, and unset anything left empty — because AppRun builds
+each of them as `$APPDIR/…:$ORIGINAL`, so removing our entries leaves exactly
+what the user had. No list of variable names is hardcoded: AppRun's set has
+grown before, and a name list would silently stop covering it. A value with no
+such entry is passed through byte for byte rather than split and rejoined, so the
+rewrite can't touch a `GTK_THEME=Adwaita:dark` or an `LS_COLORS`. `APPDIR` /
+`APPIMAGE` / `ARGV0` / `OWD` go too — leaving one behind while the paths it names
+are gone is worse than either.
+
+**"A runtime mount" is wider than `$APPDIR`, and it had to be — corrected
+2026-08-20.** `$APPDIR` is the mount *this process* runs from, so matching only
+it strips only the newest layer of a nested launch. Found on the machine this app
+is developed on: an agent session under a release build had `APPDIR` correctly
+unset and that build's mount correctly gone from every path, and still carried
+**two older mounts** in `LD_LIBRARY_PATH`, `PATH`, `XDG_DATA_DIRS`, `PYTHONPATH`,
+`PERLLIB`, `QT_PLUGIN_PATH` and the `GST_*` pair — the app had been launched from
+inside an older copy of itself and inherited them. So `pnpm dev` in that session
+still died on `WebKitNetworkProcess`, from a build that already had this module.
+
+So an entry is also ours to drop when any of its path components is a `.mount_*`
+directory, which is what the AppImage runtime names its squashfuse mountpoint.
+Both halves earn their place: `$APPDIR` is authoritative and covers a mountpoint
+not named like one (`--appimage-extract-and-run` gives a `squashfs-root`), and
+the shape covers every mount `$APPDIR` cannot know about. It is matched on the
+path component, not on `/tmp/.mount_`, because `TMPDIR` is the user's to set.
+
+Two consequences worth stating, because both reverse something this spec used to
+say:
+
+- **A mount that is not ours goes too.** The old reasoning was that "two
+  AppImages running at once is ordinary", so a sibling mount was not ours to
+  touch. The premise was wrong — two AppImages side by side never appear in each
+  *other's* environment, since the runtime only prepends to its own process tree.
+  A sibling mount can only be in ours if we were launched from inside it, and
+  then its squashfs is as wrong for our child as our own.
+- **It is no longer a no-op outside an AppImage.** A dev build has no `$APPDIR`,
+  so under the old rule a `pnpm dev` spawning a session stripped nothing at all —
+  while inheriting a mount from the agent shell that started it. That is the
+  daily case here: the app being developed from inside a session of the released
+  app. With no `$APPDIR` *and* no mount anywhere, it is still a no-op.
 
 **It is expressed as a diff, and that is load-bearing.**
 `CommandBuilder::new()` seeds itself from `std::env::vars_os()`, so the child
@@ -319,8 +351,8 @@ nothing. The regression test drives a real `CommandBuilder` and asserts
 that fails, which is precisely why the others weren't enough.
 
 **The two rules meet on `PATH`, and the order matters.** `with_path` has the last
-word on that key, so it first takes `PATH` out of whatever the `$APPDIR` rule
-decided about it — a stale `remove` left behind would have `apply_to` unset the
+word on that key, so it first takes `PATH` out of whatever the strip decided
+about it — a stale `remove` left behind would have `apply_to` unset the
 variable we are there to set. The value then goes through the strip anyway,
 because the shell we asked inherited *our* `PATH` and both zsh and bash extend
 the one they are given rather than build a fresh one: on a machine running the
@@ -335,10 +367,9 @@ Every test at the `EnvChanges` layer still passes with the
 A right rule that never reaches the process is the failure mode this module has
 already shipped once.
 
-Outside an AppImage (dev build, `.deb`, `.app`) `APPDIR` is unset and this is a
-no-op. Note this is a *second*, independent source of the `XDG_DATA_DIRS`
-breakage described in `AGENTS.md § Tauri gotchas` — that one is Turborepo
-stripping the variable, this one is the AppImage prepending to it.
+Note this is a *second*, independent source of the `XDG_DATA_DIRS` breakage
+described in `AGENTS.md § Tauri gotchas` — that one is Turborepo stripping the
+variable, this one is the AppImage prepending to it.
 
 #### And `CLAUDE_CODE_CHILD_SESSION` goes, or transcripts stop existing
 

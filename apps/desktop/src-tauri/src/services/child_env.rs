@@ -31,10 +31,10 @@
 //! - `LD_LIBRARY_PATH=$APPDIR/usr/lib/:…` makes another GTK/WebKit binary load
 //!   *our* bundled WebKitGTK, which then can't find its own helper processes.
 //!
-//! **The rule is one sentence: drop the entries that live inside `$APPDIR`.**
-//! `linuxdeploy`'s `AppRun` builds every one of these as
-//! `$APPDIR/…:$ORIGINAL`, so removing the `$APPDIR` entries leaves precisely
-//! what the user had — and for the handful it invents outright (`PYTHONHOME`,
+//! **The rule is one sentence: drop the entries that live inside an AppImage
+//! runtime mount.** `linuxdeploy`'s `AppRun` builds every one of these as
+//! `$APPDIR/…:$ORIGINAL`, so removing those entries leaves precisely what the
+//! user had — and for the handful it invents outright (`PYTHONHOME`,
 //! `GTK_EXE_PREFIX`, `GIO_EXTRA_MODULES`, …) nothing remains, which is right,
 //! since those are unset on a normal desktop.
 //!
@@ -42,8 +42,33 @@
 //! before and will again, and a name-based list would silently stop covering
 //! the new ones. Matching on the path is what makes this exhaustive.
 //!
-//! Outside an AppImage — a dev build, a `.deb`, a `.app` — `APPDIR` is unset
-//! and that rule does nothing at all.
+//! **"An AppImage runtime mount" is deliberately wider than `$APPDIR`** —
+//! widened 2026-08-20, and the narrow version was a real bug rather than a
+//! theoretical gap. `$APPDIR` is the mount *this process* is running from, so
+//! matching only it strips only the newest layer of a nested launch. Found on
+//! the machine this app is developed on: an agent session spawned by a release
+//! build had `APPDIR` correctly unset and that build's own mount correctly gone
+//! from every path — and still carried **two older mounts** in
+//! `LD_LIBRARY_PATH`, `PATH`, `XDG_DATA_DIRS`, `PYTHONPATH`, `PERLLIB`,
+//! `QT_PLUGIN_PATH` and the `GST_*` pair, because the app had itself been
+//! launched from inside an older copy of itself and inherited them. So
+//! `pnpm dev` in that session still died on `WebKitNetworkProcess`, from a
+//! build that already had this module in it.
+//!
+//! Hence the second half of the match: an entry is also ours to drop if any of
+//! its path components is a `.mount_*` directory, which is what the AppImage
+//! runtime names its squashfuse mountpoint. That is a **shape**, not a name
+//! list, and it holds for a mount we were never told about — including one
+//! belonging to a different program, since a path we inherited from another
+//! AppImage's runtime poisons a child exactly as ours does. Its price is a
+//! `.mount_*` component in a genuine user path, which costs that one search
+//! entry; set against a session that cannot run `python3`, that is the right
+//! way round.
+//!
+//! Outside an AppImage — a dev build, a `.deb`, a `.app` — `APPDIR` is unset,
+//! and the rule then does nothing *unless* something we inherited points into a
+//! mount. A dev build launched from an agent shell inside the release app is
+//! exactly that case, and it is how this app is built every day.
 //!
 //! **One variable is dropped by name regardless**, because it is not about
 //! AppImages and applies on every platform: `CLAUDE_CODE_CHILD_SESSION`, which
@@ -63,6 +88,10 @@ use super::shell_path;
 /// worse than either: a tool that checks one and uses the other would follow
 /// it straight into a directory we just removed from every search path.
 const APPIMAGE_MARKERS: &[&str] = &["APPDIR", "APPIMAGE", "ARGV0", "OWD"];
+
+/// What the AppImage runtime calls its squashfuse mountpoint, under `$TMPDIR`.
+/// See [`is_runtime_mount_entry`] for why a path component and not a full path.
+const RUNTIME_MOUNT_PREFIX: &[u8] = b".mount_";
 
 /// How Claude Code marks a process it spawned itself, and describes *us* rather
 /// than the child.
@@ -127,13 +156,13 @@ impl EnvChanges {
 		let key = OsStr::new("PATH");
 		self.remove.retain(|k| k != key);
 		self.set.retain(|(k, _)| k != key);
-		let value = match usable_appdir(appdir) {
-			// Nothing left after the strip would mean a `PATH` made of nothing
-			// but the AppImage's own directories, which is not a `PATH` at all.
-			Some(dir) => strip_appdir_entries(path, dir)
-				.unwrap_or_else(|| OsString::from(shell_path::FALLBACK_PATH)),
-			None => path.to_os_string(),
-		};
+		// Unconditional, with no `$APPDIR` arm: a value with nothing to strip
+		// comes back byte for byte, and the mount a nested launch left behind is
+		// only visible to the shape half of the rule anyway. `None` means the
+		// strip left nothing — a `PATH` made entirely of AppImage directories,
+		// which is not a `PATH` at all.
+		let value = strip_appimage_entries(path, usable_appdir(appdir))
+			.unwrap_or_else(|| OsString::from(shell_path::FALLBACK_PATH));
 		self.set.push((key.to_os_string(), value));
 		self
 	}
@@ -158,18 +187,30 @@ where
 	// platform and every build.
 	let appdir = usable_appdir(appdir);
 
+	// Collected because the pass below needs an answer that can come from a
+	// variable it has not reached yet: whether *any* AppImage runtime is in
+	// play. `APPDIR` being unset no longer settles that — an inherited mount
+	// counts, and it is what a nested launch leaves behind.
+	let vars: Vec<(OsString, OsString)> = vars.into_iter().collect();
+	let appimage = appdir.is_some()
+		|| vars
+			.iter()
+			.any(|(_, value)| value.as_bytes().split(|b| *b == b':').any(is_runtime_mount_entry));
+
 	let mut out = EnvChanges::default();
 	for (key, value) in vars {
 		if AGENT_MARKERS.iter().any(|m| key == OsStr::new(m)) {
 			out.remove.push(key);
 			continue;
 		}
-		let Some(appdir) = appdir else { continue };
+		if !appimage {
+			continue;
+		}
 		if APPIMAGE_MARKERS.iter().any(|m| key == OsStr::new(m)) {
 			out.remove.push(key);
 			continue;
 		}
-		match strip_appdir_entries(&value, appdir) {
+		match strip_appimage_entries(&value, appdir) {
 			None => out.remove.push(key),
 			Some(stripped) if stripped != value => out.set.push((key, stripped)),
 			// Untouched by the rule, so there is nothing to say about it.
@@ -191,19 +232,20 @@ fn usable_appdir(appdir: Option<&Path>) -> Option<&Path> {
 	})
 }
 
-/// The value with its `$APPDIR` entries removed, or `None` if that leaves
+/// The value with its AppImage entries removed, or `None` if that leaves
 /// nothing — an empty `LD_LIBRARY_PATH` means "look in the current directory",
 /// so it has to be unset rather than blanked.
 ///
-/// A value with no `$APPDIR` entry is returned **byte for byte**. That matters:
+/// A value with no AppImage entry is returned **byte for byte**. That matters:
 /// most of the environment is not a path list, and splitting on `:` and
 /// rejoining would quietly rewrite anything that happens to contain one —
 /// `LS_COLORS`, a connection string, a `GTK_THEME=Adwaita:dark`. Only values we
 /// have actually found something to remove from get rebuilt.
-fn strip_appdir_entries(value: &OsStr, appdir: &Path) -> Option<OsString> {
-	let prefix = appdir.as_os_str().as_bytes();
+fn strip_appimage_entries(value: &OsStr, appdir: Option<&Path>) -> Option<OsString> {
+	let prefix = appdir.map(|d| d.as_os_str().as_bytes());
+	let ours = |entry: &&[u8]| is_appimage_entry(entry, prefix);
 	let bytes = value.as_bytes();
-	if !bytes.split(|b| *b == b':').any(|e| is_inside(e, prefix)) {
+	if !bytes.split(|b| *b == b':').any(|e| ours(&e)) {
 		return Some(value.to_os_string());
 	}
 
@@ -212,7 +254,7 @@ fn strip_appdir_entries(value: &OsStr, appdir: &Path) -> Option<OsString> {
 		// Empty entries go too, and only here — they are the tail of AppRun's
 		// `$APPDIR/…:$ORIGINAL` when the user had no original, and an empty
 		// entry in a search path means the current directory.
-		.filter(|e| !e.is_empty() && !is_inside(e, prefix))
+		.filter(|e| !e.is_empty() && !ours(e))
 		.collect();
 	if kept.is_empty() {
 		return None;
@@ -220,11 +262,38 @@ fn strip_appdir_entries(value: &OsStr, appdir: &Path) -> Option<OsString> {
 	Some(OsString::from_vec(kept.join(&b':')))
 }
 
+/// Whether one path-list entry belongs to an AppImage runtime: ours by
+/// `$APPDIR`, or anyone's by the shape of its path.
+///
+/// Both halves are needed. `$APPDIR` is authoritative and covers a mountpoint
+/// that is not named like one — `--appimage-extract-and-run` sets it to a
+/// `squashfs-root` directory. The shape covers the mounts `$APPDIR` cannot know
+/// about, which is every layer of a nested launch but the newest.
+fn is_appimage_entry(entry: &[u8], appdir: Option<&[u8]>) -> bool {
+	if let Some(prefix) = appdir {
+		if is_inside(entry, prefix) {
+			return true;
+		}
+	}
+	is_runtime_mount_entry(entry)
+}
+
+/// Whether a path runs through a directory the AppImage runtime mounted.
+///
+/// The runtime names its squashfuse mountpoint `$TMPDIR/.mount_<prefix><rand>`,
+/// so a `.mount_*` path component is the tell. Matched on the component rather
+/// than on `/tmp/.mount_`, because `TMPDIR` is the user's to set.
+fn is_runtime_mount_entry(entry: &[u8]) -> bool {
+	entry.split(|b| *b == b'/').any(|c| c.starts_with(RUNTIME_MOUNT_PREFIX))
+}
+
 /// Whether one path-list entry lies at or under `prefix`.
 ///
 /// The boundary check is what stops `$APPDIR` of `/tmp/.mount_ab` from also
-/// claiming `/tmp/.mount_abcdef` — different mounts, and on a machine running
-/// two AppImages at once, both are real.
+/// claiming `/tmp/.mount_abcdef`. Since 2026-08-20 the shape rule strips a
+/// sibling mount anyway, so this no longer decides that entry's fate — it
+/// decides *which* rule takes it, and keeps `$APPDIR` from over-reaching on a
+/// mountpoint that is not named like one at all.
 fn is_inside(entry: &[u8], prefix: &[u8]) -> bool {
 	entry.starts_with(prefix) && matches!(entry.get(prefix.len()), None | Some(b'/'))
 }
@@ -245,7 +314,16 @@ mod tests {
 	/// `changes(...).set` passes just as happily when every removal is dropped
 	/// on the floor, which is exactly how v0.5.0 shipped broken.
 	fn run(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
-		let ch = changes(env(pairs), Some(Path::new(APPDIR)));
+		apply(pairs, changes(env(pairs), Some(Path::new(APPDIR))))
+	}
+
+	/// [`run`] for the nested case: no `$APPDIR`, so only what the environment
+	/// itself gives away is left to go on.
+	fn run_without_appdir(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+		apply(pairs, changes(env(pairs), None))
+	}
+
+	fn apply(pairs: &[(&str, &str)], ch: EnvChanges) -> Vec<(String, String)> {
 		let mut out: Vec<(String, String)> = env(pairs)
 			.into_iter()
 			.map(|(k, v)| (k.into_string().unwrap(), v.into_string().unwrap()))
@@ -397,14 +475,92 @@ mod tests {
 		}
 	}
 
+	/// **This test used to assert the opposite**, on the reasoning that "two
+	/// AppImages running at once is ordinary" and a sibling mount is therefore
+	/// not ours to touch. The premise is what was wrong: two AppImages running
+	/// side by side never appear in each *other's* environment, because the
+	/// runtime only prepends to its own process tree. A sibling mount can only
+	/// be in ours if we were launched from inside it — and then its squashfs is
+	/// as wrong for our child as our own is.
 	#[test]
-	fn a_sibling_mount_with_a_longer_name_is_not_ours_to_strip() {
-		// Two AppImages running at once is ordinary. `/tmp/.mount_Factorfa` must
-		// not claim `/tmp/.mount_FactorfaOther`.
+	fn a_mount_that_is_not_ours_goes_too_because_we_inherited_it() {
 		assert_eq!(
 			get(&[("PATH", "/tmp/.mount_FactorfaOther/usr/bin:/usr/bin")], "PATH"),
-			Some("/tmp/.mount_FactorfaOther/usr/bin:/usr/bin".into())
+			Some("/usr/bin".into())
 		);
+	}
+
+	/// What the sibling test was really protecting, kept as the unit it always
+	/// was: `$APPDIR` must not claim a longer name by prefix. The shape rule
+	/// takes that entry now, but the boundary still decides whether a mountpoint
+	/// `$APPDIR` names — one not called `.mount_*` at all — over-reaches.
+	#[test]
+	fn appdir_does_not_claim_a_longer_name_by_prefix() {
+		let appdir = b"/tmp/squashfs-root";
+		assert!(is_inside(b"/tmp/squashfs-root/usr/bin", appdir));
+		assert!(is_inside(appdir, appdir));
+		assert!(!is_inside(b"/tmp/squashfs-root-other/usr/bin", appdir));
+	}
+
+	/// The bug the rule was widened for, in the shape it was found in: an
+	/// agent session under a release build, carrying two mounts from launches
+	/// that came before this process. `APPDIR` names the newest, so the narrow
+	/// rule stripped one third of the poison and left `pnpm dev` broken.
+	#[test]
+	fn mounts_from_an_earlier_launch_go_even_though_appdir_names_only_one() {
+		let value = concat!(
+			"/tmp/.mount_Factorfa/usr/lib:",
+			"/tmp/.mount_FactorBigjgf/usr/lib:",
+			"/tmp/.mount_FactoreiCOda/usr/lib:",
+			"/usr/lib/x86_64-linux-gnu"
+		);
+		assert_eq!(
+			get(&[("LD_LIBRARY_PATH", value)], "LD_LIBRARY_PATH"),
+			Some("/usr/lib/x86_64-linux-gnu".into())
+		);
+	}
+
+	/// A dev build has no `$APPDIR` of its own, and `child_env` unset the one it
+	/// would have inherited — so under the narrow rule a `pnpm dev` process
+	/// spawning a session stripped nothing at all. This is the daily case: the
+	/// app being developed from inside a session of the released app.
+	#[test]
+	fn an_inherited_mount_is_stripped_with_no_appdir_at_all() {
+		let inherited = [
+			("LD_LIBRARY_PATH", "/tmp/.mount_Factorfa/usr/lib:/usr/lib"),
+			("PYTHONHOME", "/tmp/.mount_Factorfa/usr/"),
+			("HOME", "/home/me"),
+		];
+		let ch = changes(env(&inherited), None);
+		assert!(ch.remove.iter().any(|k| k == OsStr::new("PYTHONHOME")));
+		assert_eq!(ch.set, vec![(OsString::from("LD_LIBRARY_PATH"), OsString::from("/usr/lib"))]);
+	}
+
+	/// And the flip side, which is what keeps the widening from touching a
+	/// normal desktop: no `$APPDIR`, no mount anywhere, nothing happens. A
+	/// `.deb`, a `.app` and a plain `cargo run` all land here.
+	#[test]
+	fn a_machine_with_no_appimage_in_sight_is_still_untouched() {
+		let ch = changes(
+			env(&[("PATH", "/usr/bin"), ("LD_LIBRARY_PATH", "/usr/lib"), ("OWD", "/home/me")]),
+			None,
+		);
+		assert_eq!(ch, EnvChanges::default());
+	}
+
+	/// A stale `APPDIR`/`APPIMAGE` pair points at a mount we are not running
+	/// from, and the markers have to go with it — a tool that reads one and
+	/// follows the other would walk into a directory we just removed from every
+	/// search path, which is the reason they are dropped in the first place.
+	#[test]
+	fn stale_markers_go_even_when_we_are_not_the_appimage() {
+		let out = run_without_appdir(&[
+			("APPDIR", "/tmp/.mount_Factorfa"),
+			("APPIMAGE", "/home/me/Applications/FactorAI.AppImage"),
+			("OWD", "/home/me"),
+			("HOME", "/home/me"),
+		]);
+		assert_eq!(out, vec![("HOME".to_string(), "/home/me".to_string())]);
 	}
 
 	/// The bug this file's `with_path` half exists for: a GUI process's `PATH`

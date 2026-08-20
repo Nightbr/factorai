@@ -967,6 +967,14 @@ mod tests {
 	/// that never reaches the process. Drop the `changes_for_current_env` call
 	/// above and this is the test that notices — a hook's bare `bash` and an MCP
 	/// server's `npx` become unresolvable, and nothing else here fails.
+	///
+	/// **The expectation is the login shell's `PATH` with AppImage entries
+	/// filtered out**, and the filter is written here rather than borrowed from
+	/// `child_env` so this stays a check and not a tautology. It is not
+	/// hypothetical on the machine this is developed on: the login shell is
+	/// started from inside the release app, so its answer arrives carrying ten
+	/// `.mount_*` entries from two different mounts, and this test failed on
+	/// exactly those when the strip was widened to catch them.
 	#[test]
 	fn a_child_runs_with_the_login_shell_path() {
 		let (mgr, data, exit) = make_manager();
@@ -994,9 +1002,25 @@ mod tests {
 			})
 			.collect();
 
-		let expected =
-			format!("PATH_IS[{}]", crate::services::shell_path::child_path().to_string_lossy());
+		let login = crate::services::shell_path::child_path();
+		let login = login.to_string_lossy();
+		let is_appimage = |e: &&str| e.contains("/.mount_");
+		// Mirrors `child_env`: a value with nothing to strip is passed through
+		// byte for byte, and only a rebuilt one also loses its empty entries.
+		let wanted = if login.split(':').any(|e| is_appimage(&e)) {
+			login
+				.split(':')
+				.filter(|e| !e.is_empty() && !is_appimage(e))
+				.collect::<Vec<_>>()
+				.join(":")
+		} else {
+			login.to_string()
+		};
+		let expected = format!("PATH_IS[{wanted}]");
 		assert!(merged.contains(&expected), "expected {expected} in stream, got: {merged}");
+		// The half the exact match cannot state on a machine that has no mounts
+		// to strip: whatever arrives, none of it points into a squashfs.
+		assert!(!merged.contains("/.mount_"), "an AppImage mount reached the child: {merged}");
 	}
 
 	#[test]
