@@ -319,8 +319,15 @@ Concrete rules:
   and takes `foreground` from its row's hover; a *selected* row keeps
   `foreground` permanently, since selection is a state and not a hover.
   A column where every row is at 96% lightness has no focus at all,
-  which is what the graph looked like until 2026-08-18. The same
-  distinction the panel toggle draws between "open" and "hovered".
+  which is what the graph looked like until 2026-08-18.
+- **This rule is about rows in a list, not about chrome.** The top bar's
+  icons are **all one colour** — `IconButton`'s default, hovering to
+  primary — and a toggled-on control does not brighten. The panel toggle
+  did until 2026-08-20, and it was wrong twice: a 288px panel is either on
+  screen or it is not, so the colour restated something impossible to
+  miss, and it made two neighbouring icons in the same row disagree about
+  what a header icon looks like. State that a surface already shows needs
+  `aria-pressed`, not a second colour. Added on user feedback.
 
 ### Backend
 

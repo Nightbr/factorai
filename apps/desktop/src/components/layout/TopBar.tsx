@@ -50,11 +50,16 @@ export function TopBar() {
 				<Settings />
 			</IconButton>
 
+			{/* **One colour for both, changed 2026-08-20 on user feedback.** This
+			    button used to take full `foreground` while the panel was open, on the
+			    reasoning that open is a state rather than a hover. The rule is right
+			    for a list row and wrong here: the 288px panel is either on screen or
+			    it is not, so the colour was restating something impossible to miss —
+			    and it made two neighbouring icons in the same row disagree about what
+			    a header icon looks like. `aria-pressed` still carries the state where
+			    it is not otherwise visible. */}
 			<IconButton
 				size="md"
-				// Open is a state, not a hover: it keeps full foreground colour so the
-				// panel's visibility is readable without reaching for the mouse.
-				className={open ? 'text-foreground' : undefined}
 				aria-label="Toggle file tree"
 				aria-pressed={open}
 				title="Toggle file tree"
