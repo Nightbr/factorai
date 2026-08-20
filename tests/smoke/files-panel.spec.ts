@@ -117,6 +117,29 @@ test.describe('file tree panel', () => {
 		await expect(panel.getByText(/Select a project/i)).toBeVisible();
 		expect(await listedPaths(page)).toEqual([]);
 	});
+
+	test('@smoke refresh spins while it refetches, then settles on its own', async ({ page }) => {
+		// Before this, a click on a large repository was indistinguishable from a
+		// click on nothing until rows changed — or didn't. Both header refreshes are
+		// the same component, so testing one tests the other.
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openPanelOnProject(page);
+
+		const button = panel.getByRole('button', { name: 'Refresh tree' });
+		const icon = button.locator('svg');
+		await expect(icon).not.toHaveClass(/animate-spin/);
+
+		await button.click();
+		// It turns on the click rather than on the response, so the affordance
+		// answers even when there is nothing to refetch.
+		await expect(icon).toHaveClass(/animate-spin/);
+		await expect(button).toHaveAttribute('aria-busy', 'true');
+
+		// And it stops by itself — at the end of a rotation, which is why a mock
+		// bridge that answers in a millisecond still spins for one turn.
+		await expect(icon).not.toHaveClass(/animate-spin/, { timeout: 3000 });
+	});
 });
 
 /**
