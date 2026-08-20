@@ -66,7 +66,10 @@ interface PrefsState {
  *  diffing in `lib/settingsDraft.ts` compares. */
 export type Prefs = Omit<PrefsState, 'applyPrefs' | 'setDiffInline'>;
 
-export const DEFAULT_PREFS: Prefs = {
+/** The shipped defaults. Not exported: every reader wants the *current*
+ *  preferences, and a second door onto the defaults is how a surface ends up
+ *  showing one while the store holds the other. */
+const DEFAULT_PREFS: Prefs = {
 	diffInline: false,
 	confirmCloseSession: true,
 	confirmCloseMiddleClick: true,

@@ -1,4 +1,5 @@
 import type { TerminalId, TerminalStatus, TerminalStatusDto } from '@factorai/types';
+import { usePrefsStore } from '@store/prefsStore';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -207,6 +208,25 @@ export const useTerminalStore = create<TerminalState>()(
 			// is what makes a restored tab `stopped` by construction rather than by
 			// a rule somebody has to remember to apply.
 			partialize: (s) => ({ tabs: s.tabs }),
+			/**
+			 * **The restore switch is honoured here, at hydration** (F11, F16).
+			 *
+			 * Off means the strip starts empty — dropping the tabs on the way in
+			 * rather than not writing them on the way out, so the switch describes
+			 * *launch* and nothing has to be remembered at quit. `prefsStore` is on
+			 * localStorage and hydrates when its module loads, which importing it
+			 * here is what guarantees happens before this runs.
+			 *
+			 * The dropped list does not come back if you turn the switch on again:
+			 * the tabs were not open this session, so the next launch restores what
+			 * you had *then*. Persisting a shadow copy of a list nobody is looking at
+			 * would be a second source of truth for one boolean's sake.
+			 */
+			merge: (persisted, current) => {
+				const state = { ...current, ...(persisted as Partial<TerminalState>) };
+				if (usePrefsStore.getState().restoreTabs) return state;
+				return { ...state, tabs: [] };
+			},
 		},
 	),
 );

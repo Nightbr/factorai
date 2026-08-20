@@ -1,4 +1,8 @@
-import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
+import {
+	type CloseGesture,
+	CloseSessionConfirm,
+	needsCloseConfirm,
+} from '@components/dialog/CloseSessionConfirm';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { disposeTerminal, restartSession } from '@components/terminal/Terminal';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
@@ -13,6 +17,7 @@ import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
 import { queryKeys } from '@lib/queryKeys';
 import { tabsInKnownProjects } from '@lib/sessionGroups';
 import { cmd } from '@lib/tauri';
+import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
@@ -54,6 +59,15 @@ const DRAG_START_PX = 4;
  */
 export function SessionTabs() {
 	const bySession = useTerminalStore((s) => s.bySession);
+	// Two scalar selectors and one memo, rather than a selector returning an
+	// object: a fresh reference on every store read re-renders forever, which is
+	// the same trap `useOpenSessions` documents.
+	const confirmCloseSession = usePrefsStore((s) => s.confirmCloseSession);
+	const confirmCloseMiddleClick = usePrefsStore((s) => s.confirmCloseMiddleClick);
+	const confirmPrefs = useMemo(
+		() => ({ confirmCloseSession, confirmCloseMiddleClick }),
+		[confirmCloseSession, confirmCloseMiddleClick],
+	);
 	const openTabs = useTerminalStore((s) => s.tabs);
 	const reorder = useTerminalStore((s) => s.reorder);
 	const detach = useTerminalStore((s) => s.detach);
@@ -159,13 +173,17 @@ export function SessionTabs() {
 
 	/** The × and middle-click both come through here: ask while Claude is
 	 *  working, close outright otherwise (F10). A stopped tab has no process to
-	 *  kill, so `needsCloseConfirm` says no and it closes on the click. */
+	 *  kill, so `needsCloseConfirm` says no and it closes on the click.
+	 *
+	 *  The gesture is passed on because the two have their own switches in the
+	 *  settings page (F11) — a wheel-click and an aimed × are not the same act. */
 	const requestClose = useCallback(
-		(sessionId: string, projectId: string) => {
-			if (needsCloseConfirm(bySession[sessionId]?.status)) setClosing(sessionId);
+		(sessionId: string, projectId: string, gesture: CloseGesture) => {
+			if (needsCloseConfirm(bySession[sessionId]?.status, gesture, confirmPrefs))
+				setClosing(sessionId);
 			else closeSession(sessionId, projectId);
 		},
-		[bySession, closeSession],
+		[bySession, closeSession, confirmPrefs],
 	);
 
 	/** `arrayMove` semantics, which is what `terminalStore.reorder` already does:
@@ -280,7 +298,7 @@ interface SessionTabProps {
 	title: string;
 	isActive: boolean;
 	onOpen: (sessionId: string, projectId: string) => void;
-	onRequestClose: (sessionId: string, projectId: string) => void;
+	onRequestClose: (sessionId: string, projectId: string, gesture: CloseGesture) => void;
 	onNudge: (sessionId: string, delta: -1 | 1) => void;
 }
 
@@ -347,7 +365,7 @@ function SessionTab({
 			onAuxClick={(e) => {
 				if (e.button !== 1) return;
 				e.preventDefault();
-				onRequestClose(id, projectId);
+				onRequestClose(id, projectId, 'middle-click');
 			}}
 			onKeyDown={(e) => {
 				if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -387,7 +405,7 @@ function SessionTab({
 				onPointerDown={(e) => e.stopPropagation()}
 				onClick={(e) => {
 					e.stopPropagation();
-					onRequestClose(id, projectId);
+					onRequestClose(id, projectId, 'button');
 				}}
 			>
 				<X className="size-3.5" />

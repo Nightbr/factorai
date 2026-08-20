@@ -8,6 +8,7 @@
  */
 
 import type {
+	ClaudeCliStatus,
 	DirEntry,
 	DirListing,
 	FileContents,
@@ -24,6 +25,7 @@ import type {
 	SearchHit,
 	SessionPage,
 	SessionSummary,
+	SettingKey,
 	TerminalId,
 } from '@factorai/types';
 import type { Page } from '@playwright/test';
@@ -64,6 +66,16 @@ export interface TestFixture {
 	 *  picker behave as if it were cancelled — a native dialog can't be driven
 	 *  from a test, so this is the only way through that flow. */
 	folderPick?: string;
+	/** The `settings` table (F11). `set_setting` writes back into it, so a spec
+	 *  can Save and then assert on what the next read returns. */
+	settings?: Partial<Record<SettingKey, string>>;
+	/** What the three-tier probe finds when nothing is overridden. Omit for a
+	 *  machine with no `claude` on it, which is the browser-only default. */
+	claudeCli?: ClaudeCliStatus;
+	/** Paths that are a working `claude`, mapped to the version they report.
+	 *  Anything not listed validates as not installed — which is how a spec
+	 *  reaches the override field's inline error. */
+	claudeBinaries?: Record<string, string | null>;
 }
 
 declare global {

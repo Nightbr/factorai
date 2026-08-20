@@ -1,3 +1,5 @@
+import type { SettingKey } from '@factorai/types';
+
 export const queryKeys = {
 	projects: () => ['projects'] as const,
 	/** Folders Claude has worked in, for the import dialog. Separate from
@@ -33,4 +35,10 @@ export const queryKeys = {
 	gitGraph: (projectPath: string, page: number) => ['git-graph', projectPath, page] as const,
 	/** One commit's detail, for the pane below the graph. */
 	gitCommit: (projectPath: string, sha: string) => ['git-commit', projectPath, sha] as const,
+	/** One setting Rust reads (F11). Keyed by the setting so a second key does
+	 *  not invalidate the first — and read only while the modal is open. */
+	setting: (key: SettingKey) => ['setting', key] as const,
+	/** Where `claude` is and what version it reports. Invalidated when the
+	 *  override is saved, since the answer depends on it. */
+	claudeCli: () => ['claude-cli'] as const,
 };
