@@ -114,6 +114,21 @@ pub struct IdeOpenFileEvent {
 	pub frontmost: bool,
 }
 
+/// The checkout a session is working in, after a bridge signal (F21).
+///
+/// Emitted **after** the row is written, never before: the renderer's job is to
+/// render a fact, and an event that arrives ahead of its row is a fact the next
+/// reload disagrees with.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionWorktreeEvent {
+	pub session_id: String,
+	pub path: String,
+	/// The checkout's own branch, for the header badge. `None` on a detached
+	/// HEAD, exactly as `GitStatus::branch` is.
+	pub branch: Option<String>,
+}
+
 /// Where this session's bridge stands (F20).
 ///
 /// **The header shows nothing while this is healthy.** A badge for a working
@@ -173,6 +188,22 @@ type BinaryOverrideCb = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
 /// Answers "where does this session's transcript say it was running?" — see
 /// `TerminalManager::session_cwd`.
 type SessionCwdCb = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
+type WorktreeCb = Arc<dyn Fn(SessionWorktreeEvent) + Send + Sync>;
+
+/// Reading and writing which checkout a session is working in (F21).
+///
+/// A pair of closures for the reason `session_cwd` is one: the manager needs the
+/// `session_worktrees` table and should not hold a database. Absent in
+/// `with_callbacks`, where a signal is still emitted but not remembered — which
+/// is the shape every test runs in.
+pub type WorktreeGet = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
+pub type WorktreeSet = Arc<dyn Fn(&str, &Path) + Send + Sync>;
+
+#[derive(Clone)]
+pub struct WorktreeStore {
+	pub get: WorktreeGet,
+	pub set: WorktreeSet,
+}
 
 struct TerminalHandle {
 	session_id: String,
@@ -236,6 +267,10 @@ pub struct TerminalManager {
 	/// caller named has to be spawned where the transcript is, or `session_flag`
 	/// claims an id Claude already knows and the conversation is lost.
 	session_cwd: Option<SessionCwdCb>,
+	/// Which checkout each session is working in (F21). `None` means a signal is
+	/// still emitted but not remembered.
+	worktree_store: Option<WorktreeStore>,
+	on_worktree: WorktreeCb,
 	/// What the renderer has on screen, for the bridge's answers (F20).
 	ui: Arc<UiState>,
 	on_ide_open: IdeOpenCb,
@@ -248,7 +283,8 @@ impl TerminalManager {
 		let app_status = app.clone();
 		let app_exit = app.clone();
 		let app_ide = app.clone();
-		let app_ide_status = app;
+		let app_ide_status = app.clone();
+		let app_worktree = app;
 		Self {
 			terminals: Arc::new(DashMap::new()),
 			claude_dir,
@@ -271,6 +307,10 @@ impl TerminalManager {
 			binary_override: None,
 			user_binary: None,
 			session_cwd: None,
+			worktree_store: None,
+			on_worktree: Arc::new(move |e| {
+				let _ = app_worktree.emit("session:worktree", e);
+			}),
 		}
 	}
 
@@ -289,19 +329,30 @@ impl TerminalManager {
 			binary_override: None,
 			user_binary: None,
 			session_cwd: None,
+			worktree_store: None,
+			on_worktree: Arc::new(|_| {}),
 			ui: Arc::new(UiState::default()),
 			on_ide_open: Arc::new(|_| {}),
 			on_ide_status: Arc::new(|_| {}),
 		}
 	}
 
-	/// Where to read the user's configured binary path from, per spawn (F11).
-	/// Wired to the `settings` table in `lib.rs`.
+	/// Where to read a session's recorded cwd from, per spawn. Wired to the
+	/// `sessions` table in `lib.rs`; `resume_cwd` is what it is for.
 	pub fn with_session_cwd(mut self, cb: SessionCwdCb) -> Self {
 		self.session_cwd = Some(cb);
 		self
 	}
 
+	/// Where to read and write a session's checkout (F21). Wired to
+	/// `session_worktrees` in `lib.rs`.
+	pub fn with_worktree_store(mut self, store: WorktreeStore) -> Self {
+		self.worktree_store = Some(store);
+		self
+	}
+
+	/// Where to read the user's configured binary path from, per spawn (F11).
+	/// Wired to the `settings` table in `lib.rs`.
 	pub fn with_user_binary(mut self, cb: BinaryOverrideCb) -> Self {
 		self.user_binary = Some(cb);
 		self
@@ -359,9 +410,14 @@ impl TerminalManager {
 			));
 		}
 
-		let root = handle.cwd.clone();
+		// **The same scope the bridge's own answers use** (F21), not the cwd alone.
+		// The human can browse a worktree in the panel and send a file from it, and
+		// a boundary that refuses the files the tree is showing turns the gesture
+		// into an error in exactly the case the feature exists for.
+		let mut roots = vec![handle.cwd.clone()];
+		roots.extend(crate::services::git::worktree_paths(&handle.cwd.to_string_lossy()));
 		for mention in mentions {
-			let path = scope::resolve_within(&root, &mention.path)?;
+			let path = scope::resolve_within_any(&roots, &mention.path)?;
 			server.notify(protocol::at_mentioned(&path, mention));
 		}
 		Ok(())
@@ -446,8 +502,52 @@ impl TerminalManager {
 		let on_open = self.on_ide_open.clone();
 		let session = session_id.to_string();
 
+		// **The path scope, and it is derived from git rather than from anything the
+		// client sends** (ADR-0019 § 2). Recomputed on every resolve, so a worktree
+		// the agent created a second ago is inside it — which a set captured here
+		// at connect time would refuse.
+		let scope_cwd = cwd.to_path_buf();
+		let checkouts: Arc<dyn Fn() -> Vec<PathBuf> + Send + Sync> =
+			Arc::new(move || crate::services::git::worktree_paths(&scope_cwd.to_string_lossy()));
+
+		// The signal path: persist first, then emit. A renderer told about a
+		// checkout that was never written would disagree with itself on reload.
+		let signal_session = session_id.to_string();
+		let signal_store = self.worktree_store.as_ref().map(|s| s.set.clone());
+		let on_worktree = self.on_worktree.clone();
+		let signal: Arc<dyn Fn(&Path) + Send + Sync> = Arc::new(move |checkout: &Path| {
+			if let Some(set) = &signal_store {
+				set(&signal_session, checkout);
+			}
+			(on_worktree)(SessionWorktreeEvent {
+				session_id: signal_session.clone(),
+				path: checkout.to_string_lossy().into_owned(),
+				branch: crate::services::git::worktrees(&checkout.to_string_lossy()).ok().and_then(
+					|wts| {
+						let target = std::fs::canonicalize(checkout)
+							.unwrap_or_else(|_| checkout.to_path_buf());
+						wts.into_iter()
+							.find(|w| Path::new(&w.path) == target)
+							.and_then(|w| w.branch)
+					},
+				),
+			});
+		});
+
+		let current_session = session_id.to_string();
+		let current_store = self.worktree_store.as_ref().map(|s| s.get.clone());
+		let current_cwd = cwd.to_path_buf();
+		// `None` when the panel is simply showing this session's own cwd, so
+		// `getWorkspaceFolders` reports a `viewing` line only when there is
+		// something to report.
+		let current: Arc<dyn Fn() -> Option<PathBuf> + Send + Sync> = Arc::new(move || {
+			let recorded = current_store.as_ref().and_then(|get| get(&current_session))?;
+			(recorded != current_cwd).then_some(recorded)
+		});
+
 		let mcp = Mcp::new(
 			cwd.to_path_buf(),
+			protocol::Worktrees { checkouts, signal, current },
 			Arc::new(move |req| {
 				// The agent may ask not to be intrusive, and the human may be
 				// looking at something else. Either is enough to mark rather than

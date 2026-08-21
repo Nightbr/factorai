@@ -1,14 +1,15 @@
-//! Small reads of the `sessions` table that something outside the command layer
-//! needs.
+//! Reads and writes of a session's own rows that something outside the command
+//! layer needs.
 //!
-//! Today there is exactly one, and it exists for the same reason
-//! `settings::claude_binary_override` does: `TerminalManager` needs an answer
-//! from a database it should not hold, so it takes a callback and this is what
-//! the callback closes over. See its `session_cwd` field.
+//! Both callers are `TerminalManager`, and both exist for the same reason
+//! `settings::claude_binary_override` does: the manager needs a database it
+//! should not hold, so it takes callbacks and these are what they close over.
+//! See its `session_cwd` and `session_worktree` fields.
 
 use std::path::PathBuf;
 
 use crate::db::Db;
+use crate::error::AppResult;
 
 /// The cwd recorded in a session's transcript, as the indexer saw it.
 ///
@@ -31,6 +32,50 @@ pub fn recorded_cwd(db: &Db, session_id: &str) -> Option<PathBuf> {
 	.ok()
 	.flatten()
 	.map(PathBuf::from)
+}
+
+/// Record which checkout of its repository a session is working in (F21).
+///
+/// **Only the IDE bridge's signal path calls this**, after the path has been
+/// validated against the repository's real worktree list — the table is a record
+/// of what the agent said, and the validation is what makes it worth recording.
+///
+/// A failure is returned rather than swallowed, unlike the reads above: this one
+/// is the durable half of a signal whose event is about to be emitted, and
+/// emitting after a write that silently failed is how the renderer comes to show
+/// a checkout the next reload disagrees with.
+pub fn set_worktree(db: &Db, session_id: &str, path: &str, now_ms: i64) -> AppResult<()> {
+	db.with(|conn| {
+		conn.execute(
+			"INSERT INTO session_worktrees(session_id, path, updated_at)
+			 VALUES (?1, ?2, ?3)
+			 ON CONFLICT(session_id) DO UPDATE SET path = excluded.path,
+			                                       updated_at = excluded.updated_at",
+			rusqlite::params![session_id, path, now_ms],
+		)?;
+		Ok(())
+	})
+}
+
+/// The checkout recorded for a session, if any.
+///
+/// **Not re-validated here.** A row is a record, not a guarantee: the checkout it
+/// names can be removed while the row survives, so the caller checks it against
+/// git and falls back. Doing that inside this function would put a `git` call
+/// behind what reads like a column read.
+pub fn worktree(db: &Db, session_id: &str) -> Option<String> {
+	db.with(|conn| {
+		let path: Option<String> = conn
+			.query_row(
+				"SELECT path FROM session_worktrees WHERE session_id = ?1",
+				[session_id],
+				|row| row.get(0),
+			)
+			.ok();
+		Ok(path)
+	})
+	.ok()
+	.flatten()
 }
 
 #[cfg(test)]
@@ -82,6 +127,43 @@ mod tests {
 		let (_tmp, db) = db();
 		insert_session(&db, "s1", None);
 		assert_eq!(recorded_cwd(&db, "s1"), None);
+	}
+
+	#[test]
+	fn a_worktree_round_trips_and_the_latest_signal_wins() {
+		let (_tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+
+		set_worktree(&db, "s1", "/wt/feature-x", 10).unwrap();
+		assert_eq!(worktree(&db, "s1").as_deref(), Some("/wt/feature-x"));
+
+		// The agent moved again. One row per session, not a history.
+		set_worktree(&db, "s1", "/wt/hotfix", 20).unwrap();
+		assert_eq!(worktree(&db, "s1").as_deref(), Some("/wt/hotfix"));
+	}
+
+	#[test]
+	fn a_session_with_no_signal_has_no_worktree() {
+		let (_tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+		assert_eq!(worktree(&db, "s1"), None);
+	}
+
+	#[test]
+	fn the_row_goes_when_the_session_does() {
+		let (_tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+		set_worktree(&db, "s1", "/wt/feature-x", 10).unwrap();
+
+		// ON DELETE CASCADE, and `foreign_keys` is ON — a reindex that drops a
+		// session must not leave its checkout behind to be handed to the next
+		// session that reuses the id.
+		db.with(|conn| {
+			conn.execute("DELETE FROM sessions WHERE id = 's1'", []).unwrap();
+			Ok(())
+		})
+		.unwrap();
+		assert_eq!(worktree(&db, "s1"), None);
 	}
 
 	#[test]

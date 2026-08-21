@@ -342,6 +342,40 @@ pub struct GitStatus {
 	pub truncated: bool,
 }
 
+// ── Worktrees (F21) ────────────────────────────────────────────────────────
+
+/// One checkout of a repository — the main one or a linked worktree.
+///
+/// **Every checkout git knows is a row, including the broken ones.** `locked`,
+/// `prunable` and `exists: false` are reported rather than filtered, because a
+/// session whose cwd is inside a checkout we hid resolves somewhere else with
+/// nothing on screen saying why (F21, ADR-0019).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktree {
+	/// Absolute path of the checkout's working directory.
+	pub path: String,
+	/// Git's own name for a linked worktree — the directory under
+	/// `.git/worktrees/`. `None` for the main checkout, which has no such entry.
+	pub name: Option<String>,
+	/// Short branch name at this checkout's HEAD. `None` on a detached HEAD or an
+	/// unborn branch, exactly as `GitStatus::branch` is.
+	pub branch: Option<String>,
+	/// Full SHA this checkout's HEAD resolves to, `None` on an unborn branch.
+	pub head: Option<String>,
+	/// The repository's main working tree, as opposed to a linked worktree. A
+	/// bare repository has none and so contributes no row at all.
+	pub is_main: bool,
+	/// `git worktree lock` was used on it. Reported, not acted on: we never
+	/// write to git (ADR-0009 § 4 of ADR-0019).
+	pub locked: bool,
+	/// Git considers the entry prunable — usually because its directory is gone.
+	pub prunable: bool,
+	/// The working directory is on disk. `false` is a checkout you can still see
+	/// in the list but cannot be shown, and `set_worktree` refuses it.
+	pub exists: bool,
+}
+
 // ── The graph (F18) ────────────────────────────────────────────────────────
 
 /// What kind of ref points at a commit, which is what decides its chip.

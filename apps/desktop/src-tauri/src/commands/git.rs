@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::models::{FileContents, GitCommitDetail, GitGraph, GitRev, GitStatus};
+use crate::models::{FileContents, GitCommitDetail, GitGraph, GitRev, GitStatus, GitWorktree};
 use crate::services::git;
 
 /// Repository state for the Changes tab and the tree's decorations (F13).
@@ -62,4 +62,16 @@ pub fn git_blob_at(
 	max_bytes: Option<usize>,
 ) -> AppResult<Option<FileContents>> {
 	git::blob_at(&path, &commit, max_bytes)
+}
+
+/// Every checkout of the repository this project sits in — the main working tree
+/// and every linked worktree (F21).
+///
+/// **Not filtered.** A locked, prunable or missing checkout is a row with those
+/// flags set, because a checkout hidden from the list is one the human cannot
+/// reason about when a session resolves to it. An empty vector means "not a
+/// repository", the same success `git_status` reports as `repoRoot: None`.
+#[tauri::command]
+pub fn git_worktrees(project_path: String) -> AppResult<Vec<GitWorktree>> {
+	git::worktrees(&project_path)
 }

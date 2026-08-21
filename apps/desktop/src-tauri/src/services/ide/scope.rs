@@ -34,6 +34,26 @@ use crate::error::{AppError, AppResult};
 /// Relative paths are refused outright. The protocol sends absolute ones, and
 /// there is no working directory here that a relative path would sensibly mean.
 pub fn resolve_within(root: &Path, requested: &str) -> AppResult<PathBuf> {
+	resolve_within_any(std::slice::from_ref(&root.to_path_buf()), requested)
+}
+
+/// Resolve `requested` and confirm it is inside **one of** `roots`.
+///
+/// This is the primitive; [`resolve_within`] is the one-root case. The set is
+/// every checkout of the session's repository plus the session's own cwd —
+/// derived from git in `services::git::worktree_paths`, never from anything the
+/// client sent, which is the whole of ADR-0019 § 2. An agent naming a path does
+/// not put it in scope; git saying "that is a checkout of this repository" does.
+///
+/// **Recomputed by the caller on every resolve, not cached.** A worktree the
+/// agent created a second ago is exactly the case the feature exists for, and a
+/// set captured at connect time would refuse it.
+///
+/// An **empty** set refuses everything. That is the correct direction to fail
+/// in, and it is why the session's own cwd is always in the set — a project that
+/// is not a repository has no checkouts, and it must keep working exactly as it
+/// did before any of this.
+pub fn resolve_within_any(roots: &[PathBuf], requested: &str) -> AppResult<PathBuf> {
 	let requested = Path::new(requested);
 	if !requested.is_absolute() {
 		return Err(AppError::InvalidInput(format!(
@@ -42,12 +62,16 @@ pub fn resolve_within(root: &Path, requested: &str) -> AppResult<PathBuf> {
 		)));
 	}
 
-	let root = root
-		.canonicalize()
-		.map_err(|e| AppError::InvalidInput(format!("project root is unreadable: {e}")))?;
+	// A root we cannot canonicalise is dropped rather than fatal: with several
+	// roots, one checkout being unreadable must not take the others down with
+	// it. All of them unreadable lands in the same refusal as none at all.
+	let roots: Vec<PathBuf> = roots.iter().filter_map(|r| r.canonicalize().ok()).collect();
+	if roots.is_empty() {
+		return Err(AppError::InvalidInput("no readable project root".into()));
+	}
 	let resolved = canonicalize_lexically_deep(requested)?;
 
-	if !resolved.starts_with(&root) {
+	if !roots.iter().any(|root| resolved.starts_with(root)) {
 		// Deliberately terse, and deliberately the same message whether the path
 		// exists or not: a refusal that distinguishes the two is a probe for
 		// what is on this disk.
@@ -57,6 +81,19 @@ pub fn resolve_within(root: &Path, requested: &str) -> AppResult<PathBuf> {
 		)));
 	}
 	Ok(resolved)
+}
+
+/// Which of `roots` contains `path`, longest match first.
+///
+/// Used to answer "which checkout is the agent working in" from a path it just
+/// sent (F21). Longest wins because a checkout nested inside another — legal,
+/// if unusual — would otherwise resolve to its parent.
+pub fn containing_root(roots: &[PathBuf], path: &Path) -> Option<PathBuf> {
+	roots
+		.iter()
+		.filter(|root| path.starts_with(root))
+		.max_by_key(|root| root.as_os_str().len())
+		.cloned()
 }
 
 /// Canonicalise as much of `path` as exists, then append the rest.

@@ -21,6 +21,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// is keyed by name in `_meta`, so a rename re-runs it, and
 	// `ALTER TABLE ... ADD COLUMN` is not idempotent.
 	("0005_session_subagent", include_str!("migrations/0005_session_subagent.sql")),
+	("0006_session_worktrees", include_str!("migrations/0006_session_worktrees.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

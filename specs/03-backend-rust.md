@@ -156,8 +156,8 @@ git_blob(path: String, rev: GitRev) -> Option<FileContents>           // rev = h
 git_graph(project_path: String, offset: usize, limit: usize) -> GitGraph   // lanes assigned in Rust
 git_commit(project_path: String, sha: String) -> Option<GitCommitDetail>   // body + changed files
 git_blob_at(path: String, commit: String, max_bytes: Option<usize>) -> Option<FileContents>
-// worktrees (F21) — PLANNED, not registered (roadmap item 37, ADR-0019).
-// Every checkout git knows, main and linked. Read-only like the rest.
+// worktrees (F21, ADR-0019). Every checkout git knows, main and linked.
+// Read-only like the rest, and it doubles as the IDE bridge's path scope.
 git_worktrees(project_path: String) -> Vec<GitWorktree>
 
 // memory / plans — PLANNED. None of these are registered yet (roadmap item 2).
@@ -754,19 +754,27 @@ it into a string-or-object union to carry a SHA churns every existing call site
 and both sides of a hand-mirrored type (§ IPC) to serve one new caller. `None`
 follows `git_blob`'s rule — a file absent at that commit is an answer.
 
-#### Worktrees (F21) — planned
+#### Worktrees (F21)
 
 `git_worktrees(project_path) -> Vec<GitWorktree>` returns **every checkout the
 repository knows**, main and linked, each with `path`, `branch`, `head`,
-`isMain`, `locked`, `prunable` and `exists`. Not registered yet — roadmap item
-37, and [ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md)
-is what it is allowed to do.
+`isMain`, `locked`, `prunable` and `exists`. Shipped 2026-08-21;
+[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) is what it
+is allowed to do.
 
 - **Keyed by the repository, not by the project.** Discovery is
   `Repository::discover()` from the project root exactly as `git_status` does,
   and the set is then read off that repository — so a project that *is* a linked
   worktree returns the same set as one that is the main checkout. Symmetry is
   the point: it is the same repository whichever door you came in by.
+- **The main checkout is found from `commondir`, not from the worktree list.**
+  libgit2's `worktrees()` lists only the *linked* ones, so the main tree has no
+  entry to read; for a linked worktree the repository's `commondir` is the main
+  repository's `.git`, whose parent is the main checkout. That is what makes the
+  symmetry above one `parent()` rather than a second `Repository::open`.
+- A sibling `worktree_paths()` returns just the paths, for the bridge — which
+  asks per resolve and has no use for branches, locks or SHAs, each of which
+  costs a `Repository::open` of the checkout.
 - **Nothing is filtered.** `locked` and `prunable` are reported rather than
   hidden, and a checkout whose directory is gone comes back with `exists:
   false`. Filtering the unusable ones means a session whose cwd is inside one

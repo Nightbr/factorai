@@ -23,7 +23,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tracing::{debug, warn};
 
-use super::scope::resolve_within;
+use super::scope::{containing_root, resolve_within_any};
 
 /// JSON-RPC's own codes. Tool *failures* do not use these — see
 /// [`tool_error`] for why.
@@ -52,6 +52,27 @@ pub type OpenFile = Arc<dyn Fn(OpenFileRequest) -> bool + Send + Sync>;
 
 /// Absolute paths the human currently has open, for `getOpenEditors`.
 pub type OpenEditors = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
+
+/// What this session's bridge knows about its repository's checkouts (F21).
+///
+/// Three closures rather than three values, because all three change while the
+/// session runs: the agent can create a worktree, and the panel can be moved by
+/// a signal that arrived a moment ago.
+pub struct Worktrees {
+	/// Every checkout of this session's repository, **re-derived from git on
+	/// every call**. This is the path scope, and ADR-0019 § 2 is why it can never
+	/// be anything the client supplied.
+	pub checkouts: Arc<dyn Fn() -> Vec<PathBuf> + Send + Sync>,
+	/// Record that the agent is working in this checkout — persist it and tell
+	/// the renderer. Already validated by the caller: this is the write, not the
+	/// decision.
+	pub signal: Arc<dyn Fn(&Path) + Send + Sync>,
+	/// The checkout the panel is showing for this session, when it is not simply
+	/// the session's own cwd. Reported by `getWorkspaceFolders` as a second,
+	/// labelled line — never as *the* answer, because the PTY's cwd has not moved
+	/// and an agent told otherwise will edit the wrong tree.
+	pub current: Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>,
+}
 
 /// A file — or a run of lines in one — the human is handing to the agent (F20).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -97,14 +118,35 @@ pub fn at_mentioned(path: &Path, mention: &Mention) -> String {
 
 /// One session's view of the protocol.
 pub struct Mcp {
-	workspace_root: PathBuf,
+	/// Where this session's PTY is actually running. Always in scope, and always
+	/// the first thing `getWorkspaceFolders` reports — it is the honest answer to
+	/// "where am I", whatever the panel is showing.
+	session_cwd: PathBuf,
+	worktrees: Worktrees,
 	open_file: OpenFile,
 	open_editors: OpenEditors,
 }
 
 impl Mcp {
-	pub fn new(workspace_root: PathBuf, open_file: OpenFile, open_editors: OpenEditors) -> Self {
-		Self { workspace_root, open_file, open_editors }
+	pub fn new(
+		session_cwd: PathBuf,
+		worktrees: Worktrees,
+		open_file: OpenFile,
+		open_editors: OpenEditors,
+	) -> Self {
+		Self { session_cwd, worktrees, open_file, open_editors }
+	}
+
+	/// The path scope: the session's cwd, plus every checkout of its repository.
+	///
+	/// **The cwd is in the set unconditionally**, and that is not belt-and-braces.
+	/// A project that is not a repository has no checkouts at all, so without it
+	/// the scope would be empty and every `openFile` would be refused — F20,
+	/// broken for exactly the projects this feature has nothing to do with.
+	fn scope(&self) -> Vec<PathBuf> {
+		let mut roots = vec![self.session_cwd.clone()];
+		roots.extend((self.worktrees.checkouts)());
+		roots
 	}
 
 	/// Answer one message. `None` for a notification, which by definition is
@@ -189,14 +231,90 @@ impl Mcp {
 
 		match name {
 			"openFile" => Ok(self.open_file(&args)),
-			"getWorkspaceFolders" => Ok(tool_text(
-				&json!({ "folders": [self.workspace_root.to_string_lossy()] }).to_string(),
-			)),
+			"getWorkspaceFolders" => Ok(self.workspace_folders()),
+			"setWorktree" => Ok(self.set_worktree(&args)),
 			"getOpenEditors" => {
 				Ok(tool_text(&json!({ "editors": (self.open_editors)() }).to_string()))
 			}
 			other => Err(Failure::rpc(METHOD_NOT_FOUND, format!("no such tool: {other}"))),
 		}
+	}
+
+	/// Where this session is, and what the human is looking at — as two separate
+	/// facts (F21).
+	///
+	/// **`cwd` first and `viewing` labelled second, never merged.** The panel can
+	/// be showing another checkout while the PTY's cwd has not moved; an agent
+	/// told that the *view* is its workspace would run `git` in one tree and edit
+	/// another. `folders` keeps its old shape and its old meaning so an agent that
+	/// only reads that key sees no change.
+	///
+	/// It is also where the concept is advertised: this is the tool `claude` calls
+	/// early, so listing the checkouts here is how an agent discovers there is a
+	/// `setWorktree` worth calling.
+	fn workspace_folders(&self) -> Value {
+		let cwd = self.session_cwd.to_string_lossy().to_string();
+		let checkouts: Vec<String> =
+			(self.worktrees.checkouts)().iter().map(|p| p.to_string_lossy().to_string()).collect();
+		let viewing = (self.worktrees.current)().map(|p| p.to_string_lossy().to_string());
+		tool_text(
+			&json!({
+				"folders": [cwd.clone()],
+				"cwd": cwd,
+				"worktrees": checkouts,
+				"viewing": viewing,
+				"hint": "Call setWorktree when you start working in a different git \
+						 worktree, so factorai's file tree and changes follow you.",
+			})
+			.to_string(),
+		)
+	}
+
+	/// The agent telling us which checkout it is working in (F21).
+	///
+	/// **Validated against git, not against the string.** The path has to be — or
+	/// be inside — a checkout `services::git` enumerated for this repository.
+	/// Being liberal about "inside" costs nothing, because the containment set is
+	/// git-derived: an agent that sends a file path gets the checkout that holds
+	/// it, and an agent that sends `/etc` gets a refusal.
+	///
+	/// A refusal is a **tool error**, not a JSON-RPC error: the call was
+	/// well-formed and the answer is no.
+	///
+	/// This moves what the panel *shows* and nothing else. It does not widen the
+	/// scope — the scope was already every checkout of this repository — which is
+	/// what keeps the validator a UX check rather than a security boundary
+	/// (ADR-0019 § 2).
+	fn set_worktree(&self, args: &Value) -> Value {
+		let Some(requested) = args.get("path").and_then(Value::as_str) else {
+			return tool_error("setWorktree needs a path");
+		};
+		let checkouts = (self.worktrees.checkouts)();
+		if checkouts.is_empty() {
+			return tool_error("this session's project is not in a git repository");
+		}
+		// Resolved against the checkouts alone — deliberately *not* `scope()`. The
+		// session's cwd is in scope so files can be opened there, but a cwd that
+		// is not itself a checkout is not somewhere the panel can be rooted.
+		let resolved = match resolve_within_any(&checkouts, requested) {
+			Ok(p) => p,
+			Err(_) => {
+				warn!(requested, "ide bridge refused a setWorktree outside the repository");
+				return tool_error(&format!(
+					"{requested} is not a worktree of this repository. Known worktrees: {}",
+					checkouts.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>().join(", ")
+				));
+			}
+		};
+		let Some(checkout) = containing_root(&checkouts, &resolved) else {
+			return tool_error(&format!("{requested} is not a worktree of this repository"));
+		};
+		if !checkout.is_dir() {
+			return tool_error(&format!("{} is registered but not on disk", checkout.display()));
+		}
+
+		(self.worktrees.signal)(&checkout);
+		tool_text(&format!("factorai is now showing {}", checkout.display()))
 	}
 
 	fn open_file(&self, args: &Value) -> Value {
@@ -205,7 +323,7 @@ impl Mcp {
 		};
 
 		// The boundary. Everything else in this function is bookkeeping.
-		let path = match resolve_within(&self.workspace_root, requested) {
+		let path = match resolve_within_any(&self.scope(), requested) {
 			Ok(p) => p,
 			Err(e) => {
 				warn!(requested, error = %e, "ide bridge refused a path outside the project");
@@ -214,6 +332,15 @@ impl Mcp {
 		};
 		if !path.is_file() {
 			return tool_error(&format!("no such file: {}", path.display()));
+		}
+
+		// **The path is itself a signal** (F21). An agent opening a file in a
+		// checkout is telling us where it works, and it costs nothing to listen —
+		// which matters because F20's conformance pass records that a tool call
+		// from the real CLI is still unobserved, so this is the half that works
+		// with zero uptake of `setWorktree`.
+		if let Some(checkout) = containing_root(&(self.worktrees.checkouts)(), &path) {
+			(self.worktrees.signal)(&checkout);
 		}
 
 		// `startText`/`endText` are the protocol's other way to name a
@@ -249,7 +376,7 @@ impl Mcp {
 	}
 }
 
-/// The three we answer. `getDiagnostics` is absent on purpose — see the module
+/// The four we answer. `getDiagnostics` is absent on purpose — see the module
 /// comment; it is the one omission here that is a decision rather than a gap.
 fn tools_list() -> Value {
 	json!({
@@ -283,6 +410,31 @@ fn tools_list() -> Value {
 				"name": "getOpenEditors",
 				"description": "Files the human currently has open in factorai.",
 				"inputSchema": { "type": "object", "properties": {} },
+			},
+			// **Advertised unconditionally, even for a repository with one
+			// checkout** (F21). `tools/list` is fetched once at connect, so gating
+			// this on "more than one worktree exists" would leave the agent holding
+			// a list without the tool at the exact moment it creates the second one.
+			{
+				"name": "setWorktree",
+				"description": "Tell factorai which git worktree you are working in, so its \
+								file tree, changes and git graph follow you. Call this after \
+								creating a worktree with `git worktree add`, or whenever you \
+								start editing files in a different checkout of this \
+								repository. Call getWorkspaceFolders to see the checkouts \
+								that exist.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "Absolute path of the worktree — or of any file \
+											inside it. Must be a checkout of this session's \
+											repository.",
+						},
+					},
+					"required": ["path"],
+				},
 			},
 		]
 	})
@@ -341,6 +493,7 @@ mod tests {
 	use std::sync::Arc;
 
 	use parking_lot::Mutex;
+	use std::fs;
 	use tempfile::TempDir;
 
 	use super::*;
@@ -349,21 +502,37 @@ mod tests {
 		project: TempDir,
 		mcp: Mcp,
 		opened: Arc<Mutex<Vec<OpenFileRequest>>>,
+		/// Every checkout the bridge was told the agent is working in (F21).
+		signalled: Arc<Mutex<Vec<PathBuf>>>,
 	}
 
 	fn fixture(accepts: bool) -> Fixture {
+		fixture_with_checkouts(accepts, Vec::new())
+	}
+
+	/// `checkouts` stands in for `services::git::worktree_paths` — the git-derived
+	/// set. Empty is the ordinary case: a project that is not a repository, where
+	/// nothing about F21 applies and F20 has to keep working unchanged.
+	fn fixture_with_checkouts(accepts: bool, checkouts: Vec<PathBuf>) -> Fixture {
 		let project = TempDir::new().unwrap();
 		let opened = Arc::new(Mutex::new(Vec::new()));
+		let signalled: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
 		let sink = opened.clone();
+		let signal_sink = signalled.clone();
 		let mcp = Mcp::new(
 			project.path().to_path_buf(),
+			Worktrees {
+				checkouts: Arc::new(move || checkouts.clone()),
+				signal: Arc::new(move |p| signal_sink.lock().push(p.to_path_buf())),
+				current: Arc::new(|| None),
+			},
 			Arc::new(move |req| {
 				sink.lock().push(req);
 				accepts
 			}),
 			Arc::new(|| vec!["/p/open.rs".to_string()]),
 		);
-		Fixture { project, mcp, opened }
+		Fixture { project, mcp, opened, signalled }
 	}
 
 	fn call(mcp: &Mcp, method: &str, params: Value) -> Value {
@@ -412,6 +581,213 @@ mod tests {
 		assert!(f.mcp.handle("{}").is_none(), "no method means nothing to answer");
 	}
 
+	// ── Worktrees (F21, ADR-0019 § 2) ────────────────────────────────────────
+
+	/// A checkout with one file in it, standing in for a linked worktree.
+	fn checkout(name: &str) -> (TempDir, PathBuf) {
+		let dir = TempDir::new().unwrap();
+		let root = dir.path().join(name);
+		fs::create_dir_all(&root).unwrap();
+		fs::write(root.join("a.rs"), "fn main() {}").unwrap();
+		(dir, root)
+	}
+
+	#[test]
+	fn openfile_reaches_a_sibling_checkout_of_the_same_repository() {
+		// The live bug this closes: today the scope is the project folder alone, so
+		// an agent editing in a worktree cannot open a single file (F20's `Bridge`
+		// warning) — every request refused.
+		let (_home, wt) = checkout("feature-x");
+		let f = fixture_with_checkouts(true, vec![wt.clone()]);
+		let reply = call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "openFile",
+			        "arguments": { "filePath": wt.join("a.rs").to_string_lossy() } }),
+		);
+
+		let (text, is_error) = tool_result(&reply);
+		assert!(!is_error, "{text}");
+		assert_eq!(f.opened.lock().len(), 1);
+	}
+
+	#[test]
+	fn openfile_still_refuses_a_directory_that_is_not_a_checkout() {
+		// The boundary did not move for anything git does not call a checkout of
+		// this repository. A sibling *directory* is not a sibling *worktree*.
+		let (home, wt) = checkout("feature-x");
+		let stranger = home.path().join("not-a-worktree");
+		fs::create_dir_all(&stranger).unwrap();
+		fs::write(stranger.join("secret.txt"), "x").unwrap();
+
+		let f = fixture_with_checkouts(true, vec![wt]);
+		let reply = call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "openFile",
+			        "arguments": { "filePath": stranger.join("secret.txt").to_string_lossy() } }),
+		);
+
+		let (text, is_error) = tool_result(&reply);
+		assert!(is_error, "{text}");
+		assert!(f.opened.lock().is_empty());
+	}
+
+	#[test]
+	fn openfile_in_a_checkout_signals_it() {
+		// The half that works with zero uptake of `setWorktree`: the agent is
+		// already sending absolute paths, and a path in a checkout is it telling
+		// us where it works.
+		let (_home, wt) = checkout("feature-x");
+		let f = fixture_with_checkouts(true, vec![wt.clone()]);
+		call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "openFile",
+			        "arguments": { "filePath": wt.join("a.rs").to_string_lossy() } }),
+		);
+
+		assert_eq!(f.signalled.lock().as_slice(), [wt.canonicalize().unwrap()]);
+	}
+
+	#[test]
+	fn openfile_in_a_project_with_no_checkouts_signals_nothing() {
+		// A project that is not a repository. F20 must behave exactly as it did.
+		let f = fixture(true);
+		let file = f.project.path().join("a.rs");
+		fs::write(&file, "x").unwrap();
+		let reply = call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "openFile", "arguments": { "filePath": file.to_string_lossy() } }),
+		);
+
+		let (text, is_error) = tool_result(&reply);
+		assert!(!is_error, "{text}");
+		assert!(f.signalled.lock().is_empty(), "nothing to signal, so nothing signalled");
+	}
+
+	#[test]
+	fn setworktree_accepts_a_checkout_and_a_path_inside_one() {
+		let (_home, wt) = checkout("feature-x");
+		let f = fixture_with_checkouts(true, vec![wt.clone()]);
+
+		let reply = call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "setWorktree", "arguments": { "path": wt.to_string_lossy() } }),
+		);
+		let (text, is_error) = tool_result(&reply);
+		assert!(!is_error, "{text}");
+
+		// Liberal about "inside" on purpose: it costs nothing, because the
+		// containment set is git-derived rather than client-supplied.
+		call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "setWorktree",
+			        "arguments": { "path": wt.join("a.rs").to_string_lossy() } }),
+		);
+
+		let signalled = f.signalled.lock();
+		assert_eq!(signalled.len(), 2);
+		assert!(signalled.iter().all(|p| *p == wt.canonicalize().unwrap()));
+	}
+
+	#[test]
+	fn setworktree_refuses_anything_git_does_not_call_a_checkout() {
+		let (_home, wt) = checkout("feature-x");
+		let f = fixture_with_checkouts(true, vec![wt]);
+		let reply = call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "setWorktree", "arguments": { "path": "/etc" } }),
+		);
+
+		let (text, is_error) = tool_result(&reply);
+		assert!(is_error);
+		assert!(text.contains("not a worktree"), "{text}");
+		// And the refusal names what *is* known, so the agent can retry usefully
+		// rather than guess again.
+		assert!(text.contains("feature-x"), "{text}");
+		assert!(f.signalled.lock().is_empty());
+	}
+
+	#[test]
+	fn setworktree_refuses_the_session_cwd_when_it_is_not_itself_a_checkout() {
+		// The cwd is in scope so files can be opened there. That does not make it
+		// somewhere the panel can be rooted — `set_worktree` resolves against the
+		// checkouts alone, deliberately not `scope()`.
+		let (_home, wt) = checkout("feature-x");
+		let f = fixture_with_checkouts(true, vec![wt]);
+		let reply = call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "setWorktree",
+			        "arguments": { "path": f.project.path().to_string_lossy() } }),
+		);
+
+		assert!(tool_result(&reply).1);
+	}
+
+	#[test]
+	fn setworktree_in_a_project_with_no_repository_says_so() {
+		let f = fixture(true);
+		let reply = call(
+			&f.mcp,
+			"tools/call",
+			json!({ "name": "setWorktree", "arguments": { "path": "/anywhere" } }),
+		);
+		let (text, is_error) = tool_result(&reply);
+		assert!(is_error);
+		assert!(text.contains("not in a git repository"), "{text}");
+	}
+
+	#[test]
+	fn workspace_folders_names_the_cwd_and_lists_the_checkouts() {
+		let (_home, wt) = checkout("feature-x");
+		let f = fixture_with_checkouts(true, vec![wt.clone()]);
+		let reply = call(&f.mcp, "tools/call", json!({ "name": "getWorkspaceFolders" }));
+		let (text, _) = tool_result(&reply);
+		let body: Value = serde_json::from_str(&text).unwrap();
+
+		// `folders` keeps its old shape and old meaning, so an agent reading only
+		// that key sees no change.
+		assert_eq!(body["folders"], json!([f.project.path().to_string_lossy()]));
+		assert_eq!(body["cwd"], json!(f.project.path().to_string_lossy()));
+		assert_eq!(body["worktrees"], json!([wt.to_string_lossy()]));
+		// Nothing to report: the panel is showing this session's own cwd.
+		assert!(body["viewing"].is_null());
+		// The advertisement — this is the tool claude calls early, so it is where
+		// an agent learns `setWorktree` exists.
+		assert!(body["hint"].as_str().unwrap().contains("setWorktree"));
+	}
+
+	#[test]
+	fn workspace_folders_reports_the_view_as_a_separate_labelled_fact() {
+		// Never merged into `folders`: the PTY's cwd has not moved, and an agent
+		// told the *view* is its workspace would run git in one tree and edit
+		// another.
+		let (_home, wt) = checkout("feature-x");
+		let project = TempDir::new().unwrap();
+		let viewing = wt.clone();
+		let mcp = Mcp::new(
+			project.path().to_path_buf(),
+			Worktrees {
+				checkouts: Arc::new(move || vec![wt.clone()]),
+				signal: Arc::new(|_| {}),
+				current: Arc::new(move || Some(viewing.clone())),
+			},
+			Arc::new(|_| true),
+			Arc::new(Vec::new),
+		);
+
+		let reply = call(&mcp, "tools/call", json!({ "name": "getWorkspaceFolders" }));
+		let body: Value = serde_json::from_str(&tool_result(&reply).0).unwrap();
+		assert_eq!(body["cwd"], json!(project.path().to_string_lossy()));
+		assert!(body["viewing"].as_str().unwrap().ends_with("feature-x"));
+	}
+
 	#[test]
 	fn tools_list_offers_three_and_deliberately_not_getdiagnostics() {
 		let f = fixture(true);
@@ -423,7 +799,9 @@ mod tests {
 			.map(|t| t["name"].as_str().unwrap())
 			.collect();
 
-		assert_eq!(names, ["openFile", "getWorkspaceFolders", "getOpenEditors"]);
+		// `setWorktree` is last: appended so the three that were here keep their
+		// positions, the same rule the panel's tab strip follows.
+		assert_eq!(names, ["openFile", "getWorkspaceFolders", "getOpenEditors", "setWorktree"]);
 		// The omission is a decision, so it gets an assertion. Answering "no
 		// problems" with no diagnostics source is a lie the agent would act on.
 		assert!(!names.contains(&"getDiagnostics"));

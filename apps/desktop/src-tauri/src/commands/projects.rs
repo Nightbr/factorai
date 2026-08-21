@@ -5,6 +5,7 @@
 //! belong to the scan. What these commands own is membership: which folders are
 //! in the workspace, and the `project_id` link that follows from it.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -14,6 +15,7 @@ use crate::agents::{self, claude};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{ImportCandidate, Project};
+use crate::services::git;
 use crate::state::AppState;
 
 /// Columns and aggregates for one workspace row, shared by every query that
@@ -246,13 +248,16 @@ pub fn pin_project(state: State<'_, AppState>, id: String, pinned: bool) -> AppR
 
 /// Link every discovered directory to the workspace folder it describes.
 ///
-/// The join is on canonical path and nothing else: an agent's own naming scheme
-/// is its business. Exact match only — a session recorded in `/repo/apps/web`
-/// belongs to `/repo/apps/web`, not to `/repo`, even when only the latter is
-/// open. Rolling up to the nearest open ancestor was considered and rejected:
-/// it turns every session lookup into a prefix scan and needs a tie-break rule
-/// the moment both a folder and its parent are open.
+/// **Two passes, and the order is the compatibility story.** Exact path first,
+/// exactly as it always was; the repository roll-up only ever touches what the
+/// first pass left unlinked.
 pub fn reconcile(conn: &Connection) -> AppResult<()> {
+	// Pass 1 — exact canonical path, and nothing else: an agent's own naming
+	// scheme is its business. A session recorded in `/repo/apps/web` belongs to
+	// `/repo/apps/web`, not to `/repo`, even when only the latter is open.
+	// Rolling up to the nearest open *ancestor* was considered and rejected
+	// (ADR-0011): it turns every session lookup into a prefix scan and needs a
+	// tie-break the moment both a folder and its parent are open.
 	conn.execute(
 		"UPDATE discovered_projects
 		    SET project_id = (SELECT p.id FROM projects p WHERE p.real_path = discovered_projects.real_path)
@@ -261,6 +266,66 @@ pub fn reconcile(conn: &Connection) -> AppResult<()> {
 	)?;
 	// A directory whose folder we never identified can't belong to anything.
 	conn.execute("UPDATE discovered_projects SET project_id = NULL WHERE real_path IS NULL", [])?;
+	link_worktrees(conn)
+}
+
+/// Pass 2 — a directory that is a **checkout of a project's repository** belongs
+/// to that project (F21, ADR-0019 § 1).
+///
+/// This is what makes a session the agent ran in `git worktree add`'s directory
+/// appear under the project you actually added, instead of becoming a project
+/// you never asked for. It is **not** the prefix scan ADR-0011 turned down: a
+/// checkout is neither an ancestor nor a descendant of the project, so this is
+/// membership in a set git enumerates, behind an exact-match rule that still
+/// wins. Someone who added `~/wt/feature-x` as its own project keeps its
+/// sessions there.
+///
+/// **Exact checkout match, not containment**, which keeps it symmetric with pass
+/// 1: a session recorded in a *subdirectory* of a checkout does not roll up, for
+/// the same reason one in a subdirectory of the project does not.
+///
+/// The git reads happen inside the caller's transaction. Short and bounded — one
+/// `.git/worktrees` listing per project, and projects are counted in tens — but
+/// worth knowing about before anything heavier is added here.
+fn link_worktrees(conn: &Connection) -> AppResult<()> {
+	let mut stmt = conn.prepare(
+		"SELECT id, real_path FROM discovered_projects
+		  WHERE project_id IS NULL AND real_path IS NOT NULL",
+	)?;
+	let unlinked: Vec<(i64, String)> =
+		stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+	drop(stmt);
+	if unlinked.is_empty() {
+		return Ok(());
+	}
+
+	let mut stmt = conn.prepare("SELECT id, real_path FROM projects")?;
+	let projects: Vec<(String, String)> =
+		stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+	drop(stmt);
+
+	// checkout path → project id. First project wins if two of them somehow share
+	// a repository — which happens when the main checkout *and* a worktree are
+	// both added, and in that case pass 1 has already claimed the rows that
+	// matter, so the tie is between two answers that are both defensible.
+	let mut owner: HashMap<PathBuf, String> = HashMap::new();
+	for (project_id, real_path) in &projects {
+		for checkout in git::worktree_paths(real_path) {
+			owner.entry(checkout).or_insert_with(|| project_id.clone());
+		}
+	}
+	if owner.is_empty() {
+		return Ok(());
+	}
+
+	let mut stmt = conn.prepare("UPDATE discovered_projects SET project_id = ?2 WHERE id = ?1")?;
+	for (id, real_path) in unlinked {
+		let canonical =
+			std::fs::canonicalize(&real_path).unwrap_or_else(|_| PathBuf::from(&real_path));
+		if let Some(project_id) = owner.get(&canonical) {
+			stmt.execute(params![id, project_id])?;
+		}
+	}
 	Ok(())
 }
 

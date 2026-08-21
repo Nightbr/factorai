@@ -21,14 +21,14 @@ use std::path::{Component, Path, PathBuf};
 
 use git2::{
 	BranchType, Delta, Diff, DiffFindOptions, DiffFlags, DiffOptions, Oid, Patch, Repository, Sort,
-	Status, StatusOptions, Tree,
+	Status, StatusOptions, Tree, WorktreeLockStatus,
 };
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
 	FileContents, GitChange, GitChangeKind, GitCommitDetail, GitCommitFile, GitGraph,
 	GitGraphCommit, GitGraphEdge, GitGraphEdgeKind, GitGroup, GitRef, GitRefKind, GitRev,
-	GitStatus, RemoteHost,
+	GitStatus, GitWorktree, RemoteHost,
 };
 use crate::services::files;
 
@@ -974,6 +974,129 @@ fn fill_stats(
 	}
 }
 
+/// Every checkout of the repository a project sits in — the main working tree
+/// and every linked worktree (F21, ADR-0019 § 1).
+///
+/// **Keyed by the repository, not by the project.** Discovery is the same
+/// `Repository::discover()` from the project root that `status` uses, and the set
+/// is then read off whatever repository that finds — so a project that *is* a
+/// linked worktree returns the same set as one that is the main checkout. It is
+/// the same repository whichever door you came in by.
+///
+/// **This is also the IDE bridge's path scope** (ADR-0019 § 2), which is why it
+/// is derived here from git and never from anything a client sent. Not a
+/// repository at all, or a repository with no checkouts, returns an empty vector
+/// — and an empty scope refuses everything, which is the correct direction to
+/// fail in.
+pub fn worktrees(project_path: &str) -> AppResult<Vec<GitWorktree>> {
+	let Some(repo) = discover(project_path) else {
+		return Ok(Vec::new());
+	};
+	Ok(worktrees_of(&repo))
+}
+
+/// The paths in [`worktrees`], for callers that only need the scope.
+///
+/// Separate because the bridge asks this per path it resolves and has no use for
+/// branches, locks or SHAs — each of which costs a `Repository::open` of the
+/// checkout. A checkout that is not on disk is dropped here rather than
+/// reported: the caller is about to compare a real path against these, and a
+/// directory that does not exist cannot contain one.
+pub fn worktree_paths(project_path: &str) -> Vec<PathBuf> {
+	let Some(repo) = discover(project_path) else {
+		return Vec::new();
+	};
+	main_worktree_path(&repo)
+		.into_iter()
+		.chain(linked_worktree_paths(&repo))
+		.filter(|p| p.is_dir())
+		.map(|p| canonical(&p.to_string_lossy()))
+		.collect()
+}
+
+fn worktrees_of(repo: &Repository) -> Vec<GitWorktree> {
+	let mut out = Vec::new();
+
+	// The main checkout first, and it is deliberately not derived from
+	// `worktrees()`: libgit2 lists only *linked* worktrees, so the main one has
+	// to be found from the common directory. A bare repository has none, and
+	// contributes no row rather than an empty-pathed one.
+	if let Some(path) = main_worktree_path(repo) {
+		out.push(describe(&path, None, true, false, false));
+	}
+
+	for name in worktree_names(repo) {
+		let Ok(wt) = repo.find_worktree(&name) else { continue };
+		let locked =
+			wt.is_locked().map(|s| !matches!(s, WorktreeLockStatus::Unlocked)).unwrap_or(false);
+		// `is_prunable` reports an *error* for a worktree it declines to consider —
+		// a locked one, most often — and "we could not decide" is not "prunable".
+		let prunable = wt.is_prunable(None).unwrap_or(false);
+		out.push(describe(wt.path(), Some(name), false, locked, prunable));
+	}
+
+	out
+}
+
+/// Git's own names for the linked worktrees — the directories under
+/// `.git/worktrees/`.
+///
+/// Collected rather than chained because `StringArray`'s iterator yields
+/// `Result<Option<&str>>`, so it borrows from a value that has to outlive the
+/// walk, and two levels of `flatten` in a call chain read as a puzzle.
+fn worktree_names(repo: &Repository) -> Vec<String> {
+	let Ok(names) = repo.worktrees() else {
+		return Vec::new();
+	};
+	names.iter().flatten().flatten().map(str::to_string).collect()
+}
+
+/// The main working tree's path, or `None` for a bare repository.
+///
+/// For a linked worktree the repository's `commondir` is the *main* repository's
+/// `.git`, so its parent is the main checkout — which is what makes this
+/// symmetric. Opening the main repository just to call `workdir()` would be a
+/// second open for a value one `parent()` already has.
+fn main_worktree_path(repo: &Repository) -> Option<PathBuf> {
+	if !repo.is_worktree() {
+		return repo.workdir().map(Path::to_path_buf);
+	}
+	repo.commondir().parent().map(Path::to_path_buf).filter(|p| p.is_dir())
+}
+
+fn linked_worktree_paths(repo: &Repository) -> Vec<PathBuf> {
+	worktree_names(repo)
+		.into_iter()
+		.filter_map(|name| repo.find_worktree(&name).ok().map(|wt| wt.path().to_path_buf()))
+		.collect()
+}
+
+/// Fill in the fields that need the checkout itself opened.
+///
+/// A checkout whose directory is gone is still a row — `exists: false`, no branch
+/// and no SHA. That is the `prunable` case you can see and reason about, rather
+/// than one silently missing from the list.
+fn describe(
+	path: &Path,
+	name: Option<String>,
+	is_main: bool,
+	locked: bool,
+	prunable: bool,
+) -> GitWorktree {
+	let exists = path.is_dir();
+	let opened = if exists { Repository::open(path).ok() } else { None };
+	GitWorktree {
+		path: canonical(&path.to_string_lossy()).to_string_lossy().to_string(),
+		name,
+		branch: opened.as_ref().and_then(branch_name),
+		head: opened.as_ref().and_then(head_sha),
+		is_main,
+		locked,
+		prunable,
+		exists,
+	}
+}
+
 fn branch_name(repo: &Repository) -> Option<String> {
 	let head = repo.head().ok()?;
 	// Detached HEAD and an unborn branch both mean "no branch to name".
@@ -1135,6 +1258,114 @@ mod tests {
 		for rel in ["fresh/a.rs", "fresh/b.rs", "fresh/nested/c.rs"] {
 			assert_eq!(find(&st, rel, GitGroup::Unstaged).kind, GitChangeKind::Untracked);
 		}
+	}
+
+	// ── Worktrees (F21) ──────────────────────────────────────────────────────
+
+	/// A repository with one linked worktree, checked out on a new branch.
+	///
+	/// The worktree directory lives in its *own* TempDir, deliberately: a
+	/// worktree nested inside the main checkout is the case that accidentally
+	/// passes a containment test it should not, and the real ones are siblings.
+	fn repo_with_worktree() -> (TempDir, TempDir, Repository) {
+		let (main, repo) = repo_with_commit();
+		let wt_home = tempdir().unwrap();
+		let wt_path = wt_home.path().join("feature-x");
+		// Scoped so the `Branch` borrow of `repo` ends before `repo` is moved out.
+		{
+			let head = repo.head().unwrap().peel_to_commit().unwrap();
+			let branch = repo.branch("feature-x", &head, false).unwrap();
+			let mut opts = git2::WorktreeAddOptions::new();
+			opts.reference(Some(branch.get()));
+			repo.worktree("feature-x", &wt_path, Some(&opts)).unwrap();
+		}
+		(main, wt_home, repo)
+	}
+
+	#[test]
+	fn a_repo_with_no_worktrees_is_one_row_for_the_main_checkout() {
+		let (dir, _repo) = repo_with_commit();
+		let wts = worktrees(&root(&dir)).unwrap();
+
+		assert_eq!(wts.len(), 1, "the main checkout is a checkout");
+		assert!(wts[0].is_main);
+		assert_eq!(wts[0].name, None, "the main tree has no .git/worktrees entry");
+		assert!(wts[0].exists);
+		assert!(!wts[0].locked);
+		assert!(wts[0].branch.is_some());
+	}
+
+	#[test]
+	fn a_linked_worktree_is_listed_with_its_own_branch() {
+		let (main, _wt_home, _repo) = repo_with_worktree();
+		let wts = worktrees(&root(&main)).unwrap();
+
+		assert_eq!(wts.len(), 2);
+		let linked = wts.iter().find(|w| !w.is_main).expect("the linked worktree");
+		assert_eq!(linked.name.as_deref(), Some("feature-x"));
+		// The branch is the worktree's own HEAD, not the main checkout's — which
+		// is the whole reason the panel has to follow the checkout.
+		assert_eq!(linked.branch.as_deref(), Some("feature-x"));
+		assert!(linked.exists);
+		assert!(!linked.prunable);
+	}
+
+	#[test]
+	fn the_set_is_the_same_seen_from_the_linked_worktree() {
+		// ADR-0019 § 1: it is the same repository whichever door you came in by.
+		// A project that *is* a linked worktree must see the main checkout too,
+		// or the feature silently does nothing for anyone who added one.
+		let (main, wt_home, _repo) = repo_with_worktree();
+		let from_linked = worktrees(&wt_home.path().join("feature-x").to_string_lossy()).unwrap();
+
+		assert_eq!(from_linked.len(), 2);
+		let mut paths: Vec<_> = from_linked.iter().map(|w| w.path.clone()).collect();
+		paths.sort();
+		let mut expected = vec![
+			canonical(&root(&main)).to_string_lossy().to_string(),
+			canonical(&wt_home.path().join("feature-x").to_string_lossy())
+				.to_string_lossy()
+				.to_string(),
+		];
+		expected.sort();
+		assert_eq!(paths, expected);
+		assert!(from_linked.iter().any(|w| w.is_main), "the main checkout is still in the set");
+	}
+
+	#[test]
+	fn a_worktree_whose_directory_is_gone_is_listed_as_missing() {
+		let (main, wt_home, _repo) = repo_with_worktree();
+		// What `git worktree remove` leaves behind if the directory is deleted by
+		// hand — the `.git/worktrees` entry survives.
+		fs::remove_dir_all(wt_home.path().join("feature-x")).unwrap();
+
+		let wts = worktrees(&root(&main)).unwrap();
+		let linked = wts.iter().find(|w| !w.is_main).expect("still a row, not filtered out");
+		assert!(!linked.exists, "a checkout you can see and cannot use");
+		assert_eq!(linked.branch, None, "nothing to open, so nothing to name");
+	}
+
+	#[test]
+	fn worktree_paths_is_the_scope_and_drops_what_is_not_on_disk() {
+		let (main, wt_home, _repo) = repo_with_worktree();
+		let live = worktree_paths(&root(&main));
+		assert_eq!(live.len(), 2, "both checkouts are in scope");
+
+		fs::remove_dir_all(wt_home.path().join("feature-x")).unwrap();
+		let after = worktree_paths(&root(&main));
+		// A directory that is not there cannot contain the path we are about to
+		// compare against it, so it is dropped from the scope rather than kept.
+		assert_eq!(after.len(), 1);
+		assert!(after[0].ends_with(main.path().file_name().unwrap()));
+	}
+
+	#[test]
+	fn a_project_outside_any_repository_has_no_worktrees_and_so_no_scope() {
+		let dir = tempdir().unwrap();
+		// An empty scope refuses everything, which is the correct direction to
+		// fail in for the bridge (ADR-0019 § 2).
+		assert!(worktrees(&root(&dir)).unwrap().is_empty());
+		assert!(worktree_paths(&root(&dir)).is_empty());
 	}
 
 	#[test]
