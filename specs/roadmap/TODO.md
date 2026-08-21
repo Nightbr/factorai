@@ -987,36 +987,39 @@ roll-up, or the roll-up produces sessions that restart as new conversations.
 
 ### 2. Rust: detection, the spawn fix, the table
 
-- [ ] `git_worktrees(project_path) -> Vec<GitWorktree>` in `services/git.rs` behind
-      `commands/git.rs`. Every checkout git knows — main and linked — with `path`, `branch`,
-      `head`, `isMain`, `locked`, `prunable`, `exists`. A bare repository contributes no
-      main-checkout row. Read-only, `default-features = false` stays.
+- [x] `git_worktrees` — landed 2026-08-21, plus a `worktree_paths` sibling for the bridge,
+      which asks per resolve and does not need a `Repository::open` per checkout. Six tests,
+      including the symmetric case (the same set seen from the linked worktree) and a checkout
+      whose directory has been deleted.
 - [x] **The spawn runs in the session's recorded cwd.** Landed 2026-08-21, alone, as the bug
       fix it is on its own merits. **In Rust, not the renderer** —
       `TerminalManager::resume_cwd` over a `session_cwd` callback, because `Terminal.tsx` learns
       `sessionCwd` from a query that resolves after it has already spawned. Prefers the recorded
       folder only when the transcript is actually in it; four tests, including one that spawns
       somewhere other than the folder it was handed.
-- [ ] Migration `0006_session_worktrees.sql`: `session_worktrees(session_id PK, path,
-      updated_at)`, FK `ON DELETE CASCADE`. **Check `main` for a competing 0006 before you name
-      it** — see this file's header for why a duplicate migration number cannot simply be
-      renumbered once it has run.
+- [x] Migration `0006_session_worktrees.sql` — landed 2026-08-21, no competing 0006 on
+      `main`. Read and written through `services/sessions.rs`, which is also where the spawn
+      fix's `recorded_cwd` lives.
 
 ### 3. The bridge: the tool, the scope, the roll-up
 
-- [ ] `setWorktree { path }` on `tools/list`, **always advertised** — `tools/list` is fetched
-      once at connect, so gating it on "the repo has more than one checkout" leaves the agent
-      holding a list without the tool it needs at the exact moment it creates the second one.
-      Validated against `git_worktrees`; a bad path is a `tool_error`, not a JSON-RPC error.
-- [ ] **`resolve_within` takes the union of the repository's checkouts**, recomputed per resolve.
-      ADR-0019 § 2 — read it before touching this file. The widening needs its own cases beside
-      the existing scope tests: a sibling checkout accepted, a sibling directory that is *not* a
-      checkout refused.
-- [ ] `getWorkspaceFolders` reports the checkouts and which is current, session cwd first and the
-      current view second, labelled.
-- [ ] `session:worktree` event → the renderer. Persisted first, then emitted.
-- [ ] Roll-up in the indexer: exact-path match first (ADR-0011, unchanged), then the project
-      owning the repository.
+- [x] `setWorktree { path }` — landed 2026-08-21, advertised unconditionally, accepting a
+      checkout *or* any path inside one (liberal costs nothing when the containment set is
+      git-derived). A refusal names the checkouts that do exist, so the agent can retry
+      usefully rather than guess again.
+- [x] **The scope is the union**, recomputed per resolve — landed 2026-08-21 as
+      `resolve_within_any`, with the session's cwd always in the set so a non-repository project
+      behaves exactly as it did. Both cases are asserted, and the human's mention path was
+      widened with it (it would otherwise have refused the files the tree was showing).
+- [x] `getWorkspaceFolders` reports `cwd`, `worktrees`, a labelled `viewing` and a `hint`
+      naming the new tool. `folders` keeps its old shape, so an agent reading only that key sees
+      no change.
+- [x] `session:worktree` event → the renderer, persisted first and then emitted.
+- [x] Roll-up — landed as a second pass in `commands::projects::reconcile`, touching only rows
+      the exact-path pass left unlinked. **Exact checkout match, not containment**, which keeps it
+      symmetric with pass 1. Five integration tests in `tests/worktree_rollup.rs`, including the
+      two that pin the boundary: an unrelated repository is not claimed, and a subdirectory of a
+      checkout does not roll up.
 - [ ] **Conformance pass against the real CLI, and record the version.** This is where the
       premise is tested — F20 records that a tool call from the shipped binary is still
       unobserved. If `claude` does not call the tool, the `openFile` inference and the

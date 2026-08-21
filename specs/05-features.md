@@ -2832,7 +2832,9 @@ nothing in CI can prove we still match a program that ships weekly.
 ### Tools we answer, and one we deliberately do not
 
 First slice: `ide_connected`, `getWorkspaceFolders`, `openFile`,
-`getOpenEditors`.
+`getOpenEditors`. **F21 appended a fourth tool, `setWorktree`**, and widened
+`getWorkspaceFolders`'s answer — see F21 for both, and note that the new tool is
+advertised unconditionally because `tools/list` is fetched once at connect.
 
 **`getDiagnostics` is not registered, on purpose.** We have no diagnostics
 source — that is item 14's LSP question — and advertising the tool while
@@ -3020,7 +3022,11 @@ selection. Its own roadmap entry.
 ## F21 — Worktrees as a first-class session citizen
 
 **Specified 2026-08-21**, from the clarify-needs interview roadmap item 1's last
-bullet was gated on. Not built yet.
+bullet was gated on. **The engine is built** — detection, the bridge tool, the
+widened scope, the roll-up and the persistence, all the same day. What is not
+built is the half you can see: the panel still roots on the project, and the
+header badge still names only the branch. Roadmap item 37 has the remainder, and
+the conformance pass against the real CLI is on it.
 [ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) holds the
 two decisions that constrain everything below — what a worktree *is*, and what
 the bridge is allowed to reach.
@@ -3079,6 +3085,19 @@ agent — and is not a signal.
 `getWorkspaceFolders` starts answering with the repository's checkouts and which
 one is current. It is the read side of the same concept and the tool `claude`
 already calls early, so it is where an agent discovers that any of this exists.
+Its **old `folders` key keeps its old shape and meaning**, so an agent reading
+only that sees no change; what is added is `cwd`, `worktrees`, `viewing` and a
+one-line `hint` naming `setWorktree`.
+
+**`viewing` is a second, labelled fact and is never merged into `folders`.** The
+panel can be showing another checkout while the PTY's cwd has not moved, and an
+agent told the *view* is its workspace would run `git` in one tree and edit
+another. It is `null` when there is nothing to report.
+
+**The human's own mention path shares the scope.** "Add to agent context" (F20)
+resolved against the session's cwd alone, so once the tree can be rooted at a
+worktree, the gesture would have failed for exactly the files the panel was
+showing. It now resolves against the same set.
 
 **Rejected: three further signals**, each for a different reason worth recording
 so they are not re-proposed. Polling `git worktree list` and treating a
@@ -3089,6 +3108,31 @@ schema. And taking the session's *last* `cwd` instead of its first would change
 the meaning of a field F19's relative-path resolution also reads, to learn
 something that mostly does not move: an agent working in a worktree by absolute
 path never changes `claude`'s own cwd.
+
+### The scope the bridge resolves against
+
+[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 2 holds
+the decision; three things about the implementation are worth stating here.
+
+**The set is the session's cwd plus every checkout of its repository**, and the
+cwd is in it unconditionally. That is not belt-and-braces: a project that is not
+a repository has no checkouts at all, so without it the scope would be empty and
+every `openFile` refused — F20, broken for exactly the projects this feature has
+nothing to do with. `services::git::worktree_paths` is where the rest comes from,
+and a checkout that is not on disk is dropped there rather than reported, because
+a directory that does not exist cannot contain the path about to be compared
+against it.
+
+**`setWorktree` resolves against the checkouts alone, deliberately not the whole
+scope.** The cwd is in scope so files can be opened there; a cwd that is not
+itself a checkout is not somewhere the panel can be rooted. The two sets differ
+by exactly that one path, and conflating them would let the agent root the panel
+on a directory git knows nothing about.
+
+**The human's own mention path shares the scope.** "Add to agent context" (F20)
+resolved against the session's cwd alone, so once the tree can be rooted at a
+worktree the gesture would have failed for exactly the files the panel was
+showing. It resolves against the same set now.
 
 ### The panel moves, and the route still owns the project
 

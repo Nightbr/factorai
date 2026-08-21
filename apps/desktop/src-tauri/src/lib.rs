@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use tauri::{Emitter, Manager, WindowEvent};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::db::Db;
 use crate::services::indexer::{spawn_initial_scan, Indexer};
@@ -97,7 +97,35 @@ pub fn run() {
 				}))
 				.with_session_cwd(Arc::new(move |session_id| {
 					services::sessions::recorded_cwd(&session_db, session_id)
-				}));
+				}))
+				// Which checkout each session is working in (F21). Written by the
+				// bridge's signal path only — the agent calling `setWorktree`, or an
+				// `openFile` landing in another worktree — and read back so a resumed
+				// session comes up in the tree it was working in.
+				.with_worktree_store(services::terminal::WorktreeStore {
+					get: {
+						let db = db.clone();
+						Arc::new(move |session_id| {
+							services::sessions::worktree(&db, session_id).map(PathBuf::from)
+						})
+					},
+					set: {
+						let db = db.clone();
+						Arc::new(move |session_id, path| {
+							// Logged rather than propagated: the caller is a socket handler
+							// answering an agent, and a failed write must not become a
+							// failed tool call the agent then retries.
+							if let Err(e) = services::sessions::set_worktree(
+								&db,
+								session_id,
+								&path.to_string_lossy(),
+								epoch_ms(),
+							) {
+								warn!(error = %e, session_id, "could not record a session's worktree");
+							}
+						})
+					},
+				});
 			let live = terminals.clone();
 			let indexer = Arc::new(
 				Indexer::for_app(db.clone(), cd.clone(), app.handle().clone())
@@ -179,6 +207,7 @@ pub fn run() {
 			commands::git::git_graph,
 			commands::git::git_commit,
 			commands::git::git_blob_at,
+			commands::git::git_worktrees,
 			commands::settings::get_setting,
 			commands::settings::set_setting,
 			commands::settings::check_claude_cli,
@@ -193,4 +222,16 @@ pub fn run() {
 		])
 		.run(tauri::generate_context!())
 		.expect("error while running factorai");
+}
+
+/// Wall-clock milliseconds, for the one row `lib.rs` writes itself.
+///
+/// A local copy rather than reaching into `services::terminal`'s private helper:
+/// a second caller is not a reason to widen that module's surface, and this is
+/// three lines.
+fn epoch_ms() -> i64 {
+	std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.map(|d| d.as_millis() as i64)
+		.unwrap_or(0)
 }
