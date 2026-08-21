@@ -10,6 +10,7 @@ import {
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { useUpdater } from '@hooks/useUpdater';
+import { needsQuitConfirm, quitConfirmSentence } from '@lib/quitConfirm';
 import { useTerminalStore } from '@store/terminalStore';
 
 /**
@@ -24,11 +25,17 @@ import { useTerminalStore } from '@store/terminalStore';
  * **Restarting is a quit.** `relaunch()` tears the process down, and with it
  * every live PTY — but it never fires `CloseRequested`, so the quit guard
  * (ADR-0005) doesn't see it and would let a running Claude session die without
- * a word. Hence the same confirmation here, on the same terms.
+ * a word. Hence the same confirmation here, on the same terms — literally the
+ * same terms: `needsQuitConfirm` decides for both doors (ADR-0020).
  */
 export function UpdateBadge() {
 	const { state, checkNow, restart } = useUpdater();
-	const liveCount = useTerminalStore((s) => Object.keys(s.bySession).length);
+	// Two primitive selectors rather than one derived object: each is a number,
+	// so neither re-renders the footer on an unrelated store write.
+	const live = useTerminalStore((s) => Object.keys(s.bySession).length);
+	const working = useTerminalStore(
+		(s) => Object.values(s.bySession).filter((t) => t.status === 'working').length,
+	);
 	const [confirming, setConfirming] = useState(false);
 
 	if (state.phase !== 'ready') {
@@ -47,7 +54,7 @@ export function UpdateBadge() {
 	}
 
 	function onRestart() {
-		if (liveCount > 0) {
+		if (needsQuitConfirm({ live, working })) {
 			setConfirming(true);
 			return;
 		}
@@ -91,9 +98,9 @@ export function UpdateBadge() {
 							Restart to update?
 						</DialogTitle>
 						<DialogDescription>
-							factorai {state.version} is ready. Restarting terminates {liveCount} running Claude
-							session{liveCount === 1 ? '' : 's'}. This cannot be undone — the update will also
-							apply on its own the next time you quit and reopen.
+							factorai {state.version} is ready.{' '}
+							{quitConfirmSentence({ live, working }, 'Restarting')} This cannot be undone — the
+							update will also apply on its own the next time you quit and reopen.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

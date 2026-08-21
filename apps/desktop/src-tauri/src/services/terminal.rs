@@ -377,6 +377,19 @@ impl TerminalManager {
 		self.terminals.len()
 	}
 
+	/// How many live PTYs have Claude *working* in them right now.
+	///
+	/// This is the count the quit guard asks about, and it is deliberately
+	/// narrower than `live_count` (ADR-0020): a session parked at its prompt has
+	/// nothing in flight to lose, so quitting it is not a question. `live_count`
+	/// stays the count of what quitting *kills*, which is still all of them.
+	pub fn working_count(&self) -> usize {
+		self.terminals
+			.iter()
+			.filter(|e| *e.value().status.lock() == TerminalStatus::Working)
+			.count()
+	}
+
 	/// The session ids with a PTY behind them right now. The indexer's reap
 	/// pass takes this so it never drops the row of a session you are watching,
 	/// whatever happened to its transcript on disk.
@@ -1241,6 +1254,9 @@ mod tests {
 		// `Working` from spawn until a title says otherwise — and `/bin/sh` never
 		// writes one, so it stays there. See `TerminalHandle`'s initial status.
 		assert_eq!(listing[0].status, TerminalStatus::Working);
+		// A freshly spawned session counts as working, so quitting on top of one
+		// still asks.
+		assert_eq!(mgr.working_count(), 1);
 		let _ = mgr.kill(&id);
 	}
 
@@ -1289,6 +1305,12 @@ mod tests {
 			}
 			std::thread::sleep(Duration::from_millis(25));
 		};
+
+		// The quit guard's whole question, asked here because this is the only
+		// test with a real title moving a real handle's status (ADR-0020): the PTY
+		// is still live, and nothing is working in it.
+		assert_eq!(mgr.live_count(), 1, "the PTY is still there");
+		assert_eq!(mgr.working_count(), 0, "a session at its prompt is not working");
 
 		let _ = mgr.kill(&id);
 		assert_eq!(got.as_deref(), Some(id.as_str()), "no waiting_input event for the title");

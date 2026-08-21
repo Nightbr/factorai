@@ -189,8 +189,18 @@ export interface ClaudeCliStatus {
  */
 export type SettingKey = 'claudeBinaryPath';
 
+/**
+ * Emitted from `CloseRequested` when quitting needs a confirmation — which is
+ * **only** when Claude is working somewhere (ADR-0020). A window close with
+ * live-but-idle sessions never fires this; Rust kills them and lets the close
+ * through.
+ */
 export interface QuitRequestedEvent {
+	/** Every live PTY, i.e. what quitting terminates. */
 	liveCount: number;
+	/** How many of those Claude is working in — the reason the dialog exists.
+	 *  Always at least 1 when this event fires. */
+	workingCount: number;
 }
 
 // ── Files ───────────────────────────────────────────────────────────────────

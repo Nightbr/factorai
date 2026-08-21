@@ -1687,15 +1687,21 @@ is the one where a restart would actually gain you something.
 
 **Restarting is a quit.** `relaunch()` tears the process down and takes every
 live PTY with it — but it never fires `CloseRequested`, so the quit guard
-(ADR-0005) never sees it, and a running Claude session would die without a
-word. So the badge runs the same confirmation on the same terms:
+(ADR-0005) never sees it, and a working Claude session would die without a
+word. So the badge runs the same confirmation on the same terms — literally the
+same terms, since 2026-08-21: `needsQuitConfirm` and `quitConfirmSentence` in
+`lib/quitConfirm.ts` decide for both doors (ADR-0020).
 
-> Restart to update? factorai 0.2.0 is ready. Restarting terminates N running
-> Claude session(s). This cannot be undone — the update will also apply on its
-> own the next time you quit and reopen.
+> Restart to update? factorai 0.2.0 is ready. Claude is working in 1 of 4 live
+> sessions. Restarting terminates all 4 — work in progress is lost. This cannot
+> be undone — the update will also apply on its own the next time you quit and
+> reopen.
 >   [Later]   [Restart & kill sessions]
 
-With no live sessions it restarts immediately, no dialog.
+**With nothing working it restarts immediately, no dialog** — including when
+live sessions are sitting at their prompt, which is the common case for an app
+left open beside finished work. Unlike the quit path there is no `kill_all()` to
+run first: `relaunch()` ends the process and takes the PTYs with it.
 
 **Cadence.** On launch, then every 6 hours. factorai is meant to sit open for
 days beside running agents, so launch-only would rarely fire. One install per
@@ -2033,7 +2039,9 @@ change the argument they are handed rather than their signatures.
 - **`UpdateBadge`'s count, the quit guard's count, and the session header's
   Close-versus-Restart** are all still about running processes and all still read
   `bySession`. The quit guard does not fire for stopped tabs, because there is
-  nothing to kill.
+  nothing to kill — and since ADR-0020 it does not fire for `waiting_input` ones
+  either, because there is nothing in flight to lose. What it kills is still
+  every live PTY; `bySession` is read twice now, once for each count.
 
 This reverses one line of `projectStatus`'s reasoning — "a grey dot on every
 project you have ever opened is noise" — and the reversal is narrower than that
@@ -2640,19 +2648,56 @@ revisited in a deferred milestone if/when an external user base appears
 
 ### Quit guard
 
-When the user closes the window with one or more live PTYs:
+**The question is "is an agent working", not "is a process alive"** —
+narrowed 2026-08-21, ADR-0020. Every live PTY still dies either way; what
+changed is when factorai stops to ask you about it. A window full of
+sessions that handed the turn back an hour ago has nothing in flight to
+lose, and a dialog that fires there is a keystroke rather than insurance
+— it trains you to dismiss without reading exactly the dialog you want
+read on the day one of them *is* mid-run. This is F10's rule for closing
+one session (`needsCloseConfirm`), applied to the two gestures F10 left
+on the old signal.
 
-1. Rust intercepts `CloseRequested` and emits `app:quit-requested {
-   liveCount }`.
-2. Frontend opens a `Dialog` from `@factorai/ui`:
-   > Quit factorai? N running Claude session(s) will be terminated.
+When the user closes the window:
+
+1. Rust intercepts `CloseRequested` and reads two counts —
+   `live_count()` (what quitting kills) and `working_count()` (sessions
+   whose status is `working`).
+2. **`working_count() > 0`** — prevent the close and emit
+   `app:quit-requested { liveCount, workingCount }`. The frontend opens a
+   `Dialog` from `@factorai/ui`:
+   > Quit factorai? Claude is working in 1 of 4 live sessions. Quitting
+   > terminates all 4 — work in progress is lost. This cannot be undone.
    >   [Cancel]   [Quit & kill sessions]
-3. On confirm, frontend calls `invoke('app_quit_confirmed')`. Rust runs
-   `TerminalManager::kill_all()` then `app.exit(0)`.
-4. On cancel, the dialog dismisses; nothing happens.
 
-This is non-optional and not configurable. The cost of a stray zombie
-process running an LLM agent is real money.
+   The `of N` clause is dropped when every live session is working. On
+   confirm, the frontend calls `invoke('app_quit_confirmed')`; Rust runs
+   `TerminalManager::kill_all()` then `app.exit(0)`. On cancel the dialog
+   dismisses and nothing happens.
+3. **`working_count() == 0` with live PTYs** — no dialog, but the close
+   handler calls `kill_all()` itself before letting the close through.
+   The dialog's confirm used to be the only caller on this path, and
+   `Drop` on `TerminalManager` is a crash backstop rather than something
+   Tauri's exit promises to run.
+4. **Nothing live** — the close proceeds untouched.
+
+**Kill-on-quit stays non-optional and not configurable** (ADR-0005). The
+cost of a stray zombie process running an LLM agent is real money, and
+narrowing the *question* does not narrow the killing. Unlike the
+per-session close (F10, F11) there is no preference here either: this one
+is about losing every live session at once.
+
+**The wording lives in one place.** `lib/quitConfirm.ts` owns both the
+predicate (`needsQuitConfirm`) and the sentence
+(`quitConfirmSentence`), because the restart in F14 is the same decision
+at a second door — and the two already drifted once, when the restart
+shipped with no confirmation at all.
+
+**Known gap, inherited from F10.** A session parked on a permission
+prompt reads as `waiting_input` — Claude's title says idle while its own
+dialog is open — so quitting will not ask about it. Closing that needs
+the `needs_permission` state F10 recorded as considered and not built,
+and it closes for every gesture at once when it lands.
 
 ---
 
