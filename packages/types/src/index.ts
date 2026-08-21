@@ -58,6 +58,13 @@ export interface SessionSummary {
 	 *  read-only — the session view shows their transcript with no terminal,
 	 *  because `claude --resume` cannot open them. */
 	subagentOf: string | null;
+	/** The checkout of the project's repository this session is working in, as
+	 *  last signalled through the IDE bridge (F21). Null for the ordinary case —
+	 *  no signal, so the checkout is derived from `cwd` instead.
+	 *
+	 *  **A record, not a guarantee**: the path may have been removed since, so it
+	 *  is validated against `gitWorktrees` before being used. */
+	worktree: string | null;
 }
 
 export interface SessionPage {
@@ -269,6 +276,18 @@ export interface IdeStatusEvent {
 	error: string | null;
 }
 
+/** The checkout a session is working in, after a bridge signal (F21).
+ *
+ *  Emitted **after** the row is written, so what the renderer shows and what a
+ *  reload would show cannot disagree. */
+export interface SessionWorktreeEvent {
+	sessionId: string;
+	path: string;
+	/** The checkout's own branch, for the header badge. Null on a detached
+	 *  HEAD. */
+	branch: string | null;
+}
+
 export interface IdeOpenFileEvent {
 	sessionId: string;
 	path: string;
@@ -401,6 +420,34 @@ export interface GitChange {
 	additions: number | null;
 	deletions: number | null;
 	isBinary: boolean;
+}
+
+/** One checkout of a repository — the main working tree or a linked worktree
+ *  (F21). Mirrors Rust `GitWorktree`.
+ *
+ *  **Every checkout git knows is a row, the broken ones included.** `locked`,
+ *  `prunable` and `exists: false` are reported rather than filtered, because a
+ *  session whose cwd is inside a checkout we hid resolves somewhere else with
+ *  nothing on screen saying why. */
+export interface GitWorktree {
+	/** Absolute path of the checkout's working directory. */
+	path: string;
+	/** Git's own name for a linked worktree. Null for the main checkout, which
+	 *  has no `.git/worktrees` entry. */
+	name: string | null;
+	/** Short branch name at this checkout's HEAD, null on a detached HEAD or an
+	 *  unborn branch — exactly as `GitStatus.branch` is. */
+	branch: string | null;
+	/** Full SHA this checkout's HEAD resolves to, null on an unborn branch. */
+	head: string | null;
+	/** The repository's main working tree. A bare repository has none and so
+	 *  contributes no row at all. */
+	isMain: boolean;
+	locked: boolean;
+	prunable: boolean;
+	/** The working directory is on disk. False is a checkout you can still see in
+	 *  the list but cannot be shown. */
+	exists: boolean;
 }
 
 export interface GitStatus {

@@ -45,6 +45,12 @@ export function useGitGraph(): {
 	loadMore: () => void;
 	root: string | null;
 } {
+	// **The project folder, not the checkout** (F21) — and that is the whole of
+	// what the graph needs to do about worktrees. Checkouts of one repository
+	// share an object database and a set of refs, so the commit list is the same
+	// list whichever one you are in; `git_graph` discovers the repository from
+	// whatever path it is given. Keying this on the checkout would refetch a
+	// full page of identical commits every time the panel followed the agent.
 	const { root } = useActiveProject();
 	const open = usePanelStore((s) => s.open);
 	const tab = usePanelStore((s) => s.tab);

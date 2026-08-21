@@ -57,6 +57,20 @@ pub fn set_worktree(db: &Db, session_id: &str, path: &str, now_ms: i64) -> AppRe
 	})
 }
 
+/// Forget which checkout a session was working in (F21).
+///
+/// **The human's revert.** The badge's control is an undo of a move the agent
+/// made automatically, so it has to remove the record and not merely stop
+/// looking at it — otherwise the next read resolves straight back to the
+/// checkout the human just left. The next signal writes it again, which is what
+/// makes the revert an undo rather than a lock.
+pub fn clear_worktree(db: &Db, session_id: &str) -> AppResult<()> {
+	db.with(|conn| {
+		conn.execute("DELETE FROM session_worktrees WHERE session_id = ?1", [session_id])?;
+		Ok(())
+	})
+}
+
 /// The checkout recorded for a session, if any.
 ///
 /// **Not re-validated here.** A row is a record, not a guarantee: the checkout it
@@ -140,6 +154,29 @@ mod tests {
 		// The agent moved again. One row per session, not a history.
 		set_worktree(&db, "s1", "/wt/hotfix", 20).unwrap();
 		assert_eq!(worktree(&db, "s1").as_deref(), Some("/wt/hotfix"));
+	}
+
+	#[test]
+	fn clearing_forgets_the_checkout_so_the_next_read_falls_back() {
+		let (_tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+		set_worktree(&db, "s1", "/wt/feature-x", 10).unwrap();
+
+		clear_worktree(&db, "s1").unwrap();
+		assert_eq!(worktree(&db, "s1"), None);
+
+		// An undo, not a lock: the agent can move it again.
+		set_worktree(&db, "s1", "/wt/hotfix", 20).unwrap();
+		assert_eq!(worktree(&db, "s1").as_deref(), Some("/wt/hotfix"));
+	}
+
+	#[test]
+	fn clearing_a_session_that_never_signalled_is_not_an_error() {
+		let (_tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+		// The button is only drawn when there is something to revert, but a
+		// double-click must not become an error dialog.
+		clear_worktree(&db, "s1").unwrap();
 	}
 
 	#[test]

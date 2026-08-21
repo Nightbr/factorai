@@ -97,6 +97,14 @@ pin_project(id: String, pinned: bool) -> ()
 // through its parent's directory inside the same store directory.
 list_sessions(project_id: String) -> Vec<SessionSummary>
 get_session_tail(session_id: String, limit: usize) -> SessionPage
+// SessionSummary also carries `worktree` (F21) — the checkout the agent last
+// signalled, LEFT JOINed from `session_worktrees`. Joined into the list rather
+// than fetched per session: the sidebar draws a mark from it on every row, and
+// it has to be right on first paint, before any event has had a reason to fire.
+// **The human's revert**, and the only write to `session_worktrees` that does
+// not come from the IDE bridge. Idempotent — the control is drawn from state a
+// double-click can outrun.
+clear_session_worktree(session_id: String) -> ()
 // An offset-paged `get_session` sat here until 2026-08-16. It outlived the
 // JSONL viewer it was written for and was never called again — deleted rather
 // than kept "available", see 05-features.md F3.

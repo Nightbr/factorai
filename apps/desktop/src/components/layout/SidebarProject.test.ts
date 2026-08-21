@@ -14,6 +14,7 @@ function session(id: string, updatedAt: number, subagentOf: string | null = null
 		turnCount: 1,
 		cwd: '/p',
 		subagentOf,
+		worktree: null,
 	};
 }
 

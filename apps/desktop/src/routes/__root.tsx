@@ -113,6 +113,22 @@ function RootLayout() {
 		return () => unlisten?.();
 	}, []);
 
+	// Which checkout each session's agent is working in (F21). App-wide for the
+	// same reason as the status above: a signal that arrives for a session you
+	// are not looking at still has to be right when you come back to it, and the
+	// panel decides for itself whether the signal concerns the route it is on.
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		events
+			.onSessionWorktree((e) =>
+				useTerminalStore.getState().setWorktree(e.sessionId, e.path, e.branch),
+			)
+			.then((fn) => {
+				unlisten = fn;
+			});
+		return () => unlisten?.();
+	}, []);
+
 	// ...and then ask every bridge to say where it stands, because a reload
 	// keeps them all alive while throwing this store away. **After the listener
 	// above, in source order**, since the answers arrive as ordinary

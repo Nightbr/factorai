@@ -18,6 +18,7 @@ function session(id: string, subagentOf: string | null = null): SessionSummary {
 		turnCount: 1,
 		cwd: null,
 		subagentOf,
+		worktree: null,
 	};
 }
 

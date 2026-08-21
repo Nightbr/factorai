@@ -45,7 +45,8 @@ interface FileTreeNodeProps {
 }
 
 export function FileTreeNode({ entry, root, projectId, depth, siblings }: FileTreeNodeProps) {
-	const expanded = usePanelStore((s) => expandedFor(s, projectId).has(entry.path));
+	// Keyed on `root` — the checkout the tree is rooted at, not the project (F21).
+	const expanded = usePanelStore((s) => expandedFor(s, root).has(entry.path));
 	const selected = usePanelStore((s) => s.selectedPaths.has(entry.path));
 	const toggleExpanded = usePanelStore((s) => s.toggleExpanded);
 	const select = usePanelStore((s) => s.select);
@@ -83,7 +84,7 @@ export function FileTreeNode({ entry, root, projectId, depth, siblings }: FileTr
 	function activate() {
 		select(entry.path);
 		if (canExpand) {
-			toggleExpanded(projectId, entry.path);
+			toggleExpanded(root, entry.path);
 		} else if (!entry.isDir) {
 			// Single click opens the viewer (F7). "Open in default app" lives in
 			// the viewer's header rather than on a double-click: the first click of

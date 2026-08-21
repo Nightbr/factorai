@@ -6,6 +6,7 @@ import type {
 	GitGraph,
 	GitRev,
 	GitStatus,
+	GitWorktree,
 	ImageContents,
 	ImportCandidate,
 	IdeOpenFileEvent,
@@ -19,6 +20,7 @@ import type {
 	SearchHit,
 	SessionPage,
 	SessionSummary,
+	SessionWorktreeEvent,
 	SessionsChangedEvent,
 	SettingKey,
 	SpawnOpts,
@@ -111,6 +113,11 @@ export const cmd = {
 	ideMention: (sessionId: string, mentions: Mention[]) =>
 		invoke<void>('ide_mention', { sessionId, mentions }),
 
+	/** Forget which checkout a session was working in (F21) — the header badge's
+	 *  revert. Idempotent: a session that never signalled is a no-op. */
+	clearSessionWorktree: (sessionId: string) =>
+		invoke<void>('clear_session_worktree', { sessionId }),
+
 	/** Repository state for the Changes tab and the tree's decorations (F13).
 	 *  A project outside a repository resolves with `repoRoot: null` rather
 	 *  than rejecting. */
@@ -120,6 +127,11 @@ export const cmd = {
 	 *  HEAD side, and that is a row in the list, not an error. */
 	gitBlob: (path: string, rev: GitRev, maxBytes?: number | null) =>
 		invoke<FileContents | null>('git_blob', { path, rev, maxBytes }),
+	/** Every checkout of the repository this project sits in — the main working
+	 *  tree and every linked worktree (F21). Not filtered: a locked, prunable or
+	 *  missing checkout is a row with those flags set. An empty array means "not
+	 *  a repository", the success `gitStatus` reports as `repoRoot: null`. */
+	gitWorktrees: (projectPath: string) => invoke<GitWorktree[]>('git_worktrees', { projectPath }),
 	/** One page of the commit graph, lanes already assigned in Rust (F18).
 	 *  `offset` pages through a full re-walk rather than resuming a cursor, so
 	 *  page 4's lanes cannot disagree with page 1's. */
@@ -337,6 +349,10 @@ export const events = {
 		listen<IdeOpenFileEvent>('ide:open-file', cb),
 	/** Claude attached to, or let go of, a session's bridge (F20). */
 	onIdeStatus: (cb: (p: IdeStatusEvent) => void) => listen<IdeStatusEvent>('ide:status', cb),
+	/** The agent is working in this checkout (F21) — either it said so through
+	 *  `setWorktree`, or it opened a file in one. */
+	onSessionWorktree: (cb: (p: SessionWorktreeEvent) => void) =>
+		listen<SessionWorktreeEvent>('session:worktree', cb),
 };
 
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
@@ -393,6 +409,10 @@ interface TestFixture {
 	/** Commit graph keyed by project path, for the F18 Graph tab. The mock pages
 	 *  it by slicing `commits`, so one fixture exercises "Load more" too. */
 	gitGraphs?: Record<string, GitGraph>;
+	/** Checkouts per project path (F21). Absent means "one checkout, the project
+	 *  itself" — the shape almost every project has, so a fixture only declares
+	 *  this when the worktree behaviour is what it is testing. */
+	gitWorktrees?: Record<string, GitWorktree[]>;
 	/** Commit details keyed by SHA, for the F18 detail pane. */
 	gitCommits?: Record<string, GitCommitDetail>;
 	/** Version to report as downloaded and staged, for the F14 update badge.
@@ -599,6 +619,20 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				total: 0,
 				truncated: false,
 			}) as unknown as T;
+		}
+		case 'clear_session_worktree':
+			// Nothing to forget in a fixture: the mock's sessions carry whatever
+			// `worktree` they were declared with, and a test that needs the revert
+			// asserts the call was attempted.
+			recordMockCall('clear_session_worktree');
+			return undefined as unknown as T;
+		case 'git_worktrees': {
+			const projectPath = String(args?.projectPath ?? '');
+			// An undeclared project is one with a single checkout — which is what
+			// `gitStatuses` alone describes, so the common fixture needs no change.
+			// An *empty array* is the honest answer for "not a repository", and it
+			// is what a project with no `gitStatuses` entry gets too.
+			return (fx?.gitWorktrees?.[projectPath] ?? []) as unknown as T;
 		}
 		case 'git_blob': {
 			const key = `${String(args?.rev ?? '')}:${String(args?.path ?? '')}`;

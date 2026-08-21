@@ -3021,12 +3021,16 @@ selection. Its own roadmap entry.
 
 ## F21 — Worktrees as a first-class session citizen
 
-**Specified 2026-08-21**, from the clarify-needs interview roadmap item 1's last
-bullet was gated on. **The engine is built** — detection, the bridge tool, the
-widened scope, the roll-up and the persistence, all the same day. What is not
-built is the half you can see: the panel still roots on the project, and the
-header badge still names only the branch. Roadmap item 37 has the remainder, and
-the conformance pass against the real CLI is on it.
+**Specified and built 2026-08-21**, from the clarify-needs interview roadmap
+item 1's last bullet was gated on. Detection, the bridge tool, the widened scope,
+the roll-up, the persistence and the panel that follows are all in.
+
+**One thing is deliberately still open, and it is the premise**: a `setWorktree`
+call from the real CLI has never been observed. The conformance pass is roadmap
+item 37's last box. Two things work with zero uptake of the tool — the `openFile`
+inference and the `sessions.cwd` default — so the floor is "correct but passive"
+rather than "broken". The graph's per-checkout `HEAD` chips are the other
+remainder, and they are cosmetic.
 [ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) holds the
 two decisions that constrain everything below — what a worktree *is*, and what
 the bridge is allowed to reach.
@@ -3160,7 +3164,13 @@ Three bounds keep it from being obnoxious:
 session's own checkout, an `IconButton` appears beside the header badge and
 returns it to the worktree containing `sessions.cwd`. It is an undo of an
 automatic move, which is the smallest thing that stops a human being stranded;
-it takes no lock, so the next signal can move the panel again. A full select —
+it takes no lock, so the next signal can move the panel again.
+
+**It deletes the row, and it has to.** `clear_session_worktree` is the only write
+to `session_worktrees` that does not come from the bridge. Clearing only the
+in-memory signal would leave the persisted checkout to win the very next read, so
+the button would appear to do nothing — or worse, work until you navigated away.
+Idempotent, because the control is drawn from state a double-click can outrun. A full select —
 and telling the agent when a human moves the panel — is deferred; see "Not in
 this feature".
 
@@ -3244,10 +3254,14 @@ against adding a second, not for it.
   under one project id seeds a tree with paths from a different tree.
 - **`gitStatus` keys on the checkout.** Different tree, different answer; this
   one should refetch.
-- **`gitGraph` keys on the repository root.** Worktrees share one object
-  database and one set of refs, so the commit list is the same list — only the
-  `HEAD` tick and the Working row differ. Keying it by checkout would refetch
-  F18's whole page to render an identical list.
+- **`gitGraph` keys on the project folder, and needed no change at all.**
+  Worktrees share one object database and one set of refs, so the commit list is
+  the same list whichever checkout you are in, and `git_graph` discovers the
+  repository from whatever path it is handed. The project folder does not move
+  when the panel follows the agent, so it is already the per-repository key this
+  rule was asking for. Keying it on the *checkout* — the obvious reading, and
+  what an earlier draft of this line said — would refetch a full page of
+  identical commits on every switch.
 
 ### On screen
 
@@ -3260,9 +3274,16 @@ detached `HEAD` in a worktree, or two checkouts on one branch. The badge stays
 quiet by design per F3; the revert control beside it is the only clickable thing
 added.
 
-**The panel's `h-9` header names the checkout it is showing**, `text-xs`, since
-the panel is the thing that moved and a project route has no session header to
-read.
+**The panel's `h-9` header names the checkout it is showing**, `text-xs`, and
+**only when it is not the project's own** — the exception, not the default, so a
+single-checkout project's header pays no width for this and the tabs keep theirs.
+
+The original reason given for this placement was that a project route has no
+session header to read. That reason turned out to be wrong: a project route
+always resolves to step 3, so the panel there is *never* off the project's own
+checkout and the mark could never appear. It is in the header anyway, for a
+better reason — the Changes and Graph tabs have no root row to carry it, and all
+three tabs describe the same tree.
 
 **The graph gets a chip per checkout's `HEAD`**, through F18's existing
 badge machinery and its "the icon says where the ref lives" rule. In a
@@ -3270,8 +3291,16 @@ worktree-heavy repository this is the reason to open a graph at all: three
 checkouts, visible at once, on the commits they are actually sitting on.
 
 **A rolled-up session gets a `text-xs` mark in the sidebar** naming its
-checkout. Without it the roll-up mixes trees into one list and two rows of the
-same project are indistinguishable, which is how you resume the wrong one.
+checkout — the same voice as the project row's `missing`. Without it the roll-up
+mixes trees into one list and two rows of the same project are
+indistinguishable, which is how you resume the wrong one.
+
+It is the **directory's own name, and it needs no query**: a session attaches to
+a project by exact path *or* by being a checkout of its repository, so a `cwd`
+that is not the project folder is another checkout by construction. Naming its
+branch instead would mean a `gitWorktrees` read in a list that already polls at
+2s, and the folder name is what tells two worktrees apart anyway — the branch is
+on the session header once you are in it.
 
 ### Every checkout git knows is listed, odd ones marked
 

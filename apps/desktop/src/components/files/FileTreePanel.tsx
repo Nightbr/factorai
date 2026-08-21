@@ -1,11 +1,12 @@
 import type { DirEntry } from '@factorai/types';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
-import { ChevronsDownUp, RefreshCw, X } from 'lucide-react';
+import { ChevronsDownUp, FolderGit2, RefreshCw, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { IconButton } from '@factorai/ui';
 import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
 import { GraphView } from '@components/graph/GraphView';
+import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { PanelEmpty as Empty } from '@components/layout/PanelEmpty';
 import { PanelResizer } from '@components/layout/PanelResizer';
@@ -48,15 +49,19 @@ export function FileTreePanel() {
 }
 
 function PanelBody() {
-	const { projectId, project, root, isLoading } = useActiveProject();
+	const { project } = useActiveProject();
+	// **The checkout, not the project folder** (F21): the tree roots where the
+	// agent is working, and every cache below keys on that path rather than on the
+	// project id, which no longer identifies one tree.
+	const { projectId, root, worktree, isLinked, isLoading } = useActiveCheckout();
 	const tab = usePanelStore((s) => s.tab);
 	const setOpen = usePanelStore((s) => s.setOpen);
 	const collapseAll = usePanelStore((s) => s.collapseAll);
 	const seedRoot = usePanelStore((s) => s.seedRoot);
 
 	useEffect(() => {
-		if (projectId && root) seedRoot(projectId, root);
-	}, [projectId, root, seedRoot]);
+		if (root) seedRoot(root);
+	}, [root, seedRoot]);
 
 	return (
 		<>
@@ -69,13 +74,29 @@ function PanelBody() {
 					<TabButton tab="changes" label="Changes" />
 					<TabButton tab="graph" label="Graph" />
 				</div>
+				{/* **Which checkout the panel is showing** (F21), and only when it is
+				    not the project's own — the exception, not the default, so a
+				    single-checkout project's header is unchanged and pays no width for
+				    this. In the header rather than on the tree's root row because the
+				    Changes and Graph tabs have no root row to carry it, and all three
+				    are describing the same tree. */}
+				{isLinked && worktree && (
+					<span
+						data-testid="panel-checkout"
+						title={`Showing the worktree ${worktree.path}`}
+						className="flex min-w-0 shrink items-center gap-1 text-muted-foreground text-xs"
+					>
+						<FolderGit2 className="size-3 shrink-0" aria-hidden />
+						<span className="truncate">{worktree.branch ?? basename(worktree.path)}</span>
+					</span>
+				)}
 				{tab === 'files' && (
 					<>
 						<IconButton
 							aria-label="Collapse all"
 							title="Collapse all"
 							disabled={!projectId}
-							onClick={() => projectId && collapseAll(projectId)}
+							onClick={() => root && collapseAll(root)}
 						>
 							<ChevronsDownUp />
 						</IconButton>
@@ -202,6 +223,14 @@ function TabButton({ tab, label }: { tab: PanelTab; label: string }) {
 
 /** The project directory as a tree node, so the root row behaves like any
  *  other directory (chevron, expand, refetch). */
+/** Last path segment, for naming a checkout that has no branch to name — a
+ *  detached HEAD in a worktree. Trailing separators are trimmed first, since git
+ *  reports paths both ways. */
+function basename(path: string): string {
+	const parts = path.replace(/\/+$/, '').split('/');
+	return parts[parts.length - 1] || path;
+}
+
 function rootEntry(root: string, name: string): DirEntry {
 	return {
 		name,

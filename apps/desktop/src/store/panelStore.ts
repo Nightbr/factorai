@@ -92,14 +92,23 @@ interface PanelState {
 	tab: PanelTab;
 	/** Panel width in px. Persisted. */
 	width: number;
-	/** Expanded directory paths, per project. Deliberately NOT persisted: a
-	 *  path that existed last session may be gone, and restoring a half-open
-	 *  tree of stale paths is worse than starting collapsed. */
-	expandedByProject: Record<string, Set<string>>;
+	/** Expanded directory paths, **keyed by the checkout the tree is rooted at**
+	 *  (F21) — not by the project id, which this used to be.
+	 *
+	 *  The map holds *absolute* paths, so a project with more than one worktree
+	 *  would seed one tree with paths belonging to another, every one of them
+	 *  missing. The project id stops being an identity the moment the panel's root
+	 *  can move without the route changing, and the checkout path is what the
+	 *  paths inside are actually relative to.
+	 *
+	 *  Deliberately NOT persisted: a path that existed last session may be gone,
+	 *  and restoring a half-open tree of stale paths is worse than starting
+	 *  collapsed. */
+	expandedByCheckout: Record<string, Set<string>>;
 	/** Selected rows, for highlight and for what "add to agent context" acts on (F20).
 	 *
 	 *  A set rather than one path since multi-select landed. Not persisted, like
-	 *  `expandedByProject` and for the same reason: it names paths that may not
+	 *  `expandedByCheckout` and for the same reason: it names paths that may not
 	 *  exist next launch, and a restored selection nobody made is worse than
 	 *  none. */
 	selectedPaths: ReadonlySet<string>;
@@ -116,16 +125,16 @@ interface PanelState {
 	setTab: (tab: PanelTab) => void;
 	setWidth: (width: number) => void;
 	setDetailHeight: (height: number) => void;
-	toggleExpanded: (projectId: string, path: string) => void;
+	toggleExpanded: (checkout: string, path: string) => void;
 	/** Expand all of these, idempotently. Revealing a path needs this rather
 	 *  than `toggleExpanded`: most of the ancestors are usually open already,
 	 *  and toggling would close exactly the ones you needed. */
-	expandAll: (projectId: string, paths: string[]) => void;
-	/** Expand the root once, the first time this project's tree is shown. A
-	 *  project with an existing (even empty) entry has been seeded already, so a
+	expandAll: (checkout: string, paths: string[]) => void;
+	/** Expand the root once, the first time this checkout's tree is shown. A
+	 *  checkout with an existing (even empty) entry has been seeded already, so a
 	 *  deliberate collapse-all is not undone on the next render. */
-	seedRoot: (projectId: string, rootPath: string) => void;
-	collapseAll: (projectId: string) => void;
+	seedRoot: (checkout: string) => void;
+	collapseAll: (checkout: string) => void;
 	/** Select exactly this row, dropping any other, and make it the anchor. The
 	 *  plain-click case. */
 	select: (path: string | null) => void;
@@ -151,7 +160,7 @@ export const usePanelStore = create<PanelState>()(
 			open: false,
 			tab: 'files',
 			width: DEFAULT_PANEL_WIDTH,
-			expandedByProject: {},
+			expandedByCheckout: {},
 			selectedPaths: new Set<string>(),
 			anchorPath: null,
 			detailHeight: DEFAULT_DETAIL_HEIGHT,
@@ -162,39 +171,39 @@ export const usePanelStore = create<PanelState>()(
 			setWidth: (width) => set({ width: clampPanelWidth(width) }),
 			setDetailHeight: (height) => set({ detailHeight: clampDetailHeight(height) }),
 
-			toggleExpanded: (projectId, path) =>
+			toggleExpanded: (checkout, path) =>
 				set((s) => {
-					const next = new Set(s.expandedByProject[projectId] ?? []);
+					const next = new Set(s.expandedByCheckout[checkout] ?? []);
 					if (!next.delete(path)) next.add(path);
-					return { expandedByProject: { ...s.expandedByProject, [projectId]: next } };
+					return { expandedByCheckout: { ...s.expandedByCheckout, [checkout]: next } };
 				}),
 
-			expandAll: (projectId, paths) =>
+			expandAll: (checkout, paths) =>
 				set((s) => {
 					if (!paths.length) return s;
 					return {
-						expandedByProject: {
-							...s.expandedByProject,
-							[projectId]: withExpanded(s.expandedByProject[projectId], paths),
+						expandedByCheckout: {
+							...s.expandedByCheckout,
+							[checkout]: withExpanded(s.expandedByCheckout[checkout], paths),
 						},
 					};
 				}),
 
-			seedRoot: (projectId, rootPath) =>
+			seedRoot: (checkout) =>
 				set((s) =>
-					s.expandedByProject[projectId]
+					s.expandedByCheckout[checkout]
 						? s
 						: {
-								expandedByProject: {
-									...s.expandedByProject,
-									[projectId]: new Set([rootPath]),
+								expandedByCheckout: {
+									...s.expandedByCheckout,
+									[checkout]: new Set([checkout]),
 								},
 							},
 				),
 
-			collapseAll: (projectId) =>
+			collapseAll: (checkout) =>
 				set((s) => ({
-					expandedByProject: { ...s.expandedByProject, [projectId]: new Set<string>() },
+					expandedByCheckout: { ...s.expandedByCheckout, [checkout]: new Set<string>() },
 				})),
 
 			select: (path) =>
@@ -251,7 +260,7 @@ export const usePanelStore = create<PanelState>()(
 				return next;
 			},
 			// Only the preferences round-trip to storage. Sets aren't
-			// JSON-serialisable anyway, and see `expandedByProject` above.
+			// JSON-serialisable anyway, and see `expandedByCheckout` above.
 			partialize: (s): PersistedPanelState => ({
 				open: s.open,
 				width: s.width,
@@ -262,10 +271,10 @@ export const usePanelStore = create<PanelState>()(
 	),
 );
 
-/** Expanded paths for a project — stable empty set so selectors don't churn. */
+/** Expanded paths for a checkout — stable empty set so selectors don't churn. */
 const EMPTY: ReadonlySet<string> = new Set();
 
-export function expandedFor(state: PanelState, projectId: string | undefined): ReadonlySet<string> {
-	if (!projectId) return EMPTY;
-	return state.expandedByProject[projectId] ?? EMPTY;
+export function expandedFor(state: PanelState, checkout: string | undefined): ReadonlySet<string> {
+	if (!checkout) return EMPTY;
+	return state.expandedByCheckout[checkout] ?? EMPTY;
 }

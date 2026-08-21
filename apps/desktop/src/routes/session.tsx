@@ -1,13 +1,22 @@
 import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { BookOpen, GitBranch, Play, TriangleAlert, X } from 'lucide-react';
+import {
+	BookOpen,
+	CornerUpLeft,
+	FolderGit2,
+	GitBranch,
+	Play,
+	TriangleAlert,
+	X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
 import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, restartSession, Terminal } from '@components/terminal/Terminal';
+import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useGitBranch } from '@hooks/useGitBranch';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
@@ -33,6 +42,8 @@ function sessionLabel(sessionId: string, sessions: SessionSummary[] | undefined)
 function SessionView() {
 	const { sessionId, projectId } = sessionRoute.useParams();
 
+	const queryClient = useQueryClient();
+
 	const projectsQ = useQuery({
 		queryKey: queryKeys.projects(),
 		queryFn: () => cmd.listProjects(),
@@ -43,6 +54,30 @@ function SessionView() {
 	// The header's branch badge. `projectCwd` rather than the active project, so
 	// the badge always names this session's repository (F3).
 	const branch = useGitBranch(projectCwd);
+
+	// **Which checkout this session is working in** (F21). Absent for a
+	// single-checkout project, which is the 95% case — so that header renders
+	// exactly as it did before any of this existed.
+	const { worktree, isLinked } = useActiveCheckout();
+	const clearWorktree = useTerminalStore((s) => s.clearWorktree);
+
+	/**
+	 * Back to the checkout this session's own cwd is in.
+	 *
+	 * **An undo of a move the agent made by itself, not a picker.** It clears the
+	 * record as well as the live signal, because leaving the row would resolve
+	 * straight back to the checkout you just left. It takes no lock either: the
+	 * next signal moves the panel again, which is what makes it an undo.
+	 */
+	function revertWorktree() {
+		clearWorktree(sessionId);
+		void cmd
+			.clearSessionWorktree(sessionId)
+			.then(() => queryClient.invalidateQueries({ queryKey: queryKeys.sessions(projectId) }))
+			// The in-memory half already happened, so the panel has moved; this only
+			// means it will come back on the next reload. Worth a log, not a dialog.
+			.catch((e) => console.error('clear_session_worktree failed', e));
+	}
 
 	// Shares the project route's cache entry, so arriving from the session list
 	// costs nothing. Refetched on `sessions:changed`-driven invalidation, which
@@ -152,6 +187,34 @@ function SessionView() {
 					>
 						<GitBranch className="size-3 shrink-0" aria-hidden />
 						<span className="truncate">{branch}</span>
+					</span>
+				)}
+				{/* **The checkout, beside the branch and never instead of it** (F21).
+				    Two facts rather than one: they usually agree, and the cases where
+				    they do not — a detached HEAD in a worktree, two checkouts on one
+				    branch — are exactly when you need to know. Drawn only when the
+				    session is off the project's own checkout, so a single-checkout
+				    header is byte-identical to what it was.
+
+				    The badge stays quiet by design, like the branch (F3). The revert
+				    beside it is the one clickable thing added, and it is there because
+				    the panel moves by itself: without it a signal you did not want
+				    leaves you with no way back. */}
+				{isLinked && worktree && (
+					<span
+						className="flex min-w-0 max-w-[12rem] shrink-0 items-center gap-1 text-muted-foreground text-xs"
+						title={`Working in the worktree ${worktree.path}`}
+						data-testid="session-worktree"
+					>
+						<FolderGit2 className="size-3 shrink-0" aria-hidden />
+						<span className="truncate">{worktree.name ?? worktree.branch ?? worktree.path}</span>
+						<IconButton
+							aria-label="Back to this session's own checkout"
+							title="Back to this session's own checkout"
+							onClick={revertWorktree}
+						>
+							<CornerUpLeft />
+						</IconButton>
 					</span>
 				)}
 				{/* The full id is one hover away rather than spending header width on

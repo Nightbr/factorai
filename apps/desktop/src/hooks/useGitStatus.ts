@@ -1,6 +1,6 @@
 import type { GitStatus } from '@factorai/types';
 import { useQuery } from '@tanstack/react-query';
-import { useActiveProject } from '@hooks/useActiveProject';
+import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { usePanelStore } from '@store/panelStore';
@@ -10,7 +10,7 @@ import { usePanelStore } from '@store/panelStore';
 const GIT_POLL_MS = 3000;
 
 /**
- * The active project's repository state (specs/05-features.md F13).
+ * The active **checkout's** repository state (specs/05-features.md F13, F21).
  *
  * One query per project, **shared** by the Changes tab and the file tree's
  * decorations — which is why the poll follows the panel being open rather than
@@ -27,7 +27,11 @@ export function useGitStatus(): {
 	isPending: boolean;
 	root: string | null;
 } {
-	const { root } = useActiveProject();
+	// **The checkout, not the project folder** (F21). A worktree is a different
+	// working tree with a different status, so this key has to move with it —
+	// unlike the graph's, which stays on the repository because the commit list
+	// does not change between checkouts.
+	const { root } = useActiveCheckout();
 	const open = usePanelStore((s) => s.open);
 
 	const query = useQuery({

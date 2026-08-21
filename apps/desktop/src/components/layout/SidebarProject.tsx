@@ -367,6 +367,23 @@ function SessionList({ project }: { project: Project }) {
 						<span className="min-w-0 flex-1 truncate">
 							{session.title.trim() || session.id.slice(0, 8)}
 						</span>
+						{/* **Which checkout this session ran in** (F21), when it is not the
+						    project's own. The roll-up mixes worktrees into one list, so
+						    without this two rows of the same project are indistinguishable
+						    and you resume the wrong one. `text-xs` metadata, the same voice
+						    as the project row's `missing`.
+
+						    The directory's own name rather than its branch: no query, and
+						    the folder name is what tells two worktrees apart anyway — the
+						    branch is on the session header once you are in it. */}
+						{checkoutMark(session.cwd, project.realPath) && (
+							<span
+								className="shrink-0 text-muted-foreground/70 text-xs"
+								data-testid="sidebar-session-checkout"
+							>
+								{checkoutMark(session.cwd, project.realPath)}
+							</span>
+						)}
 						{open[session.id] && (
 							// Smaller than the standalone dot: down a column of nested rows the
 							// full-size dot is the loudest thing on screen. It stayed at 6px when
@@ -401,4 +418,18 @@ function Row({ children, muted }: { children: string; muted?: boolean }) {
 			{children}
 		</p>
 	);
+}
+
+/**
+ * The checkout a session ran in, when it is not the project's own folder (F21).
+ *
+ * `null` for the ordinary case, which draws nothing. A session attaches to a
+ * project by exact path *or* by being a checkout of its repository, so a `cwd`
+ * that is not the project folder is another checkout — no query needed to know
+ * that, only to name its branch, which the session header does instead.
+ */
+function checkoutMark(cwd: string | null, projectRoot: string): string | null {
+	if (!cwd || cwd === projectRoot) return null;
+	const parts = cwd.replace(/\/+$/, '').split('/');
+	return parts[parts.length - 1] || null;
 }

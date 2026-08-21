@@ -18,6 +18,7 @@ import type {
 	GitGraphCommit,
 	GitRef,
 	GitStatus,
+	GitWorktree,
 	ImageContents,
 	ImportCandidate,
 	PdfContents,
@@ -58,6 +59,10 @@ export interface TestFixture {
 	/** Blobs keyed by `<rev>:<absolute path>`. Absent means the file doesn't
 	 *  exist at that revision, which is an added or deleted file. */
 	gitBlobs?: Record<string, FileContents>;
+	/** Checkouts keyed by project path (F21). Absent means one checkout, the
+	 *  project itself — the shape almost every project has, so a spec only
+	 *  declares this when worktrees are what it is testing. */
+	gitWorktrees?: Record<string, GitWorktree[]>;
 	gitGraphs?: Record<string, GitGraph>;
 	gitCommits?: Record<string, GitCommitDetail>;
 	/** Version to report as downloaded and staged, for the F14 update badge. */
@@ -132,6 +137,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		turnCount: 42,
 		cwd: project.realPath,
 		subagentOf: null,
+		worktree: null,
 	};
 	return {
 		projects: [project],
@@ -143,6 +149,110 @@ export function fixtureOneProjectOneSession(): TestFixture {
 				offset: 0,
 				limit: 100,
 				total: 42,
+			},
+		},
+	};
+}
+
+/**
+ * One project whose repository has a second checkout, and a session working in
+ * it (F21).
+ *
+ * The worktree is a **sibling** of the project folder rather than nested inside
+ * it, because that is where real ones live — and because a nested one would let a
+ * containment bug pass.
+ */
+export function fixtureSessionInAWorktree(): TestFixture {
+	const base = fixtureOneProjectOneSession();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const main = base.sessionsByProject?.[project.id]?.[0];
+	if (!main) throw new Error('base fixture has no session');
+
+	const worktreePath = '/home/alice/code/worktrees/feature-x';
+	// A rolled-up session: Claude ran it in the worktree, so its cwd is not the
+	// project folder, and `worktree` is what the agent signalled.
+	const inWorktree: SessionSummary = {
+		id: 'session-uuid-002',
+		projectId: project.id,
+		title: 'Add the worktree switcher',
+		createdAt: Date.now() - 600_000,
+		updatedAt: Date.now() - 30_000,
+		turnCount: 7,
+		cwd: worktreePath,
+		subagentOf: null,
+		worktree: worktreePath,
+	};
+
+	return {
+		...base,
+		sessionsByProject: { [project.id]: [inWorktree, main] },
+		sessionPages: {
+			...base.sessionPages,
+			[inWorktree.id]: { id: inWorktree.id, events: [], offset: 0, limit: 100, total: 7 },
+		},
+		// The branch badge lives beside the worktree mark, so the spec that asserts
+		// "two facts, not one" needs a repository for the project.
+		gitStatuses: {
+			[project.realPath]: {
+				repoRoot: project.realPath,
+				branch: 'main',
+				head: 'a'.repeat(40),
+				changes: [],
+				total: 0,
+				truncated: false,
+			},
+			[worktreePath]: {
+				repoRoot: project.realPath,
+				branch: 'feature-x',
+				head: 'b'.repeat(40),
+				changes: [],
+				total: 0,
+				truncated: false,
+			},
+		},
+		gitWorktrees: {
+			[project.realPath]: [
+				{
+					path: project.realPath,
+					name: null,
+					branch: 'main',
+					head: 'a'.repeat(40),
+					isMain: true,
+					locked: false,
+					prunable: false,
+					exists: true,
+				},
+				{
+					path: worktreePath,
+					name: 'feature-x',
+					branch: 'feature-x',
+					head: 'b'.repeat(40),
+					isMain: false,
+					locked: false,
+					prunable: false,
+					exists: true,
+				},
+			],
+		},
+		// The tree the panel must root on once it follows the session.
+		dirListings: {
+			...base.dirListings,
+			[worktreePath]: {
+				entries: [
+					{
+						name: 'switcher.ts',
+						path: `${worktreePath}/switcher.ts`,
+						isDir: false,
+						isSymlink: false,
+						symlinkOutsideRoot: false,
+						size: 120,
+						modifiedAt: Date.now(),
+						ignored: false,
+					},
+				],
+				total: 1,
+				truncated: false,
 			},
 		},
 	};
@@ -166,6 +276,7 @@ export function fixtureWithSubagents(): TestFixture {
 		turnCount: 12,
 		cwd: project.realPath,
 		subagentOf: parent.id,
+		worktree: null,
 	});
 
 	const agents = [
@@ -555,6 +666,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		turnCount: i + 1,
 		cwd: zulu.realPath,
 		subagentOf: null,
+		worktree: null,
 	}));
 
 	return {
@@ -571,6 +683,8 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					turnCount: 3,
 					cwd: alpha.realPath,
 					subagentOf: null,
+					worktree: null,
+					worktree: null,
 				},
 			],
 		},

@@ -24,11 +24,16 @@ pub fn list_sessions(
 			// sub-agent (parent transcript deleted) keeps its marking but
 			// sorts as its own group — the LEFT JOIN leaves `p` NULL and
 			// COALESCE falls back to its own updated_at.
+			// `w.path` is the checkout the agent last signalled (F21). Joined here
+			// rather than fetched per session: the renderer needs it for every row
+			// it draws — the sidebar's checkout mark — and on first paint, before
+			// any `session:worktree` event has had a reason to fire.
 			"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
-			        s.turn_count, s.cwd, s.subagent_of
+			        s.turn_count, s.cwd, s.subagent_of, w.path
 			 FROM sessions s
 			 JOIN discovered_projects d ON d.id = s.discovered_id
 			 LEFT JOIN sessions p ON p.id = s.subagent_of
+			 LEFT JOIN session_worktrees w ON w.session_id = s.id
 			 WHERE d.project_id = ?1
 			 ORDER BY COALESCE(p.updated_at, s.updated_at) DESC,
 			          (s.subagent_of IS NULL) DESC,
@@ -45,6 +50,7 @@ pub fn list_sessions(
 					turn_count: row.get(5)?,
 					cwd: row.get(6)?,
 					subagent_of: row.get(7)?,
+					worktree: row.get(8)?,
 				})
 			})?
 			.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -115,6 +121,21 @@ fn lookup_store_key_and_total(
 		)
 		.map_err(|_| AppError::NotFound(format!("session {session_id}")))
 	})
+}
+
+/// Forget which checkout a session was working in (F21).
+///
+/// **The human's revert**, and the only write to `session_worktrees` that does
+/// not come from the bridge. The badge's control undoes a move the agent made by
+/// itself, so it removes the record rather than merely ignoring it — otherwise
+/// the next read resolves straight back. The next signal writes it again.
+///
+/// Idempotent: reverting a session that never signalled is a no-op, not an
+/// error. The control is only drawn when there is something to revert, and a
+/// double-click must not become a dialog.
+#[tauri::command]
+pub fn clear_session_worktree(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+	crate::services::sessions::clear_worktree(&state.db, &session_id)
 }
 
 /// Where a session's transcript lives, addressed by the store directory we
