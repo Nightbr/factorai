@@ -38,7 +38,7 @@ export function ancestorsWithin(path: string, root: string): string[] {
  * at the moment this runs. The expansion is what makes the row reachable; that
  * is the useful half, and a scroll would need the tree to own it.
  */
-export function useRevealInTree(projectId: string, root: string | null): (path: string) => void {
+export function useRevealInTree(root: string | null): (path: string) => void {
 	const setOpen = usePanelStore((s) => s.setOpen);
 	const setTab = usePanelStore((s) => s.setTab);
 	const expandAll = usePanelStore((s) => s.expandAll);
@@ -51,9 +51,9 @@ export function useRevealInTree(projectId: string, root: string | null): (path: 
 			if (!chain.length) return;
 			setOpen(true);
 			setTab('files');
-			expandAll(projectId, chain);
+			expandAll(root, chain);
 			select(path);
 		},
-		[projectId, root, setOpen, setTab, expandAll, select],
+		[root, setOpen, setTab, expandAll, select],
 	);
 }

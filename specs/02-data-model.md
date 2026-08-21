@@ -329,10 +329,13 @@ and for what "who reads this?" now decides.
 **Migration `0006`. Added by F21**; see
 [ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 3.
 
-Written **only by the IDE bridge's signal path** — the agent calling
-`setWorktree`, or an `openFile` landing in another checkout — after the path has
-been validated against `git_worktrees`. Nothing else writes here, and the scan
-never does.
+Written **by the IDE bridge's signal path** — the agent calling `setWorktree`, or
+an `openFile` landing in another checkout — after the path has been validated
+against `git_worktrees`. The scan never writes here.
+
+**One other writer, and it only deletes**: `clear_session_worktree`, the header
+badge's revert. It has to remove the row rather than merely stop reading it, or
+the next read resolves straight back to the checkout the human just left.
 
 **Its own table rather than a column on `sessions`, and the reason is the one
 ADR-0011 turns on.** `sessions` is derived state: the indexer upserts it from

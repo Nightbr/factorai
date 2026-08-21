@@ -63,6 +63,13 @@ pub struct SessionSummary {
 	/// read-only and can never be resumed — `claude --resume` looks for a
 	/// top-level transcript, which an agent id has none of.
 	pub subagent_of: Option<String>,
+	/// The checkout of the project's repository this session is working in, as
+	/// last signalled through the IDE bridge (F21). `None` for the ordinary
+	/// case — no signal, so the checkout is derived from `cwd` instead.
+	///
+	/// **A record, not a guarantee**: the path can have been removed since, so
+	/// the renderer validates it against `git_worktrees` and falls back.
+	pub worktree: Option<String>,
 }
 
 /// One full-text search result. Mirrors `@factorai/types` `SearchHit`.

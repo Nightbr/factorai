@@ -1020,21 +1020,33 @@ roll-up, or the roll-up produces sessions that restart as new conversations.
       symmetric with pass 1. Five integration tests in `tests/worktree_rollup.rs`, including the
       two that pin the boundary: an unrelated repository is not claimed, and a subdirectory of a
       checkout does not roll up.
-- [ ] **Conformance pass against the real CLI, and record the version.** This is where the
-      premise is tested — F20 records that a tool call from the shipped binary is still
-      unobserved. If `claude` does not call the tool, the `openFile` inference and the
-      `sessions.cwd` default still work, so the floor is passive rather than broken.
+- [ ] **Conformance pass against the real CLI, and record the version. This is the last box,
+      and it is the premise.** F20 records that a tool call from the shipped binary is still
+      unobserved, and nothing since has observed one. If `claude` does not call `setWorktree`,
+      the `openFile` inference and the `sessions.cwd` default still work — the floor is passive,
+      not broken — but the headline behaviour is unproven until this runs.
 
 ### 4. The renderer
 
-- [ ] Panel re-roots on the resolved checkout: tree, `gitStatus`, decorations. Expand state
-      re-keyed to the **checkout**, not the project — it holds absolute paths.
-- [ ] `gitGraph` stays keyed on the **repository root** (one object DB, one set of refs — the
-      commit list does not change), with the `HEAD` tick and Working row following the checkout.
-- [ ] Header badge gains a worktree mark only when off the project's own checkout, plus the
-      revert `IconButton`. A single-checkout project's header must come out byte-identical.
-- [ ] `HEAD` chip per checkout in the graph (this is item 1's share), `text-xs` checkout mark on
-      rolled-up sidebar sessions, checkout named in the panel's `h-9` header.
+- [x] Panel re-roots on the resolved checkout — landed 2026-08-21 behind `useActiveCheckout`,
+      which is the three-step resolution in one place. Expand state re-keyed from the project id
+      to the **checkout path**, since it holds absolute paths.
+- [x] `gitGraph` **needed no change**: it keys on the project folder, which does not move when
+      the panel follows the agent, and checkouts share one object DB and one set of refs. The
+      obvious reading of this box — key it on the checkout — would have refetched a page of
+      identical commits on every switch.
+- [x] Header badge gains a worktree mark only when off the project's own checkout, plus the
+      revert `IconButton`. The revert deletes the row through `clear_session_worktree`; clearing
+      only the in-memory signal would let the stored path win the next read.
+- [x] `text-xs` checkout mark on rolled-up sidebar sessions (the directory name, no query
+      needed), checkout named in the panel's `h-9` header when it is not the project's own.
+- [ ] **`HEAD` chip per checkout in the graph** — the only visible piece still open, and it is
+      item 1's share of this: one more ref kind through F18's badge machinery. Cosmetic, so it
+      did not gate the rest.
+
+Six smoke tests in `tests/smoke/worktrees.spec.ts` cover the resolution from both the persisted
+column and the `cwd` fallback, the revert reaching the backend, and — the one that matters most —
+that a session in the project's own checkout grows no new furniture at all.
 
 **Deferred, deliberately, and F21 says why for each:** the worktree picker; telling the agent when
 a human moves the panel; creating or removing a worktree from factorai (ADR-0009 stands); new

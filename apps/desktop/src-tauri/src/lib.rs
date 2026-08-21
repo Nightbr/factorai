@@ -208,6 +208,7 @@ pub fn run() {
 			commands::git::git_commit,
 			commands::git::git_blob_at,
 			commands::git::git_worktrees,
+			commands::sessions::clear_session_worktree,
 			commands::settings::get_setting,
 			commands::settings::set_setting,
 			commands::settings::check_claude_cli,

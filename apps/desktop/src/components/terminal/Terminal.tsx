@@ -440,7 +440,7 @@ interface TerminalProps {
 export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: TerminalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const { open: openInViewer, path: viewerPath } = useFileViewer();
-	const revealInTree = useRevealInTree(projectId, projectCwd);
+	const revealInTree = useRevealInTree(projectCwd);
 
 	/** Did the open viewer come from a link in *this* terminal? Decides whether
 	 *  closing it hands focus back here — see the effect below. */

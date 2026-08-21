@@ -27,6 +27,11 @@ export const queryKeys = {
 	 *  Changes tab and the tree's decorations** — they read the same poll, which
 	 *  is why the interval follows the panel rather than the tab (Q20). */
 	gitStatus: (projectPath: string) => ['git-status', projectPath] as const,
+	/** Every checkout of a project's repository (F21). Its own namespace rather
+	 *  than a `gitStatus` variant for the reason `gitGraph` is: it polls at 30s
+	 *  and is read whether or not the panel is open, because the session header's
+	 *  badge needs it too. */
+	gitWorktrees: (projectPath: string) => ['git-worktrees', projectPath] as const,
 	/** One file at one revision, for a diff side. */
 	gitBlob: (path: string, rev: string) => ['git-blob', path, rev] as const,
 	/** One page of the commit graph (F18). The page index is part of the key so

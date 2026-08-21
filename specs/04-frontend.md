@@ -277,10 +277,17 @@ wins — `session_worktrees` for this session (re-validated against
 happens when the first two go stale.
 
 The **live** part lands in `terminalStore` beside `ideIssues`, from the
-`session:worktree` event: `worktreeBySession: Record<string, string>`, **not
-persisted**, exactly as `bySession` isn't. Rust already wrote the row before
-emitting, so the durable copy is in SQLite and this is only the in-flight value
-that saves a refetch. A signal for a session in another project is dropped on
+`session:worktree` event: `worktreeBySession: Record<string, LiveWorktree>` —
+path and branch — **not persisted**, exactly as `bySession` isn't. The branch
+rides along rather than being looked up, so the header badge renders from one
+event instead of the badge and the panel resolving it separately and briefly
+disagreeing. Rust already wrote the row before
+emitting, so the durable copy is in SQLite — arriving on `SessionSummary.worktree`
+— and this is only the in-flight value that saves a refetch.
+
+**The resolution itself is a hook, not a store**: `useActiveCheckout`, three steps
+with first-match-wins, and every consumer reads `root` from it rather than from
+`useActiveProject`. One place decides which tree the app is showing. A signal for a session in another project is dropped on
 arrival — the route owns which project the panel shows, and `FileTreePanel`'s
 "which project it shows follows the route" is not up for negotiation by an event.
 

@@ -11,6 +11,16 @@ export interface LiveTerminal {
 	status: TerminalStatus;
 }
 
+/** The checkout a session's agent signalled, and that checkout's branch (F21).
+ *
+ *  The branch is carried rather than looked up so the header badge can render it
+ *  from one event, instead of the badge and the panel resolving it separately and
+ *  briefly disagreeing. */
+interface LiveWorktree {
+	path: string;
+	branch: string | null;
+}
+
 /** A session you have open, whether or not it is running (F16). Carries its
  *  project because that is what the tab needs to render an avatar and what the
  *  spawn needs for a cwd — and looking it up from the index at boot would mean
@@ -63,6 +73,13 @@ interface TerminalState {
 	 *
 	 *  Not persisted: it describes a process that will not outlive the app. */
 	ideIssues: Record<string, string>;
+	/** The checkout each session's agent last signalled (F21), by session id.
+	 *
+	 *  **Not persisted**, exactly as `bySession` isn't, and for a stronger reason
+	 *  than "it would go stale": the durable copy is `session_worktrees` in
+	 *  SQLite, arriving on `SessionSummary.worktree`. This is only the in-flight
+	 *  value, so a reload falls back to the row rather than to nothing. */
+	worktreeBySession: Record<string, LiveWorktree>;
 	attach: (sessionId: string, terminalId: TerminalId, projectId: string) => void;
 	/** Adopt the PTYs Rust already holds, from `terminal_list` at boot.
 	 *
@@ -79,6 +96,13 @@ interface TerminalState {
 	 *  nothing changed, so a repeated report — and `resync` re-announcing every
 	 *  bridge — costs no render. */
 	setIdeStatus: (sessionId: string, error: string | null) => void;
+	/** Record a `session:worktree` signal. Rust wrote the row before emitting, so
+	 *  this never gets ahead of what a reload would show. */
+	setWorktree: (sessionId: string, path: string, branch: string | null) => void;
+	/** Drop the signal for a session — the header badge's revert. The persisted
+	 *  row goes with it, through `clearSessionWorktree`; this is only the
+	 *  in-flight half. */
+	clearWorktree: (sessionId: string) => void;
 	/** Move a tab, by session id, to the index of another. */
 	reorder: (sessionId: string, toIndex: number) => void;
 	/** Update status for the terminal with this id (`terminal:status`). */
@@ -124,6 +148,19 @@ export const useTerminalStore = create<TerminalState>()(
 			tabs: [],
 			restartEpoch: {},
 			ideIssues: {},
+			worktreeBySession: {},
+
+			setWorktree: (sessionId, path, branch) =>
+				set((s) => {
+					const current = s.worktreeBySession[sessionId];
+					// A signal is sent on every `openFile` in a checkout, so the same
+					// path arrives over and over. Bail before writing, or every one of
+					// them is a new object reference and a re-render.
+					if (current?.path === path && current.branch === branch) return s;
+					return {
+						worktreeBySession: { ...s.worktreeBySession, [sessionId]: { path, branch } },
+					};
+				}),
 
 			setIdeStatus: (sessionId, error) =>
 				set((s) => {
@@ -132,6 +169,14 @@ export const useTerminalStore = create<TerminalState>()(
 					if (error) next[sessionId] = error;
 					else delete next[sessionId];
 					return { ideIssues: next };
+				}),
+
+			clearWorktree: (sessionId) =>
+				set((s) => {
+					if (!s.worktreeBySession[sessionId]) return s;
+					const next = { ...s.worktreeBySession };
+					delete next[sessionId];
+					return { worktreeBySession: next };
 				}),
 
 			attach: (sessionId, terminalId, projectId) =>
