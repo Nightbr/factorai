@@ -20,6 +20,7 @@
 
 use std::fs;
 use std::io;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -136,6 +137,15 @@ fn write_private(path: &Path, body: &[u8]) -> io::Result<()> {
 	file.sync_all()
 }
 
+/// Windows: no Unix permission bits; just write the file and sync.
+#[cfg(windows)]
+fn write_private(path: &Path, body: &[u8]) -> io::Result<()> {
+	use std::io::Write;
+	let mut file = fs::OpenOptions::new().write(true).create(true).truncate(true).open(path)?;
+	file.write_all(body)?;
+	file.sync_all()
+}
+
 /// Delete the handle for `port`. Missing is success: the caller is a teardown
 /// path and the goal state is "no file", not "a file was removed".
 pub fn remove(claude_dir: &Path, port: u16) {
@@ -198,11 +208,42 @@ pub fn sweep(claude_dir: &Path, is_alive: impl Fn(u32) -> bool) -> usize {
 /// It cannot distinguish "gone" from "alive but owned by someone else", and
 /// that asymmetry is the safe way round: a pid we cannot signal reads as alive,
 /// so the sweep leaves the file rather than deleting a stranger's.
+#[cfg(unix)]
 pub fn pid_is_alive(pid: u32) -> bool {
 	// SAFETY: `kill` with signal 0 performs error checking only — it delivers no
 	// signal and touches no memory of ours. The cast is to the platform's own
 	// pid type, which is what `std::process::id` widened from.
 	unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+}
+
+/// Windows stub: open the process handle to test for existence.
+///
+/// `OpenProcess` with `PROCESS_QUERY_LIMITED_INFORMATION` (0x1000) succeeds
+/// only for live processes we have permission to observe. We close the handle
+/// immediately via the `HANDLE` wrapper's drop. A failed open is treated as
+/// "gone" — the safe direction: we leave the file rather than deleting a
+/// stranger's lock.
+///
+/// The two WinAPI symbols are declared inline so no additional crate is needed
+/// (they come from the Windows SDK, which the MSVC toolchain always ships).
+#[cfg(windows)]
+pub fn pid_is_alive(pid: u32) -> bool {
+	// SAFETY: pure FFI calls. `OpenProcess` returns NULL on failure, non-NULL
+	// on success; `CloseHandle` is safe to call on any valid handle we own.
+	#[link(name = "kernel32")]
+	extern "system" {
+		fn OpenProcess(desired_access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+		fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+	}
+	const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+	unsafe {
+		let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+		if h.is_null() {
+			return false;
+		}
+		CloseHandle(h);
+		true
+	}
 }
 
 #[cfg(test)]
@@ -243,6 +284,7 @@ mod tests {
 		assert_ne!(Lockfile::new("/p").auth_token, Lockfile::new("/p").auth_token);
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn writing_creates_the_directory_and_a_private_file() {
 		let dir = claude_dir();
@@ -255,6 +297,7 @@ mod tests {
 		assert_eq!(read(&path).unwrap(), lock);
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn rewriting_re_asserts_the_mode_of_a_file_that_already_existed() {
 		let dir = claude_dir();

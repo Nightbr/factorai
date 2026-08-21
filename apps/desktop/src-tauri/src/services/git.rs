@@ -1159,7 +1159,7 @@ fn git_err(e: git2::Error) -> AppError {
 	AppError::Io(format!("git: {}", e.message()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
 	use super::*;
 	use git2::{IndexAddOption, Oid, Signature};

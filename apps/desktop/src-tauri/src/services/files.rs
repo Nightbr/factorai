@@ -774,6 +774,7 @@ mod tests {
 		);
 	}
 
+	#[cfg(unix)]
 	#[test]
 	fn path_kinds_follows_a_symlink_to_what_it_points_at() {
 		let dir = tempdir().unwrap();
