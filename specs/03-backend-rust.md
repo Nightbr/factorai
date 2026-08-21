@@ -31,6 +31,8 @@ services/
   osc_title.rs        # session status out of the terminal title (ADR-0015)
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
+  sessions.rs         # the small `sessions` reads something outside the
+                      #   command layer needs — today, a recorded cwd
   files.rs            # list_dir, read_file, read_image, read_pdf, path_kinds
   child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
                       #   strip, and CLAUDE_CODE_CHILD_SESSION
@@ -459,6 +461,26 @@ id is a uuid now and says nothing about where Claude writes. The folder is
 exactly what Claude encodes, and it is the only thing we have for a project
 Claude has never run in — which is precisely the case that needs
 `--session-id`.
+
+**And so the folder is not simply `opts.cwd`. Corrected 2026-08-21** —
+`resume_cwd()` asks the index where this session was recorded as running and uses
+that instead when it finds a transcript there. Without it, a session whose
+transcript lives anywhere other than the folder the caller named — started in a
+subdirectory, or in another worktree (F21) — misses the probe, claims
+`--session-id` for an id Claude already knows, and loses the conversation.
+
+Two things about its shape are deliberate. It reads the index through a
+`session_cwd` **callback**, the same shape as `user_binary` below and for the
+identical reason: the manager needs an answer from a database it should not hold.
+And it requires the transcript to *actually be there* rather than trusting the
+row — the recorded folder is worth preferring precisely because the transcript is
+in it, so a stale row falls through to `opts.cwd` rather than relocating the
+session.
+
+This cannot live in the renderer, which is where it was first specified.
+`Terminal.tsx` learns a session's recorded cwd from a query that resolves after
+the component has mounted and spawned, so a renderer-side fix is correct only
+when that query happened to be cached.
 
 **`start_session(project_id)` returns the id to route to.** A fresh v4 UUID,
 unless the project already has a live session with no transcript — one that

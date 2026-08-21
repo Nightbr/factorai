@@ -493,9 +493,15 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 
 	const contextRef = useRef<ResolveContext>({ bases: [], home: null });
 	contextRef.current = {
-		// Session cwd first, then the project root. Today these are the same
-		// string for a fresh session — `attachPty` spawns with `projectCwd` — and
-		// differ only for a resumed session started in a subdirectory.
+		// Session cwd first, then the project root. The same string for a fresh
+		// session, and different for a resumed one started in a subdirectory — or
+		// in another worktree, which is the case F21 turns on.
+		//
+		// **The PTY itself is spawned from the session's recorded cwd too**, but
+		// that decision is Rust's rather than this component's: `attachPty` passes
+		// `projectCwd` and `TerminalManager::resume_cwd` overrides it out of the
+		// index. It has to be there, because this component learns `sessionCwd`
+		// from a query that resolves after it has already mounted and spawned.
 		bases: [sessionCwd, projectCwd].filter((b): b is string => Boolean(b)),
 		home: homeRef.current,
 	};

@@ -991,10 +991,12 @@ roll-up, or the roll-up produces sessions that restart as new conversations.
       `commands/git.rs`. Every checkout git knows — main and linked — with `path`, `branch`,
       `head`, `isMain`, `locked`, `prunable`, `exists`. A bare repository contributes no
       main-checkout row. Read-only, `default-features = false` stays.
-- [ ] **`attachPty` spawns with `sessionCwd ?? projectCwd`.** A bug fix on its own merits —
-      `session_flag()` probes `encode_path(cwd)` and there is a test named
-      `session_flag_is_scoped_per_folder` — and a hard prerequisite for the roll-up. Land it
-      alone, with a test for a session whose recorded cwd is not the project.
+- [x] **The spawn runs in the session's recorded cwd.** Landed 2026-08-21, alone, as the bug
+      fix it is on its own merits. **In Rust, not the renderer** —
+      `TerminalManager::resume_cwd` over a `session_cwd` callback, because `Terminal.tsx` learns
+      `sessionCwd` from a query that resolves after it has already spawned. Prefers the recorded
+      folder only when the transcript is actually in it; four tests, including one that spawns
+      somewhere other than the folder it was handed.
 - [ ] Migration `0006_session_worktrees.sql`: `session_worktrees(session_id PK, path,
       updated_at)`, FK `ON DELETE CASCADE`. **Check `main` for a competing 0006 before you name
       it** — see this file's header for why a duplicate migration number cannot simply be
