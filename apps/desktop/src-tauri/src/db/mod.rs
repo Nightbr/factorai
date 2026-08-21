@@ -26,6 +26,9 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// this file's header comment for what a brand-new session's row situation is.
 	// A separate migration rather than an edit, because 0006 has run.
 	("0007_session_worktrees_no_fk", include_str!("migrations/0007_session_worktrees_no_fk.sql")),
+	// F21 again: the panel could not follow an agent that moved into a worktree,
+	// because the only cwd we kept was the one it started in.
+	("0008_session_last_cwd", include_str!("migrations/0008_session_last_cwd.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

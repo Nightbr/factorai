@@ -138,6 +138,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		cwd: project.realPath,
 		subagentOf: null,
 		worktree: null,
+		lastCwd: null,
 	};
 	return {
 		projects: [project],
@@ -262,6 +263,41 @@ export function fixtureSessionInAWorktree(): TestFixture {
 	};
 }
 
+/**
+ * The shape F21 actually failed in (found 2026-08-21, in a real session).
+ *
+ * The agent was asked to open a worktree. It created one, moved into it, and
+ * **never signalled**: no `setWorktree`, no `openFile` in the worktree. So
+ * `worktree` is null and the only trace is that the session's *last* cwd is the
+ * worktree while its first is still the project.
+ */
+export function fixtureAgentMovedWithoutSaying(): TestFixture {
+	const base = fixtureSessionInAWorktree();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const sessions = base.sessionsByProject?.[project.id];
+	if (!sessions) throw new Error('base fixture has no sessions');
+
+	return {
+		...base,
+		sessionsByProject: {
+			[project.id]: sessions.map((session) =>
+				session.id === 'session-uuid-002'
+					? {
+							...session,
+							// Nothing was ever recorded, because nothing was ever said.
+							worktree: null,
+							// It *started* in the project — this is the field the fallback
+							// used to read, and why the panel stayed on main.
+							cwd: project.realPath,
+							lastCwd: '/home/alice/code/worktrees/feature-x',
+						}
+					: session,
+			),
+		},
+	};
+}
+
 /** A parent session plus two nested sub-agents — the F2 nesting shape, with
  *  the project's count covering only the parent (sub-agents don't count). */
 export function fixtureWithSubagents(): TestFixture {
@@ -281,6 +317,7 @@ export function fixtureWithSubagents(): TestFixture {
 		cwd: project.realPath,
 		subagentOf: parent.id,
 		worktree: null,
+		lastCwd: null,
 	});
 
 	const agents = [
@@ -671,6 +708,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		cwd: zulu.realPath,
 		subagentOf: null,
 		worktree: null,
+		lastCwd: null,
 	}));
 
 	return {
@@ -688,7 +726,9 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					cwd: alpha.realPath,
 					subagentOf: null,
 					worktree: null,
+					lastCwd: null,
 					worktree: null,
+					lastCwd: null,
 				},
 			],
 		},

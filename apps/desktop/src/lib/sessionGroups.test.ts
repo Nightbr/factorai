@@ -19,6 +19,7 @@ function session(id: string, subagentOf: string | null = null): SessionSummary {
 		cwd: null,
 		subagentOf,
 		worktree: null,
+		lastCwd: null,
 	};
 }
 

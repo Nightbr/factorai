@@ -1022,11 +1022,16 @@ roll-up, or the roll-up produces sessions that restart as new conversations.
       symmetric with pass 1. Five integration tests in `tests/worktree_rollup.rs`, including the
       two that pin the boundary: an unrelated repository is not claimed, and a subdirectory of a
       checkout does not roll up.
-- [ ] **Conformance pass against the real CLI, and record the version. This is the last box,
-      and it is the premise.** F20 records that a tool call from the shipped binary is still
-      unobserved, and nothing since has observed one. If `claude` does not call `setWorktree`,
-      the `openFile` inference and the `sessions.cwd` default still work — the floor is passive,
-      not broken — but the headline behaviour is unproven until this runs.
+- [x] **Conformance pass — run 2026-08-21 against CLI 2.1.238, and the premise failed.** Asked
+      to open a worktree, the agent created one, moved into it, and called nothing: no
+      `setWorktree`, no `openFile` there. Our end was fine — a hand-written MCP client over the
+      real socket got `factorai is now showing …` and the panel moved — so the tool works and
+      the agent does not reach for it.
+      **The recovery was the third signal**, not a better description: `sessions.last_cwd`, read
+      through the same containment. Re-verified on the session that failed.
+- [ ] **Watch whether `setWorktree` is ever called in practice.** It stays advertised because it
+      costs nothing and is the only signal that is an intent rather than an inference. If it is
+      still unobserved in a month, say so here rather than leaving the tool looking load-bearing.
 
 ### 4. The renderer
 

@@ -65,6 +65,13 @@ export interface SessionSummary {
 	 *  **A record, not a guarantee**: the path may have been removed since, so it
 	 *  is validated against `gitWorktrees` before being used. */
 	worktree: string | null;
+	/** The **last** `cwd` the transcript records, where `cwd` is the first (F21).
+	 *
+	 *  How the panel notices an agent that moved into a worktree without saying
+	 *  so. Only ever read through containment against the repository's checkouts,
+	 *  which is what makes the churn between the two harmless: a `cd` into
+	 *  `node_modules/…` is still inside the main checkout and resolves to it. */
+	lastCwd: string | null;
 }
 
 export interface SessionPage {

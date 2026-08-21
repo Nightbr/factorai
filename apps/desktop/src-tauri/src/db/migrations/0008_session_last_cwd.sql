@@ -1,0 +1,27 @@
+-- Where a session ended up, as well as where it started (F21).
+--
+-- **Added 2026-08-21 after watching the feature fail on a real session.** An
+-- agent asked to "open a new worktree" created one, moved into it, and factorai
+-- stayed on the main checkout. Neither bridge signal had fired — no
+-- `setWorktree`, no `openFile` in the worktree — so the panel fell back to
+-- `sessions.cwd`, which is the **first** cwd the transcript records. The session
+-- had started in the project, so that is what it said.
+--
+-- The transcript itself had the answer in it. Its cwd sequence was
+-- `[<project>, <project>/.claude/worktrees/little-fix]`, and Claude had even
+-- relocated its store directory to match.
+--
+-- **Why a second column rather than changing what `cwd` means.** `cwd` follows
+-- every `cd` a shell command makes, so the last value is wherever the last
+-- command happened to leave it — one real session here churned between the
+-- project root, `apps/desktop/src-tauri` and, once,
+-- `node_modules/.pnpm/@xterm+xterm@5.5.0/...`. Neither end of the sequence is
+-- "where the agent is working" on its own.
+--
+-- What makes the last value usable is that its only consumer runs it through
+-- **containment against the repository's checkouts**, longest match first: every
+-- one of those noisy paths is inside the main checkout and resolves to it, while
+-- a path in a linked worktree resolves to the worktree. Containment collapses the
+-- churn. `cwd` keeps its meaning for the two callers that want the *starting*
+-- directory, so nothing downstream of it changes.
+ALTER TABLE sessions ADD COLUMN last_cwd TEXT;

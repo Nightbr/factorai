@@ -15,6 +15,7 @@ function session(id: string, updatedAt: number, subagentOf: string | null = null
 		cwd: '/p',
 		subagentOf,
 		worktree: null,
+		lastCwd: null,
 	};
 }
 
