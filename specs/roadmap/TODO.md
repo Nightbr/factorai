@@ -1029,6 +1029,13 @@ roll-up, or the roll-up produces sessions that restart as new conversations.
       the agent does not reach for it.
       **The recovery was the third signal**, not a better description: `sessions.last_cwd`, read
       through the same containment. Re-verified on the session that failed.
+- [x] **Automatic switching verified end to end, 2026-08-21.** Three live runs: prompted to
+      open a worktree, the agent created one and moved into it, and factorai followed with
+      **zero** bridge signals — `setWorktree` count 0, `session_worktrees` empty. It works purely
+      off `last_cwd` and containment.
+      The first run exposed a latency bug rather than a logic one: index correct at +11s, panel
+      still on main until the 30s `gitWorktrees` poll. Fixed by invalidating `git-worktrees` on
+      `sessions:changed`; re-measured at **+1s** after the index saw the move.
 - [ ] **Watch whether `setWorktree` is ever called in practice.** It stays advertised because it
       costs nothing and is the only signal that is an intent rather than an inference. If it is
       still unobserved in a month, say so here rather than leaving the tool looking load-bearing.

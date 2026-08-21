@@ -28,6 +28,21 @@ import { useEffect } from 'react';
  * Only the *lists* are invalidated, not `session` / `session-tail`: those are
  * read by the transcript viewer, where a refetch under a reader who is scrolling
  * costs more than the freshness is worth.
+ *
+ * **`git-worktrees` is invalidated too, and that is F21's whole latency story.**
+ * The panel follows an agent into a worktree by resolving the session's
+ * `lastCwd` against the repository's checkouts — so a checkout the agent created
+ * ten seconds ago has to be *in* that list, and the list is otherwise on a 30s
+ * poll. Measured: the agent created a worktree and moved into it, the index had
+ * the new `lastCwd` within six seconds, and the panel still sat on the main
+ * checkout until the poll came round. It looked exactly like a feature that does
+ * not work.
+ *
+ * This event is the right trigger because it fires for the very change that
+ * matters: a session's recorded directory moving is the moment a new checkout
+ * might exist. Cheaper and sharper than shortening the poll, which would pay for
+ * the freshness on every project, all the time, to catch something that happens
+ * a few times a day.
  */
 export function useSessionsSync(): void {
 	const queryClient = useQueryClient();
@@ -39,6 +54,11 @@ export function useSessionsSync(): void {
 			.onSessionsChanged(({ projectId }) => {
 				void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(projectId) });
 				void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+				// Prefix, not one project's key: the checkout list is keyed by
+				// *path* and this event carries a project id, and the two cannot be
+				// joined here without a lookup this hook has no business doing.
+				// There are as many entries as you have open projects.
+				void queryClient.invalidateQueries({ queryKey: ['git-worktrees'] });
 			})
 			.then((fn) => {
 				// The effect can be torn down while `listen` is still in flight — a

@@ -3380,6 +3380,27 @@ says why — a checkout you cannot see is one you cannot reason about.
   interacts with `start_session`'s live-session reuse (ADR-0008) rather than
   with anything here.
 
+### Latency: the checkout list has to be fresh, not just correct
+
+**Measured end to end on a real agent, 2026-08-21.** Prompted to open a
+worktree, the agent created one and moved into it; the index carried the new
+`last_cwd` **11–13 seconds** later, which is the watcher's own cadence and fine.
+The panel then sat on the main checkout anyway, because resolution needs the new
+checkout to be *in* `git_worktrees` and that list was on a 30s poll. Correct
+data, stale list, and on screen it looked exactly like a feature that does not
+work — which is how it was first reported.
+
+So **`sessions:changed` invalidates `git-worktrees`** as well as the session
+lists. That event fires for precisely the change that matters: a session's
+recorded directory moving is the moment a new checkout might exist. Re-measured
+with the invalidation in place, the panel was fully switched **one second** after
+the index saw the move — a window the 30s poll cannot fire in.
+
+Sharper than shortening the poll, which would pay for freshness on every project
+all day to catch something that happens a few times a day. It is invalidated by
+key *prefix*, because the checkout list is keyed by path while the event carries
+a project id, and joining the two is not this hook's business.
+
 ### The premise this rests on
 
 Everything above assumes an agent either calls the tool or opens a file. F20
