@@ -3103,15 +3103,31 @@ resolved against the session's cwd alone, so once the tree can be rooted at a
 worktree, the gesture would have failed for exactly the files the panel was
 showing. It now resolves against the same set.
 
-**Rejected: three further signals**, each for a different reason worth recording
-so they are not re-proposed. Polling `git worktree list` and treating a
-newly-appeared checkout as the live session's is a good heuristic that becomes a
-coin toss the moment two sessions are live in one project. Reading the
+**A third signal was added 2026-08-21, after the first two failed on a real
+session.** Asked to open a worktree, the agent created one, moved into it, said
+so in prose — and called nothing. No `setWorktree`, no `openFile` in the
+worktree, so the bridge saw nothing at all. The panel sat on the main checkout.
+
+So the session's **last recorded `cwd`** is now read too, before its first. This
+reverses the interview's decision, and the reason given there was simply wrong:
+"an agent working in a worktree by absolute path never changes `claude`'s own
+cwd" — the agent `cd`'d into it, and `claude` relocated its whole store directory
+to match.
+
+**It is only safe because this is containment, not equality.** A session's `cwd`
+follows every `cd` a shell command makes; one real transcript churned between the
+project root, `apps/desktop/src-tauri` and once
+`node_modules/.pnpm/@xterm+xterm@5.5.0/…`. Every one of those is *inside* the
+main checkout and so resolves to it. Only a path in a linked worktree resolves to
+the worktree, which is why the noise is harmless and why the raw last value must
+never be compared to the project root directly. `cwd` keeps its own meaning, so
+F19's path resolution is untouched — see migration 0008.
+
+**Two signals stay rejected**, for reasons the above does not weaken. Polling
+`git worktree list` and treating a newly-appeared checkout as the live session's
+becomes a coin toss the moment two sessions are live in one project. Reading the
 transcript's tool-use payloads means parsing another program's internal tool
-schema. And taking the session's *last* `cwd` instead of its first would change
-the meaning of a field F19's relative-path resolution also reads, to learn
-something that mostly does not move: an agent working in a worktree by absolute
-path never changes `claude`'s own cwd.
+schema.
 
 ### The scope the bridge resolves against
 
@@ -3180,9 +3196,10 @@ Three steps, first match wins:
 
 1. `session_worktrees.path`, if it is still a registered worktree of the
    repository *and* still on disk.
-2. The checkout containing `sessions.cwd`, by longest containment — which is
-   what makes a session started in a worktree correct before any signal arrives,
-   and is also the revert target above.
+2. The checkout containing `sessions.last_cwd`, then the one containing
+   `sessions.cwd`, by longest containment — which is what makes a session started
+   *or moved* into a worktree correct with no signal at all. The `cwd` step is
+   also the revert target above.
 3. `projects.real_path`.
 
 A project route with no session in front always shows step 3. It has no session

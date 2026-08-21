@@ -11,7 +11,9 @@ use std::path::PathBuf;
 use crate::db::Db;
 use crate::error::AppResult;
 
-/// The cwd recorded in a session's transcript, as the indexer saw it.
+/// The directories a session's transcript records it having run in, **newest
+/// first** — its last `cwd` then its first. Usually the same path twice, hence
+/// one entry; two when the agent moved into a worktree mid-session (F21).
 ///
 /// **Swallows a read failure into `None`**, following
 /// `settings::claude_binary_override`: this sits in front of a spawn, and a
@@ -21,17 +23,33 @@ use crate::error::AppResult;
 ///
 /// `None` is also the ordinary answer for a session factorai just minted: there
 /// is no transcript yet, so there is no row and nothing to recover.
-pub fn recorded_cwd(db: &Db, session_id: &str) -> Option<PathBuf> {
-	db.with(|conn| {
-		let cwd: Option<String> = conn
-			.query_row("SELECT cwd FROM sessions WHERE id = ?1", [session_id], |row| row.get(0))
-			.ok()
-			.flatten();
-		Ok(cwd)
-	})
-	.ok()
-	.flatten()
-	.map(PathBuf::from)
+pub fn recorded_cwds(db: &Db, session_id: &str) -> Vec<PathBuf> {
+	let row: Option<(Option<String>, Option<String>)> = db
+		.with(|conn| {
+			Ok(conn
+				.query_row(
+					"SELECT last_cwd, cwd FROM sessions WHERE id = ?1",
+					[session_id],
+					|row| Ok((row.get(0)?, row.get(1)?)),
+				)
+				.ok())
+		})
+		.ok()
+		.flatten();
+
+	let Some((last, first)) = row else {
+		return Vec::new();
+	};
+	// Newest first, and de-duplicated: the two are the same string for every
+	// session that never moved, which is almost all of them.
+	let mut out: Vec<PathBuf> = Vec::new();
+	for candidate in [last, first].into_iter().flatten() {
+		let path = PathBuf::from(candidate);
+		if !out.contains(&path) {
+			out.push(path);
+		}
+	}
+	out
 }
 
 /// Record which checkout of its repository a session is working in (F21).
@@ -104,8 +122,13 @@ mod tests {
 	}
 
 	/// Inserts the minimum a `sessions` row needs, through a discovery, since the
-	/// FK is enforced.
+	/// FK on `discovered_id` is enforced. `last_cwd` defaults to `cwd` — the shape
+	/// of a session that never moved.
 	fn insert_session(db: &Db, session_id: &str, cwd: Option<&str>) {
+		insert_session_moved(db, session_id, cwd, cwd)
+	}
+
+	fn insert_session_moved(db: &Db, session_id: &str, cwd: Option<&str>, last_cwd: Option<&str>) {
 		db.with(|conn| {
 			conn.execute(
 				"INSERT INTO discovered_projects(agent, key, real_path) VALUES ('claude', ?1, ?1)",
@@ -119,9 +142,9 @@ mod tests {
 				.unwrap();
 			conn.execute(
 				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at,
-				                      turn_count, file_mtime, file_size, cwd)
-				 VALUES (?1, ?2, '', 0, 0, 0, 0, 0, ?3)",
-				rusqlite::params![session_id, discovered, cwd],
+				                      turn_count, file_mtime, file_size, cwd, last_cwd)
+				 VALUES (?1, ?2, '', 0, 0, 0, 0, 0, ?3, ?4)",
+				rusqlite::params![session_id, discovered, cwd, last_cwd],
 			)
 			.unwrap();
 			Ok(())
@@ -130,17 +153,32 @@ mod tests {
 	}
 
 	#[test]
-	fn recovers_the_recorded_cwd() {
+	fn a_session_that_never_moved_reports_one_directory() {
 		let (_tmp, db) = db();
 		insert_session(&db, "s1", Some("/repo/apps/web"));
-		assert_eq!(recorded_cwd(&db, "s1"), Some(PathBuf::from("/repo/apps/web")));
+		// Both columns hold the same string, and the caller should not have to
+		// probe the same folder twice.
+		assert_eq!(recorded_cwds(&db, "s1"), vec![PathBuf::from("/repo/apps/web")]);
 	}
 
 	#[test]
-	fn a_row_with_no_cwd_is_none_not_an_error() {
+	fn a_session_that_moved_reports_where_it_ended_up_first() {
+		let (_tmp, db) = db();
+		// The shape the F21 bug was found in: started in the project, ended in a
+		// worktree, and Claude took its store directory along — so the transcript
+		// exists only under the second one.
+		insert_session_moved(&db, "s1", Some("/repo"), Some("/repo/.claude/worktrees/fix"));
+		assert_eq!(
+			recorded_cwds(&db, "s1"),
+			vec![PathBuf::from("/repo/.claude/worktrees/fix"), PathBuf::from("/repo")]
+		);
+	}
+
+	#[test]
+	fn a_row_with_no_cwd_reports_nothing() {
 		let (_tmp, db) = db();
 		insert_session(&db, "s1", None);
-		assert_eq!(recorded_cwd(&db, "s1"), None);
+		assert!(recorded_cwds(&db, "s1").is_empty());
 	}
 
 	#[test]
@@ -204,6 +242,6 @@ mod tests {
 		let (_tmp, db) = db();
 		// The ordinary case for a session factorai just minted: no transcript, so
 		// no row, so nothing to recover — and the caller's cwd is used.
-		assert_eq!(recorded_cwd(&db, "never-indexed"), None);
+		assert!(recorded_cwds(&db, "never-indexed").is_empty());
 	}
 }

@@ -96,7 +96,7 @@ pub fn run() {
 					services::settings::claude_binary_override(&settings_db)
 				}))
 				.with_session_cwd(Arc::new(move |session_id| {
-					services::sessions::recorded_cwd(&session_db, session_id)
+					services::sessions::recorded_cwds(&session_db, session_id)
 				}))
 				// Which checkout each session is working in (F21). Written by the
 				// bridge's signal path only — the agent calling `setWorktree`, or an

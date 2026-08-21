@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { FOO_ID, fixtureSessionInAWorktree, installMockBridge } from './fixtures';
+import {
+	FOO_ID,
+	fixtureAgentMovedWithoutSaying,
+	fixtureSessionInAWorktree,
+	installMockBridge,
+} from './fixtures';
 
 const IN_WORKTREE = `/#/projects/${FOO_ID}/sessions/session-uuid-002`;
 const IN_PROJECT = `/#/projects/${FOO_ID}/sessions/session-uuid-001`;
@@ -81,6 +86,19 @@ test.describe('worktrees', () => {
 		// satisfied.
 		await expect(page.locator('li').filter({ has: mark })).toHaveCount(1);
 		await expect(page.getByRole('tablist').getByTestId('panel-checkout')).toHaveCount(0);
+	});
+
+	test('@smoke it follows an agent that moved and never said so', async ({ page }) => {
+		// **The bug this fallback exists for**, seen in a real session: the agent
+		// created a worktree, `cd`'d into it, and signalled nothing at all. The only
+		// trace is the session's last cwd, and reading its *first* is why the panel
+		// sat on main.
+		await installMockBridge(page, fixtureAgentMovedWithoutSaying());
+		await page.goto(IN_WORKTREE);
+		await openPanel(page);
+
+		await expect(page.getByTestId('session-worktree')).toContainText('feature-x');
+		await expect(page.getByText('switcher.ts')).toBeVisible();
 	});
 
 	test('@smoke the sidebar marks the session that ran in another checkout', async ({ page }) => {

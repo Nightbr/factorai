@@ -392,17 +392,34 @@ impl Indexer {
 			.unwrap_or(0);
 		let size = meta.len() as i64;
 
-		let cached: Option<(i64, i64)> = self.db.with(|conn| {
+		let cached: Option<(i64, i64, bool)> = self.db.with(|conn| {
 			Ok(conn
 				.query_row(
-					"SELECT file_mtime, file_size FROM sessions WHERE id = ?1",
+					// The third column is the backfill test below, not a fact about the
+					// file: "does this row predate a column we now need?"
+					"SELECT file_mtime, file_size, cwd IS NOT NULL AND last_cwd IS NULL
+					   FROM sessions WHERE id = ?1",
 					params![session_id],
-					|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+					|row| {
+						Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, bool>(2)?))
+					},
 				)
 				.ok())
 		})?;
-		if cached == Some((mtime_ms, size)) {
-			return Ok(None);
+		// **A row missing `last_cwd` is reparsed even when the file has not
+		// changed** (F21, migration 0008). `ALTER TABLE ... ADD COLUMN` cannot fill
+		// a column that is derived from the transcript, and every existing row was
+		// written before this one existed — so without this the panel would keep
+		// failing to follow an agent into a worktree until that session happened to
+		// be messaged again, which for finished sessions is never.
+		//
+		// It costs one reparse per pre-existing session, once, and it cannot loop:
+		// a transcript with any `cwd` at all yields a `last_cwd`, and one with none
+		// leaves `cwd` null too, so the condition is false for it from the start.
+		if let Some((cached_mtime, cached_size, needs_backfill)) = cached {
+			if (cached_mtime, cached_size) == (mtime_ms, size) && !needs_backfill {
+				return Ok(None);
+			}
 		}
 
 		debug!(%session_id, "indexing session");
@@ -411,6 +428,11 @@ impl Indexer {
 		let mut last_ts: Option<i64> = None;
 		let mut turn_count: i64 = 0;
 		let mut cwd: Option<String> = None;
+		// Where the session *ended up*, as opposed to where it started (F21). Both
+		// are kept because neither answers the other's question: `cwd` is what the
+		// transcript's directory is derived from, and this is what tells us the
+		// agent moved. Migration 0008 has why the churn in between is harmless.
+		let mut last_cwd: Option<String> = None;
 		let mut fts_rows: Vec<(String, String)> = Vec::new(); // (role, body)
 														// Two independent title sources, kept apart so precedence is decided once
 														// at the end rather than by whichever line happens to come last in the
@@ -426,10 +448,11 @@ impl Indexer {
 					last_ts = Some(ts);
 				}
 			}
-			if cwd.is_none() {
-				if let Some(c) = &ev.cwd {
+			if let Some(c) = &ev.cwd {
+				if cwd.is_none() {
 					cwd = Some(c.clone());
 				}
+				last_cwd = Some(c.clone());
 			}
 			// Title hints, in the order Claude Code writes them:
 			//
@@ -480,8 +503,8 @@ impl Indexer {
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			tx.execute(
-				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of)
-				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd)
+				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
 				 ON CONFLICT(id) DO UPDATE SET
 				   title = excluded.title,
 				   updated_at = excluded.updated_at,
@@ -489,7 +512,8 @@ impl Indexer {
 				   file_mtime = excluded.file_mtime,
 				   file_size = excluded.file_size,
 				   cwd = COALESCE(excluded.cwd, sessions.cwd),
-				   subagent_of = excluded.subagent_of",
+				   subagent_of = excluded.subagent_of,
+				   last_cwd = COALESCE(excluded.last_cwd, sessions.last_cwd)",
 				params![
 					session_id,
 					discovered_id,
@@ -501,6 +525,7 @@ impl Indexer {
 					size,
 					cwd,
 					subagent_of,
+					last_cwd,
 				],
 			)?;
 			tx.execute("DELETE FROM messages_fts WHERE session_id = ?1", params![session_id])?;

@@ -70,6 +70,13 @@ pub struct SessionSummary {
 	/// **A record, not a guarantee**: the path can have been removed since, so
 	/// the renderer validates it against `git_worktrees` and falls back.
 	pub worktree: Option<String>,
+	/// The **last** `cwd` the transcript records, where `cwd` is the first (F21).
+	///
+	/// This is how the panel notices an agent that moved into a worktree without
+	/// saying so. Only ever read through containment against the repository's
+	/// checkouts, which is what makes the churn between the two harmless — see
+	/// migration 0008.
+	pub last_cwd: Option<String>,
 }
 
 /// One full-text search result. Mirrors `@factorai/types` `SearchHit`.

@@ -242,6 +242,7 @@ cheap: the discovery survives, only the membership goes.
 | turn_count     | INTEGER    |                                                                  |
 | file_mtime     | INTEGER    | filesystem mtime when last indexed (for change detection)        |
 | file_size      | INTEGER    | bytes at last index (cheap "did this change?" probe)             |
+| last_cwd       | TEXT       | **last** observed `cwd` (F21, migration 0008). How the panel notices an agent that moved into a worktree without saying so. Only ever read through containment against the repository's checkouts — the raw value follows every `cd` a shell command makes. Backfilled by reparsing any row that has a `cwd` and no `last_cwd`, since `ADD COLUMN` cannot fill a value derived from a transcript. |
 | cwd            | TEXT       | **first** observed `cwd` from events — where the session started. Said "last observed" until 2026-08-21; `indexer.rs` has always written the first (`if cwd.is_none()`), and both F19's relative-path resolution and F21's checkout default read it as the starting directory. |
 | subagent_of    | TEXT       | parent session id for a sub-agent transcript; NULL for a real one. No FK: read_dir order can index an agent before its parent, and an enforced reference would turn that into an error. |
 

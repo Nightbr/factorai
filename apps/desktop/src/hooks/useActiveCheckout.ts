@@ -40,8 +40,17 @@ interface ActiveCheckout {
  * 1. The checkout the agent signalled for the session in front — from the live
  *    `session:worktree` event, else the `worktree` column the sessions query
  *    carries, so a resumed session comes back where it was working.
- * 2. The checkout containing that session's recorded `cwd`, which is what makes
- *    a session *started* in a worktree correct before any signal arrives.
+ * 2. The checkout containing that session's **last** recorded `cwd`, then its
+ *    first. This is what catches an agent that moved into a worktree without
+ *    saying so — which, on the evidence of a real session, is what agents
+ *    actually do: one created a worktree, `cd`'d into it, and never called
+ *    `setWorktree` or opened a file there, so the bridge saw nothing at all.
+ *
+ *    Preferring the *last* cwd is only safe because this is containment, not
+ *    equality: a session's cwd follows every `cd` a shell command makes, and one
+ *    real transcript churned through `apps/desktop/src-tauri` and
+ *    `node_modules/.pnpm/…` — all of which are inside the main checkout and so
+ *    resolve to it. Only a path in a *linked* worktree resolves to the worktree.
  * 3. The project's own folder.
  *
  * **Step 1 and 2 are both validated against `gitWorktrees` first.** A row is a
@@ -90,7 +99,13 @@ export function useActiveCheckout(): ActiveCheckout {
 			//    since the two only differ while a signal is newer than the query.
 			known(signalled?.path) ??
 			known(session?.worktree) ??
-			// 2. Where the session was started.
+			// 2. Where the session *is*, then where it started. `lastCwd` is what
+			//    catches an agent that moved into a worktree and never said so —
+			//    the case this feature was built for and, on the evidence, the
+			//    common one. Safe to prefer because `checkoutContaining` resolves by
+			//    containment: a transient `cd` into a subdirectory is still inside
+			//    the main checkout and so still answers "the project".
+			checkoutContaining(worktrees, session?.lastCwd ?? null) ??
 			checkoutContaining(worktrees, session?.cwd ?? null);
 
 		// Step 3 is *not* "the checkout containing the project root": a project
@@ -113,6 +128,7 @@ export function useActiveCheckout(): ActiveCheckout {
 		worktrees,
 		signalled?.path,
 		session?.worktree,
+		session?.lastCwd,
 		session?.cwd,
 		isLoading,
 	]);

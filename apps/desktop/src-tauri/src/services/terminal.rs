@@ -187,7 +187,9 @@ type IdeStatusCb = Arc<dyn Fn(IdeStatusEvent) + Send + Sync>;
 type BinaryOverrideCb = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
 /// Answers "where does this session's transcript say it was running?" — see
 /// `TerminalManager::session_cwd`.
-type SessionCwdCb = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
+/// The directories a session is recorded as having run in, **newest first**.
+/// Usually one; two when the agent moved (F21).
+type SessionCwdCb = Arc<dyn Fn(&str) -> Vec<PathBuf> + Send + Sync>;
 type WorktreeCb = Arc<dyn Fn(SessionWorktreeEvent) + Send + Sync>;
 
 /// Reading and writing which checkout a session is working in (F21).
@@ -601,10 +603,14 @@ impl TerminalManager {
 	/// somewhere the caller did not ask for. Falling through to `opts.cwd` is the
 	/// behaviour that predates this method.
 	fn resume_cwd(&self, session_id: &str) -> Option<PathBuf> {
-		let recorded = self.session_cwd.as_ref()?(session_id)?;
-		claude::transcript_path(&self.claude_dir, &recorded, session_id)
-			.exists()
-			.then_some(recorded)
+		// Both recorded directories are tried, newest first. An agent that moves
+		// into a worktree mid-session takes Claude's store directory with it, so
+		// the transcript can exist *only* under where it ended up — and resuming
+		// from where it started would then miss the probe and claim an id Claude
+		// already knows (F21, migration 0008).
+		self.session_cwd.as_ref()?(session_id)
+			.into_iter()
+			.find(|dir| claude::transcript_path(&self.claude_dir, dir, session_id).exists())
 	}
 
 	/// Spawn `claude` for a session in a PTY. Returns the new terminal id.
@@ -1306,7 +1312,7 @@ mod tests {
 	/// A manager whose index says this session ran in `recorded`.
 	fn make_manager_recording(claude_dir: PathBuf, recorded: PathBuf) -> TerminalManager {
 		let (mgr, _d, _e) = make_manager_in(claude_dir);
-		mgr.with_session_cwd(Arc::new(move |_| Some(recorded.clone())))
+		mgr.with_session_cwd(Arc::new(move |_| vec![recorded.clone()]))
 	}
 
 	#[test]
@@ -1335,11 +1341,48 @@ mod tests {
 	}
 
 	#[test]
+	fn resume_cwd_takes_the_folder_the_transcript_is_in_when_the_session_moved() {
+		let store = tempfile::TempDir::new().unwrap();
+		let started = tempfile::TempDir::new().unwrap();
+		let moved_to = tempfile::TempDir::new().unwrap();
+		let sid = "11111111-2222-3333-4444-555555555555";
+		// Claude took its store directory along, so the transcript exists only
+		// under where the session ended up (F21).
+		write_transcript(store.path(), &moved_to.path().to_string_lossy(), sid);
+
+		let (mgr, _d, _e) = make_manager_in(store.path().to_path_buf());
+		let ended = moved_to.path().to_path_buf();
+		let began = started.path().to_path_buf();
+		let mgr = mgr.with_session_cwd(Arc::new(move |_| vec![ended.clone(), began.clone()]));
+
+		assert_eq!(mgr.resume_cwd(sid), Some(moved_to.path().to_path_buf()));
+	}
+
+	#[test]
+	fn resume_cwd_falls_back_to_where_the_session_started() {
+		let store = tempfile::TempDir::new().unwrap();
+		let started = tempfile::TempDir::new().unwrap();
+		let moved_to = tempfile::TempDir::new().unwrap();
+		let sid = "11111111-2222-3333-4444-555555555555";
+		// The ordinary shape: the agent `cd`'d somewhere transient, and the store
+		// directory never moved. Newest-first must not become newest-only.
+		write_transcript(store.path(), &started.path().to_string_lossy(), sid);
+
+		let (mgr, _d, _e) = make_manager_in(store.path().to_path_buf());
+		let ended = moved_to.path().to_path_buf();
+		let began = started.path().to_path_buf();
+		let mgr = mgr.with_session_cwd(Arc::new(move |_| vec![ended.clone(), began.clone()]));
+
+		assert_eq!(mgr.resume_cwd(sid), Some(started.path().to_path_buf()));
+	}
+
+	#[test]
 	fn resume_cwd_is_none_with_no_index_to_ask() {
 		let store = tempfile::TempDir::new().unwrap();
 		let (mgr, _d, _e) = make_manager_in(store.path().to_path_buf());
 		// No callback wired at all — every test manager above this point, and the
-		// behaviour that predates `session_cwd`.
+		// behaviour that predates `session_cwd`. `resume_cwd` returns `None`, so
+		// `opts.cwd` is used.
 		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555"), None);
 	}
 

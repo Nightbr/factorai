@@ -48,6 +48,20 @@ describe('checkoutContaining', () => {
 		).toBeUndefined();
 	});
 
+	it('@unit collapses a transient cd into the checkout that contains it', () => {
+		// The reason the sidebar and the panel can both read a session's *last* cwd
+		// safely: it follows every `cd` a shell command makes, and one real
+		// transcript churned through `apps/desktop/src-tauri` and
+		// `node_modules/.pnpm/…`. Both are inside the main checkout, so both answer
+		// "the project" — only a path in a linked worktree answers otherwise.
+		const trees = [wt('/repo'), wt('/repo/.claude/worktrees/fix')];
+		expect(checkoutContaining(trees, '/repo/apps/desktop/src-tauri')?.path).toBe('/repo');
+		expect(checkoutContaining(trees, '/repo/node_modules/.pnpm/x')?.path).toBe('/repo');
+		expect(checkoutContaining(trees, '/repo/.claude/worktrees/fix/src/a.ts')?.path).toBe(
+			'/repo/.claude/worktrees/fix',
+		);
+	});
+
 	it('@unit has no answer for a session with no recorded cwd', () => {
 		expect(checkoutContaining([wt('/repo')], null)).toBeUndefined();
 	});

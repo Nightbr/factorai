@@ -1,6 +1,6 @@
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
-import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
+import type { GitWorktree, Project, SessionSummary, TerminalStatus } from '@factorai/types';
 import {
 	Button,
 	ContextMenu,
@@ -22,6 +22,7 @@ import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
 import { pendingSessions } from '@lib/sessionGroups';
 import { cmd, openExternally } from '@lib/tauri';
+import { checkoutContaining, checkoutLabel, useWorktrees } from '@hooks/useWorktrees';
 import { useSidebarStore } from '@store/sidebarStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -306,6 +307,9 @@ function usePinProject(project: Project): () => void {
 }
 
 function SessionList({ project }: { project: Project }) {
+	// The repository's checkouts, for the per-row mark below (F21). Shares the
+	// panel's 30s query for this path, so an expanded project costs no new poll.
+	const worktrees = useWorktrees(project.realPath);
 	// `open` for what you have on the strip, `bySession` for what is running.
 	// `pendingSessions` needs the latter: a never-messaged session that is not
 	// running has no transcript and no process, so a permanent "New session" row
@@ -376,12 +380,12 @@ function SessionList({ project }: { project: Project }) {
 						    The directory's own name rather than its branch: no query, and
 						    the folder name is what tells two worktrees apart anyway — the
 						    branch is on the session header once you are in it. */}
-						{checkoutMark(session.cwd, project.realPath) && (
+						{checkoutMark(session, worktrees, project.realPath) && (
 							<span
 								className="shrink-0 text-muted-foreground/70 text-xs"
 								data-testid="sidebar-session-checkout"
 							>
-								{checkoutMark(session.cwd, project.realPath)}
+								{checkoutMark(session, worktrees, project.realPath)}
 							</span>
 						)}
 						{open[session.id] && (
@@ -424,12 +428,28 @@ function Row({ children, muted }: { children: string; muted?: boolean }) {
  * The checkout a session ran in, when it is not the project's own folder (F21).
  *
  * `null` for the ordinary case, which draws nothing. A session attaches to a
- * project by exact path *or* by being a checkout of its repository, so a `cwd`
- * that is not the project folder is another checkout — no query needed to know
- * that, only to name its branch, which the session header does instead.
+ * project by exact path *or* by being a checkout of its repository, so a
+ * directory that is not the project folder is another checkout — no query needed
+ * to know that, only to name its branch, which the session header does instead.
+ *
+ * **The same resolution the panel uses**, and it has to be: keying on "the
+ * session's directory differs from the project's" alone marks every row whose
+ * agent left its shell in a subdirectory — `apps/desktop/src-tauri` is a
+ * different string from the project root and is not a different checkout.
+ * Containment against the real checkout list is what tells those apart.
+ *
+ * `lastCwd` before `cwd` for the reason `useActiveCheckout` has: an agent that
+ * moved into a worktree mid-session leaves the *first* cwd pointing at the
+ * project, so reading that alone left the row unmarked for exactly the sessions
+ * this mark exists to distinguish.
  */
-function checkoutMark(cwd: string | null, projectRoot: string): string | null {
-	if (!cwd || cwd === projectRoot) return null;
-	const parts = cwd.replace(/\/+$/, '').split('/');
-	return parts[parts.length - 1] || null;
+function checkoutMark(
+	session: SessionSummary,
+	worktrees: readonly GitWorktree[],
+	projectRoot: string,
+): string | null {
+	const resolved =
+		checkoutContaining(worktrees, session.lastCwd) ?? checkoutContaining(worktrees, session.cwd);
+	if (!resolved || resolved.path === projectRoot) return null;
+	return checkoutLabel(resolved);
 }
