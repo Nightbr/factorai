@@ -3342,17 +3342,14 @@ badge machinery and its "the icon says where the ref lives" rule. In a
 worktree-heavy repository this is the reason to open a graph at all: three
 checkouts, visible at once, on the commits they are actually sitting on.
 
-**A rolled-up session gets a `text-xs` mark in the sidebar** naming its
-checkout — the same voice as the project row's `missing`. Without it the roll-up
-mixes trees into one list and two rows of the same project are
-indistinguishable, which is how you resume the wrong one.
-
-It is the **directory's own name, and it needs no query**: a session attaches to
-a project by exact path *or* by being a checkout of its repository, so a `cwd`
-that is not the project folder is another checkout by construction. Naming its
-branch instead would mean a `gitWorktrees` read in a list that already polls at
-2s, and the folder name is what tells two worktrees apart anyway — the branch is
-on the session header once you are in it.
+**The sidebar rows carry no checkout mark. Removed 2026-08-21 on user
+feedback**, having shipped for one commit. The argument for it was that the
+roll-up mixes checkouts into one list, so two rows of a project are otherwise
+indistinguishable — true, and outweighed: the sidebar is the densest list in the
+app, the mark repeated down every row of a worktree-heavy project, and it cost a
+`gitWorktrees` query per expanded project to resolve honestly. Which checkout a
+session is in is a fact you need once you are *in* it, and the session header
+says so there.
 
 ### Every checkout git knows is listed, odd ones marked
 
