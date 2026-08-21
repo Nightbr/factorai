@@ -963,105 +963,23 @@ users who aren't its author.
 **Linux is unaffected.** The AppImage carries no equivalent problem and stays as it is; there is
 deliberately no `.deb` (F14 — the updater cannot replace one in place).
 
-## 37. Worktrees as a first-class session citizen (F21)
+## 37. Worktrees — the two pieces F21 v0 left
 
-**Specified 2026-08-21** — [F21](../05-features.md) and
-[ADR-0019](../../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) hold the design and the
-reasoning. Nothing is built. Moved out of item 1's last bullet, which had it filed as a graph
-concern; it is a session concern the graph happens to render.
+**F21 v0 shipped 2026-08-21 as v0.19.0** — see [`DONE.md`](./DONE.md) for what landed and the
+four things it cost that the design did not predict. What follows is the remainder.
 
-**Why it is worth doing before the picker anyone would ask for first.** An agent that runs
-`git worktree add` leaves factorai describing the wrong directory — tree, Changes, decorations and
-the graph's working row all key off `projects.real_path` — and the session doing the work usually
-is not in the project at all, because `claude` keys its store by cwd. Two bugs fall out of the same
-slice, and both are live today: the bridge refuses every `openFile` in a worktree (F20's `Bridge`
-warning), and a session started in any subdirectory restarts as a fresh conversation instead of
-resuming.
-
-**Agent-driven, deliberately.** The agent creates the worktree and says where it went; factorai
-follows. A human picker is the *follow-up*, for when the two fall out of sync — not the primary
-mechanism, which would ask the human to keep a process they are supervising in sync by hand.
-
-Four slices, in this order. The order matters: slice 2's spawn fix has to land before slice 3's
-roll-up, or the roll-up produces sessions that restart as new conversations.
-
-### 2. Rust: detection, the spawn fix, the table
-
-- [x] `git_worktrees` — landed 2026-08-21, plus a `worktree_paths` sibling for the bridge,
-      which asks per resolve and does not need a `Repository::open` per checkout. Six tests,
-      including the symmetric case (the same set seen from the linked worktree) and a checkout
-      whose directory has been deleted.
-- [x] **The spawn runs in the session's recorded cwd.** Landed 2026-08-21, alone, as the bug
-      fix it is on its own merits. **In Rust, not the renderer** —
-      `TerminalManager::resume_cwd` over a `session_cwd` callback, because `Terminal.tsx` learns
-      `sessionCwd` from a query that resolves after it has already spawned. Prefers the recorded
-      folder only when the transcript is actually in it; four tests, including one that spawns
-      somewhere other than the folder it was handed.
-- [x] Migration `0006_session_worktrees.sql` — landed 2026-08-21, no competing 0006 on
-      `main`. Read and written through `services/sessions.rs`, which is also where the spawn
-      fix's `recorded_cwd` lives. **`0007` removed its foreign key the same day**: a session
-      with no `sessions` row yet — the case the feature exists for — could not be written at
-      all. Cleanup moved to `reap_deleted`.
-
-### 3. The bridge: the tool, the scope, the roll-up
-
-- [x] `setWorktree { path }` — landed 2026-08-21, advertised unconditionally, accepting a
-      checkout *or* any path inside one (liberal costs nothing when the containment set is
-      git-derived). A refusal names the checkouts that do exist, so the agent can retry
-      usefully rather than guess again.
-- [x] **The scope is the union**, recomputed per resolve — landed 2026-08-21 as
-      `resolve_within_any`, with the session's cwd always in the set so a non-repository project
-      behaves exactly as it did. Both cases are asserted, and the human's mention path was
-      widened with it (it would otherwise have refused the files the tree was showing).
-- [x] `getWorkspaceFolders` reports `cwd`, `worktrees`, a labelled `viewing` and a `hint`
-      naming the new tool. `folders` keeps its old shape, so an agent reading only that key sees
-      no change.
-- [x] `session:worktree` event → the renderer, persisted first and then emitted.
-- [x] Roll-up — landed as a second pass in `commands::projects::reconcile`, touching only rows
-      the exact-path pass left unlinked. **Exact checkout match, not containment**, which keeps it
-      symmetric with pass 1. Five integration tests in `tests/worktree_rollup.rs`, including the
-      two that pin the boundary: an unrelated repository is not claimed, and a subdirectory of a
-      checkout does not roll up.
-- [x] **Conformance pass — run 2026-08-21 against CLI 2.1.238, and the premise failed.** Asked
-      to open a worktree, the agent created one, moved into it, and called nothing: no
-      `setWorktree`, no `openFile` there. Our end was fine — a hand-written MCP client over the
-      real socket got `factorai is now showing …` and the panel moved — so the tool works and
-      the agent does not reach for it.
-      **The recovery was the third signal**, not a better description: `sessions.last_cwd`, read
-      through the same containment. Re-verified on the session that failed.
-- [x] **Automatic switching verified end to end, 2026-08-21.** Three live runs: prompted to
-      open a worktree, the agent created one and moved into it, and factorai followed with
-      **zero** bridge signals — `setWorktree` count 0, `session_worktrees` empty. It works purely
-      off `last_cwd` and containment.
-      The first run exposed a latency bug rather than a logic one: index correct at +11s, panel
-      still on main until the 30s `gitWorktrees` poll. Fixed by invalidating `git-worktrees` on
-      `sessions:changed`; re-measured at **+1s** after the index saw the move.
-- [ ] **Watch whether `setWorktree` is ever called in practice.** It stays advertised because it
-      costs nothing and is the only signal that is an intent rather than an inference. If it is
-      still unobserved in a month, say so here rather than leaving the tool looking load-bearing.
-
-### 4. The renderer
-
-- [x] Panel re-roots on the resolved checkout — landed 2026-08-21 behind `useActiveCheckout`,
-      which is the three-step resolution in one place. Expand state re-keyed from the project id
-      to the **checkout path**, since it holds absolute paths.
-- [x] `gitGraph` **needed no change**: it keys on the project folder, which does not move when
-      the panel follows the agent, and checkouts share one object DB and one set of refs. The
-      obvious reading of this box — key it on the checkout — would have refetched a page of
-      identical commits on every switch.
-- [x] Header badge gains a worktree mark only when off the project's own checkout, plus the
-      revert `IconButton`. The revert deletes the row through `clear_session_worktree`; clearing
-      only the in-memory signal would let the stored path win the next read.
-- [x] `text-xs` checkout mark on rolled-up sidebar sessions (the directory name, no query
-      needed), checkout named in the panel's `h-9` header when it is not the project's own.
-- [ ] **`HEAD` chip per checkout in the graph** — the only visible piece still open, and it is
-      item 1's share of this: one more ref kind through F18's badge machinery. Cosmetic, so it
-      did not gate the rest.
-
-Six smoke tests in `tests/smoke/worktrees.spec.ts` cover the resolution from both the persisted
-column and the `cwd` fallback, the revert reaching the backend, and — the one that matters most —
-that a session in the project's own checkout grows no new furniture at all.
-
-**Deferred, deliberately, and F21 says why for each:** the worktree picker; telling the agent when
-a human moves the panel; creating or removing a worktree from factorai (ADR-0009 stands); new
-sessions starting in the shown checkout.
+- [ ] **A `HEAD` chip per checkout in the graph.** This is item 1's share of the feature: one
+      more ref kind through F18's existing badge machinery and its "the icon says where the ref
+      lives" rule. In a worktree-heavy repository it is the reason to open a graph at all — three
+      checkouts, visible at once, on the commits they are sitting on. Cosmetic, so it did not
+      gate the release.
+- [ ] **Watch whether `setWorktree` is ever called by a real agent.** Three live runs produced
+      three worktrees and zero calls. The tool stays advertised because it costs nothing and is
+      the only signal that is an intent rather than an inference — but nothing rests on it, and
+      if it is still unobserved in a month, say so here rather than leaving it looking
+      load-bearing.
+- [ ] **The human's worktree picker**, if wanted. Deliberately deferred: v0 exists to find out
+      whether agent-driven following works, and a select would have let it look like it does.
+      F21 § "Not in this feature" holds the reasoning, along with the other three deferrals
+      (telling the agent when the human moves the panel, creating worktrees from factorai, and
+      new sessions starting in the shown checkout).
