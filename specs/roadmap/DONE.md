@@ -3,6 +3,57 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Worktrees as a first-class session citizen — spec `05-features.md` F21, ADR-0019, roadmap
+  item 37** — 2026-08-21, shipped as **v0.19.0**. An agent that runs `git worktree add` used to
+  leave factorai describing the wrong directory: tree, Changes, decorations and the graph's
+  working row all keyed off one string. Now the panel follows it, the header names the checkout
+  beside its branch, and a session the agent ran in a worktree appears under the project you
+  actually added instead of becoming one you never asked for.
+
+  **A worktree is a checkout of a project's repository, never a row in `projects`** (ADR-0019 §
+  1). Sessions roll up by repository with ADR-0011's exact-path match tried first, so adding the
+  worktree yourself — the workaround people had — keeps its sessions where they were. It is not
+  the prefix scan ADR-0011 rejected: a checkout is neither ancestor nor descendant of the
+  project, so this is membership in a set git enumerates.
+
+  **The bridge's scope is the repository's checkouts plus the session's cwd**, re-derived from
+  git per resolve (ADR-0019 § 2). The agent's `setWorktree` moves what the panel *shows* and
+  cannot move what the bridge *allows*, which is what keeps the validator a UX check rather than
+  a security boundary. This closed a live bug: an agent editing in a worktree could not open a
+  single file, and the session showed F20's `Bridge` warning on every attempt.
+
+  **Four things this cost that the design did not predict**, each found by using the app rather
+  than by a test — which is the pattern worth carrying forward.
+
+  - **The premise was wrong.** The whole design assumed the agent would say where it went. Three
+    live runs, three worktrees created, **zero** `setWorktree` calls. Our end was fine — a
+    hand-written MCP client over the real socket switched the panel on demand — the agent simply
+    does not reach for the tool. What works is `sessions.last_cwd`: the agent `cd`s into the
+    worktree and `claude` relocates its whole store directory, and reading the *last* recorded
+    cwd catches that with no cooperation at all. The interview had rejected that signal on the
+    grounds that "an agent working in a worktree by absolute path never changes claude's own
+    cwd", which the first real session falsified.
+  - **Reading the last cwd is only safe because resolution is containment.** A session's cwd
+    follows every `cd` a shell command makes; one transcript churned through
+    `apps/desktop/src-tauri` and once `node_modules/.pnpm/@xterm+xterm@5.5.0/…`. All of those are
+    inside the main checkout and resolve to it. Compare the raw value to the project root instead
+    and you mark every session whose agent moved around — which the sidebar mark did, for one
+    commit, before it was removed entirely on user feedback.
+  - **A foreign key to a derived table cost a write.** `session_worktrees` shipped referencing
+    `sessions(id)`, and a brand-new session has no row there — that table is derived from
+    transcripts. So the case the feature exists for, an agent creating a worktree early, failed
+    the insert while the event fired anyway. Migration 0007 dropped the constraint; cleanup moved
+    to `reap_deleted`, which already exempts live sessions. 0006's own comment had argued for
+    exactly this, which is what made the FK an inconsistency rather than a trade-off.
+  - **Correct data with a stale list looks identical to a broken feature.** The index carried the
+    new checkout 11 seconds after the agent moved, and the panel sat on main until a 30s
+    `gitWorktrees` poll came round. `sessions:changed` now invalidates that list — it fires for
+    precisely the change that matters — and the re-measured lag is one second.
+
+  Two remainders stayed open and are item 37's: the graph's per-checkout `HEAD` chips
+  (cosmetic), and watching whether `setWorktree` is ever called by a real agent. A worktree
+  picker for the human is deliberately deferred — F21 § "Not in this feature" has why.
+
 - **Settings — spec `05-features.md` F11, Q24, ADR-0013, roadmap item 4** — 2026-08-20. The
   app's first place to put a preference. `?settings=claude|editor|confirmations|sessions` on the
   root route drives a medium modal with the nav in a left column, an explicit Save, and a gear in
