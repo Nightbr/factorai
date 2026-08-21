@@ -128,7 +128,9 @@ terminal_list() -> Vec<TerminalStatusDto>
 // rather than beside the terminal commands.
 check_claude_cli() -> ClaudeCliStatus
 // The renderer's answer to `app:quit-requested`: kill every PTY, then let the
-// window close (ADR-0005).
+// window close (ADR-0005). The event only fires when Claude is *working*
+// somewhere (ADR-0020); a close with idle PTYs kills them in Rust and never
+// reaches the renderer.
 app_quit_confirmed() -> ()
 // TerminalStatusDto = { id, sessionId, projectId, status, lastActivity }.
 // sessionId is never null: every PTY runs a named session (ADR-0008).
@@ -431,14 +433,22 @@ variable, but it also would not have contained `SSH_AUTH_SOCK`.
 
 On `terminal_kill`: signal child (`child.kill()`), drop the PTY pair.
 
-On window close (`tauri::WindowEvent::CloseRequested`):
+On window close (`tauri::WindowEvent::CloseRequested`) — two counts, two
+different jobs (ADR-0020): `working_count()` decides whether to ask,
+`live_count()` says what dies.
 
-1. If any terminal is live, prevent close and emit `app:quit-requested`
-   to the frontend. The renderer shows a confirm dialog ("Quitting will
-   kill N running session(s). Continue?").
-2. If confirmed (`app:quit-confirmed` command), call `kill_all()` on the
-   manager (SIGTERM, then SIGKILL after 500ms grace), then allow close.
+1. If **`working_count() > 0`**, prevent close and emit
+   `app:quit-requested { liveCount, workingCount }` to the frontend, which
+   shows a confirm dialog naming both numbers.
+2. If confirmed (`app_quit_confirmed` command), call `kill_all()` on the
+   manager (SIGTERM, then SIGKILL after 500ms grace), then `app.exit(0)`.
 3. If cancelled, dismiss.
+4. If **nothing is working but PTYs are live**, no event and no dialog —
+   call `kill_all()` here, synchronously, and let the close proceed. The
+   confirm was the only caller of `kill_all` on a close, so skipping the
+   dialog without this would leave those children to `Drop`, which the
+   exit path does not promise to run. Synchronous because the 500ms
+   SIGTERM grace has to elapse before the process goes.
 
 `kill_all()` is also wired to `Drop` on `TerminalManager` as a last-ditch
 backstop so we never leak children on crashes. **No orphan zombies, ever.**

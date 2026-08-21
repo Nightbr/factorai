@@ -1,6 +1,12 @@
 # ADR-0005 — Kill-on-quit is non-optional, confirm dialog mandatory
 
-**Status.** Accepted (M0, 2026-05-28).
+**Status.** Accepted (M0, 2026-05-28). **The confirm dialog's trigger is
+superseded by
+[ADR-0020](0020-the-quit-confirm-asks-about-work-not-processes.md)**
+(2026-08-21): it fires when Claude is *working* somewhere, not whenever a
+PTY is alive. Everything else here stands — kill-on-quit is still
+non-optional, still not configurable, and the dialog is still mandatory
+when it fires.
 
 ## Context
 

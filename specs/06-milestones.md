@@ -212,8 +212,9 @@ toolchain wired up.
     ScreenSaver interface, varying by desktop — so this is a new load-bearing
     dependency and an ADR (§ 5) before it is a feature. And the design
     question underneath is unsettled: `live_count()` is the wrong signal
-    (it counts terminals, not work), and **`waiting_input` is genuinely
-    ambiguous** — the agent is blocked on a human who is, by hypothesis, not
+    (it counts terminals, not work) — half-answered since, by
+    `working_count()` and ADR-0020, which is what the quit guard reads now
+    — and **`waiting_input` is genuinely ambiguous** — the agent is blocked on a human who is, by hypothesis, not
     at the machine. That is the case that actually happens overnight.
 
     Nothing here is wrong, and it may well graduate back. It is parked

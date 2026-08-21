@@ -3,6 +3,50 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The quit and restart confirms ask about work, not about processes — ADR-0020, spec
+  `05-features.md` § "Quit guard" and F14** — 2026-08-21. Closing the window or restarting for an
+  update used to stop and warn whenever *any* PTY was alive, so an app left open beside four
+  finished sessions asked before every quit. It now asks only when Claude is actually working
+  somewhere. F10 had already made this distinction for closing one session
+  (`needsCloseConfirm`); these were the two gestures it did not cover, and they were still on
+  `live_count()`.
+
+  **Kill-on-quit is untouched** (ADR-0005): every live PTY still dies, asked about or not. That
+  is the part with a trap in it — the dialog's confirm was the **only** caller of `kill_all()` on
+  a window close, so skipping the dialog would have left those children to `Drop`, which Tauri's
+  exit does not promise to run. The close handler now calls `kill_all()` itself on the silent
+  branch, synchronously, because the 500ms SIGTERM grace has to elapse before the process goes.
+
+  **The dialog counts what dies, not what is working.** One working session beside three idle ones
+  is four processes ending, and `quitConfirmSentence` says four — "Claude is working in 1 of 4
+  live sessions. Quitting terminates all 4". Building that sentence from the working count would
+  have been the honest-sounding version of a lie. The `of N` clause is dropped when every live
+  session is working, because "1 of 1" reads as a placeholder somebody forgot to finish.
+
+  **One rule, two doors.** `lib/quitConfirm.ts` owns the predicate and the wording for both the
+  quit guard and F14's restart badge. They are decided on opposite sides of the IPC boundary —
+  Rust gates the window close, the renderer gates `relaunch()` — which is exactly the shape that
+  let them drift before: the restart shipped with no confirmation at all until 2026-08-17.
+
+  **Two things the real app taught that the tests could not.** Verified with `scripts/qa/`, and
+  both branches needed a live `claude`:
+
+  - **The working window is seconds wide, and that made the first two attempts read as a pass.**
+    A resumed session writes its idle title about a second after spawn, so closing "right after
+    clicking a session" hits the *silent* branch and looks like the feature working when nothing
+    was ever working. Catching the dialog needs a real turn and the close in the **same shell
+    invocation** — a `wmctrl -c` issued from a later tool call is already too late, because
+    reading the screenshot in between is wall-clock the agent does not account for.
+  - **`wmctrl -i -c $WID` is the right way to close it.** It sends `_NET_CLOSE_WINDOW`, which is
+    what the titlebar `×` sends, so it exercises `CloseRequested` exactly — with no cursor
+    anywhere near another application's window. `scripts/qa/README.md`'s warning about a stale
+    origin sending a click into the user's Slack applies to every alternative.
+
+  Known gap, inherited rather than introduced: a session parked on a permission prompt reads as
+  `waiting_input` (Claude's title says idle while its own dialog is open), so quitting will not
+  ask about it. Closing that needs F10's unbuilt `needs_permission` state, and it closes for all
+  three gestures at once when it lands.
+
 - **Worktrees as a first-class session citizen — spec `05-features.md` F21, ADR-0019, roadmap
   item 37** — 2026-08-21, shipped as **v0.19.0**. An agent that runs `git worktree add` used to
   leave factorai describing the wrong directory: tree, Changes, decorations and the graph's

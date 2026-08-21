@@ -6,7 +6,9 @@ import { fixtureOneProjectOneSession, installMockBridge } from './fixtures';
  *
  * The updater itself is a Tauri plugin and inert in the browser, so the fixture
  * drives the `ready` state. What's under test is the part that can actually go
- * wrong: whether a restart can kill a live agent session without asking.
+ * wrong: whether a restart can kill a *working* agent session without asking —
+ * and, since 2026-08-21, whether it stops to ask about one that isn't
+ * (ADR-0020).
  */
 test.describe('update badge', () => {
 	test('@smoke offers a manual check when nothing is staged', async ({ page }) => {
@@ -43,7 +45,7 @@ test.describe('update badge', () => {
 		expect(calls.some((c) => c.name === 'relaunch')).toBe(true);
 	});
 
-	test('@smoke confirms before killing a live session', async ({ page }) => {
+	test('@smoke confirms before killing a working session', async ({ page }) => {
 		await installMockBridge(page, { ...fixtureOneProjectOneSession(), updateReady: '0.2.0' });
 		await page.goto('/');
 
@@ -56,13 +58,40 @@ test.describe('update badge', () => {
 		await page.getByTestId('update-badge').click();
 
 		await expect(page.getByText('Restart to update?')).toBeVisible();
-		await expect(page.getByText(/1 running Claude session/)).toBeVisible();
+		await expect(page.getByText(/Claude is working in 1 session/)).toBeVisible();
 		// Nothing happened yet.
 		let calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
 		expect(calls.some((c) => c.name === 'relaunch')).toBe(false);
 
 		await page.getByRole('button', { name: /restart & kill sessions/i }).click();
 		calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'relaunch')).toBe(true);
+	});
+
+	test('@smoke restarts without asking when the session is only waiting', async ({ page }) => {
+		// The complaint this fixes: a session that finished its turn an hour ago is
+		// still a live PTY, and the restart used to stop and warn about losing work
+		// that had already landed.
+		await installMockBridge(page, { ...fixtureOneProjectOneSession(), updateReady: '0.2.0' });
+		await page.goto('/');
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		await expect(page.locator('.xterm')).toBeVisible();
+
+		// Spawn leaves a session `working`; this is Claude handing the turn back.
+		await page.evaluate(() => {
+			window.__FACTORAI_EMIT__?.('terminal:status', {
+				id: 'mock-terminal-id',
+				status: 'waiting_input',
+				lastActivity: Date.now(),
+			});
+		});
+		await expect(page.locator('main header [title="Waiting for input"]')).toHaveCount(1);
+
+		await page.getByTestId('update-badge').click();
+
+		await expect(page.getByText('Restart to update?')).toHaveCount(0);
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
 		expect(calls.some((c) => c.name === 'relaunch')).toBe(true);
 	});
 

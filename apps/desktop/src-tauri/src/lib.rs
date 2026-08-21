@@ -168,7 +168,11 @@ pub fn run() {
 			if let WindowEvent::CloseRequested { api, .. } = event {
 				if let Some(state) = window.try_state::<AppState>() {
 					let live = state.terminals.live_count();
-					if live > 0 {
+					// **What is working decides whether we ask; what is live decides
+					// what dies** (ADR-0020). Both go to the renderer so the dialog
+					// can say the second thing rather than imply it.
+					let working = state.terminals.working_count();
+					if working > 0 {
 						api.prevent_close();
 						// Emit via the AppHandle, NOT `window.emit`: in Tauri v2 the
 						// `Window` from `on_window_event` emits to window-level
@@ -177,9 +181,22 @@ pub fn run() {
 						// handle broadcasts to the webview. Without this the quit
 						// confirm dialog never appeared and the close button did
 						// nothing while sessions were live.
-						let _ = window
-							.app_handle()
-							.emit("app:quit-requested", json!({ "liveCount": live }));
+						let _ = window.app_handle().emit(
+							"app:quit-requested",
+							json!({ "liveCount": live, "workingCount": working }),
+						);
+					} else if live > 0 {
+						// Nothing is working, so nothing is asked — but kill-on-quit
+						// is still non-optional (ADR-0005). The dialog's confirm was
+						// the only thing that ever called `kill_all` on a close, so
+						// without this branch the sessions we chose not to ask about
+						// would be the ones left to `Drop`, which Tauri's exit is not
+						// obliged to run.
+						//
+						// Synchronous on purpose, and the close proceeds when it
+						// returns: `kill_all`'s 500ms SIGTERM grace has to finish
+						// before the process goes or the grace period is a no-op.
+						state.terminals.kill_all();
 					}
 				}
 			}
