@@ -22,6 +22,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// `ALTER TABLE ... ADD COLUMN` is not idempotent.
 	("0005_session_subagent", include_str!("migrations/0005_session_subagent.sql")),
 	("0006_session_worktrees", include_str!("migrations/0006_session_worktrees.sql")),
+	// 0006's foreign key could not be satisfied by the case F21 exists for — see
+	// this file's header comment for what a brand-new session's row situation is.
+	// A separate migration rather than an edit, because 0006 has run.
+	("0007_session_worktrees_no_fk", include_str!("migrations/0007_session_worktrees_no_fk.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

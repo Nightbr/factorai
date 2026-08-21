@@ -157,6 +157,19 @@ mod tests {
 	}
 
 	#[test]
+	fn a_signal_lands_for_a_session_the_index_has_never_seen() {
+		let (_tmp, db) = db();
+		// **The case that shipped broken and was found by using it.** A brand-new
+		// session has no `sessions` row — that table is derived from transcripts,
+		// and the indexer writes a row only once Claude has written one. An agent
+		// that runs `git worktree add` early signals before any of that, which is
+		// exactly the case F21 exists for. Migration 0007 dropped the foreign key
+		// that refused this.
+		set_worktree(&db, "never-indexed", "/wt/feature-x", 10).unwrap();
+		assert_eq!(worktree(&db, "never-indexed").as_deref(), Some("/wt/feature-x"));
+	}
+
+	#[test]
 	fn clearing_forgets_the_checkout_so_the_next_read_falls_back() {
 		let (_tmp, db) = db();
 		insert_session(&db, "s1", Some("/repo"));
@@ -183,23 +196,6 @@ mod tests {
 	fn a_session_with_no_signal_has_no_worktree() {
 		let (_tmp, db) = db();
 		insert_session(&db, "s1", Some("/repo"));
-		assert_eq!(worktree(&db, "s1"), None);
-	}
-
-	#[test]
-	fn the_row_goes_when_the_session_does() {
-		let (_tmp, db) = db();
-		insert_session(&db, "s1", Some("/repo"));
-		set_worktree(&db, "s1", "/wt/feature-x", 10).unwrap();
-
-		// ON DELETE CASCADE, and `foreign_keys` is ON — a reindex that drops a
-		// session must not leave its checkout behind to be handed to the next
-		// session that reuses the id.
-		db.with(|conn| {
-			conn.execute("DELETE FROM sessions WHERE id = 's1'", []).unwrap();
-			Ok(())
-		})
-		.unwrap();
 		assert_eq!(worktree(&db, "s1"), None);
 	}
 

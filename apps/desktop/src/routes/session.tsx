@@ -18,6 +18,7 @@ import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, restartSession, Terminal } from '@components/terminal/Terminal';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useGitBranch } from '@hooks/useGitBranch';
+import { checkoutLabel } from '@hooks/useWorktrees';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { usePrefsStore } from '@store/prefsStore';
@@ -51,14 +52,21 @@ function SessionView() {
 	const project = projectsQ.data?.find((p) => p.id === projectId);
 	const projectCwd = project?.realPath ?? null;
 
-	// The header's branch badge. `projectCwd` rather than the active project, so
-	// the badge always names this session's repository (F3).
-	const branch = useGitBranch(projectCwd);
-
 	// **Which checkout this session is working in** (F21). Absent for a
 	// single-checkout project, which is the 95% case — so that header renders
 	// exactly as it did before any of this existed.
-	const { worktree, isLinked } = useActiveCheckout();
+	const { root, worktree, isLinked } = useActiveCheckout();
+
+	// The header's branch badge. **The checkout's branch, not the project's**
+	// (F21) — corrected 2026-08-21, having shipped for one commit saying `main`
+	// beside a worktree that was on `demo/worktree`. A badge naming a branch you
+	// are not looking at is worse than no badge, and it made the two facts beside
+	// each other contradict rather than complement.
+	//
+	// `root` rather than `projectCwd`, so it still always names *this session's*
+	// tree (F3) — and it shares `gitStatus`'s cache entry for that path, which is
+	// the one the panel is already polling.
+	const branch = useGitBranch(root);
 	const clearWorktree = useTerminalStore((s) => s.clearWorktree);
 
 	/**
@@ -207,7 +215,7 @@ function SessionView() {
 						data-testid="session-worktree"
 					>
 						<FolderGit2 className="size-3 shrink-0" aria-hidden />
-						<span className="truncate">{worktree.name ?? worktree.branch ?? worktree.path}</span>
+						<span className="truncate">{checkoutLabel(worktree)}</span>
 						<IconButton
 							aria-label="Back to this session's own checkout"
 							title="Back to this session's own checkout"

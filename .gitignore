@@ -51,3 +51,9 @@ apps/desktop/test-results/
 # startup by vite/pdfjsAssets.ts. ~4MB copied out of node_modules — it belongs
 # in the build, not the history. See ADR-0018.
 apps/desktop/public/pdfjs/
+
+# Worktrees created by the agent inside the project (F21). They are checkouts
+# of this same repository, so committing one would embed a git repo in itself —
+# and every tool that walks the tree (biome, knip, playwright) would otherwise
+# see a second copy of the whole source and report duplicates.
+.claude/worktrees/

@@ -73,3 +73,27 @@ function isWithin(path: string, root: string): boolean {
 	const base = root.endsWith('/') ? root : `${root}/`;
 	return path.startsWith(base);
 }
+
+/**
+ * What to call a checkout on screen (F21).
+ *
+ * **Git's own name for the worktree, which is its directory's** — not its
+ * branch. The branch is already a badge of its own beside this one, and printing
+ * it twice would spend header width restating a fact rather than adding one. The
+ * directory is also what tells two checkouts apart when they share a branch, or
+ * when one has a detached HEAD and no branch to print.
+ *
+ * Shared so the session header and the panel header cannot disagree — they did,
+ * for one commit: the header showed `wt-demo` while the panel showed
+ * `demo/worktree`, which reads as two different places.
+ */
+export function checkoutLabel(worktree: GitWorktree): string {
+	return worktree.name ?? basename(worktree.path);
+}
+
+/** Last path segment. Trailing separators are trimmed first, since git reports
+ *  paths both ways. */
+function basename(path: string): string {
+	const parts = path.replace(/\/+$/, '').split('/');
+	return parts[parts.length - 1] || path;
+}

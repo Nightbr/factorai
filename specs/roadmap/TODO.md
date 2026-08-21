@@ -999,7 +999,9 @@ roll-up, or the roll-up produces sessions that restart as new conversations.
       somewhere other than the folder it was handed.
 - [x] Migration `0006_session_worktrees.sql` — landed 2026-08-21, no competing 0006 on
       `main`. Read and written through `services/sessions.rs`, which is also where the spawn
-      fix's `recorded_cwd` lives.
+      fix's `recorded_cwd` lives. **`0007` removed its foreign key the same day**: a session
+      with no `sessions` row yet — the case the feature exists for — could not be written at
+      all. Cleanup moved to `reap_deleted`.
 
 ### 3. The bridge: the tool, the scope, the roll-up
 

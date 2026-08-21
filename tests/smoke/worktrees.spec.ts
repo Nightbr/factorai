@@ -37,8 +37,22 @@ test.describe('worktrees', () => {
 		const badge = page.getByTestId('session-worktree');
 		await expect(badge).toBeVisible();
 		await expect(badge).toContainText('feature-x');
-		// Two facts, not one: the branch badge is still there.
-		await expect(page.getByTestId('session-branch')).toBeVisible();
+		// **Two facts that agree about where you are.** The branch badge names the
+		// *checkout's* branch, not the project's — it said `main` beside a worktree
+		// on another branch for one commit, which made the pair contradict.
+		await expect(page.getByTestId('session-branch')).toContainText('feature-x');
+	});
+
+	test('@smoke the header and the panel call the checkout the same thing', async ({ page }) => {
+		// They disagreed for one commit — `wt-demo` in the header, `demo/worktree`
+		// in the panel — which reads as two different places.
+		await installMockBridge(page, fixtureSessionInAWorktree());
+		await page.goto(IN_WORKTREE);
+		await openPanel(page);
+
+		const header = await page.getByTestId('session-worktree').innerText();
+		const panel = await page.getByTestId('panel-checkout').innerText();
+		expect(panel.trim()).toBe(header.trim());
 	});
 
 	test('@smoke a session in the project’s own checkout gets no worktree furniture', async ({
@@ -53,12 +67,20 @@ test.describe('worktrees', () => {
 		await expect(page.getByTestId('panel-checkout')).toHaveCount(0);
 	});
 
-	test('@smoke the panel says which checkout it is showing', async ({ page }) => {
+	test('@smoke the tree names the checkout beside its root folder', async ({ page }) => {
+		// On the root row, not in the tab strip — that row already holds three tabs
+		// and two icons at 288px. Changed 2026-08-21 on user feedback.
 		await installMockBridge(page, fixtureSessionInAWorktree());
 		await page.goto(IN_WORKTREE);
 		await openPanel(page);
 
-		await expect(page.getByTestId('panel-checkout')).toContainText('feature-x');
+		const mark = page.getByTestId('panel-checkout');
+		await expect(mark).toContainText('feature-x');
+		// On a tree row, not in the tab strip — asserted both ways round, because
+		// "it is visible somewhere in the panel" is what the old placement also
+		// satisfied.
+		await expect(page.locator('li').filter({ has: mark })).toHaveCount(1);
+		await expect(page.getByRole('tablist').getByTestId('panel-checkout')).toHaveCount(0);
 	});
 
 	test('@smoke the sidebar marks the session that ran in another checkout', async ({ page }) => {
