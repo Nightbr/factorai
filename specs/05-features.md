@@ -3237,7 +3237,21 @@ the conversation, which is the failure this whole paragraph exists to prevent.
 ### What persists, and where
 
 `session_worktrees(session_id, path, updated_at)` — see
-`02-data-model.md`. Persisted, because a session resumed tomorrow should come
+`02-data-model.md`. **No foreign key to `sessions`, and that is a correction
+migration 0007 made after 0006 shipped with one.** A brand-new session has no
+`sessions` row — that table is derived from transcripts, and a row appears only
+once Claude has written one — so an agent creating a worktree early, the exact
+case this feature exists for, signalled for an id the constraint had never heard
+of and the insert failed. The panel moved anyway, because the event fires either
+way, which is precisely the "shows what a reload disagrees with" split the
+write-then-emit ordering exists to prevent.
+
+The constraint was the design error, not the ordering: this table is a record of
+what the agent said, keyed by an id factorai minted (ADR-0008), and making its
+lifetime depend on the scan noticing a transcript is the mistake ADR-0011 was
+written to correct, one level down. Cleanup moved to `reap_deleted`, which is
+where sessions are actually deleted and which already exempts live ones — the
+same guard a checkout record needs. **Found by using the app**, not by a test. Persisted, because a session resumed tomorrow should come
 back in the tree it was working in, and it is Rust that validates and writes it,
 so ADR-0013 puts it in SQLite rather than localStorage.
 
@@ -3265,6 +3279,21 @@ against adding a second, not for it.
 
 ### On screen
 
+**The branch badge names the *checkout's* branch, not the project's. Corrected
+2026-08-21**, having shipped for one commit saying `main` beside a worktree that
+was on `demo/worktree`. A badge that names a branch you are not looking at is
+worse than no badge, and it made the two facts beside each other contradict
+instead of complement. `useGitBranch` takes the resolved checkout, which also
+means it shares the cache entry the panel is already polling for that path.
+
+**Both marks call a checkout the same thing** — git's own name for the worktree,
+which is its directory's, through one shared `checkoutLabel`. Not its branch:
+that is the badge next to it, and printing it twice spends width restating a fact
+rather than adding one. The directory is also what tells two checkouts apart when
+they share a branch, or when one has a detached HEAD and no branch to print. The
+two disagreed for one commit — `wt-demo` in the header, `demo/worktree` in the
+panel — which reads as two different places.
+
 **The session header's badge gains a worktree mark only when the checkout is not
 the project's own.** A single-checkout project's header is byte-identical to
 today, which is the point: 95% of projects should pay nothing for this. When it
@@ -3274,16 +3303,22 @@ detached `HEAD` in a worktree, or two checkouts on one branch. The badge stays
 quiet by design per F3; the revert control beside it is the only clickable thing
 added.
 
-**The panel's `h-9` header names the checkout it is showing**, `text-xs`, and
-**only when it is not the project's own** — the exception, not the default, so a
-single-checkout project's header pays no width for this and the tabs keep theirs.
+**The tree names the checkout beside its root folder**, `text-xs`, and **only
+when it is not the project's own**. So the root row reads `factorai · ⧉
+feature-x`: what the project is called, and which of its checkouts you are
+looking at.
 
-The original reason given for this placement was that a project route has no
-session header to read. That reason turned out to be wrong: a project route
-always resolves to step 3, so the panel there is *never* off the project's own
-checkout and the mark could never appear. It is in the header anyway, for a
-better reason — the Changes and Graph tabs have no root row to carry it, and all
-three tabs describe the same tree.
+**Moved there from the panel's `h-9` header, 2026-08-21 on user feedback.** That
+row already holds three tabs and two icons at 288px, and a fourth thing in it is
+a fourth thing competing for the same width. The cost, accepted: the Changes and
+Graph tabs have no root row, so they carry no mark — the session header names the
+checkout too, and it is visible from all three tabs.
+
+Two earlier reasons for the header placement were both wrong and are recorded so
+they are not re-argued. "A project route has no session header to read" — a
+project route always resolves to step 3, so the mark could never appear there
+anyway. And "all three tabs describe the same tree" is true but does not follow:
+the tab you are on decides whether there is anywhere to put it.
 
 **The graph gets a chip per checkout's `HEAD`**, through F18's existing
 badge machinery and its "the icon says where the ref lives" rule. In a

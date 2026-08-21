@@ -510,6 +510,36 @@ fn a_deleted_transcript_is_reaped_from_the_index() {
 	assert_eq!(only_project(&db).session_count, 0);
 }
 
+#[test]
+fn the_reap_takes_a_session_s_checkout_record_with_it() {
+	// What `ON DELETE CASCADE` used to do, before migration 0007 dropped the
+	// foreign key that could not be satisfied by a session with no row yet (F21).
+	// The reap is the right home for it: it already exempts live sessions, which
+	// is exactly the guard a checkout record needs.
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, store, session_id) = fixture_one_session(tmp.path(), &db);
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("first scan");
+
+	factorai_lib::services::sessions::set_worktree(&db, &session_id, "/wt/feature-x", 10)
+		.expect("record a checkout");
+	assert_eq!(
+		factorai_lib::services::sessions::worktree(&db, &session_id).as_deref(),
+		Some("/wt/feature-x")
+	);
+
+	std::fs::remove_file(store.join(format!("{session_id}.jsonl"))).expect("rm transcript");
+	indexer.full_scan().expect("second scan");
+
+	assert_eq!(counts(&db, &session_id), (0, 0));
+	assert_eq!(
+		factorai_lib::services::sessions::worktree(&db, &session_id),
+		None,
+		"a checkout left behind would be handed to whatever next holds this id"
+	);
+}
+
 /// A sub-agent transcript is reaped on the same terms — and, more importantly,
 /// is *not* reaped while it is still there. Agent rows carry their parent's
 /// `discovered_id`, so a reap that only knew about top-level transcripts would

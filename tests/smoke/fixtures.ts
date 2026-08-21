@@ -225,6 +225,10 @@ export function fixtureSessionInAWorktree(): TestFixture {
 				},
 				{
 					path: worktreePath,
+					// git's own worktree name — the leaf directory. Deliberately the
+					// same as the branch here so the "both marks agree" spec is not
+					// accidentally satisfied by the branch: `checkoutLabel` reads
+					// `name`, and the branch badge reads `branch`.
 					name: 'feature-x',
 					branch: 'feature-x',
 					head: 'b'.repeat(40),

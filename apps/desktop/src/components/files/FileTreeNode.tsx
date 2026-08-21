@@ -42,9 +42,20 @@ interface FileTreeNodeProps {
 	 *  already holds this array, so siblings cost nothing; anything wider is its
 	 *  own piece of work. */
 	siblings?: readonly DirEntry[];
+	/** Rendered after the name. **The root row's checkout mark and nothing else**
+	 *  (F21) — a general slot on every row would invite status badges into a list
+	 *  whose density is the point. */
+	trailing?: ReactNode;
 }
 
-export function FileTreeNode({ entry, root, projectId, depth, siblings }: FileTreeNodeProps) {
+export function FileTreeNode({
+	entry,
+	root,
+	projectId,
+	depth,
+	siblings,
+	trailing,
+}: FileTreeNodeProps) {
 	// Keyed on `root` — the checkout the tree is rooted at, not the project (F21).
 	const expanded = usePanelStore((s) => expandedFor(s, root).has(entry.path));
 	const selected = usePanelStore((s) => s.selectedPaths.has(entry.path));
@@ -173,6 +184,10 @@ export function FileTreeNode({ entry, root, projectId, depth, siblings }: FileTr
 						>
 							{entry.name}
 						</span>
+						{/* The root row's checkout mark (F21) — nothing else passes this. It
+						    sits after the name and before the row's own marks, so it reads
+						    as part of what the row is called rather than as a status on it. */}
+						{trailing}
 						{entry.isSymlink && <Link2 className="size-3 shrink-0 text-muted-foreground/60" />}
 						{copied === 'yes' && (
 							<Check data-testid="row-copied" className="size-3.5 shrink-0 text-primary" />

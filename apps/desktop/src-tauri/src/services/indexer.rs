@@ -346,9 +346,18 @@ impl Indexer {
 			let tx = conn.transaction()?;
 			{
 				let mut del_fts = tx.prepare("DELETE FROM messages_fts WHERE session_id = ?1")?;
+				// F21's checkout record. This is what `ON DELETE CASCADE` used to do,
+				// moved here when migration 0007 dropped the foreign key: the record
+				// is keyed by an id we minted and has to be writable before the scan
+				// has seen a transcript, so its lifetime cannot hang off `sessions`.
+				// **This is the right place for it** — the reap already exempts live
+				// sessions, which is the same guard the checkout needs.
+				let mut del_wt =
+					tx.prepare("DELETE FROM session_worktrees WHERE session_id = ?1")?;
 				let mut del_row = tx.prepare("DELETE FROM sessions WHERE id = ?1")?;
 				for id in &gone {
 					del_fts.execute(params![id])?;
+					del_wt.execute(params![id])?;
 					del_row.execute(params![id])?;
 				}
 			}

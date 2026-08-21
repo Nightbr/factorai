@@ -322,12 +322,30 @@ and for what "who reads this?" now decides.
 
 | col        | type    | notes                                                     |
 | ---------- | ------- | --------------------------------------------------------- |
-| session_id | TEXT PK | `sessions(id) ON DELETE CASCADE`                          |
+| session_id | TEXT PK | **no FK** — see below; dropped by migration 0007           |
 | path       | TEXT    | absolute path of the checkout, as git reports it          |
 | updated_at | INTEGER | epoch ms of the last signal                               |
 
-**Migration `0006`. Added by F21**; see
+**Migrations `0006` and `0007`. Added by F21**; see
 [ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 3.
+
+**0006 shipped with `session_id REFERENCES sessions(id) ON DELETE CASCADE`, and
+0007 removed it.** A brand-new session has no `sessions` row — that table is
+derived from transcripts, and a row appears only once Claude has written one — so
+an agent creating a worktree early in a session signalled a checkout for an id
+the constraint had never heard of, and the insert failed with `FOREIGN KEY
+constraint failed`. Found by using the app; no test had that shape.
+
+The constraint was the design error rather than the ordering around it. This
+table records **what the agent said**, keyed by an id factorai minted (ADR-0008);
+`sessions` is derived state the scan owns. Making the record's lifetime depend on
+the scan noticing a transcript is the mistake ADR-0011 corrects, one level down —
+and it is the same argument the "its own table" paragraph below already makes,
+which is what makes the FK an inconsistency rather than a trade-off.
+
+Cleanup moved to `reap_deleted`, which is where sessions are actually deleted and
+which **already exempts live sessions** — the guard a checkout record needs
+anyway.
 
 Written **by the IDE bridge's signal path** — the agent calling `setWorktree`, or
 an `openFile` landing in another checkout — after the path has been validated
