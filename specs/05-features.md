@@ -3014,3 +3014,240 @@ what the CLI's footer is built for, and it needs the viewer to report a live
 selection. Its own roadmap entry.
 
 **Roadmap.** Item 19.
+
+---
+
+## F21 — Worktrees as a first-class session citizen
+
+**Specified 2026-08-21**, from the clarify-needs interview roadmap item 1's last
+bullet was gated on. Not built yet.
+[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) holds the
+two decisions that constrain everything below — what a worktree *is*, and what
+the bridge is allowed to reach.
+
+**The problem, stated as it actually appears.** An agent asked to work on two
+things at once reaches for `git worktree add`, and from that moment factorai is
+describing the wrong directory. The tree, the Changes tab, the graph's working
+row and the tree's decorations all key off one string — the project's
+`realPath` — so the panel confidently shows a clean checkout while the agent
+edits a tree the app cannot see. Worse, the session doing the work often is not
+in the project at all: `claude` keys its store by cwd, so a session started in
+`~/wt/feature-x` lands under a different `~/.claude/projects/` directory and,
+under ADR-0011's exact-path attachment, becomes a project you never added rather
+than a session of the one you did.
+
+**Agent-driven first, and that is the design rather than an economy.** The agent
+creates the worktree — it is one command, in a terminal, and `05-features.md`
+F18 and ADR-0009 have already settled that factorai does not do git's writing
+for it. What factorai owes it is to *follow*. So the mechanism is the agent
+saying where it went and the app moving, not a picker the human is expected to
+keep in sync with a process they are supervising rather than driving.
+
+### A worktree is a checkout of the project's repository
+
+Never a row in `projects`. The set of checkouts is read from git — the main one
+and every linked one — and it is keyed by the repository, not by which checkout
+you happened to add. A project that *is* a linked worktree therefore sees the
+same set as one that is the main checkout: it is the same repository whichever
+door you came in by.
+
+**Sessions roll up by repository, and ADR-0011's rule is tried first.** A
+session recorded in `~/wt/feature-x` attaches to the project owning that
+repository — but only if no project claims its path exactly. So adding
+`~/wt/feature-x` yourself keeps its sessions where they were, and nothing moves
+under someone who has already built a workflow out of the workaround.
+
+### The signals, and why there are only two
+
+The bridge (F20) is the **only** channel an agent has into factorai, so it is
+where following has to happen. `at_mentioned` runs the other way — human to
+agent — and is not a signal.
+
+1. **`setWorktree { path }`**, a fourth tool on the bridge's `tools/list`.
+   Intent, stated. Validated in Rust against the repository's registered
+   worktrees; an unregistered or missing path is a **tool error**, not a
+   JSON-RPC error, following the line `services/ide/protocol.rs` already draws
+   between "your call was malformed" and "your call was fine and the answer is
+   no".
+2. **An `openFile` path inside a checkout the panel is not showing.** The agent
+   is already sending absolute paths through this tool; a path in another
+   checkout is it telling you where it works, at no cost and with no new
+   protocol. It also covers the agent that never learns the tool, which on the
+   evidence of F20 — *"what is still unobserved is a tool call"* — is the case
+   to design for.
+
+`getWorkspaceFolders` starts answering with the repository's checkouts and which
+one is current. It is the read side of the same concept and the tool `claude`
+already calls early, so it is where an agent discovers that any of this exists.
+
+**Rejected: three further signals**, each for a different reason worth recording
+so they are not re-proposed. Polling `git worktree list` and treating a
+newly-appeared checkout as the live session's is a good heuristic that becomes a
+coin toss the moment two sessions are live in one project. Reading the
+transcript's tool-use payloads means parsing another program's internal tool
+schema. And taking the session's *last* `cwd` instead of its first would change
+the meaning of a field F19's relative-path resolution also reads, to learn
+something that mostly does not move: an agent working in a worktree by absolute
+path never changes `claude`'s own cwd.
+
+### The panel moves, and the route still owns the project
+
+**Either signal moves the panel**, immediately, with no confirmation. This is
+the deliberate asymmetry of the feature: the human's supervision happens over
+what the agent *did*, and a panel that needs a click before it will show you
+that is a panel describing the past.
+
+Three bounds keep it from being obnoxious:
+
+- **The route decides the project; the signal decides the checkout.** A signal
+  from another project is ignored. `FileTreePanel`'s contract — *"which project
+  it shows follows the route"* — is untouched, because a panel and a header
+  naming different repositories is not liveness, it is a bug that reads like
+  one.
+- **Only a live session's signal counts.** The bridge is per-session and dies
+  with it (ADR-0017 § 2), so a closed session cannot move the panel with a late
+  frame.
+- **Two live sessions in one project will trade the panel** between their
+  checkouts. Accepted, knowingly: it is the honest rendering of two agents
+  working in two trees, and the alternative — pinning the panel to one of them —
+  is the picker this feature deliberately does not ship yet.
+
+**The escape is one control, and it is not a picker.** When the panel is off the
+session's own checkout, an `IconButton` appears beside the header badge and
+returns it to the worktree containing `sessions.cwd`. It is an undo of an
+automatic move, which is the smallest thing that stops a human being stranded;
+it takes no lock, so the next signal can move the panel again. A full select —
+and telling the agent when a human moves the panel — is deferred; see "Not in
+this feature".
+
+### Which checkout a session is showing
+
+Three steps, first match wins:
+
+1. `session_worktrees.path`, if it is still a registered worktree of the
+   repository *and* still on disk.
+2. The checkout containing `sessions.cwd`, by longest containment — which is
+   what makes a session started in a worktree correct before any signal arrives,
+   and is also the revert target above.
+3. `projects.real_path`.
+
+A project route with no session in front always shows step 3. It has no session
+whose checkout could be meant, and guessing from the most recent one would make
+the tree change when you navigated away from it.
+
+**A checkout that stops being valid falls back to step 2 and says so once** —
+`git worktree remove`d, or its directory deleted while you are looking at it.
+Not doing this is worse than it sounds: `Repository::discover()` walks up from a
+missing path's nearest existing parent, so an unhandled removal quietly re-roots
+the panel on whatever repository sits above the deleted directory, and nothing
+on screen says the subject changed.
+
+### The consequence that is not optional: resume cwd
+
+`attachPty` spawns with `projectCwd`, and `session_flag()` decides `--resume`
+versus `--session-id` by probing for a transcript at
+`encode_path(cwd)/<id>.jsonl` — there is a test named
+`session_flag_is_scoped_per_folder` asserting exactly that. So a rolled-up
+worktree session, restarted with the project's path as cwd, finds no transcript,
+claims `--session-id` for an id `claude` already knows, and the conversation is
+either refused or silently replaced by an empty one.
+
+**The spawn cwd becomes `sessionCwd ?? projectCwd`.** This is a bug fix on its
+own merits — `Terminal.tsx` already carries `sessionCwd` and a comment
+acknowledging the two can differ for a session started in a subdirectory — and
+it has to land before the roll-up, not with it.
+
+**It is also the line between two things that must not be conflated.** The
+transcript's own cwd is where `claude` runs and what makes resume work. The
+persisted worktree is what the panel shows. Spawning from the persisted value
+was considered and rejected: when the two disagree, that spawn silently loses
+the conversation, which is the failure this whole paragraph exists to prevent.
+
+### What persists, and where
+
+`session_worktrees(session_id, path, updated_at)` — see
+`02-data-model.md`. Persisted, because a session resumed tomorrow should come
+back in the tree it was working in, and it is Rust that validates and writes it,
+so ADR-0013 puts it in SQLite rather than localStorage.
+
+**Its own table, not a column on `sessions`.** `sessions` is derived state: the
+scan upserts it from transcripts. Recording a decision in a table another owner
+rewrites is precisely the mistake ADR-0011 was written to fix, and the fact that
+the upsert already has to `COALESCE` one column it does not own is an argument
+against adding a second, not for it.
+
+### Keying, because two caches are wrong across checkouts
+
+- **Tree expand state moves to the checkout**, not the project.
+  `panelStore.expandedByProject` holds *absolute* paths, so switching checkout
+  under one project id seeds a tree with paths from a different tree.
+- **`gitStatus` keys on the checkout.** Different tree, different answer; this
+  one should refetch.
+- **`gitGraph` keys on the repository root.** Worktrees share one object
+  database and one set of refs, so the commit list is the same list — only the
+  `HEAD` tick and the Working row differ. Keying it by checkout would refetch
+  F18's whole page to render an identical list.
+
+### On screen
+
+**The session header's badge gains a worktree mark only when the checkout is not
+the project's own.** A single-checkout project's header is byte-identical to
+today, which is the point: 95% of projects should pay nothing for this. When it
+is off-main, the branch and the checkout are shown as two facts rather than one,
+because they usually agree and the interesting cases are when they do not — a
+detached `HEAD` in a worktree, or two checkouts on one branch. The badge stays
+quiet by design per F3; the revert control beside it is the only clickable thing
+added.
+
+**The panel's `h-9` header names the checkout it is showing**, `text-xs`, since
+the panel is the thing that moved and a project route has no session header to
+read.
+
+**The graph gets a chip per checkout's `HEAD`**, through F18's existing
+badge machinery and its "the icon says where the ref lives" rule. In a
+worktree-heavy repository this is the reason to open a graph at all: three
+checkouts, visible at once, on the commits they are actually sitting on.
+
+**A rolled-up session gets a `text-xs` mark in the sidebar** naming its
+checkout. Without it the roll-up mixes trees into one list and two rows of the
+same project are indistinguishable, which is how you resume the wrong one.
+
+### Every checkout git knows is listed, odd ones marked
+
+`locked` and `prunable` show as `text-xs` metadata, in the same voice as the
+project row's existing `missing`; a checkout whose directory is gone is listed
+as `missing` and `setWorktree` on it is a tool error. A bare repository simply
+contributes no main-checkout row and its linked ones list normally.
+
+Filtering the unusable ones out was rejected: a session whose cwd is inside a
+filtered-out checkout resolves to the project instead, and nothing on screen
+says why — a checkout you cannot see is one you cannot reason about.
+
+### Not in this feature
+
+- **A worktree picker in the header.** The whole point of the first slice is
+  finding out whether agent-driven following works; a select would let it look
+  like it does. Its own follow-up, and the place to handle the agent that cannot
+  keep factorai in sync.
+- **Telling the agent when the human moves the panel.** `getWorkspaceFolders`
+  reports the session's own cwd first and the current view second, clearly
+  labelled, so an agent that asks is never misled into editing a tree it was not
+  started in. Pushing a notification was rejected for now: `claude` ignores
+  notifications it does not know, so it would be an unverifiable write to the
+  wire.
+- **Creating, removing or pruning a worktree from factorai.** ADR-0009 stands.
+  The agent does this in one line, in the terminal below.
+- **New sessions starting in the shown checkout.** A separate decision, and it
+  interacts with `start_session`'s live-session reuse (ADR-0008) rather than
+  with anything here.
+
+### The premise this rests on
+
+Everything above assumes an agent either calls the tool or opens a file. F20
+records that a tool call from the real CLI is **still unobserved**, so the
+honest statement is that slice 3 is where the premise is tested. If uptake is
+poor, the recovery is a better tool description and the deferred picker — not a
+different architecture, since the `openFile` inference and the `sessions.cwd`
+default both work without any uptake at all.
+
+**Roadmap.** Item 37.

@@ -260,6 +260,31 @@ worse than starting collapsed. `seedRoot` expands the root the *first* time
 a project's tree renders, distinguishing "never seeded" (`undefined`) from
 "collapsed everything" (empty set) so collapse-all isn't undone.
 
+**F21 re-keys `expandedByProject` to the checkout**, not the project. The map
+holds *absolute* paths, so a project with more than one worktree currently seeds
+one tree with paths belonging to another — every one of which is missing. The
+project id stops being enough as an identity the moment the panel's root can move
+without the route changing, and the checkout path is the thing the paths inside
+are actually relative to. Same "never seeded" vs "collapsed everything"
+distinction, one key deeper.
+
+### Which checkout the panel is rooted at (F21)
+
+Not a store of its own. The resolution is a hook over three sources, first match
+wins — `session_worktrees` for this session (re-validated against
+`git_worktrees`), the checkout containing `sessions.cwd`, then
+`projects.real_path`. See `05-features.md` F21 for why in that order and what
+happens when the first two go stale.
+
+The **live** part lands in `terminalStore` beside `ideIssues`, from the
+`session:worktree` event: `worktreeBySession: Record<string, string>`, **not
+persisted**, exactly as `bySession` isn't. Rust already wrote the row before
+emitting, so the durable copy is in SQLite and this is only the in-flight value
+that saves a refetch. A signal for a session in another project is dropped on
+arrival — the route owns which project the panel shows, and `FileTreePanel`'s
+"which project it shows follows the route" is not up for negotiation by an event.
+
+
 ### `prefsStore`
 
 **User preferences only**, persisted to localStorage as `factorai.prefs` — the

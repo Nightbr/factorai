@@ -5,15 +5,20 @@
 ```
 lib.rs                # tauri::Builder, plugins, command registry, state init
 main.rs               # calls lib::run()
+state.rs              # AppState — the long-lived handles commands share
+error.rs              # AppError (thiserror + Serialize), the command boundary
 commands/
   mod.rs
   projects.rs         # list_projects, add_project, remove_project,
                       #   list_import_candidates, resolve_project_path, pin_project
-  sessions.rs         # list_sessions, get_session, get_session_tail, search_sessions
+  sessions.rs         # list_sessions, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
-  git.rs              # git_status, git_blob
+  git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
+                      #   (+ git_worktrees — F21, planned)
+  ide.rs              # the IDE bridge's command surface (F20)
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
+                      #   — PLANNED, roadmap item 2
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
 agents/
   mod.rs              # Discovered, display_name_for_path — the store-agnostic bits
@@ -23,26 +28,39 @@ services/
   indexer.rs          # IndexerService — scan + watch + FTS upsert
   watcher.rs          # notify-rs wrapper, debounced channel
   terminal.rs         # TerminalManager — owns PTYs
+  osc_title.rs        # session status out of the terminal title (ADR-0015)
   jsonl.rs            # streaming parser for session events
   search.rs           # FTS query builder + result hydration
   files.rs            # list_dir, read_file, read_image, read_pdf, path_kinds
   child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
                       #   strip, and CLAUDE_CODE_CHILD_SESSION
   shell_path.rs       # ask the login shell what the user's PATH really is
-  git.rs              # repository status + blob reads (ADR-0009)
+  claude_cli.rs       # find_claude_binary + the version probe
+  settings.rs         # the settings table, behind the commands
+  git.rs              # repository status, blobs, graph (ADR-0009)
+  ide/                # the bridge (F20, ADR-0017)
+    mod.rs
+    lockfile.rs       # ~/.claude/ide/<port>.lock — the one thing we write there
+    protocol.rs       # initialize, tools/list, tools/call, two notifications
+    scope.rs          # resolve_within — the boundary that matters (ADR-0017 § 3)
 db/
   mod.rs              # open(), migrate(), Pool wrapper
   migrations/
     0001_init.sql
     0002_fts.sql
     0003_project_missing.sql
+    0004_workspace_projects.sql
+    0005_session_subagent.sql
+    0006_session_worktrees.sql   # F21, planned
 models/
-  mod.rs
-  project.rs
-  session.rs
-  event.rs
-  terminal.rs
+  mod.rs              # every cross-boundary struct, one file
 ```
+
+**Corrected 2026-08-21.** This block had drifted: it was missing `state.rs`,
+`error.rs`, `commands/ide.rs` and all four `services/ide/` files, three services,
+and two migrations, and it split `models/` into five files that have never
+existed. It is the map somebody reads to decide where a new command goes, so a
+stale one sends the work to the wrong file.
 
 ## Tauri commands (the full surface for MVP)
 
@@ -131,10 +149,14 @@ path_kinds(paths: Vec<String>) -> Vec<PathKind>                       // file | 
 // git (ADR-0009)
 git_status(project_path: String) -> GitStatus                         // whole repo, grouped, capped
 git_blob(path: String, rev: GitRev) -> Option<FileContents>           // rev = head | index
-// graph (F18) — PLANNED, none of these three are registered yet (roadmap item 1)
+// graph (F18). All three registered 2026-08-17 with the rail; this block said
+// "PLANNED, none of these three are registered yet" until 2026-08-21.
 git_graph(project_path: String, offset: usize, limit: usize) -> GitGraph   // lanes assigned in Rust
 git_commit(project_path: String, sha: String) -> Option<GitCommitDetail>   // body + changed files
 git_blob_at(path: String, commit: String, max_bytes: Option<usize>) -> Option<FileContents>
+// worktrees (F21) — PLANNED, not registered (roadmap item 37, ADR-0019).
+// Every checkout git knows, main and linked. Read-only like the rest.
+git_worktrees(project_path: String) -> Vec<GitWorktree>
 
 // memory / plans — PLANNED. None of these are registered yet (roadmap item 2).
 read_claude_md(project_path: String) -> Option<String>
@@ -160,6 +182,12 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `terminal:data`        | `{ id, bytes: base64 }`              | TerminalManager     |
 | `terminal:status`      | `{ id, status, lastActivity }`       | TerminalManager     |
 | `terminal:exit`        | `{ id, code }`                       | TerminalManager     |
+| `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
+
+`session:worktree` is the one event whose source is the IDE bridge rather than a
+service, and it fires **after** the write to `session_worktrees`, never before:
+the renderer's job is to render a fact, and an event that arrives ahead of its
+row is a fact the next reload disagrees with (F21).
 
 PTY output is base64-encoded bytes, not UTF-8 strings — Claude prints ANSI
 that contains invalid UTF-8 boundaries when chunked. The renderer decodes
@@ -651,9 +679,10 @@ toasts.
 The worktree side of a diff is not served here — it's `read_file`, which already
 exists and already handles binaries, caps and lossy UTF-8.
 
-#### The graph (F18) — planned
+#### The graph (F18)
 
-Three commands, none registered yet. All read-only, all in `services/git.rs`
+Three commands, **all registered 2026-08-17 with the rail**; this said "planned,
+none registered yet" until 2026-08-21. All read-only, all in `services/git.rs`
 behind `commands/git.rs`, and the renderer still never learns libgit2 exists.
 
 `git_graph(project_path, offset, limit) -> GitGraph` walks the DAG and **assigns
@@ -702,6 +731,37 @@ two-value string union that F13's viewer plumbing already depends on, and turnin
 it into a string-or-object union to carry a SHA churns every existing call site
 and both sides of a hand-mirrored type (§ IPC) to serve one new caller. `None`
 follows `git_blob`'s rule — a file absent at that commit is an answer.
+
+#### Worktrees (F21) — planned
+
+`git_worktrees(project_path) -> Vec<GitWorktree>` returns **every checkout the
+repository knows**, main and linked, each with `path`, `branch`, `head`,
+`isMain`, `locked`, `prunable` and `exists`. Not registered yet — roadmap item
+37, and [ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md)
+is what it is allowed to do.
+
+- **Keyed by the repository, not by the project.** Discovery is
+  `Repository::discover()` from the project root exactly as `git_status` does,
+  and the set is then read off that repository — so a project that *is* a linked
+  worktree returns the same set as one that is the main checkout. Symmetry is
+  the point: it is the same repository whichever door you came in by.
+- **Nothing is filtered.** `locked` and `prunable` are reported rather than
+  hidden, and a checkout whose directory is gone comes back with `exists:
+  false`. Filtering the unusable ones means a session whose cwd is inside one
+  resolves to the project instead, with nothing on screen saying why.
+- A **bare** repository contributes no main-checkout row; its linked worktrees
+  list normally. Not a repository at all returns an empty vector, matching
+  `git_status`'s "this project isn't versioned is an answer, not a failure".
+- Read-only, like everything else in this module. `git2` stays
+  `default-features = false`; ADR-0009 is untouched and there is no
+  `worktree add` here.
+
+**It is also the bridge's scope, and that is the load-bearing use.**
+`services/ide/scope.rs` resolves against the **union** of these paths, recomputed
+per resolve rather than cached at connect — a worktree the agent created a second
+ago is the case the feature exists for. The set is derived here, from git, and
+never from anything the client sent: ADR-0019 § 2 is why the agent's
+`setWorktree` moves what the panel shows and cannot move what the bridge allows.
 
 ### `settings`
 
