@@ -45,7 +45,10 @@ follow-ups the design named. None of it is started.
   needs — full 40-character SHAs, and both author and committer timestamps.
 - **A merge's parent picker**, so the file list can diff against either side rather than only the
   first.
-- **Worktrees**, which change what "the repository" means on screen.
+- **Worktrees**, which change what "the repository" means on screen. **Specified 2026-08-21
+  and moved out to item 37** — it turned out to be a session feature that the graph happens to
+  render, not a graph feature. What stays here is the graph's share of it: a `HEAD` chip per
+  checkout, which is one more ref kind through machinery this item already owns.
 
 ## 2. M4 — CLAUDE.md & plans (F9)
 
@@ -959,3 +962,75 @@ users who aren't its author.
 
 **Linux is unaffected.** The AppImage carries no equivalent problem and stays as it is; there is
 deliberately no `.deb` (F14 — the updater cannot replace one in place).
+
+## 37. Worktrees as a first-class session citizen (F21)
+
+**Specified 2026-08-21** — [F21](../05-features.md) and
+[ADR-0019](../../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) hold the design and the
+reasoning. Nothing is built. Moved out of item 1's last bullet, which had it filed as a graph
+concern; it is a session concern the graph happens to render.
+
+**Why it is worth doing before the picker anyone would ask for first.** An agent that runs
+`git worktree add` leaves factorai describing the wrong directory — tree, Changes, decorations and
+the graph's working row all key off `projects.real_path` — and the session doing the work usually
+is not in the project at all, because `claude` keys its store by cwd. Two bugs fall out of the same
+slice, and both are live today: the bridge refuses every `openFile` in a worktree (F20's `Bridge`
+warning), and a session started in any subdirectory restarts as a fresh conversation instead of
+resuming.
+
+**Agent-driven, deliberately.** The agent creates the worktree and says where it went; factorai
+follows. A human picker is the *follow-up*, for when the two fall out of sync — not the primary
+mechanism, which would ask the human to keep a process they are supervising in sync by hand.
+
+Four slices, in this order. The order matters: slice 2's spawn fix has to land before slice 3's
+roll-up, or the roll-up produces sessions that restart as new conversations.
+
+### 2. Rust: detection, the spawn fix, the table
+
+- [ ] `git_worktrees(project_path) -> Vec<GitWorktree>` in `services/git.rs` behind
+      `commands/git.rs`. Every checkout git knows — main and linked — with `path`, `branch`,
+      `head`, `isMain`, `locked`, `prunable`, `exists`. A bare repository contributes no
+      main-checkout row. Read-only, `default-features = false` stays.
+- [ ] **`attachPty` spawns with `sessionCwd ?? projectCwd`.** A bug fix on its own merits —
+      `session_flag()` probes `encode_path(cwd)` and there is a test named
+      `session_flag_is_scoped_per_folder` — and a hard prerequisite for the roll-up. Land it
+      alone, with a test for a session whose recorded cwd is not the project.
+- [ ] Migration `0006_session_worktrees.sql`: `session_worktrees(session_id PK, path,
+      updated_at)`, FK `ON DELETE CASCADE`. **Check `main` for a competing 0006 before you name
+      it** — see this file's header for why a duplicate migration number cannot simply be
+      renumbered once it has run.
+
+### 3. The bridge: the tool, the scope, the roll-up
+
+- [ ] `setWorktree { path }` on `tools/list`, **always advertised** — `tools/list` is fetched
+      once at connect, so gating it on "the repo has more than one checkout" leaves the agent
+      holding a list without the tool it needs at the exact moment it creates the second one.
+      Validated against `git_worktrees`; a bad path is a `tool_error`, not a JSON-RPC error.
+- [ ] **`resolve_within` takes the union of the repository's checkouts**, recomputed per resolve.
+      ADR-0019 § 2 — read it before touching this file. The widening needs its own cases beside
+      the existing scope tests: a sibling checkout accepted, a sibling directory that is *not* a
+      checkout refused.
+- [ ] `getWorkspaceFolders` reports the checkouts and which is current, session cwd first and the
+      current view second, labelled.
+- [ ] `session:worktree` event → the renderer. Persisted first, then emitted.
+- [ ] Roll-up in the indexer: exact-path match first (ADR-0011, unchanged), then the project
+      owning the repository.
+- [ ] **Conformance pass against the real CLI, and record the version.** This is where the
+      premise is tested — F20 records that a tool call from the shipped binary is still
+      unobserved. If `claude` does not call the tool, the `openFile` inference and the
+      `sessions.cwd` default still work, so the floor is passive rather than broken.
+
+### 4. The renderer
+
+- [ ] Panel re-roots on the resolved checkout: tree, `gitStatus`, decorations. Expand state
+      re-keyed to the **checkout**, not the project — it holds absolute paths.
+- [ ] `gitGraph` stays keyed on the **repository root** (one object DB, one set of refs — the
+      commit list does not change), with the `HEAD` tick and Working row following the checkout.
+- [ ] Header badge gains a worktree mark only when off the project's own checkout, plus the
+      revert `IconButton`. A single-checkout project's header must come out byte-identical.
+- [ ] `HEAD` chip per checkout in the graph (this is item 1's share), `text-xs` checkout mark on
+      rolled-up sidebar sessions, checkout named in the panel's `h-9` header.
+
+**Deferred, deliberately, and F21 says why for each:** the worktree picker; telling the agent when
+a human moves the panel; creating or removing a worktree from factorai (ADR-0009 stands); new
+sessions starting in the shown checkout.

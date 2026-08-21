@@ -242,7 +242,7 @@ cheap: the discovery survives, only the membership goes.
 | turn_count     | INTEGER    |                                                                  |
 | file_mtime     | INTEGER    | filesystem mtime when last indexed (for change detection)        |
 | file_size      | INTEGER    | bytes at last index (cheap "did this change?" probe)             |
-| cwd            | TEXT       | last observed `cwd` from events                                  |
+| cwd            | TEXT       | **first** observed `cwd` from events — where the session started. Said "last observed" until 2026-08-21; `indexer.rs` has always written the first (`if cwd.is_none()`), and both F19's relative-path resolution and F21's checkout default read it as the starting directory. |
 | subagent_of    | TEXT       | parent session id for a sub-agent transcript; NULL for a real one. No FK: read_dir order can index an agent before its parent, and an enforced reference would turn that into an error. |
 
 A session hangs off the **discovery**, not the workspace: it belongs to a
@@ -317,6 +317,39 @@ default widths and zoom on every launch. UI preferences live in `prefsStore` on
 localStorage, which is synchronous. See
 [ADR-0013](../docs/adr/0013-preferences-storage-split.md) for the full reasoning
 and for what "who reads this?" now decides.
+
+### `session_worktrees` — which checkout a session is working in
+
+| col        | type    | notes                                                     |
+| ---------- | ------- | --------------------------------------------------------- |
+| session_id | TEXT PK | `sessions(id) ON DELETE CASCADE`                          |
+| path       | TEXT    | absolute path of the checkout, as git reports it          |
+| updated_at | INTEGER | epoch ms of the last signal                               |
+
+**Migration `0006`. Added by F21**; see
+[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 3.
+
+Written **only by the IDE bridge's signal path** — the agent calling
+`setWorktree`, or an `openFile` landing in another checkout — after the path has
+been validated against `git_worktrees`. Nothing else writes here, and the scan
+never does.
+
+**Its own table rather than a column on `sessions`, and the reason is the one
+ADR-0011 turns on.** `sessions` is derived state: the indexer upserts it from
+transcripts, so a decision recorded there has to be defended from its own owner
+on every write. That the upsert already carries `cwd = COALESCE(excluded.cwd,
+sessions.cwd)` for one column it does not own is an argument against adding a
+second, not for it. Two tables, two owners — the same shape as `projects` /
+`discovered_projects`.
+
+**A row is a record, not a guarantee.** The checkout it names can be
+`git worktree remove`d while the row survives, so every read re-validates against
+git and falls back to the checkout containing `sessions.cwd`. F21 § "Which
+checkout a session is showing" holds the three-step order.
+
+**It is not where the PTY's cwd comes from.** That is the transcript's own `cwd`,
+and conflating the two is how a resume becomes a new conversation — see F21 §
+"The consequence that is not optional: resume cwd".
 
 ### Indexes
 
