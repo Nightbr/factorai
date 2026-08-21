@@ -170,6 +170,9 @@ type IdeOpenCb = Arc<dyn Fn(IdeOpenFileEvent) + Send + Sync>;
 type IdeStatusCb = Arc<dyn Fn(IdeStatusEvent) + Send + Sync>;
 /// Asks for the user's configured `claude` path, once per spawn (F11).
 type BinaryOverrideCb = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
+/// Answers "where does this session's transcript say it was running?" — see
+/// `TerminalManager::session_cwd`.
+type SessionCwdCb = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
 
 struct TerminalHandle {
 	session_id: String,
@@ -225,6 +228,14 @@ pub struct TerminalManager {
 	/// `live_ids`, and for the same reason: the manager needs an answer from a
 	/// database it should not hold.
 	user_binary: Option<BinaryOverrideCb>,
+	/// The cwd the index recorded for a session, read at **spawn time**.
+	///
+	/// Same shape and same reason as `user_binary`: the manager needs an answer
+	/// from a database it should not hold. What it buys is `resume_cwd` below —
+	/// a session whose transcript lives somewhere other than the folder the
+	/// caller named has to be spawned where the transcript is, or `session_flag`
+	/// claims an id Claude already knows and the conversation is lost.
+	session_cwd: Option<SessionCwdCb>,
 	/// What the renderer has on screen, for the bridge's answers (F20).
 	ui: Arc<UiState>,
 	on_ide_open: IdeOpenCb,
@@ -259,6 +270,7 @@ impl TerminalManager {
 			}),
 			binary_override: None,
 			user_binary: None,
+			session_cwd: None,
 		}
 	}
 
@@ -276,6 +288,7 @@ impl TerminalManager {
 			claude_dir,
 			binary_override: None,
 			user_binary: None,
+			session_cwd: None,
 			ui: Arc::new(UiState::default()),
 			on_ide_open: Arc::new(|_| {}),
 			on_ide_status: Arc::new(|_| {}),
@@ -284,6 +297,11 @@ impl TerminalManager {
 
 	/// Where to read the user's configured binary path from, per spawn (F11).
 	/// Wired to the `settings` table in `lib.rs`.
+	pub fn with_session_cwd(mut self, cb: SessionCwdCb) -> Self {
+		self.session_cwd = Some(cb);
+		self
+	}
+
 	pub fn with_user_binary(mut self, cb: BinaryOverrideCb) -> Self {
 		self.user_binary = Some(cb);
 		self
@@ -464,6 +482,31 @@ impl TerminalManager {
 		)
 	}
 
+	/// Where this session has to be spawned for `--resume` to mean anything.
+	///
+	/// **Claude keys its store by cwd**, so a session's transcript lives under
+	/// `encode_path(the folder it ran in)`. `session_flag` probes for it there;
+	/// spawn a session somewhere else and the probe misses, we claim
+	/// `--session-id` for an id Claude already knows, and the conversation is
+	/// either refused or silently replaced by an empty one. The caller cannot
+	/// avoid this on its own: the renderer learns a session's recorded cwd from a
+	/// query that resolves *after* the terminal mounts, so by the time it knows,
+	/// the spawn has happened.
+	///
+	/// `None` unless the recorded folder **actually holds this transcript**, which
+	/// is a deliberately narrower test than "the index has a cwd for it". The
+	/// recorded folder is worth preferring over the caller's precisely because the
+	/// transcript is there; if it isn't — the folder moved, the store was cleaned,
+	/// the row is stale — then it buys nothing and would only move the session
+	/// somewhere the caller did not ask for. Falling through to `opts.cwd` is the
+	/// behaviour that predates this method.
+	fn resume_cwd(&self, session_id: &str) -> Option<PathBuf> {
+		let recorded = self.session_cwd.as_ref()?(session_id)?;
+		claude::transcript_path(&self.claude_dir, &recorded, session_id)
+			.exists()
+			.then_some(recorded)
+	}
+
 	/// Spawn `claude` for a session in a PTY. Returns the new terminal id.
 	pub fn spawn(&self, opts: SpawnOpts) -> AppResult<TerminalId> {
 		self.spawn_with_argv(opts, None)
@@ -478,10 +521,9 @@ impl TerminalManager {
 	) -> AppResult<TerminalId> {
 		// Resolved before argv, because the transcript probe that decides
 		// `--resume` vs `--session-id` is keyed by the folder Claude will run in.
-		let cwd_path = opts
-			.cwd
-			.as_deref()
-			.map(PathBuf::from)
+		let cwd_path = self
+			.resume_cwd(&opts.session_id)
+			.or_else(|| opts.cwd.as_deref().map(PathBuf::from))
 			.or_else(dirs::home_dir)
 			.unwrap_or_else(|| PathBuf::from("/"));
 
@@ -1159,6 +1201,68 @@ mod tests {
 		// under $HOME's project instead of the one that was clicked.
 		assert!(matches!(err, AppError::NotFound(_)), "expected NotFound, got {err:?}");
 		assert_eq!(mgr.live_count(), 0, "nothing should have been spawned");
+	}
+
+	/// A manager whose index says this session ran in `recorded`.
+	fn make_manager_recording(claude_dir: PathBuf, recorded: PathBuf) -> TerminalManager {
+		let (mgr, _d, _e) = make_manager_in(claude_dir);
+		mgr.with_session_cwd(Arc::new(move |_| Some(recorded.clone())))
+	}
+
+	#[test]
+	fn resume_cwd_prefers_the_folder_the_transcript_is_actually_in() {
+		let store = tempfile::TempDir::new().unwrap();
+		let work = tempfile::TempDir::new().unwrap();
+		let sid = "11111111-2222-3333-4444-555555555555";
+		write_transcript(store.path(), &work.path().to_string_lossy(), sid);
+
+		let mgr = make_manager_recording(store.path().to_path_buf(), work.path().to_path_buf());
+		// The whole point: the caller would have said "the project root", and the
+		// transcript is somewhere else. Spawning where the caller said turns
+		// `--resume` into `--session-id` on an id Claude already knows.
+		assert_eq!(mgr.resume_cwd(sid), Some(work.path().to_path_buf()));
+	}
+
+	#[test]
+	fn resume_cwd_ignores_a_recorded_folder_with_no_transcript_in_it() {
+		let store = tempfile::TempDir::new().unwrap();
+		let work = tempfile::TempDir::new().unwrap();
+		// Row exists, transcript does not — the folder moved, or the store was
+		// cleaned. Preferring it would move the session somewhere the caller did
+		// not ask for and buy nothing, so the caller's cwd has to win.
+		let mgr = make_manager_recording(store.path().to_path_buf(), work.path().to_path_buf());
+		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555"), None);
+	}
+
+	#[test]
+	fn resume_cwd_is_none_with_no_index_to_ask() {
+		let store = tempfile::TempDir::new().unwrap();
+		let (mgr, _d, _e) = make_manager_in(store.path().to_path_buf());
+		// No callback wired at all — every test manager above this point, and the
+		// behaviour that predates `session_cwd`.
+		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555"), None);
+	}
+
+	#[test]
+	fn spawn_runs_in_the_recorded_folder_not_the_one_it_was_given() {
+		let store = tempfile::TempDir::new().unwrap();
+		let work = tempfile::TempDir::new().unwrap();
+		let given = tempfile::TempDir::new().unwrap();
+		let sid = "11111111-2222-3333-4444-555555555555";
+		write_transcript(store.path(), &work.path().to_string_lossy(), sid);
+
+		let mgr = make_manager_recording(store.path().to_path_buf(), work.path().to_path_buf());
+		let mut o = opts(80, 24);
+		o.cwd = Some(given.path().to_string_lossy().into());
+		let id = mgr
+			.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+			.unwrap();
+
+		// Copied out, and the guard dropped, *before* `kill_all` — a DashMap read
+		// guard held across it deadlocks on the same shard.
+		let spawned_in = mgr.terminals.get(&id).map(|h| h.cwd.clone()).unwrap();
+		mgr.kill_all();
+		assert_eq!(spawned_in, work.path().to_path_buf());
 	}
 
 	#[test]

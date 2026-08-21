@@ -86,9 +86,17 @@ pub fn run() {
 			// (F11) — so editing it changes the next session without touching the
 			// ones already running, and `claude_cli` keeps no database of its own.
 			let settings_db = db.clone();
+			// The recorded cwd is read per spawn for the same reason and out of the
+			// same database: a session's transcript lives under the folder Claude
+			// ran in, and spawning it anywhere else turns a resume into a new
+			// conversation. See `TerminalManager::resume_cwd`.
+			let session_db = db.clone();
 			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone(), ui.clone())
 				.with_user_binary(Arc::new(move || {
 					services::settings::claude_binary_override(&settings_db)
+				}))
+				.with_session_cwd(Arc::new(move |session_id| {
+					services::sessions::recorded_cwd(&session_db, session_id)
 				}));
 			let live = terminals.clone();
 			let indexer = Arc::new(

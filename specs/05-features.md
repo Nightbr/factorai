@@ -3152,10 +3152,27 @@ worktree session, restarted with the project's path as cwd, finds no transcript,
 claims `--session-id` for an id `claude` already knows, and the conversation is
 either refused or silently replaced by an empty one.
 
-**The spawn cwd becomes `sessionCwd ?? projectCwd`.** This is a bug fix on its
-own merits — `Terminal.tsx` already carries `sessionCwd` and a comment
-acknowledging the two can differ for a session started in a subdirectory — and
-it has to land before the roll-up, not with it.
+**Fixed 2026-08-21, and in Rust rather than the renderer.**
+`TerminalManager::resume_cwd` reads the session's recorded cwd through a
+`session_cwd` callback — the same shape as F11's `user_binary`, for the same
+stated reason: the manager needs an answer from a database it should not hold —
+and it overrides `opts.cwd` when it has one. A bug fix on its own merits, and it
+has to land before the roll-up rather than with it.
+
+**The renderer cannot do this, which is why it does not.** `Terminal.tsx` learns
+`sessionCwd` from a query that resolves *after* the component mounts and
+`attachPty` has already spawned, so a renderer-side `sessionCwd ?? projectCwd`
+would be correct only when the sessions list happened to be cached — right when
+arriving from the session list, wrong when arriving by URL or after a restore.
+An earlier draft of this section specified exactly that, which is how the race
+was found.
+
+**It prefers the recorded folder only when the transcript is really there**, not
+merely when the index has a cwd. That is the narrower test on purpose: the
+recorded folder is worth preferring *because* it is where the transcript is, so
+if the folder moved or the store was cleaned it buys nothing and would only
+start the session somewhere the caller did not ask for. Falling through to
+`opts.cwd` is the behaviour that predates the fix.
 
 **It is also the line between two things that must not be conflated.** The
 transcript's own cwd is where `claude` runs and what makes resume work. The
