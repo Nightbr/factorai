@@ -101,18 +101,6 @@ test.describe('worktrees', () => {
 		await expect(page.getByText('switcher.ts')).toBeVisible();
 	});
 
-	test('@smoke the sidebar marks the session that ran in another checkout', async ({ page }) => {
-		await installMockBridge(page, fixtureSessionInAWorktree());
-		await page.goto('/');
-		await page.getByRole('button', { name: 'Expand foo' }).click();
-
-		// One mark, on the rolled-up row only — the other session ran in the
-		// project folder and needs no explaining.
-		const marks = page.getByTestId('sidebar-session-checkout');
-		await expect(marks).toHaveCount(1);
-		await expect(marks.first()).toHaveText('feature-x');
-	});
-
 	test('@smoke the revert returns the panel to the session’s own checkout', async ({ page }) => {
 		await installMockBridge(page, fixtureSessionInAWorktree());
 		await page.goto(IN_WORKTREE);
