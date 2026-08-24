@@ -99,7 +99,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   picker was deferred here and shipped three days later — see below.
 
 - **F21's fourth signal and the human's picker — spec `05-features.md` F21, roadmap item 37** —
-  2026-08-24, on a user's screenshot of factorai naming the wrong branch while their agent worked
+  2026-08-24, shipped as **v0.21.0**, on a user's screenshot of factorai naming the wrong branch while their agent worked
   in a worktree it had just created. All three signals had fired correctly and all three pointed
   at the wrong tree.
 
