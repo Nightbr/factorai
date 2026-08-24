@@ -3,11 +3,12 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
-- **A search hit names its project — spec `05-features.md` F4** — 2026-08-24, user ask. Search is
-  workspace-wide, and a result row said only which *session* it came from. That is half an answer:
-  a session title does not place a conversation, several projects hold a "Fix the flaky test", and
-  an untitled session showed nothing but a uuid. The project the hit belongs to was already
-  resolved by the query — it is what scopes the search — and simply was not carried out.
+- **A search hit names its project — spec `05-features.md` F4** — 2026-08-24, shipped as
+  **v0.24.0**, user ask. Search is workspace-wide, and a result row said only which *session* it
+  came from. That is half an answer: a session title does not place a conversation, several
+  projects hold a "Fix the flaky test", and an untitled session showed nothing but a uuid. The
+  project the hit belongs to was already resolved by the query — it is what scopes the search — and
+  simply was not carried out.
 
   `SearchHit` now carries `projectName` and `projectPath`, JOINed from `projects` through the
   `sessions` → `discovered_projects` link the search already walks, and the row leads with the
