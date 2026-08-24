@@ -4,7 +4,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
 [`README.md`](./README.md) for the workflow.
 
 - **Frontmatter in the markdown preview — spec `05-features.md` F7 + F11, ADR-0022** — 2026-08-24,
-  unreleased at time of writing, user ask with a screenshot. A `---` block at the top of a document
+  shipped as **v0.23.0**, user ask with a screenshot. A `---` block at the top of a document
   rendered as *prose*: react-markdown has no frontmatter plugin, so remark read the fences as a
   thematic break or a setext underline and ran `title:`, `status:`, `reviewers:` and their YAML
   punctuation together into one paragraph — including the `#` comments, which is how a note reading
