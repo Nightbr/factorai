@@ -151,6 +151,21 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
     the worktree", from a branch name in the session header. Whatever else moves, that string is
     what a supervising human reads to know which tree they are being shown.
 
+  **Two follow-ups shipped as v0.21.1**, both from the same user looking at the menu on a real
+  repository rather than at a fixture.
+
+  - **A row is a name, and a subtitle only when there is a second fact.** The row printed the
+    checkout's name beside its branch, which in any repository that names a worktree after its
+    branch is one fact printed twice — both halves truncated to the prefix they share, and one
+    overflowed the menu instead of ellipsing inside it (`truncate` on a flex child does nothing
+    without a `min-w-0` chain). Now 384px, the branch as a subtitle only when the name does not
+    already carry it, no `main` chip (git's main checkout is the first row, and beside a branch
+    called `main` the word stuttered), and name/branch/path on hover.
+  - **A checkout on no branch names its commit.** The badge was absent for a detached `HEAD`,
+    which is right for a folder that is not a repository and wrong beside a checkout mark that is
+    present: the gap read as "nothing to say" rather than "no branch". Short SHA behind a commit
+    icon, because a detached HEAD is a position in history rather than a name for one.
+
 - **Settings — spec `05-features.md` F11, Q24, ADR-0013, roadmap item 4** — 2026-08-20. The
   app's first place to put a preference. `?settings=claude|editor|confirmations|sessions` on the
   root route drives a medium modal with the nav in a left column, an explicit Save, and a gear in
