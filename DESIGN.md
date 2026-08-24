@@ -439,6 +439,30 @@ rather than being patched onto the component.
 - **Internal padding:** 24px — the one place in the app that uses a spacing step
   this large, and it is a modal-scale container rather than a row.
 
+### Metadata Panel
+
+The block above a rendered markdown document holding its frontmatter — the one
+place in the app that lays out arbitrary key/value data.
+
+- **Frame:** hairline border, 4px radius, a `secondary` ground at 30% — one tonal
+  step off the page it sits on, which is enough for "this is not the prose". No
+  card shadow: it is content, not a floating surface.
+- **Header:** a 36px disclosure row, chevron then a 12px uppercase label in the
+  `PROJECTS` voice. It is a section header, not a title. Collapsed, the row's right
+  edge carries the field count; open, it carries nothing — a count beside an open
+  panel restates what the reader is already looking at.
+- **Fields:** a two-column grid. Keys are 12px mono in `muted-foreground` — they
+  are literal document text, not a label somebody wrote for the UI — and values are
+  14px in `secondary-foreground`. The key column sizes to its longest key and stops,
+  so a one-word value never sits half a pane from its name.
+- **No value** is an em dash at 60% muted, never a blank cell: a field with nothing
+  in it is a fact about the document, and an empty cell reads as a rendering that
+  gave up.
+- **Lists** are chips in the neutral hue, borrowing `CHIP_SHAPE`. The coloured
+  chips are git refs and mean something *by* their colour; a value does not.
+- **Failure** keeps the source in the dashed frame a missing image and an
+  unparseable diagram use — one reason line above, mono below.
+
 ### Session Tabs (signature)
 
 The horizontal strip that stands in for an editor's file tabs, one tab per live

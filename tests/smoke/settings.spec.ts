@@ -40,6 +40,7 @@ test.describe('settings', () => {
 		await page.goto('/?settings=editor');
 		await expect(page.getByTestId('settings-modal')).toBeVisible();
 		await expect(page.getByTestId('settings-diff-inline')).toBeVisible();
+		await expect(page.getByTestId('settings-frontmatter-open')).toBeVisible();
 		await expect(page.getByTestId('settings-nav-editor')).toHaveAttribute('aria-current', 'page');
 
 		// A section nobody has built is not a section: the param is validated on

@@ -312,6 +312,12 @@ Keys, as shipped with F11:
   session with the `×`.
 - `confirmCloseMiddleClick: boolean` — default `true`. The same question for a
   middle-click, which is its own switch because a wheel-click has no aim to it.
+- `frontmatterOpen: boolean` — default `true`. Whether a markdown document's
+  frontmatter panel starts expanded (F7). Same reasoning as `restoreTabs`: the
+  fields were already on screen before the panel existed, so the switch arriving
+  after the behaviour must not take information away. It decides the state a
+  document *opens* in — the panel's own chevron is a peek and is deliberately not
+  written back, unlike `diffInline`.
 - `restoreTabs: boolean` — default `true`, and that default is settled by history
   rather than taste: F16's restore shipped unconditionally, so the switch must not
   change what people already have.

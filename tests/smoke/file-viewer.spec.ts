@@ -281,6 +281,42 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
 	});
 
+	test('@smoke frontmatter is laid out as fields, and collapses', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const md = page.getByTestId('file-viewer').getByTestId('markdown-view');
+		const frontmatter = md.getByTestId('frontmatter');
+		// Open, because the preference ships that way.
+		await expect(frontmatter).toHaveAttribute('data-state', 'open');
+		// Fields in document order, the nested map's own key included — not the
+		// one run-together paragraph remark used to make of the block.
+		await expect(frontmatter.locator('dt')).toHaveText([
+			'title',
+			'reviewers',
+			'notion_source',
+			'links',
+			'issue',
+		]);
+		await expect(frontmatter.getByText('Noé Pion')).toBeVisible();
+		// A URL field is a link handed to the OS, like a link in the prose.
+		await expect(
+			frontmatter.getByRole('link', { name: 'https://example.com/ENG-3150' }),
+		).toBeVisible();
+		// And the YAML is gone from the document itself.
+		await expect(md.locator('p', { hasText: 'title: foo' })).toHaveCount(0);
+
+		await frontmatter.getByTestId('frontmatter-toggle').click();
+
+		await expect(frontmatter).toHaveAttribute('data-state', 'collapsed');
+		await expect(frontmatter.locator('dt')).toHaveCount(0);
+		// What is behind the chevron, only while it is shut.
+		await expect(frontmatter).toContainText('4 fields');
+	});
+
 	test('@smoke a mermaid fence renders as a diagram, and a broken one keeps its source', async ({
 		page,
 	}) => {

@@ -40,6 +40,7 @@ export interface SettingsValues extends Prefs {
 export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
 	claudeBinary: 'claude',
 	diffInline: 'editor',
+	frontmatterOpen: 'editor',
 	confirmCloseSession: 'confirmations',
 	confirmCloseMiddleClick: 'confirmations',
 	restoreTabs: 'sessions',

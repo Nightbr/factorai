@@ -14,6 +14,7 @@ const SAVED: SettingsValues = {
 	diffInline: false,
 	confirmCloseSession: true,
 	confirmCloseMiddleClick: true,
+	frontmatterOpen: true,
 	restoreTabs: true,
 };
 

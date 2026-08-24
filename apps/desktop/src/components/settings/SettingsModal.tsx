@@ -255,6 +255,18 @@ function SettingsForm({ section, onSection, onClose, savedOverride, dirtyRef }: 
 									onCheckedChange={(v) => set('diffInline', v)}
 								/>
 							</SettingRow>
+							<SettingRow
+								label="Open frontmatter in markdown"
+								htmlFor="settings-frontmatter-open"
+								description="The fields at the top of a document start expanded. The panel's own chevron still collapses it for that document."
+							>
+								<Switch
+									id="settings-frontmatter-open"
+									data-testid="settings-frontmatter-open"
+									checked={draft.frontmatterOpen}
+									onCheckedChange={(v) => set('frontmatterOpen', v)}
+								/>
+							</SettingRow>
 						</div>
 					)}
 

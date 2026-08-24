@@ -3,6 +3,48 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Frontmatter in the markdown preview — spec `05-features.md` F7 + F11, ADR-0022** — 2026-08-24,
+  unreleased at time of writing, user ask with a screenshot. A `---` block at the top of a document
+  rendered as *prose*: react-markdown has no frontmatter plugin, so remark read the fences as a
+  thematic break or a setext underline and ran `title:`, `status:`, `reviewers:` and their YAML
+  punctuation together into one paragraph — including the `#` comments, which is how a note reading
+  "no Linear project" ended up in the middle of a sentence. The metadata was on screen and
+  unreadable, which is worse than laying it out or dropping it.
+
+  It is now a **collapsible panel of fields** above the prose, and the state it opens in is a
+  preference (`frontmatterOpen`, Editor section, default on).
+
+  **Four decisions worth keeping:**
+
+  - **A real YAML parser, `yaml`, not a regex over `key: value`.** The tempting version needs no
+    dependency and reads a quoted value containing a colon, a `#` inside a string, a block scalar
+    and an inline list *wrongly* rather than failing on them — and a metadata panel quietly showing
+    the wrong owner is worse than the paragraph it replaced. Parsed with `mapAsMap: true`, because a
+    plain JS object reorders integer-like keys and these are read in written order.
+    `remark-frontmatter` solves the other half — it teaches remark to skip the block, which is not
+    the half that was hard.
+  - **The split is ours and it is conservative.** First line `---`, closed by `---` or `...`, CRLF
+    and a BOM tolerated — and a document whose fence never closes is left exactly as it was. That
+    one opens with a thematic break, and a failure card on every document that starts with a rule
+    would have been a worse bug than the one being fixed.
+  - **The chevron is not written back to the preference**, unlike the diff viewer's inline toggle.
+    That one is a reading mode you stay in; this is a peek at one document, and a setting edited by
+    accident is worse than one more click. The panel is keyed by path so the next document starts
+    from the preference again.
+  - **The default is settled by history, not taste.** On, because the fields were already on screen
+    before there was a panel to put them in. Same rule `restoreTabs` follows: a switch arriving
+    after the behaviour must not quietly take something away.
+
+  Four value shapes and no more — text, no-value (an em dash, since a blank cell reads as a
+  rendering that gave up), a chip row for a list in the *neutral* hue, and an indented field list
+  for a nested map. A URL value is handed to the OS like a markdown link. A block that will not
+  parse, or that parses to something other than a mapping, keeps its source in the dashed frame a
+  missing image and a broken mermaid fence already use.
+
+  **Not done, deliberately:** TOML (`+++`) and JSON frontmatter are not handled — nothing in the
+  corpus this viewer serves uses either. No per-field treatment: a `status: Draft` is text, not a
+  coloured chip, until something asks for it.
+
 - **Mermaid diagrams in the markdown preview — spec `05-features.md` F7, ADR-0021** — 2026-08-24,
   shipped as **v0.22.0**, user ask. A `mermaid` fence in a rendered `.md` used to be a code block of
   `graph TD` lines.

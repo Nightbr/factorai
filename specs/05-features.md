@@ -758,6 +758,46 @@ A leading `/` resolves as a **filesystem** path, for images and links alike.
 There is no site root here to be relative to, so `/home/me/diagram.png` means
 that file.
 
+**Frontmatter is lifted out and laid out as fields** (added 2026-08-24,
+ADR-0022). A `---` block at the top of a document is metadata, not prose, and
+react-markdown has no plugin for it: the fences parsed as thematic breaks or a
+setext heading and every field ran together into one paragraph — the metadata was
+on screen and unreadable, which is worse than showing it properly or not showing
+it at all. So `splitFrontmatter` takes the block off before remark sees the
+document, and it becomes a panel above the prose.
+
+- **Only a closing block counts, and only at the very start.** A document whose
+  first line is `---` and which never fences again opens with a thematic break,
+  and treating that as broken frontmatter would put a card on every one of them.
+  Either fence closes it (`---` or `...`), CRLF and a leading BOM included, and an
+  empty block gets no panel — there is nothing to show.
+- **It is parsed as YAML, by `yaml`** — not by a regex over `key: value` lines.
+  A quoted value with a colon in it, a block scalar, an inline list and a nested
+  map are all ordinary in the documents this viewer is pointed at, and a subset
+  parser reads those *wrongly* rather than failing on them. Fields keep the order
+  they were written (`mapAsMap`, since a plain object reorders integer-like keys).
+- **The panel is collapsible, and which way it starts is a preference**
+  (`frontmatterOpen`, default open — F11). Somebody working through a spec wants
+  `status` and `owner` on screen; somebody reading a document whose frontmatter is
+  bookkeeping wants the prose to start at the top of the pane. The chevron is a
+  **peek and is not written back** to the preference, unlike the diff viewer's
+  inline toggle: that one is a reading mode you stay in, and a setting edited by
+  accident is worse than one more click. Collapsed, the header carries the field
+  count; open, it does not restate what the reader is looking at.
+- **Four shapes, and no more.** A scalar is text, a list is a row of chips in the
+  neutral hue (the coloured chips mean something by their colour — they are git
+  refs), a nested map is an indented field list of its own, and `null`, an empty
+  string, an empty list and an empty map are all *no value* — an em dash, because
+  a blank cell reads as a rendering that gave up. A `2026-08-24` stays the string
+  the author typed: the core schema this parses under does not make it a date.
+- **A URL value is a link handed to the OS**, the same two schemes a markdown link
+  hands over and no others. The frontmatter of a spec is where its tracking issue
+  lives.
+- **A block that will not parse keeps its source**, under a one-line reason, in
+  the dashed frame a missing image and a broken mermaid fence get. So does a block
+  that parses to something other than a mapping — a bare list is valid YAML and has
+  no fields to lay out.
+
 **A `mermaid` fence renders as a diagram** (added 2026-08-24, ADR-0021). The
 documents this viewer is pointed at are the ones an agent writes and the ones a
 repository already has, and a diagram left as its own source is the one kind of
@@ -1370,6 +1410,11 @@ already did — flipping it there is a choice about how you read diffs, and two
 places disagreeing about what "default" means would be worse than one that both
 set. A toggle made behind an open modal is picked up the next time it opens
 rather than moving under a draft.
+
+Beside it, **whether a markdown document's frontmatter panel starts open** (F7,
+default on). This one is the mirror of the diff toggle and deliberately so: the
+panel's chevron does *not* write back here, because it is a peek at one document
+rather than a mode you stay in.
 
 **Confirmations.** Two switches, both **on by default**: closing a session with
 the `X`, and closing a tab by middle-click. They were roadmap item 22 until it

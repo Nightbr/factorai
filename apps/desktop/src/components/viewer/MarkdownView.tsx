@@ -1,8 +1,11 @@
+import { splitFrontmatter } from '@components/viewer/frontmatter';
+import { FrontmatterPanel } from '@components/viewer/FrontmatterPanel';
 import { MermaidDiagram } from '@components/viewer/MermaidDiagram';
 import { iconKeyFor } from '@lib/fileIcon';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, openExternally } from '@lib/tauri';
 import type { FileContents, ImageContents } from '@factorai/types';
+import { usePrefsStore } from '@store/prefsStore';
 import { useQuery } from '@tanstack/react-query';
 import { ImageOff } from 'lucide-react';
 import Markdown from 'react-markdown';
@@ -136,6 +139,14 @@ interface MarkdownViewProps {
 }
 
 export function MarkdownView({ source, path, onOpenPath }: MarkdownViewProps) {
+	// **The frontmatter is taken off before remark sees it.** react-markdown has
+	// no frontmatter plugin, so the fences parsed as markdown and every field ran
+	// together into one paragraph. Split here rather than in a remark plugin
+	// because the block is not being rendered as markdown at all — it becomes a
+	// panel of its own above the document.
+	const { frontmatter, body } = splitFrontmatter(source);
+	const frontmatterOpen = usePrefsStore((s) => s.frontmatterOpen);
+
 	return (
 		<div className="h-full overflow-auto px-8 py-6" data-testid="markdown-view">
 			<div
@@ -151,6 +162,12 @@ export function MarkdownView({ source, path, onOpenPath }: MarkdownViewProps) {
 					prose-td:border-b prose-td:border-border/60
 					prose-img:rounded prose-hr:border-border"
 			>
+				{frontmatter && (
+					// Keyed by path so the disclosure starts from the preference again
+					// on the next document, rather than inheriting the state of the
+					// one before it.
+					<FrontmatterPanel key={path} frontmatter={frontmatter} defaultOpen={frontmatterOpen} />
+				)}
 				<Markdown
 					remarkPlugins={[remarkGfm]}
 					components={{
@@ -191,7 +208,7 @@ export function MarkdownView({ source, path, onOpenPath }: MarkdownViewProps) {
 						},
 					}}
 				>
-					{source}
+					{body}
 				</Markdown>
 			</div>
 		</div>

@@ -42,6 +42,15 @@ interface PrefsState {
 	 *  would produce a matrix with a dead cell and a UI that greys rows out to
 	 *  explain itself. */
 	confirmCloseMiddleClick: boolean;
+	/** Start a markdown document's frontmatter panel open rather than collapsed
+	 *  (F7).
+	 *
+	 *  **On by default**, for the same reason `restoreTabs` is: the fields were
+	 *  already on screen before there was a panel to put them in — badly, as one
+	 *  run-together paragraph — so a switch arriving after the behaviour must not
+	 *  quietly take information away. It sets the state each document *opens* in;
+	 *  the panel's own chevron is a peek and is deliberately not written back. */
+	frontmatterOpen: boolean;
 	/** Reopen the session tabs you had on launch (F16).
 	 *
 	 *  **On by default, and that default is settled by history rather than
@@ -73,6 +82,7 @@ const DEFAULT_PREFS: Prefs = {
 	diffInline: false,
 	confirmCloseSession: true,
 	confirmCloseMiddleClick: true,
+	frontmatterOpen: true,
 	restoreTabs: true,
 };
 
@@ -97,6 +107,7 @@ export const usePrefsStore = create<PrefsState>()(
 				diffInline: s.diffInline,
 				confirmCloseSession: s.confirmCloseSession,
 				confirmCloseMiddleClick: s.confirmCloseMiddleClick,
+				frontmatterOpen: s.frontmatterOpen,
 				restoreTabs: s.restoreTabs,
 			}),
 		},
@@ -111,6 +122,7 @@ export function currentPrefs(): Prefs {
 		diffInline: s.diffInline,
 		confirmCloseSession: s.confirmCloseSession,
 		confirmCloseMiddleClick: s.confirmCloseMiddleClick,
+		frontmatterOpen: s.frontmatterOpen,
 		restoreTabs: s.restoreTabs,
 	};
 }

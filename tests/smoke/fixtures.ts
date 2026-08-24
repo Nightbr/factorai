@@ -594,6 +594,17 @@ export function fixtureWithFileTree(): TestFixture {
 			[`${root}/README.md`]: contents(
 				`${root}/README.md`,
 				[
+					// Frontmatter, which is lifted out of the document and laid out as
+					// fields (F7). One field per shape the panel distinguishes: a
+					// scalar, a list, a null, a nested map and a URL.
+					'---',
+					'title: foo',
+					'reviewers: ["Noé Pion", "Laurent Anadon"]',
+					'notion_source: null',
+					'links:',
+					'  issue: https://example.com/ENG-3150',
+					'---',
+					'',
 					'# foo',
 					'',
 					'A test project. See [the guide](docs/guide.md) or',
