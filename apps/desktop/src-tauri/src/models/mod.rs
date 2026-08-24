@@ -77,14 +77,16 @@ pub struct SessionSummary {
 	/// checkouts, which is what makes the churn between the two harmless — see
 	/// migration 0008.
 	pub last_cwd: Option<String>,
-	/// The last **absolute** path an agent's own tools named (F21, migration
-	/// 0009).
+	/// The recent **absolute** paths this session's tools named, oldest first
+	/// (F21, migration 0010).
 	///
 	/// The signal for an agent that drives another checkout by absolute path and
 	/// so never moves its cwd at all. Read through the same containment as the two
-	/// cwds, and — unlike them — only believed when it lands in a *linked*
-	/// checkout; F21 § "Which checkout a session is showing" has why.
-	pub last_touched: Option<String>,
+	/// cwds, and — unlike them — only believed where it lands in a *linked*
+	/// checkout: the renderer takes the most recent entry that does and ignores
+	/// the rest, which is what makes a harvest loose enough to include shell
+	/// commands safe. F21 § "Which checkout a session is showing" has why.
+	pub touched_paths: Vec<String>,
 }
 
 /// One full-text search result. Mirrors `@factorai/types` `SearchHit`.

@@ -1,0 +1,45 @@
+-- The recent absolute paths a session's tools named, as a list (F21).
+--
+-- **Added 2026-08-24, hours after 0009, because a fifth shape of "the agent
+-- moved and factorai did not" reached the same user in the same afternoon.** The
+-- agent created `../pearl-eng-3333`, worked in it for an hour, and did it
+-- entirely through `Bash`: 44 shell calls, and not one `Read`, `Write` or
+-- `Edit`. 0009 harvests `file_path` and `notebook_path`, so it found nothing at
+-- all, and the two cwds — as in 0009's own case — kept correctly naming the
+-- checkout the session started in.
+--
+-- **So a shell command's own paths are harvested too**, which is the same trade
+-- 0009 made one step further: a command line is not a path list, so the scan is
+-- loose by construction.
+--
+-- **That looseness is why one value is no longer enough.** Replayed over the real
+-- transcript, "the last absolute path anywhere in the session" resolved to no
+-- checkout in 31 of 42 steps — `/dev/null`, `/usr/bin/env`, a `sed` script's
+-- slashes — and to the main checkout in 4 more, so a single stored value spent
+-- most of the session naming something useless and the panel would have flicked
+-- back to the project on every one of them. The list makes the noise free: the
+-- renderer keeps the most recent candidate that lands in a *linked* checkout and
+-- ignores the rest, so a `cat /dev/null` between two commands in the worktree
+-- changes nothing on screen.
+--
+-- Eight entries, most recent last, JSON. Eight because the cap exists to bound
+-- the column rather than to select anything — the noise ratio above says a
+-- linked path can be several commands back — and because a session that is
+-- genuinely working in a checkout names it again long before eight unrelated
+-- paths go by.
+ALTER TABLE sessions ADD COLUMN touched_paths TEXT;
+
+-- **0009's `last_touched` is left in place, unread.** Dropping it is what this
+-- migration wanted to do — a stale column answering the same question as its
+-- replacement is how a later reader comes to pick the wrong one — and it is
+-- exactly the wrong thing to do here. Migrations run on open, and one data
+-- directory is shared by every build on the machine: the installed release still
+-- selects `s.last_touched` in `list_sessions`, so dropping the column turns
+-- running an older factorai after a newer one — or after a `git bisect` — into a
+-- "no such column" on the sessions list rather than a downgrade. Every migration
+-- before this one was additive and so had the property for free; this is the
+-- first that had to choose.
+--
+-- Nothing reads it from `PARSE_VERSION = 2` on, and the column keeps whatever
+-- 0009's parser last wrote. That is the price: one dead column, named in a
+-- migration that says why it is dead.

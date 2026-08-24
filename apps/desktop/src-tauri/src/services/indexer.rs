@@ -21,7 +21,14 @@ use crate::services::jsonl::{derive_title, flatten_message_text, tool_use_paths,
 /// this replaced could not generalise.
 ///
 /// 1 — `last_touched`, the last absolute path an agent's tools named (F21).
-const PARSE_VERSION: i64 = 1;
+/// 2 — `touched_paths`, the same signal widened to shell commands and kept as a
+///     list, because that harvest is loose enough that one value is mostly noise
+///     (F21, migration 0010).
+const PARSE_VERSION: i64 = 2;
+
+/// How many recent paths a session keeps. See migration 0010 for why a list at
+/// all, and why the number is not doing any selecting.
+const TOUCHED_PATHS_KEPT: usize = 8;
 
 pub type ProgressCb = Arc<dyn Fn(IndexerProgress) + Send + Sync>;
 pub type ChangedCb = Arc<dyn Fn(SessionsChanged) + Send + Sync>;
@@ -441,10 +448,11 @@ impl Indexer {
 		// transcript's directory is derived from, and this is what tells us the
 		// agent moved. Migration 0008 has why the churn in between is harmless.
 		let mut last_cwd: Option<String> = None;
-		// The last file the agent worked on, absolute (F21, migration 0009). The
-		// signal for an agent that drives another checkout by absolute path and so
-		// never moves its own cwd — the shape that reached a user on 2026-08-24.
-		let mut last_touched: Option<String> = None;
+		// The recent absolute paths the agent's tools named (F21, migration 0010).
+		// The signal for an agent that drives another checkout by absolute path and
+		// so never moves its own cwd — the shape that reached a user on 2026-08-24,
+		// twice, the second time through `Bash` alone.
+		let mut touched_paths: Vec<String> = Vec::new();
 		let mut fts_rows: Vec<(String, String)> = Vec::new(); // (role, body)
 														// Two independent title sources, kept apart so precedence is decided once
 														// at the end rather than by whichever line happens to come last in the
@@ -492,8 +500,8 @@ impl Indexer {
 				}
 			}
 			if let Some(msg) = &ev.message {
-				if let Some(path) = tool_use_paths(&msg.content).last() {
-					last_touched = Some((*path).to_string());
+				for path in tool_use_paths(&msg.content) {
+					remember_touched(&mut touched_paths, path);
 				}
 				let text = flatten_message_text(&msg.content);
 				if !text.is_empty() {
@@ -504,6 +512,13 @@ impl Indexer {
 				}
 			}
 		}
+
+		// Stored as JSON rather than as a delimited string: a path can contain
+		// anything except NUL, so any separator worth reading back is one a path
+		// could carry.
+		let touched_json = (!touched_paths.is_empty())
+			.then(|| serde_json::to_string(&touched_paths))
+			.transpose()?;
 
 		let created_at = first_ts.unwrap_or(mtime_ms);
 		let updated_at = last_ts.unwrap_or(mtime_ms);
@@ -518,7 +533,7 @@ impl Indexer {
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			tx.execute(
-				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, last_touched, parse_version)
+				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, touched_paths, parse_version)
 				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
 				 ON CONFLICT(id) DO UPDATE SET
 				   title = excluded.title,
@@ -529,7 +544,7 @@ impl Indexer {
 				   cwd = COALESCE(excluded.cwd, sessions.cwd),
 				   subagent_of = excluded.subagent_of,
 				   last_cwd = COALESCE(excluded.last_cwd, sessions.last_cwd),
-				   last_touched = COALESCE(excluded.last_touched, sessions.last_touched),
+				   touched_paths = COALESCE(excluded.touched_paths, sessions.touched_paths),
 				   parse_version = excluded.parse_version",
 				params![
 					session_id,
@@ -543,7 +558,7 @@ impl Indexer {
 					cwd,
 					subagent_of,
 					last_cwd,
-					last_touched,
+					touched_json,
 					PARSE_VERSION,
 				],
 			)?;
@@ -654,6 +669,22 @@ pub fn project_dir_for_event(path: &Path, projects_dir: &Path) -> Option<PathBuf
 		Some(project_dir.to_path_buf())
 	} else {
 		None
+	}
+}
+
+/// Record one path the agent's tools named, keeping the list most-recent-last
+/// and bounded (F21, migration 0010).
+///
+/// **A repeat moves rather than duplicates.** A session in a worktree names the
+/// same directory over and over, and eight copies of one path is a window one
+/// entry wide — which would put us back to the single value the list replaced.
+fn remember_touched(touched: &mut Vec<String>, path: &str) {
+	if let Some(pos) = touched.iter().position(|p| p == path) {
+		touched.remove(pos);
+	}
+	touched.push(path.to_string());
+	if touched.len() > TOUCHED_PATHS_KEPT {
+		touched.remove(0);
 	}
 }
 

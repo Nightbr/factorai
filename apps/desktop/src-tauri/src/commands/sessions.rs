@@ -38,7 +38,7 @@ pub fn list_sessions_in(
 		// it draws — the sidebar's checkout mark — and on first paint, before
 		// any `session:worktree` event has had a reason to fire.
 		"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
-		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.last_touched
+		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.touched_paths
 		 FROM sessions s
 		 JOIN discovered_projects d ON d.id = s.discovered_id
 		 LEFT JOIN sessions p ON p.id = s.subagent_of
@@ -75,7 +75,7 @@ pub fn list_sessions_in(
 				subagent_of: row.get(7)?,
 				worktree: row.get(8)?,
 				last_cwd: resolved(row.get(9)?),
-				last_touched: resolved(row.get(10)?),
+				touched_paths: touched(row.get(10)?),
 			})
 		})?
 		.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -88,8 +88,28 @@ pub fn list_sessions_in(
 /// the honest record of where the session ran, and every consumer of these
 /// fields already treats a path it cannot match as "no checkout".
 fn resolved(path: Option<String>) -> Option<String> {
-	let path = path?;
-	Some(std::fs::canonicalize(&path).map(|p| p.to_string_lossy().to_string()).unwrap_or(path))
+	Some(canonical(path?))
+}
+
+/// The stored `touched_paths` JSON as a list the renderer can compare (F21,
+/// migration 0010).
+///
+/// **A column that will not parse yields no paths rather than an error.** It is
+/// a derived cache of a guess at another program's schema, and the parse
+/// version stamp rewrites it on the next scan — failing a whole project's
+/// session list over it would trade a wrong panel root for no panel at all.
+fn touched(stored: Option<String>) -> Vec<String> {
+	stored
+		.and_then(|json| serde_json::from_str::<Vec<String>>(&json).ok())
+		.unwrap_or_default()
+		.into_iter()
+		.map(canonical)
+		.collect()
+}
+
+/// One path as the filesystem really names it, or unchanged if it cannot say.
+fn canonical(path: String) -> String {
+	std::fs::canonicalize(&path).map(|p| p.to_string_lossy().to_string()).unwrap_or(path)
 }
 
 /// Read the **last** `limit` events from a session. Default 100. The

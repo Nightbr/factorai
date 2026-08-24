@@ -3,6 +3,45 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **F21's fifth signal — the paths a shell command names — spec `05-features.md` F21, roadmap
+  item 37** — 2026-08-24, on a user's screenshot of factorai naming `pearl` and its old branch
+  while their agent worked in `../pearl-eng-3333`. Hours after the fourth signal shipped, and
+  defeated by it in the one way the fourth signal cannot see: the agent did the entire hour
+  through `Bash`. 44 shell calls, and not one `Read`, `Write` or `Edit`, so a harvest of
+  `file_path` and `notebook_path` found nothing at all and both cwds went on correctly naming
+  the checkout the session started in.
+
+  **So a shell command's own paths are harvested too**, which is the fourth signal's trade taken
+  one step further rather than a new one. A command line is not a path list, so it is read
+  *loosely* — every absolute-path-shaped token, bounded by whitespace and shell punctuation. Two
+  rules exist only because real transcripts contain them: a `/` after a word character starts
+  nothing (`e2e/playwright.config.ts`, `sed -n 's/a/b/'`), and a token beginning `//` is a URL's
+  authority (`:` has to be a start boundary for `PATH=/a:/b`, which makes `https://linear.app/…`
+  look like two paths).
+
+  **The looseness is why the signal became a list, and the two are one decision.** Replayed over
+  the real transcript, "the last absolute path anywhere in the session" belonged to no checkout in
+  31 of 42 candidates — `/dev/null`, `/usr/bin/env`, a scratch script — and to the main checkout
+  in 4 more. A single stored value would have spent most of the hour naming something useless, and
+  the panel would have snapped back to the project on every one of them. `sessions.touched_paths`
+  keeps the last eight (migration 0010) and the resolution takes the most recent entry that lands
+  in a **linked** checkout, which makes every other candidate free. Over that transcript it
+  answers `pearl-eng-3333` from the first command that named it onwards.
+
+  **0009's column is left in place, unread, and that is the interesting cost.** Dropping it was
+  the plan — a stale column answering the same question as its replacement is how a later reader
+  picks the wrong one — until the obvious consequence: migrations run on open, one data directory
+  is shared by every build on the machine, and the installed release still selects
+  `s.last_touched`. A drop turns running an older factorai after a newer one into "no such column"
+  on the sessions list. Every migration before this one was additive and got the property for
+  free; this is the first that had to choose.
+
+  **The section in the spec used to be called "why there are only two".** It is now "the signals,
+  and the shapes that keep defeating them", because that heading is the honest record: five shapes
+  have reached a user, each defeating every signal that existed when it arrived, and every one of
+  those signals was *correct* and about the wrong place. The question to ask the sixth is not "is
+  this true" but "what is it evidence of".
+
 - **The quit and restart confirms ask about work, not about processes — ADR-0020, spec
   `05-features.md` § "Quit guard" and F14** — 2026-08-21. Closing the window or restarting for an
   update used to stop and warn whenever *any* PTY was alive, so an app left open beside four

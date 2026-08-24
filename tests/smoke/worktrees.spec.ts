@@ -179,8 +179,9 @@ test.describe('worktrees', () => {
 	test('@smoke it follows an agent that never moved its cwd at all', async ({ page }) => {
 		// The second shape, and the one no cwd can catch: `git worktree add`, then
 		// `git -C` and absolute paths for everything after it. Both cwds name the
-		// project, correctly, and the only trace of the real tree is the files the
-		// agent's own tools touched.
+		// project, correctly, and the only trace of the real tree is the paths the
+		// agent's own tools named — the last of which is `/dev/null`, because a
+		// harvest that reads shell commands collects far more noise than signal.
 		await installMockBridge(page, fixtureAgentWorkedByAbsolutePath());
 		await page.goto(IN_WORKTREE);
 		await openPanel(page);

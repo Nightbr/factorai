@@ -72,13 +72,16 @@ export interface SessionSummary {
 	 *  which is what makes the churn between the two harmless: a `cd` into
 	 *  `node_modules/…` is still inside the main checkout and resolves to it. */
 	lastCwd: string | null;
-	/** The last **absolute** path this session's tools named (F21).
+	/** The recent **absolute** paths this session's tools named, oldest first
+	 *  (F21).
 	 *
 	 *  The signal for an agent that drives another checkout by absolute path and
 	 *  so never moves its own cwd — the shape neither `lastCwd` nor the bridge can
-	 *  see. Read through the same containment, and believed ahead of `lastCwd`
-	 *  only when it lands in a *linked* checkout. */
-	lastTouched: string | null;
+	 *  see. Read through the same containment, ahead of `lastCwd`, and believed
+	 *  only where it lands in a *linked* checkout: the most recent entry that does
+	 *  wins and the rest are ignored, which is what lets the harvest behind it be
+	 *  loose enough to read shell commands. */
+	touchedPaths: string[];
 }
 
 export interface SessionPage {

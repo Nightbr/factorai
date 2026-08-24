@@ -33,6 +33,11 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// the agent was working through absolute paths. Also the version stamp that
 	// makes a parser change backfill itself.
 	("0009_session_last_touched", include_str!("migrations/0009_session_last_touched.sql")),
+	// F21 a fourth time, the same afternoon: the agent worked the worktree
+	// entirely through `Bash`, which 0009 does not read. Harvesting shell commands
+	// too makes the signal noisy, which is why 0009's single value becomes a list —
+	// and why 0009's column is left behind rather than dropped. See the file.
+	("0010_session_touched_paths", include_str!("migrations/0010_session_touched_paths.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

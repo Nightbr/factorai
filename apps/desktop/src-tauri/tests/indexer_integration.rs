@@ -676,15 +676,72 @@ fn the_last_absolute_path_an_agent_touched_is_recorded() {
 	indexer.full_scan().expect("scan");
 
 	db.with(|conn| {
-		let (last_touched, last_cwd): (Option<String>, Option<String>) = conn.query_row(
-			"SELECT last_touched, last_cwd FROM sessions WHERE id = ?1",
+		let (touched_paths, last_cwd): (Option<String>, Option<String>) = conn.query_row(
+			"SELECT touched_paths, last_cwd FROM sessions WHERE id = ?1",
 			params![session_id],
 			|r| Ok((r.get(0)?, r.get(1)?)),
 		)?;
-		assert_eq!(last_touched.as_deref(), Some("/wt/feature-x/switcher.ts"));
+		assert_eq!(touched_paths.as_deref(), Some(r#"["/wt/feature-x/switcher.ts"]"#));
 		// The two are independent facts and both are kept: the cwd is still where
 		// the session runs, which is what resume needs.
 		assert_eq!(last_cwd.as_deref(), Some(cwd.to_str().unwrap()));
+		Ok(())
+	})
+	.expect("read row");
+}
+
+/// A session that only ever ran shell commands still records where it worked
+/// (F21, migration 0010).
+///
+/// **The shape that reached the same user hours after 0009 shipped**: 44 `Bash`
+/// calls, and not one `Read`, `Write` or `Edit`, so a harvest of file-tool keys
+/// found nothing at all. The list is what makes reading command lines viable —
+/// the scan is loose, so most of what it collects is noise that belongs to no
+/// checkout, and the renderer keeps the most recent candidate that does.
+#[test]
+fn the_paths_a_shell_command_names_are_recorded() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, cwd, project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+
+	let cwd_str = cwd.to_string_lossy();
+	// Three real command shapes: the `cd` into the worktree, a `sed` whose own
+	// slashes must contribute nothing, and a redirect whose `/dev/null` is noise
+	// the renderer will skip past.
+	let commands = [
+		"cd /wt/feature-x/frontend && pnpm lint",
+		"sed -n '68,90p' apps/web/src/field-mapping-form.tsx",
+		"git -C /wt/feature-x status 2>/dev/null",
+	];
+	let blocks = commands
+		.iter()
+		.enumerate()
+		.map(|(i, c)| {
+			format!(
+				r#"{{"type":"tool_use","name":"Bash","id":"t{i}","input":{{"command":"{c}"}}}}"#
+			)
+		})
+		.collect::<Vec<_>>()
+		.join(",");
+	let event = format!(
+		r#"{{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"2026-01-01T00:00:09Z","cwd":"{cwd_str}","message":{{"role":"assistant","content":[{blocks}]}}}}"#
+	);
+	let path = project_dir.join(format!("{session_id}.jsonl"));
+	let existing = std::fs::read_to_string(&path).expect("read session");
+	std::fs::write(&path, format!("{existing}\n{event}")).expect("append");
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let stored: String = conn.query_row(
+			"SELECT touched_paths FROM sessions WHERE id = ?1",
+			params![session_id],
+			|r| r.get(0),
+		)?;
+		let paths: Vec<String> = serde_json::from_str(&stored).expect("a json list");
+		// Order is the order the agent named them, so "most recent" means last.
+		assert_eq!(paths, vec!["/wt/feature-x/frontend", "/wt/feature-x"]);
 		Ok(())
 	})
 	.expect("read row");
@@ -729,8 +786,8 @@ fn a_path_reached_by_another_name_is_resolved_for_the_renderer() {
 		.expect("list sessions");
 	let session = sessions.iter().find(|s| s.id == session_id).expect("the session");
 	assert_eq!(
-		session.last_touched.as_deref(),
-		Some(nested.join("switcher.ts").to_string_lossy().as_ref())
+		session.touched_paths,
+		vec![nested.join("switcher.ts").to_string_lossy().to_string()]
 	);
 
 	// **The table keeps the raw value.** `resume_cwd` probes for a transcript at
@@ -739,11 +796,11 @@ fn a_path_reached_by_another_name_is_resolved_for_the_renderer() {
 	// it exists for.
 	db.with(|conn| {
 		let stored: String = conn.query_row(
-			"SELECT last_touched FROM sessions WHERE id = ?1",
+			"SELECT touched_paths FROM sessions WHERE id = ?1",
 			params![session_id],
 			|r| r.get(0),
 		)?;
-		assert_eq!(stored, indirect);
+		assert_eq!(stored, serde_json::to_string(&vec![&indirect]).unwrap());
 		Ok(())
 	})
 	.expect("read row");
@@ -765,7 +822,7 @@ fn a_row_from_an_older_parser_is_reparsed_exactly_once() {
 	// does the first time the migration runs.
 	db.with_mut(|conn| {
 		conn.execute(
-			"UPDATE sessions SET parse_version = 0, last_touched = NULL WHERE id = ?1",
+			"UPDATE sessions SET parse_version = 0, touched_paths = NULL WHERE id = ?1",
 			params![session_id],
 		)?;
 		Ok(())
@@ -780,8 +837,10 @@ fn a_row_from_an_older_parser_is_reparsed_exactly_once() {
 			|r| r.get(0),
 		)?;
 		// Stamped even though this transcript names no file at all — the row is
-		// current, so the next scan skips it and the backfill terminates.
-		assert_eq!(version, 1);
+		// current, so the next scan skips it and the backfill terminates. The
+		// literal tracks `indexer::PARSE_VERSION`, which is private: a test crate
+		// asserting on it by name would make the constant part of the API.
+		assert_eq!(version, 2);
 		Ok(())
 	})
 	.expect("read version");

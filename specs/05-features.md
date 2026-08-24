@@ -3112,7 +3112,15 @@ repository — but only if no project claims its path exactly. So adding
 `~/wt/feature-x` yourself keeps its sessions where they were, and nothing moves
 under someone who has already built a workflow out of the workaround.
 
-### The signals, and why there are only two
+### The signals, and the shapes that keep defeating them
+
+**This section was called "why there are only two", and the heading is the
+record of what this feature has cost.** Five shapes of "the agent moved and
+factorai did not" have reached a user, each one defeating every signal that
+existed when it arrived; the two the design started with are the first two
+below. The pattern is worth stating plainly for whoever meets the sixth: every
+signal so far has been *correct* and about the wrong place, so the question to
+ask a new one is not "is this true" but "what is it evidence of".
 
 The bridge (F20) is the **only** channel an agent has into factorai, so it is
 where following has to happen. `at_mentioned` runs the other way — human to
@@ -3210,13 +3218,50 @@ there is worse than no answer.
 canonicalized, so the session's side has to as well or the comparison is between
 two names for one directory: a tool's absolute path can carry `..`, and a shell's
 own idea of where it is is the *logical* path, which keeps whatever symlink you
-walked through. `list_sessions` resolves `cwd`, `last_cwd` and `last_touched` on
+walked through. `list_sessions` resolves `cwd`, `last_cwd` and every entry of
+`touched_paths` on
 the way out and the table keeps the raw value — `resume_cwd` probes
 `encode_path(cwd)` for a transcript, and `claude` encoded the path it was given.
 Resolving on the way in would make that probe miss for exactly the moved
 sessions it exists for.
 
-**The human's picker is still the floor under all four.** An agent can work in
+**A fifth shape defeated the fourth signal the same afternoon** (2026-08-24,
+the same user, hours later). The agent created `../pearl-eng-3333`, worked in it
+for an hour, and did all of it through `Bash`: 44 shell calls, and not one
+`Read`, `Write` or `Edit`. The fourth signal harvests `file_path` and
+`notebook_path`, so it found nothing at all, and the two cwds — as in the fourth
+shape — went on correctly naming the checkout the session started in.
+
+**So a shell command's own paths are harvested too**, which is the fourth
+signal's trade taken one step further rather than a new one. A command line is
+not a path list: it holds redirects, `sed` expressions, globs, flags and
+quoting, and reading it properly would mean implementing a shell. It is
+therefore read *loosely* — every absolute-path-shaped token, bounded by
+whitespace and shell punctuation, with two rules that exist only because real
+transcripts contain them (a `/` after a word character is part of a relative
+path or a `sed` script and starts nothing; a token beginning `//` is a URL's
+authority).
+
+**The looseness is why the signal became a list, and the two changes are one
+decision.** Replayed over that transcript, "the last absolute path anywhere in
+the session" belonged to no checkout in 31 of 42 candidates — `/dev/null`,
+`/usr/bin/env`, a scratch script — and to the main checkout in 4 more. A single
+stored value would have spent most of an hour naming something useless, and each
+time it did, the panel would have snapped back to the project the agent was not
+working in. `sessions.touched_paths` keeps the last eight instead (migration
+0010), and the resolution takes **the most recent entry that lands in a linked
+checkout**, which makes every other candidate free. Over the same transcript
+that answers `pearl-eng-3333` — the right tree — from the first command that
+named it onwards.
+
+**The cap selects nothing and is not tuned.** It bounds a column. The scan of
+one command can contribute several paths, so eight is a few commands of history,
+and a session genuinely working in a checkout names it again long before eight
+unrelated paths go by. A repeat moves its entry to the end rather than adding
+one, or a session in one worktree would hold eight copies of the same path and
+be back to a window one entry wide.
+
+**The human's picker is still the floor under all five.** An agent can work in
 two checkouts at once, and no inference can rank them — see "The escape is one
 control".
 
@@ -3301,9 +3346,10 @@ Three steps, first match wins:
 1. `session_worktrees.path`, if it is still a registered worktree of the
    repository *and* still on disk. The human's pick arrives here too, which is
    why it needs nothing else to outrank the inferences below.
-2. The **linked** checkout containing `sessions.last_touched`, by longest
-   containment. Asymmetric on purpose — "The signals" above has why, and why it
-   sits ahead of the cwds rather than behind them.
+2. The **linked** checkout containing the most recent entry of
+   `sessions.touched_paths` that lands in one, by longest containment. Asymmetric
+   on purpose, and read as a list rather than as its last entry — "The signals"
+   above has why, and why it sits ahead of the cwds rather than behind them.
 3. The checkout containing `sessions.last_cwd`, then the one containing
    `sessions.cwd`, by longest containment — which is what makes a session started
    *or moved* into a worktree correct with no signal at all. The `cwd` step is

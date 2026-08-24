@@ -973,11 +973,18 @@ four things it cost that the design did not predict. What follows is the remaind
       lives" rule. In a worktree-heavy repository it is the reason to open a graph at all — three
       checkouts, visible at once, on the commits they are sitting on. Cosmetic, so it did not
       gate the release.
-- [ ] **Watch whether `setWorktree` is ever called by a real agent.** Three live runs produced
-      three worktrees and zero calls. The tool stays advertised because it costs nothing and is
+- [ ] **Watch whether `setWorktree` is ever called by a real agent.** Five live runs produced
+      five worktrees and zero calls. The tool stays advertised because it costs nothing and is
       the only signal that is an intent rather than an inference — but nothing rests on it, and
       if it is still unobserved in a month, say so here rather than leaving it looking
       load-bearing.
+- [x] **A fifth signal: the paths a shell command names.** Shipped 2026-08-24, hours after the
+      fourth, on the shape it cannot see — the agent did the whole hour through `Bash`, so no
+      `file_path` ever appeared. `sessions.touched_paths` (migration 0010) keeps the last eight
+      candidates instead of one, because reading command lines is loose enough that a single
+      value is noise most of the time. `DONE.md` has the numbers and the one cost worth knowing
+      (0009's column is left behind rather than dropped, so an older build sharing the data
+      directory still opens).
 - [x] **The human's worktree picker.** Shipped 2026-08-24, on a user's report of the shape no
       inference can reach: the agent created a worktree and drove it by `git -C` and absolute
       paths, so its cwd never moved and the bridge never heard from it. The remaining three

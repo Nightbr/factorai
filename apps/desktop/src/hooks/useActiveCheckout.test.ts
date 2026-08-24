@@ -41,7 +41,7 @@ function session(over: Partial<SessionSummary> = {}): SessionSummary {
 		subagentOf: null,
 		worktree: null,
 		lastCwd: PROJECT,
-		lastTouched: null,
+		touchedPaths: [],
 		...over,
 	};
 }
@@ -79,7 +79,7 @@ describe('resolveCheckout', () => {
 		const resolved = resolveCheckout(
 			WORKTREES,
 			undefined,
-			session({ lastCwd: PROJECT, lastTouched: `${WORKTREE}/src/switcher.ts` }),
+			session({ lastCwd: PROJECT, touchedPaths: [`${WORKTREE}/src/switcher.ts`] }),
 		);
 		expect(resolved?.path).toBe(WORKTREE);
 	});
@@ -91,14 +91,44 @@ describe('resolveCheckout', () => {
 		const resolved = resolveCheckout(
 			WORKTREES,
 			undefined,
-			session({ lastCwd: `${WORKTREE}/src`, lastTouched: `${PROJECT}/biome.json` }),
+			session({ lastCwd: `${WORKTREE}/src`, touchedPaths: [`${PROJECT}/biome.json`] }),
 		);
 		expect(resolved?.path).toBe(WORKTREE);
 	});
 
 	it('ignores a touched path outside the repository entirely', () => {
-		const resolved = resolveCheckout(WORKTREES, undefined, session({ lastTouched: '/etc/hosts' }));
+		const resolved = resolveCheckout(
+			WORKTREES,
+			undefined,
+			session({ touchedPaths: ['/etc/hosts'] }),
+		);
 		expect(resolved?.path).toBe(PROJECT);
+	});
+
+	it('reads back past the noise a shell command leaves', () => {
+		// **The shape that reached the same user hours later**: the agent worked the
+		// worktree entirely through `Bash`, so the harvest reads command lines and
+		// most of what it collects belongs to no checkout at all. Only the most
+		// recent candidate that *does* resolve decides anything.
+		const resolved = resolveCheckout(
+			WORKTREES,
+			undefined,
+			session({
+				lastCwd: PROJECT,
+				touchedPaths: [`${WORKTREE}/frontend`, '/dev/null', '/usr/bin/env'],
+			}),
+		);
+		expect(resolved?.path).toBe(WORKTREE);
+	});
+
+	it('prefers the last linked path when the agent worked in two worktrees', () => {
+		const second: GitWorktree = { ...linked, path: '/home/alice/code/worktrees/feature-y' };
+		const resolved = resolveCheckout(
+			[main, linked, second],
+			undefined,
+			session({ touchedPaths: [`${WORKTREE}/a.ts`, `${second.path}/b.ts`] }),
+		);
+		expect(resolved?.path).toBe(second.path);
 	});
 
 	it('resolves nothing when the session is outside every checkout', () => {

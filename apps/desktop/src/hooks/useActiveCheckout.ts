@@ -40,9 +40,10 @@ interface ActiveCheckout {
  * 1. The checkout the agent signalled for the session in front — from the live
  *    `session:worktree` event, else the `worktree` column the sessions query
  *    carries, so a resumed session comes back where it was working.
- * 2. The **linked** checkout containing the last absolute path the agent's tools
- *    named. Only a linked one: see `linkedContaining` below for why this step is
- *    asymmetric, and why that asymmetry is the whole of its safety.
+ * 2. The **linked** checkout containing the most recent absolute path the
+ *    agent's tools named. Only a linked one, and the whole recent list is read
+ *    rather than only its last entry: see `lastLinked` below for why both halves
+ *    of that are the safety of this step rather than a refinement of it.
  * 3. The checkout containing that session's **last** recorded `cwd`, then its
  *    first. This is what catches an agent that moved into a worktree without
  *    saying so — which, on the evidence of a real session, is what agents
@@ -97,14 +98,18 @@ export function useActiveCheckout(): ActiveCheckout {
 	// a fresh array on every refetch, so a memo that depended on the object would
 	// re-resolve on a poll that changed nothing.
 	const recorded = session?.worktree ?? null;
-	const lastTouched = session?.lastTouched ?? null;
+	// Joined to a scalar for the same reason the rest are scalars: `touchedPaths`
+	// is a fresh array on every refetch, so depending on it directly would
+	// re-resolve the checkout on a poll that changed nothing. A newline cannot
+	// appear in one of these paths — the harvest ends a token at whitespace.
+	const touchedKey = (session?.touchedPaths ?? []).join('\n');
 	const lastCwd = session?.lastCwd ?? null;
 	const cwd = session?.cwd ?? null;
 
 	return useMemo(() => {
 		const resolved = resolveCheckout(worktrees, signalled?.path, {
 			worktree: recorded,
-			lastTouched,
+			touchedPaths: touchedKey ? touchedKey.split('\n') : [],
 			lastCwd,
 			cwd,
 		});
@@ -129,7 +134,7 @@ export function useActiveCheckout(): ActiveCheckout {
 		worktrees,
 		signalled?.path,
 		recorded,
-		lastTouched,
+		touchedKey,
 		lastCwd,
 		cwd,
 		isLoading,
@@ -142,7 +147,7 @@ export function useActiveCheckout(): ActiveCheckout {
 export function resolveCheckout(
 	worktrees: readonly GitWorktree[],
 	signalledPath: string | undefined,
-	session: Pick<SessionSummary, 'worktree' | 'lastTouched' | 'lastCwd' | 'cwd'> | undefined,
+	session: Pick<SessionSummary, 'worktree' | 'touchedPaths' | 'lastCwd' | 'cwd'> | undefined,
 ): GitWorktree | undefined {
 	const known = (path: string | null | undefined) =>
 		path ? worktrees.find((w) => w.path === path && w.exists) : undefined;
@@ -154,14 +159,14 @@ export function resolveCheckout(
 		//    nothing else here to outrank the inferences below.
 		known(signalledPath) ??
 		known(session?.worktree) ??
-		// 2. The last file the agent's tools touched, **if it is in a linked
+		// 2. The most recent path the agent's tools named that is **in a linked
 		//    checkout**. Ahead of the cwds because the case it exists for is
 		//    precisely one where they are *correct and useless*: an agent that
 		//    creates a worktree and drives it by `git -C` and absolute paths never
 		//    moves its cwd, so `lastCwd` keeps naming the checkout it started in
 		//    for ever. Reading the cwd first would mean this step never runs in the
 		//    one situation it was added for.
-		linkedContaining(worktrees, session?.lastTouched ?? null) ??
+		lastLinked(worktrees, session?.touchedPaths ?? []) ??
 		// 3. Where the session *is*, then where it started. `lastCwd` is what
 		//    catches an agent that moved into a worktree and never said so —
 		//    the case this feature was built for and, on the evidence, the
@@ -174,21 +179,35 @@ export function resolveCheckout(
 }
 
 /**
- * The checkout containing `path`, but only if it is a **linked** one.
+ * The **most recent** of `paths` that lands in a **linked** checkout.
  *
- * The asymmetry is the safety of step 2, and it is deliberate. A touched path
- * that lands in the main checkout says nothing: reading one file there is what
- * an agent in a worktree does all day — a shared config, a sibling package, the
- * spec it is working from — and letting that pull the panel back would make the
- * tree flicker between checkouts on every tool call. A touched path in a
- * *linked* checkout is the opposite: nothing else in the session points there,
- * so it is the only evidence that exists, and the fallback below already answers
- * "the main checkout" for everything else.
+ * Two asymmetries, and they are the safety of step 2 rather than a refinement
+ * of it.
+ *
+ * **Linked only.** A touched path in the main checkout says nothing: reading a
+ * file there is what an agent in a worktree does all day — a shared config, a
+ * sibling package, the spec it is working from — and letting that pull the panel
+ * back would make the tree flicker between checkouts on every tool call. A path
+ * in a *linked* checkout is the opposite: nothing else in the session points
+ * there, so it is the only evidence that exists, and the fallback below already
+ * answers "the main checkout" for everything else.
+ *
+ * **The list, not its last entry.** The harvest behind these paths reads shell
+ * commands, so most of what it collects is noise — `/dev/null`, `/usr/bin/env`,
+ * a `sed` script's slashes — that belongs to no checkout at all. Scanning back
+ * for the most recent path that does resolve is what makes that noise free:
+ * over the real transcript this was built from, only 7 of 42 candidates named
+ * the worktree, and the last one was three commands back. Reading only the
+ * final entry would have answered "no evidence" for most of an hour's work in
+ * one tree.
  */
-function linkedContaining(
+function lastLinked(
 	worktrees: readonly GitWorktree[],
-	path: string | null,
+	paths: readonly string[],
 ): GitWorktree | undefined {
-	const found = checkoutContaining(worktrees, path);
-	return found && !found.isMain ? found : undefined;
+	for (let i = paths.length - 1; i >= 0; i--) {
+		const found = checkoutContaining(worktrees, paths[i]);
+		if (found && !found.isMain) return found;
+	}
+	return undefined;
 }

@@ -139,6 +139,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		subagentOf: null,
 		worktree: null,
 		lastCwd: null,
+		touchedPaths: [],
 	};
 	return {
 		projects: [project],
@@ -291,6 +292,7 @@ export function fixtureAgentMovedWithoutSaying(): TestFixture {
 							// used to read, and why the panel stayed on main.
 							cwd: project.realPath,
 							lastCwd: '/home/alice/code/worktrees/feature-x',
+							touchedPaths: [],
 						}
 					: session,
 			),
@@ -299,12 +301,18 @@ export function fixtureAgentMovedWithoutSaying(): TestFixture {
 }
 
 /**
- * The shape F21 failed in a second time (2026-08-24, in a user's session).
+ * The shape F21 failed in a second time, and the noise it failed in a third time
+ * with (2026-08-24, twice, in the same user's sessions).
  *
  * The agent created a worktree and then drove it entirely through
  * `git -C ../worktree …` and absolute paths. Its own cwd never moved, so both
  * cwds still name the project — correctly — and there is nothing to follow but
- * the files its tools named.
+ * the paths its tools named.
+ *
+ * **The list ends on noise on purpose.** The harvest behind it reads shell
+ * command lines, so most of what it collects belongs to no checkout at all; the
+ * resolution has to read back past that to the most recent path that does, and a
+ * fixture whose last entry is the answer would not notice if it stopped.
  */
 export function fixtureAgentWorkedByAbsolutePath(): TestFixture {
 	const base = fixtureSessionInAWorktree();
@@ -325,7 +333,7 @@ export function fixtureAgentWorkedByAbsolutePath(): TestFixture {
 							// anything, and both are right.
 							cwd: project.realPath,
 							lastCwd: project.realPath,
-							lastTouched: '/home/alice/code/worktrees/feature-x/src/switcher.ts',
+							touchedPaths: ['/home/alice/code/worktrees/feature-x/src/switcher.ts', '/dev/null'],
 						}
 					: session,
 			),
@@ -388,6 +396,7 @@ export function fixtureWithSubagents(): TestFixture {
 		subagentOf: parent.id,
 		worktree: null,
 		lastCwd: null,
+		touchedPaths: [],
 	});
 
 	const agents = [
@@ -795,6 +804,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					turnCount: 3,
 					cwd: alpha.realPath,
 					subagentOf: null,
+		touchedPaths: [],
 					worktree: null,
 					lastCwd: null,
 					worktree: null,
@@ -813,8 +823,10 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
  * Claude's store, the other is what you added. One row is already in the
  * workspace and one folder has been deleted, since those are the two states the
  * dialog has to render differently.
+					touchedPaths: [],
  */
 export function fixtureImportCandidates(): TestFixture {
+					touchedPaths: [],
 	const known: Project = {
 		id: 'p0000004-0000-4000-8000-000000000004',
 		realPath: '/home/alice/code/known',
