@@ -983,3 +983,146 @@ four things it cost that the design did not predict. What follows is the remaind
       paths, so its cwd never moved and the bridge never heard from it. The remaining three
       deferrals stand (telling the agent when the human moves the panel, creating worktrees from
       factorai, and new sessions starting in the shown checkout).
+
+## 38. More harnesses — Codex, Gemini CLI, OpenCode, Cursor, behind one seam
+
+**User ask, 2026-08-24.** factorai spawns, resumes, indexes and watches exactly one CLI. The ask
+is the general version: a harness abstraction, a default harness in settings, and per-harness
+configuration — so the ADE is about agent sessions rather than about `claude` sessions.
+
+**Half the seam already exists, and it is the cheap half.** `agents/mod.rs` is the discovery
+source layer, `discovered_projects.agent` is a column with `DEFAULT 'claude'` written so a second
+agent is an INSERT and not a migration, and `sessions` inherits the agent through
+`discovered_id`. That module also states, deliberately, that there is **no `trait AgentStore`**,
+because a trait with one implementor is a guess about the second one's shape. This item is where
+that guess stops being necessary — so the trait gets written here, from a real second implementor,
+and the note in `agents/mod.rs` gets replaced rather than quietly contradicted.
+
+**The expensive half is everything that is Claude-shaped and does not know it.** Each of these is
+a separate decision, and none of them are the same size:
+
+- **Spawn and resume.** `services/terminal.rs` calls `find_claude_binary` and then
+  `session_flag`, which picks `--resume` or `--session-id` by whether a transcript exists
+  (ADR-0008). No other harness is obliged to have either verb, and one that has neither can still
+  be launched — it just cannot be *resumed*, which is a capability the UI has to be able to render
+  as absent instead of broken.
+- **Transcripts.** `services/jsonl.rs`, the indexer and the FTS5 rows all read Claude's JSONL
+  under `~/.claude/projects/<encoded-path>/`. Every other harness has its own location, its own
+  record shape and its own idea of what a turn is. **Verify each one on disk before writing a
+  parser for it** — this is a research task first and a build task second, and it is the part most
+  likely to be wrong if taken from documentation.
+- **Status.** ADR-0015 derives `working` / `waiting_input` from the glyph Claude writes into the
+  terminal title. A harness that sets no title, or a different one, yields nothing — so decide
+  what an unknown status *looks* like, because a dot that says `working` because it defaulted
+  there is worse than no dot.
+- **The IDE bridge.** ADR-0017 writes one lockfile into `~/.claude/ide/` and speaks the dialect
+  CLI 2.1.235 speaks, with `ideName: "factorai"`. That is Claude's protocol, not an industry one.
+  The bridge stays Claude-only until a second harness's protocol has been observed end to end;
+  advertising it generally before then would be inventing an interoperability we have not tested.
+- **Settings.** `SettingKey` has exactly one variant today (`ClaudeBinaryPath` → `claude.binary`).
+  A default-harness choice plus a binary override *per* harness is either one variant per harness
+  or a parameterised key; pick which before the second harness lands, because the column name is
+  what an operator sees in `sqlite3` and the convention is set by migration `0001`.
+- **The UI.** Launching a session becomes a choice — a default from settings, overridable at
+  launch — and a session row has to say which harness it is. F11 grows an Agents section. The
+  quit guard and kill-on-quit are unaffected: a PTY is a PTY.
+
+**Do one second harness end to end before generalising to four.** A trait derived from one
+implementor is a guess; from two it is a fact; from four written simultaneously it is a rewrite
+with three untested branches. Codex is the natural first, because
+`annex-A-cli-agent-patterns.md` § A.1 already carries the shape of its CLI probe from the reference app and
+notes exactly this progression, and ADR-0011 already thought about what a codex session means for
+a project's identity.
+
+**And grade the capabilities, rather than requiring all of them.** A harness that can only be
+*spawned* — launch it in a PTY, no transcript indexing, no status, no bridge — is already worth
+having, and is a small slice. Browse, search and status then degrade per harness instead of
+blocking the whole item on the hardest parser.
+
+- [ ] An ADR for the seam (§ 5, cross-cutting pattern): discovery, spawn descriptor, transcript
+      reader, status source — four capabilities, each independently optional, and what the UI does
+      for each one a harness lacks.
+- [ ] Codex end to end, or as far as its capabilities go, with the trait falling out of it.
+- [ ] `SettingKey` growth plus F11's Agents section: default harness, per-harness binary override.
+- [ ] Then Gemini CLI, OpenCode and Cursor, each as its own slice against the settled seam.
+
+## 39. User documentation, hosted on GitHub Pages
+
+**User ask, 2026-08-24.** Everything written for a *user* today is `README.md` and the three
+screenshots in `docs/images/`. Everything else in the repository is written for whoever is
+building it: `specs/` is the design source of truth (§ 6), `docs/adr/` is the decision trail, and
+this file is sequencing. All three read as internal because they are.
+
+**The rule that keeps this from rotting: the site does not fork the specs.** It is a different
+document for a different reader — how to install it, what the surfaces do, what to do when
+something does not work — and where it needs a fact the specs own, it links rather than restates.
+A second copy of a behaviour is a second thing to update in the commit that changes it, and § 6
+already says which copy wins.
+
+What it holds, in the order a new user meets it:
+
+- **Install**, which is currently the most under-served thing: the AppImage, the unsigned `.dmg`
+  and the Gatekeeper step it costs, and the Homebrew cask once item 36 lands.
+- **First run** — adding a project, what discovery does, why sessions appear on their own.
+- **The surfaces** — sessions and the terminal, Files, Changes, the graph, search, worktrees.
+- **Settings**, and **keyboard shortcuts** once item 5 gives it a table worth publishing.
+- **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
+  override, the AppImage's environment leaking into child processes, Linux specifics.
+- **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
+
+Mechanics worth deciding up front:
+
+- [ ] A generator, and an ADR for it if it becomes load-bearing on the release path (§ 5).
+- [ ] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
+      `docs/` in this repository already holds `adr/`, `brand/` and `images/`; pointing Pages at
+      that folder would publish the decision trail as a website by accident.
+- [ ] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
+- [ ] Whether the site reuses `docs/images/` or keeps its own copies. Screenshots go stale on
+      their own schedule; one copy is one re-shoot.
+- [ ] A custom domain, or the default `nightbr.github.io/factorai`. Decide before publishing, so
+      the links in the README are only written once.
+
+## 40. Pull requests and merge requests — GitHub and GitLab, from inside factorai
+
+**User ask, 2026-08-24.** The agent produced a branch and some commits; the next thing a human
+does is open a PR or an MR, and today that means leaving the app.
+
+**This crosses two boundaries at once, so it needs its own ADR (§ 5).** ADR-0009 says every
+repository read goes through `git2` and *"everything is read-only. No staging, no discard, no
+commit"* — a pull request is not even a working-tree write, it is a **network** write, and the
+only network the app does today is `tauri-plugin-updater` checking for a release (F14). Item 19
+already owes an ADR for writing to the working tree; this is a second, different one, and it is
+the one with a credential in it.
+
+**Authentication is the load-bearing question, not the API.** Two shapes:
+
+- **Shell out to `gh` and `glab`**, which are already authenticated on the machine of anyone who
+  would want this. Discovery is the three-tier probe `services/claude_cli.rs` already
+  implements — the same problem, already solved here — and factorai stores no credential at all.
+- **A personal access token in the `settings` table**, which is a plaintext SQLite column in the
+  app's data directory. Defensible only with a keychain dependency we do not have.
+
+**Take the first for v1**, and record it in the ADR so it is not re-argued: it is the option where
+"where is the secret" has the answer *not here*. § 8's "no Claude OAuth helper — rely on the
+user's existing `claude login`" is the same reasoning, one tool over.
+
+**Start read-only, which costs no write ADR at all** and is useful on its own: for the checked-out
+branch, is there a PR/MR, what state is it in, what do its checks say, and open it in a browser.
+That composes with the Changes tab and with item 1's graph, and it is the half a human looks at
+most.
+
+Then, in order:
+
+- [ ] **Host detection.** The remote URL via `git2` decides GitHub, GitLab or self-hosted; a
+      self-hosted GitLab needs a base-URL setting. A repository with several remotes — fork plus
+      upstream is the normal case — has to be asked about rather than guessed at.
+- [ ] **The read slice**: PR/MR for the current branch, state, checks, open in browser.
+- [ ] **Create from the current branch**, title and body. The interesting version is the body
+      **drafted from the session that produced the commits**, which is exactly the session ↔ commit
+      link item 1 defers — so the two are worth landing near each other.
+- [ ] **Review threads in the app**, which is the § 1 *review* verb and is bigger than everything
+      above it combined. Scope it separately; do not let it ride along.
+
+**Worktrees make "the current branch" ambiguous** (item 37, F21). Resolve it against the checkout
+the panel is showing, which is the rule F21 already settled for the file panel — not against the
+repository's `HEAD`, which may be a checkout nobody is looking at.
