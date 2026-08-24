@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
 	FOO_ID,
 	fixtureAgentMovedWithoutSaying,
+	fixtureAgentWorkedByAbsolutePath,
 	fixtureOneProjectOneSession,
 	fixtureSessionInAWorktree,
 	installMockBridge,
@@ -167,6 +168,19 @@ test.describe('worktrees', () => {
 		// trace is the session's last cwd, and reading its *first* is why the panel
 		// sat on main.
 		await installMockBridge(page, fixtureAgentMovedWithoutSaying());
+		await page.goto(IN_WORKTREE);
+		await openPanel(page);
+
+		await expect(page.getByTestId('session-worktree')).toContainText('feature-x');
+		await expect(page.getByText('switcher.ts')).toBeVisible();
+	});
+
+	test('@smoke it follows an agent that never moved its cwd at all', async ({ page }) => {
+		// The second shape, and the one no cwd can catch: `git worktree add`, then
+		// `git -C` and absolute paths for everything after it. Both cwds name the
+		// project, correctly, and the only trace of the real tree is the files the
+		// agent's own tools touched.
+		await installMockBridge(page, fixtureAgentWorkedByAbsolutePath());
 		await page.goto(IN_WORKTREE);
 		await openPanel(page);
 

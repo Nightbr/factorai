@@ -11,7 +11,17 @@ use crate::commands::projects::reconcile;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{IndexerPhase, IndexerProgress, SessionsChanged};
-use crate::services::jsonl::{derive_title, flatten_message_text, EventIter};
+use crate::services::jsonl::{derive_title, flatten_message_text, tool_use_paths, EventIter};
+
+/// Which version of `index_session` wrote a `sessions` row.
+///
+/// **Bump this whenever the parse learns to extract something new**, and every
+/// existing row is reparsed once on the next scan — see migration 0009 for why
+/// a derived column cannot be backfilled any other way, and why the ad-hoc test
+/// this replaced could not generalise.
+///
+/// 1 — `last_touched`, the last absolute path an agent's tools named (F21).
+const PARSE_VERSION: i64 = 1;
 
 pub type ProgressCb = Arc<dyn Fn(IndexerProgress) + Send + Sync>;
 pub type ChangedCb = Arc<dyn Fn(SessionsChanged) + Send + Sync>;
@@ -392,32 +402,30 @@ impl Indexer {
 			.unwrap_or(0);
 		let size = meta.len() as i64;
 
-		let cached: Option<(i64, i64, bool)> = self.db.with(|conn| {
+		let cached: Option<(i64, i64, i64)> = self.db.with(|conn| {
 			Ok(conn
 				.query_row(
-					// The third column is the backfill test below, not a fact about the
-					// file: "does this row predate a column we now need?"
-					"SELECT file_mtime, file_size, cwd IS NOT NULL AND last_cwd IS NULL
-					   FROM sessions WHERE id = ?1",
+					// The third column is not a fact about the file: it is "which
+					// version of this function wrote the row".
+					"SELECT file_mtime, file_size, parse_version FROM sessions WHERE id = ?1",
 					params![session_id],
-					|row| {
-						Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, bool>(2)?))
-					},
+					|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)),
 				)
 				.ok())
 		})?;
-		// **A row missing `last_cwd` is reparsed even when the file has not
-		// changed** (F21, migration 0008). `ALTER TABLE ... ADD COLUMN` cannot fill
-		// a column that is derived from the transcript, and every existing row was
-		// written before this one existed — so without this the panel would keep
-		// failing to follow an agent into a worktree until that session happened to
-		// be messaged again, which for finished sessions is never.
+		// **A row written by an older parser is reparsed even when the file has not
+		// changed** (F21, migration 0009). `ALTER TABLE ... ADD COLUMN` cannot fill
+		// a column derived from the transcript, so without this a session keeps its
+		// stale answer until it is next messaged — which for a finished session is
+		// never, and finished sessions are most of them.
 		//
-		// It costs one reparse per pre-existing session, once, and it cannot loop:
-		// a transcript with any `cwd` at all yields a `last_cwd`, and one with none
-		// leaves `cwd` null too, so the condition is false for it from the start.
-		if let Some((cached_mtime, cached_size, needs_backfill)) = cached {
-			if (cached_mtime, cached_size) == (mtime_ms, size) && !needs_backfill {
+		// It costs one reparse per pre-existing session per bump, and it cannot
+		// loop: the row is written with `PARSE_VERSION` whatever the transcript
+		// turned out to contain. That is what the version stamp buys over 0008's
+		// `last_cwd IS NULL` test, which would never converge for a session that
+		// legitimately has nothing to find.
+		if let Some((cached_mtime, cached_size, parsed_with)) = cached {
+			if (cached_mtime, cached_size) == (mtime_ms, size) && parsed_with >= PARSE_VERSION {
 				return Ok(None);
 			}
 		}
@@ -433,6 +441,10 @@ impl Indexer {
 		// transcript's directory is derived from, and this is what tells us the
 		// agent moved. Migration 0008 has why the churn in between is harmless.
 		let mut last_cwd: Option<String> = None;
+		// The last file the agent worked on, absolute (F21, migration 0009). The
+		// signal for an agent that drives another checkout by absolute path and so
+		// never moves its own cwd — the shape that reached a user on 2026-08-24.
+		let mut last_touched: Option<String> = None;
 		let mut fts_rows: Vec<(String, String)> = Vec::new(); // (role, body)
 														// Two independent title sources, kept apart so precedence is decided once
 														// at the end rather than by whichever line happens to come last in the
@@ -480,6 +492,9 @@ impl Indexer {
 				}
 			}
 			if let Some(msg) = &ev.message {
+				if let Some(path) = tool_use_paths(&msg.content).last() {
+					last_touched = Some((*path).to_string());
+				}
 				let text = flatten_message_text(&msg.content);
 				if !text.is_empty() {
 					if first_user_text.is_none() && msg.role == "user" {
@@ -503,8 +518,8 @@ impl Indexer {
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			tx.execute(
-				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd)
-				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, last_touched, parse_version)
+				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
 				 ON CONFLICT(id) DO UPDATE SET
 				   title = excluded.title,
 				   updated_at = excluded.updated_at,
@@ -513,7 +528,9 @@ impl Indexer {
 				   file_size = excluded.file_size,
 				   cwd = COALESCE(excluded.cwd, sessions.cwd),
 				   subagent_of = excluded.subagent_of,
-				   last_cwd = COALESCE(excluded.last_cwd, sessions.last_cwd)",
+				   last_cwd = COALESCE(excluded.last_cwd, sessions.last_cwd),
+				   last_touched = COALESCE(excluded.last_touched, sessions.last_touched),
+				   parse_version = excluded.parse_version",
 				params![
 					session_id,
 					discovered_id,
@@ -526,6 +543,8 @@ impl Indexer {
 					cwd,
 					subagent_of,
 					last_cwd,
+					last_touched,
+					PARSE_VERSION,
 				],
 			)?;
 			tx.execute("DELETE FROM messages_fts WHERE session_id = ?1", params![session_id])?;

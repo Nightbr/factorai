@@ -298,6 +298,41 @@ export function fixtureAgentMovedWithoutSaying(): TestFixture {
 	};
 }
 
+/**
+ * The shape F21 failed in a second time (2026-08-24, in a user's session).
+ *
+ * The agent created a worktree and then drove it entirely through
+ * `git -C ../worktree …` and absolute paths. Its own cwd never moved, so both
+ * cwds still name the project — correctly — and there is nothing to follow but
+ * the files its tools named.
+ */
+export function fixtureAgentWorkedByAbsolutePath(): TestFixture {
+	const base = fixtureSessionInAWorktree();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const sessions = base.sessionsByProject?.[project.id];
+	if (!sessions) throw new Error('base fixture has no sessions');
+
+	return {
+		...base,
+		sessionsByProject: {
+			[project.id]: sessions.map((session) =>
+				session.id === 'session-uuid-002'
+					? {
+							...session,
+							worktree: null,
+							// Where it started *and* where it still is. Neither says
+							// anything, and both are right.
+							cwd: project.realPath,
+							lastCwd: project.realPath,
+							lastTouched: '/home/alice/code/worktrees/feature-x/src/switcher.ts',
+						}
+					: session,
+			),
+		},
+	};
+}
+
 /** A parent session plus two nested sub-agents — the F2 nesting shape, with
  *  the project's count covering only the parent (sub-agents don't count). */
 export function fixtureWithSubagents(): TestFixture {

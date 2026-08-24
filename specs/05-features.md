@@ -3172,16 +3172,43 @@ F19's path resolution is untouched — see migration 0008.
 `git worktree list` and treating a newly-appeared checkout as the live session's
 becomes a coin toss the moment two sessions are live in one project.
 
-**A fourth shape defeats all three signals, and is why the picker shipped**
-(seen 2026-08-24, in a user's session). The agent ran
-`git worktree add -b … ../pearl-eng-3834`, then drove that checkout entirely by
-`git -C ../pearl-eng-3834 …` and absolute paths. Its own cwd never moved, so
-`last_cwd` still named the checkout it started in; it called no `setWorktree`;
-and it reads and writes files through its own tools rather than the bridge, so
-no `openFile` ever arrived. There is nothing to infer from — the transcript's
-recorded cwd is *correct* and simply is not where the work is. The human's
-picker is the answer to that shape, and it is the only one: any inference here
-would be guessing between two checkouts the session is demonstrably using.
+**A fourth shape defeated all three signals** (seen 2026-08-24, in a user's
+session). The agent ran `git worktree add -b … ../pearl-eng-3834`, then drove
+that checkout entirely by `git -C ../pearl-eng-3834 …` and absolute paths. Its
+own cwd never moved, so `last_cwd` still named the checkout it started in; it
+called no `setWorktree`; and it reads and writes files through its own tools
+rather than the bridge, so no `openFile` ever arrived. Every signal was right and
+every one of them pointed at the wrong tree.
+
+**So a fourth signal was added, and it is the one this document rejected.** The
+last **absolute path the session's own `tool_use` blocks name** —
+`sessions.last_touched`, migration 0009 — read through the same containment as
+the two cwds. The rejection said it "means parsing another program's internal
+tool schema", which is true and is the cost paid: nothing in that parse is
+required to be present, an unrecognised shape yields no path rather than an
+error, and if the schema changes this quietly stops contributing and the cwds
+carry the feature exactly as they did before. What changed is the other side of
+the trade — the alternative is a panel that confidently describes the wrong
+directory, which is the failure the whole feature exists to prevent.
+
+**It is believed ahead of the cwds, and only when it names a linked checkout.**
+Both halves matter. Ahead, because the case it exists for is one where the cwds
+are *correct and useless*: an agent that never moves its cwd keeps naming the
+checkout it started in for ever, so reading that first would mean this step never
+runs in the one situation it was added for. Linked-only, because a touched path
+in the main checkout says nothing — an agent working in a worktree reads a shared
+config, a sibling package or the spec it is working from all day, and letting
+that count would flicker the panel between checkouts on every tool call. A path
+in a *linked* checkout is the opposite: nothing else in the session points there.
+
+**Relative paths are dropped rather than resolved.** A tool's path is relative to
+wherever that call ran, which the transcript does not state, and the entire use
+of this value is deciding which of two checkouts a path is inside. A wrong answer
+there is worse than no answer.
+
+**The human's picker is still the floor under all four.** An agent can work in
+two checkouts at once, and no inference can rank them — see "The escape is one
+control".
 
 ### The scope the bridge resolves against
 
@@ -3262,18 +3289,23 @@ this feature".
 Three steps, first match wins:
 
 1. `session_worktrees.path`, if it is still a registered worktree of the
-   repository *and* still on disk.
-2. The checkout containing `sessions.last_cwd`, then the one containing
+   repository *and* still on disk. The human's pick arrives here too, which is
+   why it needs nothing else to outrank the inferences below.
+2. The **linked** checkout containing `sessions.last_touched`, by longest
+   containment. Asymmetric on purpose — "The signals" above has why, and why it
+   sits ahead of the cwds rather than behind them.
+3. The checkout containing `sessions.last_cwd`, then the one containing
    `sessions.cwd`, by longest containment — which is what makes a session started
    *or moved* into a worktree correct with no signal at all. The `cwd` step is
    also the revert target above.
-3. `projects.real_path`.
+4. `projects.real_path`.
 
-A project route with no session in front always shows step 3. It has no session
+A project route with no session in front always shows step 4. It has no session
 whose checkout could be meant, and guessing from the most recent one would make
 the tree change when you navigated away from it.
 
-**A checkout that stops being valid falls back to step 2 and says so once** —
+**A checkout that stops being valid falls back to the next step and says so
+once** —
 `git worktree remove`d, or its directory deleted while you are looking at it.
 Not doing this is worse than it sounds: `Repository::discover()` walks up from a
 missing path's nearest existing parent, so an unhandled removal quietly re-roots
@@ -3411,7 +3443,7 @@ checkout too, and it is visible from all three tabs.
 
 Two earlier reasons for the header placement were both wrong and are recorded so
 they are not re-argued. "A project route has no session header to read" — a
-project route always resolves to step 3, so the mark could never appear there
+project route always resolves to step 4, so the mark could never appear there
 anyway. And "all three tabs describe the same tree" is true but does not follow:
 the tab you are on decides whether there is anywhere to put it.
 

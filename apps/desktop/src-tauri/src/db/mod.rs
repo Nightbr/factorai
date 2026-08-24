@@ -29,6 +29,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// F21 again: the panel could not follow an agent that moved into a worktree,
 	// because the only cwd we kept was the one it started in.
 	("0008_session_last_cwd", include_str!("migrations/0008_session_last_cwd.sql")),
+	// F21 a third time: a cwd that never moves is not a cwd that says nothing —
+	// the agent was working through absolute paths. Also the version stamp that
+	// makes a parser change backfill itself.
+	("0009_session_last_touched", include_str!("migrations/0009_session_last_touched.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

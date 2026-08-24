@@ -76,6 +76,40 @@ pub fn flatten_message_text(content: &serde_json::Value) -> String {
 	}
 }
 
+/// The absolute file paths a message's `tool_use` blocks name, in order.
+///
+/// **This is deliberately a guess at another program's internal schema** (F21,
+/// migration 0009), so every step of it is allowed to find nothing: a block that
+/// is not a `tool_use`, an `input` that is not an object, a key we do not know,
+/// or a relative path all yield nothing rather than an error. The schema is
+/// undocumented and will change; when it does, this quietly stops contributing
+/// and the two cwd signals carry the feature exactly as they did before it
+/// existed.
+///
+/// **Relative paths are dropped rather than joined to the session's cwd.** A
+/// tool's path is relative to wherever *that call* ran, which is not something
+/// the transcript states, and the whole use of this value is deciding which of
+/// two checkouts a path is inside. A wrong answer there is worse than no answer.
+pub fn tool_use_paths(content: &serde_json::Value) -> Vec<&str> {
+	let serde_json::Value::Array(blocks) = content else {
+		return Vec::new();
+	};
+	blocks
+		.iter()
+		.filter(|b| b.get("type").and_then(|v| v.as_str()) == Some("tool_use"))
+		.filter_map(|b| b.get("input"))
+		// `file_path` covers Read, Write and Edit; `notebook_path` is NotebookEdit's
+		// name for the same thing. Both are checked because a session that only ever
+		// edits notebooks is not a session we should be blind to.
+		.filter_map(|input| {
+			["file_path", "notebook_path"]
+				.iter()
+				.find_map(|key| input.get(key).and_then(|v| v.as_str()))
+		})
+		.filter(|path| path.starts_with('/'))
+		.collect()
+}
+
 /// Title derivation per specs/02-data-model.md § "Persistence implications".
 pub fn derive_title(first_user_text: Option<&str>, session_id: &str) -> String {
 	if let Some(text) = first_user_text {
@@ -106,6 +140,36 @@ mod tests {
 			{"type": "text", "text": "second"}
 		]);
 		assert_eq!(flatten_message_text(&v), "first\nsecond");
+	}
+
+	#[test]
+	fn tool_use_paths_reads_the_shapes_claude_writes() {
+		let v = serde_json::json!([
+			{"type": "text", "text": "opening two files"},
+			{"type": "tool_use", "name": "Read", "input": {"file_path": "/wt/feature-x/a.ts"}},
+			{"type": "tool_use", "name": "NotebookEdit", "input": {"notebook_path": "/wt/feature-x/b.ipynb"}}
+		]);
+		assert_eq!(tool_use_paths(&v), vec!["/wt/feature-x/a.ts", "/wt/feature-x/b.ipynb"]);
+	}
+
+	/// Every way the guess can miss, in one place: a block that is not a
+	/// `tool_use`, a tool with no path at all, and a path that is relative and so
+	/// cannot be resolved against a checkout. None of them is an error, and none
+	/// of them contributes.
+	#[test]
+	fn tool_use_paths_ignores_what_it_cannot_use() {
+		let v = serde_json::json!([
+			{"type": "text", "text": "thinking"},
+			{"type": "tool_use", "name": "Bash", "input": {"command": "git -C ../wt status"}},
+			{"type": "tool_use", "name": "Read", "input": {"file_path": "src/main.rs"}},
+			{"type": "tool_result", "content": "ok"}
+		]);
+		assert!(tool_use_paths(&v).is_empty());
+	}
+
+	#[test]
+	fn tool_use_paths_of_a_plain_string_body() {
+		assert!(tool_use_paths(&serde_json::json!("just text")).is_empty());
 	}
 
 	#[test]

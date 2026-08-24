@@ -644,6 +644,90 @@ fn subagent_events(cwd: &str) -> Vec<String> {
 	]
 }
 
+/// The path an agent's own tools name is recorded, so the panel can follow an
+/// agent that never moves its cwd at all (F21, migration 0009).
+///
+/// **The shape that reached a user**: `git worktree add`, then `git -C <wt>` and
+/// absolute paths for everything after it. The session's cwd stays where it
+/// started — correctly — and says nothing about where the work is.
+#[test]
+fn the_last_absolute_path_an_agent_touched_is_recorded() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, cwd, project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+
+	let cwd_str = cwd.to_string_lossy();
+	let touched = format!(
+		r#"{{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"2026-01-01T00:00:09Z","cwd":"{cwd_str}","message":{{"role":"assistant","content":[{{"type":"tool_use","name":"Edit","input":{{"file_path":"/wt/feature-x/switcher.ts"}}}}]}}}}"#
+	);
+	std::fs::write(
+		project_dir.join(format!("{session_id}.jsonl")),
+		format!(
+			"{}
+{}",
+			std::fs::read_to_string(project_dir.join(format!("{session_id}.jsonl")))
+				.expect("read session"),
+			touched
+		),
+	)
+	.expect("append");
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let (last_touched, last_cwd): (Option<String>, Option<String>) = conn.query_row(
+			"SELECT last_touched, last_cwd FROM sessions WHERE id = ?1",
+			params![session_id],
+			|r| Ok((r.get(0)?, r.get(1)?)),
+		)?;
+		assert_eq!(last_touched.as_deref(), Some("/wt/feature-x/switcher.ts"));
+		// The two are independent facts and both are kept: the cwd is still where
+		// the session runs, which is what resume needs.
+		assert_eq!(last_cwd.as_deref(), Some(cwd.to_str().unwrap()));
+		Ok(())
+	})
+	.expect("read row");
+}
+
+/// A row written by an older parser is reparsed once, even though the transcript
+/// has not changed — and a session with nothing to find does not reparse for
+/// ever, which is what the version stamp buys over 0008's `IS NULL` test.
+#[test]
+fn a_row_from_an_older_parser_is_reparsed_exactly_once() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, _store, session_id) = fixture_one_session(tmp.path(), &db);
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("first scan");
+
+	// Pretend this row predates the column, as every row on an existing install
+	// does the first time the migration runs.
+	db.with_mut(|conn| {
+		conn.execute(
+			"UPDATE sessions SET parse_version = 0, last_touched = NULL WHERE id = ?1",
+			params![session_id],
+		)?;
+		Ok(())
+	})
+	.expect("age the row");
+
+	indexer.full_scan().expect("second scan");
+	db.with(|conn| {
+		let version: i64 = conn.query_row(
+			"SELECT parse_version FROM sessions WHERE id = ?1",
+			params![session_id],
+			|r| r.get(0),
+		)?;
+		// Stamped even though this transcript names no file at all — the row is
+		// current, so the next scan skips it and the backfill terminates.
+		assert_eq!(version, 1);
+		Ok(())
+	})
+	.expect("read version");
+}
+
 /// A sub-agent transcript is indexed as a session row under the real project,
 /// marked `subagent_of` — and never manufactures a project named after its
 /// containing folder.

@@ -1,0 +1,41 @@
+-- The file the agent last worked on, and a version stamp for the parse (F21).
+--
+-- **Added 2026-08-24, after a third shape of "the agent moved and factorai did
+-- not" reached a user.** The agent ran
+-- `git worktree add -b … ../pearl-eng-3834` and then drove that checkout
+-- entirely through `git -C ../pearl-eng-3834 …` and absolute paths. Its own cwd
+-- never moved, so 0008's `last_cwd` — correctly — still named the checkout the
+-- session started in. It called no `setWorktree`, and it reads and writes files
+-- through its own tools rather than the bridge, so no `openFile` arrived either.
+-- Every signal was right and every one of them pointed at the wrong tree.
+--
+-- What the transcript does hold is the path of every file the agent touched, in
+-- the `tool_use` blocks of its own messages. The last absolute one, run through
+-- the same containment the two cwds go through, is what says "the work is over
+-- there". 05-features.md F21 has why it is consulted *before* `last_cwd` but
+-- only when it names a linked checkout.
+--
+-- **This is the signal F21 originally rejected**, on the grounds that it means
+-- parsing another program's internal tool schema. That cost is real and unchanged
+-- — it is why nothing here is required to be present, and why an unrecognised
+-- block shape yields no path rather than an error. What changed is the other side
+-- of the trade: the alternative turned out to be a feature that silently
+-- describes the wrong directory, which is the failure this whole feature exists
+-- to prevent.
+ALTER TABLE sessions ADD COLUMN last_touched TEXT;
+
+-- Which version of the parser wrote a row.
+--
+-- 0008 backfilled itself with an ad-hoc test — `cwd IS NOT NULL AND last_cwd IS
+-- NULL` — because `ALTER TABLE ... ADD COLUMN` cannot fill a column derived from
+-- the transcript, and a row written before the column existed would otherwise
+-- keep its stale answer until that session was messaged again, which for a
+-- finished session is never. That test worked and does not generalise: the same
+-- shape for `last_touched` (`last_touched IS NULL`) never converges, because a
+-- session that called no tools at all has no path to find and would be reparsed
+-- on every scan for ever.
+--
+-- A version stamp is the general form. Every existing row is 0, every parser
+-- change bumps the constant, and each row is reparsed exactly once per bump —
+-- which also backfills `last_touched` and retires 0008's special case.
+ALTER TABLE sessions ADD COLUMN parse_version INTEGER NOT NULL DEFAULT 0;

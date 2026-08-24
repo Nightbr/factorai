@@ -29,7 +29,7 @@ pub fn list_sessions(
 			// it draws — the sidebar's checkout mark — and on first paint, before
 			// any `session:worktree` event has had a reason to fire.
 			"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
-			        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd
+			        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.last_touched
 			 FROM sessions s
 			 JOIN discovered_projects d ON d.id = s.discovered_id
 			 LEFT JOIN sessions p ON p.id = s.subagent_of
@@ -52,6 +52,7 @@ pub fn list_sessions(
 					subagent_of: row.get(7)?,
 					worktree: row.get(8)?,
 					last_cwd: row.get(9)?,
+					last_touched: row.get(10)?,
 				})
 			})?
 			.collect::<rusqlite::Result<Vec<_>>>()?;
