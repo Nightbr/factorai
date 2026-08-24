@@ -978,8 +978,8 @@ four things it cost that the design did not predict. What follows is the remaind
       the only signal that is an intent rather than an inference — but nothing rests on it, and
       if it is still unobserved in a month, say so here rather than leaving it looking
       load-bearing.
-- [ ] **The human's worktree picker**, if wanted. Deliberately deferred: v0 exists to find out
-      whether agent-driven following works, and a select would have let it look like it does.
-      F21 § "Not in this feature" holds the reasoning, along with the other three deferrals
-      (telling the agent when the human moves the panel, creating worktrees from factorai, and
-      new sessions starting in the shown checkout).
+- [x] **The human's worktree picker.** Shipped 2026-08-24, on a user's report of the shape no
+      inference can reach: the agent created a worktree and drove it by `git -C` and absolute
+      paths, so its cwd never moved and the bridge never heard from it. The remaining three
+      deferrals stand (telling the agent when the human moves the panel, creating worktrees from
+      factorai, and new sessions starting in the shown checkout).

@@ -139,6 +139,47 @@ pub fn clear_session_worktree(state: State<'_, AppState>, session_id: String) ->
 	crate::services::sessions::clear_worktree(&state.db, &session_id)
 }
 
+/// Root this session's panel on a checkout the **human** chose (F21).
+///
+/// The picker beside the header's branch badge. It writes the same row the
+/// bridge's signal path writes, deliberately: a pick and a signal answer the
+/// same question, and a second table would need a precedence rule between two
+/// records of one fact. What keeps a pick from being undone by the next
+/// `openFile` is a flag in the renderer's store, not a second row here — the
+/// pick is in force for as long as you are looking at it, and a reload resolves
+/// it from this row like any other.
+///
+/// **Validated against the project's own repository, not against the path
+/// alone.** `worktree_paths` discovers from whatever it is handed, so checking
+/// `path` against its own repository would accept any checkout of any repository
+/// on the machine — a renderer bug, or a malformed call, could then root the
+/// panel outside the project the route names. The renderer only ever offers this
+/// project's checkouts; this is the half that does not trust it.
+///
+/// A path that is not a checkout of that repository — or is one whose directory
+/// has since gone — is `InvalidInput`, which is the same line
+/// `services/ide/protocol.rs` draws for `setWorktree`.
+#[tauri::command]
+pub fn set_session_worktree(
+	state: State<'_, AppState>,
+	session_id: String,
+	project_path: String,
+	path: String,
+) -> AppResult<()> {
+	let wanted = std::fs::canonicalize(&path).unwrap_or_else(|_| std::path::PathBuf::from(&path));
+	if !crate::services::git::worktree_paths(&project_path).contains(&wanted) {
+		return Err(AppError::InvalidInput(format!(
+			"{path} is not a checkout of the repository at {project_path}"
+		)));
+	}
+	crate::services::sessions::set_worktree(
+		&state.db,
+		&session_id,
+		&wanted.to_string_lossy(),
+		crate::epoch_ms(),
+	)
+}
+
 /// Where a session's transcript lives, addressed by the store directory we
 /// recorded for it. A sub-agent's is nested under its parent's id:
 /// `<store dir>/<parent>/subagents/agent-*.jsonl`.

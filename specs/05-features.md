@@ -3168,11 +3168,20 @@ the worktree, which is why the noise is harmless and why the raw last value must
 never be compared to the project root directly. `cwd` keeps its own meaning, so
 F19's path resolution is untouched — see migration 0008.
 
-**Two signals stay rejected**, for reasons the above does not weaken. Polling
+**One signal stays rejected**, for a reason the above does not weaken: polling
 `git worktree list` and treating a newly-appeared checkout as the live session's
-becomes a coin toss the moment two sessions are live in one project. Reading the
-transcript's tool-use payloads means parsing another program's internal tool
-schema.
+becomes a coin toss the moment two sessions are live in one project.
+
+**A fourth shape defeats all three signals, and is why the picker shipped**
+(seen 2026-08-24, in a user's session). The agent ran
+`git worktree add -b … ../pearl-eng-3834`, then drove that checkout entirely by
+`git -C ../pearl-eng-3834 …` and absolute paths. Its own cwd never moved, so
+`last_cwd` still named the checkout it started in; it called no `setWorktree`;
+and it reads and writes files through its own tools rather than the bridge, so
+no `openFile` ever arrived. There is nothing to infer from — the transcript's
+recorded cwd is *correct* and simply is not where the work is. The human's
+picker is the answer to that shape, and it is the only one: any inference here
+would be guessing between two checkouts the session is demonstrably using.
 
 ### The scope the bridge resolves against
 
@@ -3221,11 +3230,24 @@ Three bounds keep it from being obnoxious:
   working in two trees, and the alternative — pinning the panel to one of them —
   is the picker this feature deliberately does not ship yet.
 
-**The escape is one control, and it is not a picker.** When the panel is off the
-session's own checkout, an `IconButton` appears beside the header badge and
-returns it to the worktree containing `sessions.cwd`. It is an undo of an
-automatic move, which is the smallest thing that stops a human being stranded;
-it takes no lock, so the next signal can move the panel again.
+**The escape is one control, and since 2026-08-24 it is a picker.** v0 shipped
+an `IconButton` beside the header badge that returned the panel to the worktree
+containing `sessions.cwd` — an undo of an automatic move, deliberately not a
+select, because the point of v0 was to find out whether agent-driven following
+works and a select would have let it look like it does. It does work. What it
+cannot cover turned up in a real session and is stated under "The signals"
+below: an agent that drives a worktree entirely by `git -C` and absolute paths
+leaves nothing to follow. So the mark is now the trigger of a menu listing every
+checkout, and the revert is an item inside it rather than a second control in the
+header.
+
+**A pick outranks an inference and is undone by the revert, not by the agent.**
+It writes the same `session_worktrees` row a signal writes — one question, one
+record — and the renderer marks it `pinned`, which is what makes the next
+`openFile` in another checkout leave the panel where the human put it. The flag
+is in the store and not in the table on purpose: a reload resolves to the picked
+checkout from the row like any other, and drops only the immunity, because an
+agent that moves after a reload is one the panel should follow again.
 
 **It deletes the row, and it has to.** `clear_session_worktree` is the only write
 to `session_worktrees` that does not come from the bridge. Clearing only the
@@ -3356,14 +3378,25 @@ they share a branch, or when one has a detached HEAD and no branch to print. The
 two disagreed for one commit — `wt-demo` in the header, `demo/worktree` in the
 panel — which reads as two different places.
 
-**The session header's badge gains a worktree mark only when the checkout is not
-the project's own.** A single-checkout project's header is byte-identical to
-today, which is the point: 95% of projects should pay nothing for this. When it
-is off-main, the branch and the checkout are shown as two facts rather than one,
-because they usually agree and the interesting cases are when they do not — a
-detached `HEAD` in a worktree, or two checkouts on one branch. The badge stays
-quiet by design per F3; the revert control beside it is the only clickable thing
-added.
+**The session header's mark is drawn when the repository has more than one
+checkout**, and it names the one you are in whichever that is. A single-checkout
+project's header is byte-identical to what it was before F21, which is the point:
+95% of projects pay nothing for this. The gate was "the checkout is not the
+project's own" until 2026-08-24 and moved with the picker: once a repository has
+two checkouts, which of them you are looking at is a fact worth a mark even when
+it is the main one, and the mark is where the picker lives. Beside the branch and
+never instead of it — two facts rather than one, because they usually agree and
+the interesting cases are when they do not: a detached `HEAD` in a worktree, or
+two checkouts on one branch.
+
+**The mark is the menu's trigger**, rather than a control beside it. The header
+already carries a status dot, a project, a branch, a title and a close button,
+and one thing that both says where you are and takes you elsewhere is fewer
+things in that row than a mark plus a switcher. It keeps `IconButton`'s hover
+rule — the text and icon take colour, no filled block — so it still reads as
+quiet furniture until you reach for it. In the menu: every checkout git knows,
+`text-sm` label and `text-xs` metadata (its branch, or `locked` / `missing`), a
+missing one listed and disabled, and the revert as a separated last item.
 
 **The tree names the checkout beside its root folder**, `text-xs`, and **only
 when it is not the project's own**. So the root row reads `factorai · ⧉
@@ -3409,10 +3442,10 @@ says why — a checkout you cannot see is one you cannot reason about.
 
 ### Not in this feature
 
-- **A worktree picker in the header.** The whole point of the first slice is
-  finding out whether agent-driven following works; a select would let it look
-  like it does. Its own follow-up, and the place to handle the agent that cannot
-  keep factorai in sync.
+- ~~**A worktree picker in the header.**~~ Shipped 2026-08-24 — see "The escape
+  is one control" above. The deferral was right and its condition was met:
+  agent-driven following was verified first, and the picker landed for the shape
+  no inference can reach.
 - **Telling the agent when the human moves the panel.** `getWorkspaceFolders`
   reports the session's own cwd first and the current view second, clearly
   labelled, so an agent that asks is never misled into editing a tree it was not

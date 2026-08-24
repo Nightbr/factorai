@@ -101,10 +101,17 @@ get_session_tail(session_id: String, limit: usize) -> SessionPage
 // signalled, LEFT JOINed from `session_worktrees`. Joined into the list rather
 // than fetched per session: the sidebar draws a mark from it on every row, and
 // it has to be right on first paint, before any event has had a reason to fire.
-// **The human's revert**, and the only write to `session_worktrees` that does
-// not come from the IDE bridge. Idempotent — the control is drawn from state a
+// **The human's revert.** Idempotent — the control is drawn from state a
 // double-click can outrun.
 clear_session_worktree(session_id: String) -> ()
+// **The human's picker** (F21): root this session's panel on a checkout they
+// chose. Writes the same row the bridge's signal path writes, because a pick and
+// a signal answer one question and two records of one fact would need a
+// precedence rule between them. Validated against `project_path`'s repository,
+// not against `path`'s own — the renderer only offers this project's checkouts,
+// and this is the half that does not trust it. A path that is not one of them,
+// or whose directory is gone, is InvalidInput.
+set_session_worktree(session_id: String, project_path: String, path: String) -> ()
 // An offset-paged `get_session` sat here until 2026-08-16. It outlived the
 // JSONL viewer it was written for and was never called again — deleted rather
 // than kept "available", see 05-features.md F3.

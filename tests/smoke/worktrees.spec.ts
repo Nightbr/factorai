@@ -2,12 +2,24 @@ import { expect, test } from '@playwright/test';
 import {
 	FOO_ID,
 	fixtureAgentMovedWithoutSaying,
+	fixtureOneProjectOneSession,
 	fixtureSessionInAWorktree,
 	installMockBridge,
 } from './fixtures';
 
 const IN_WORKTREE = `/#/projects/${FOO_ID}/sessions/session-uuid-002`;
 const IN_PROJECT = `/#/projects/${FOO_ID}/sessions/session-uuid-001`;
+
+/** The commands the mock bridge could not perform, so a test can assert one was
+ *  attempted. */
+function mockCalls(page: import('@playwright/test').Page): Promise<string[]> {
+	return page.evaluate(
+		() =>
+			(
+				window as unknown as { __FACTORAI_TEST_CALLS__?: { name: string }[] }
+			).__FACTORAI_TEST_CALLS__?.map((c) => c.name) ?? [],
+	);
+}
 
 async function openPanel(page: import('@playwright/test').Page) {
 	await page.getByRole('button', { name: 'Toggle file tree' }).click();
@@ -60,16 +72,77 @@ test.describe('worktrees', () => {
 		expect(panel.trim()).toBe(header.trim());
 	});
 
-	test('@smoke a session in the project’s own checkout gets no worktree furniture', async ({
-		page,
-	}) => {
+	test('@smoke a single-checkout project gets no worktree furniture at all', async ({ page }) => {
 		// The 95% case, and the one that must look exactly as it did before F21.
-		await installMockBridge(page, fixtureSessionInAWorktree());
+		// **The gate is the repository having one checkout**, not the session being
+		// on the project's own: once there are two, which one you are in is a fact
+		// worth a mark either way — and it is where the picker lives.
+		await installMockBridge(page, fixtureOneProjectOneSession());
 		await page.goto(IN_PROJECT);
 		await openPanel(page);
 
 		await expect(page.getByTestId('session-worktree')).toHaveCount(0);
 		await expect(page.getByTestId('panel-checkout')).toHaveCount(0);
+	});
+
+	test('@smoke the mark names the project’s own checkout when there is more than one', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureSessionInAWorktree());
+		await page.goto(IN_PROJECT);
+		await openPanel(page);
+
+		// The header says which checkout — the panel does not, because the panel's
+		// mark answers "is this tree the project's own", and here it is.
+		await expect(page.getByTestId('session-worktree')).toContainText('foo');
+		await expect(page.getByTestId('panel-checkout')).toHaveCount(0);
+	});
+
+	test('@smoke picking a checkout roots the panel on it', async ({ page }) => {
+		// **The case no inference can reach**, and why the picker shipped: an agent
+		// that creates a worktree and then drives it by `git -C` and absolute paths
+		// never moves its own cwd and never opens a file through the bridge, so
+		// there is nothing at all to follow.
+		await installMockBridge(page, fixtureSessionInAWorktree());
+		await page.goto(IN_PROJECT);
+		await openPanel(page);
+
+		await page.getByTestId('session-worktree').click();
+		await page.getByRole('menuitemradio', { name: /feature-x/ }).click();
+
+		await expect(page.getByTestId('session-worktree')).toContainText('feature-x');
+		// The file only the worktree holds — the panel really re-rooted, rather
+		// than the header alone changing its mind.
+		await expect(page.getByText('switcher.ts')).toBeVisible();
+		// And it is remembered, or the pick would last exactly as long as this
+		// renderer does.
+		await expect.poll(() => mockCalls(page)).toContain('set_session_worktree');
+	});
+
+	test('@smoke a pick outranks a signal for the same session', async ({ page }) => {
+		// An agent that never learned `setWorktree` is exactly the agent whose every
+		// `openFile` is an inference — so without this, a pick lasts until the agent
+		// touches a file, which reads as a control that does not work.
+		await installMockBridge(page, fixtureSessionInAWorktree());
+		await page.goto(IN_WORKTREE);
+
+		await page.getByTestId('session-worktree').click();
+		await page.getByRole('menuitemradio', { name: /^foo/ }).click();
+		await expect(page.getByTestId('session-worktree')).toContainText('foo');
+
+		await page.evaluate(() => {
+			(
+				window as unknown as {
+					__FACTORAI_EMIT__?: (name: string, payload: unknown) => void;
+				}
+			).__FACTORAI_EMIT__?.('session:worktree', {
+				sessionId: 'session-uuid-002',
+				path: '/home/alice/code/worktrees/feature-x',
+				branch: 'feature-x',
+			});
+		});
+
+		await expect(page.getByTestId('session-worktree')).toContainText('foo');
 	});
 
 	test('@smoke the tree names the checkout beside its root folder', async ({ page }) => {
@@ -105,19 +178,13 @@ test.describe('worktrees', () => {
 		await installMockBridge(page, fixtureSessionInAWorktree());
 		await page.goto(IN_WORKTREE);
 
-		await page.getByRole('button', { name: "Back to this session's own checkout" }).click();
+		// Inside the picker since it shipped: the header carries one control for
+		// the checkout, not two, and the undo is one of the things it can do.
+		await page.getByTestId('session-worktree').click();
+		await page.getByRole('menuitem', { name: "Back to this session's own checkout" }).click();
 
 		// The record is cleared through the backend, not only in the renderer —
 		// otherwise the stored row wins again on the next read.
-		await expect
-			.poll(() =>
-				page.evaluate(
-					() =>
-						(
-							window as unknown as { __FACTORAI_TEST_CALLS__?: { name: string }[] }
-						).__FACTORAI_TEST_CALLS__?.map((c) => c.name) ?? [],
-				),
-			)
-			.toContain('clear_session_worktree');
+		await expect.poll(() => mockCalls(page)).toContain('clear_session_worktree');
 	});
 });

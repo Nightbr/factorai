@@ -2,23 +2,15 @@ import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import {
-	BookOpen,
-	CornerUpLeft,
-	FolderGit2,
-	GitBranch,
-	Play,
-	TriangleAlert,
-	X,
-} from 'lucide-react';
+import { BookOpen, GitBranch, Play, TriangleAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
+import { CheckoutMenu } from '@components/session/CheckoutMenu';
 import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, restartSession, Terminal } from '@components/terminal/Terminal';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useGitBranch } from '@hooks/useGitBranch';
-import { checkoutLabel } from '@hooks/useWorktrees';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { usePrefsStore } from '@store/prefsStore';
@@ -55,7 +47,7 @@ function SessionView() {
 	// **Which checkout this session is working in** (F21). Absent for a
 	// single-checkout project, which is the 95% case — so that header renders
 	// exactly as it did before any of this existed.
-	const { root, worktree, isLinked } = useActiveCheckout();
+	const { root, projectRoot, isLinked, worktrees } = useActiveCheckout();
 
 	// The header's branch badge. **The checkout's branch, not the project's**
 	// (F21) — corrected 2026-08-21, having shipped for one commit saying `main`
@@ -68,6 +60,26 @@ function SessionView() {
 	// the one the panel is already polling.
 	const branch = useGitBranch(root);
 	const clearWorktree = useTerminalStore((s) => s.clearWorktree);
+	const pinWorktree = useTerminalStore((s) => s.pinWorktree);
+
+	/**
+	 * Root the panel on a checkout the human picked (F21).
+	 *
+	 * The store first, then the row: the pick is a gesture, and a panel that
+	 * waits for a round trip before acknowledging one reads as a panel that
+	 * ignored it. The write is what makes it survive a reload, and a failure is
+	 * logged rather than raised for the same reason the revert's is — the panel
+	 * has already moved, and what is lost is only tomorrow's memory of it.
+	 */
+	function pickWorktree(path: string) {
+		const branchOf = worktrees.find((w) => w.path === path)?.branch ?? null;
+		pinWorktree(sessionId, path, branchOf);
+		if (!projectRoot) return;
+		void cmd
+			.setSessionWorktree(sessionId, projectRoot, path)
+			.then(() => queryClient.invalidateQueries({ queryKey: queryKeys.sessions(projectId) }))
+			.catch((e) => console.error('set_session_worktree failed', e));
+	}
 
 	/**
 	 * Back to the checkout this session's own cwd is in.
@@ -200,30 +212,20 @@ function SessionView() {
 				{/* **The checkout, beside the branch and never instead of it** (F21).
 				    Two facts rather than one: they usually agree, and the cases where
 				    they do not — a detached HEAD in a worktree, two checkouts on one
-				    branch — are exactly when you need to know. Drawn only when the
-				    session is off the project's own checkout, so a single-checkout
-				    header is byte-identical to what it was.
+				    branch — are exactly when you need to know.
 
-				    The badge stays quiet by design, like the branch (F3). The revert
-				    beside it is the one clickable thing added, and it is there because
-				    the panel moves by itself: without it a signal you did not want
-				    leaves you with no way back. */}
-				{isLinked && worktree && (
-					<span
-						className="flex min-w-0 max-w-[12rem] shrink-0 items-center gap-1 text-muted-foreground text-xs"
-						title={`Working in the worktree ${worktree.path}`}
-						data-testid="session-worktree"
-					>
-						<FolderGit2 className="size-3 shrink-0" aria-hidden />
-						<span className="truncate">{checkoutLabel(worktree)}</span>
-						<IconButton
-							aria-label="Back to this session's own checkout"
-							title="Back to this session's own checkout"
-							onClick={revertWorktree}
-						>
-							<CornerUpLeft />
-						</IconButton>
-					</span>
+				    Drawn only when the repository *has* a second checkout, so a
+				    single-checkout header is byte-identical to what it was. It is the
+				    picker's trigger as well as the mark, and that is the whole
+				    control: the revert moved inside it when it shipped, rather than
+				    leaving two clickable things in the header for one subject. */}
+				{worktrees.length > 1 && root && (
+					<CheckoutMenu
+						worktrees={worktrees}
+						current={root}
+						onSelect={pickWorktree}
+						onRevert={isLinked ? revertWorktree : null}
+					/>
 				)}
 				{/* The full id is one hover away rather than spending header width on
 				    36 characters nobody reads. */}

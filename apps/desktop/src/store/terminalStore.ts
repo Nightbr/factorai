@@ -19,6 +19,20 @@ export interface LiveTerminal {
 interface LiveWorktree {
 	path: string;
 	branch: string | null;
+	/** True when a **human** chose this checkout in the header's picker (F21).
+	 *
+	 *  It is what stops the next `openFile` inference dragging the panel back
+	 *  out of the checkout you just asked to see: an agent that never learned to
+	 *  signal is exactly the agent whose every file read is a signal, so without
+	 *  this a pick lasts until the agent touches a file — a control that works
+	 *  for a second reads as a control that does not work.
+	 *
+	 *  Deliberately **not persisted, and not a column**. The pick writes
+	 *  `session_worktrees` like any other record of the same fact, so a reload
+	 *  resolves to the same checkout; what a reload drops is only the pick's
+	 *  immunity, and an agent that moves after a reload is one the panel should
+	 *  follow again. */
+	pinned?: boolean;
 }
 
 /** A session you have open, whether or not it is running (F16). Carries its
@@ -97,8 +111,17 @@ interface TerminalState {
 	 *  bridge — costs no render. */
 	setIdeStatus: (sessionId: string, error: string | null) => void;
 	/** Record a `session:worktree` signal. Rust wrote the row before emitting, so
-	 *  this never gets ahead of what a reload would show. */
+	 *  this never gets ahead of what a reload would show.
+	 *
+	 *  **Ignored while the session's checkout is pinned** — see `LiveWorktree`. */
 	setWorktree: (sessionId: string, path: string, branch: string | null) => void;
+	/** Record the human's own pick from the header's checkout menu (F21).
+	 *
+	 *  Outranks a signal rather than racing it, and the durable half is
+	 *  `set_session_worktree`, which the caller writes first for the same reason
+	 *  the bridge does: a panel showing a checkout the next reload disagrees with
+	 *  is worse than one that moves a beat late. */
+	pinWorktree: (sessionId: string, path: string, branch: string | null) => void;
 	/** Drop the signal for a session — the header badge's revert. The persisted
 	 *  row goes with it, through `clearSessionWorktree`; this is only the
 	 *  in-flight half. */
@@ -153,12 +176,28 @@ export const useTerminalStore = create<TerminalState>()(
 			setWorktree: (sessionId, path, branch) =>
 				set((s) => {
 					const current = s.worktreeBySession[sessionId];
+					// The human is looking at a checkout they asked for. The signal is
+					// still true — the agent really did open a file elsewhere — but it
+					// is not a reason to move the panel out from under them.
+					if (current?.pinned) return s;
 					// A signal is sent on every `openFile` in a checkout, so the same
 					// path arrives over and over. Bail before writing, or every one of
 					// them is a new object reference and a re-render.
 					if (current?.path === path && current.branch === branch) return s;
 					return {
 						worktreeBySession: { ...s.worktreeBySession, [sessionId]: { path, branch } },
+					};
+				}),
+
+			pinWorktree: (sessionId, path, branch) =>
+				set((s) => {
+					const current = s.worktreeBySession[sessionId];
+					if (current?.path === path && current.branch === branch && current.pinned) return s;
+					return {
+						worktreeBySession: {
+							...s.worktreeBySession,
+							[sessionId]: { path, branch, pinned: true },
+						},
 					};
 				}),
 

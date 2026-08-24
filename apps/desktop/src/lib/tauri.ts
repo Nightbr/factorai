@@ -118,6 +118,13 @@ export const cmd = {
 	clearSessionWorktree: (sessionId: string) =>
 		invoke<void>('clear_session_worktree', { sessionId }),
 
+	/** Root a session's panel on a checkout the human picked (F21).
+	 *
+	 *  `projectPath` is what the checkout is validated against, so a path from
+	 *  another repository is rejected in Rust rather than trusted from here. */
+	setSessionWorktree: (sessionId: string, projectPath: string, path: string) =>
+		invoke<void>('set_session_worktree', { sessionId, projectPath, path }),
+
 	/** Repository state for the Changes tab and the tree's decorations (F13).
 	 *  A project outside a repository resolves with `repoRoot: null` rather
 	 *  than rejecting. */
@@ -620,6 +627,12 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				truncated: false,
 			}) as unknown as T;
 		}
+		case 'set_session_worktree':
+			// Same reasoning as the revert below: a fixture's sessions carry the
+			// `worktree` they were declared with, and the renderer's own store is
+			// what moves the panel — so a test asserts the call was attempted.
+			recordMockCall('set_session_worktree');
+			return undefined as unknown as T;
 		case 'clear_session_worktree':
 			// Nothing to forget in a fixture: the mock's sessions carry whatever
 			// `worktree` they were declared with, and a test that needs the revert

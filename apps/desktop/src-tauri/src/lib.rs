@@ -226,6 +226,7 @@ pub fn run() {
 			commands::git::git_blob_at,
 			commands::git::git_worktrees,
 			commands::sessions::clear_session_worktree,
+			commands::sessions::set_session_worktree,
 			commands::settings::get_setting,
 			commands::settings::set_setting,
 			commands::settings::check_claude_cli,
@@ -242,12 +243,14 @@ pub fn run() {
 		.expect("error while running factorai");
 }
 
-/// Wall-clock milliseconds, for the one row `lib.rs` writes itself.
+/// Wall-clock milliseconds, for the two writes to `session_worktrees` that do
+/// not come from the bridge — the setup callback below, and the human's picker
+/// in `commands::sessions`.
 ///
 /// A local copy rather than reaching into `services::terminal`'s private helper:
-/// a second caller is not a reason to widen that module's surface, and this is
+/// another caller is not a reason to widen that module's surface, and this is
 /// three lines.
-fn epoch_ms() -> i64 {
+pub(crate) fn epoch_ms() -> i64 {
 	std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
 		.map(|d| d.as_millis() as i64)
