@@ -690,6 +690,65 @@ fn the_last_absolute_path_an_agent_touched_is_recorded() {
 	.expect("read row");
 }
 
+/// A path that reaches a checkout by another name resolves to the checkout's own
+/// name before the renderer ever sees it (F21).
+///
+/// Every path in `git_worktrees` has been through `fs::canonicalize`, and the
+/// renderer decides which checkout a session is in by comparing these against
+/// those. A `..` in a tool's absolute path — or a shell's logical idea of its own
+/// directory, which keeps whatever symlink you walked through — matches none of
+/// them, and the panel then sits silently on the project while the agent works
+/// elsewhere.
+#[test]
+fn a_path_reached_by_another_name_is_resolved_for_the_renderer() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, cwd, project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+
+	// A real file the agent edits, named through a `..` hop the way a path built
+	// by string concatenation is.
+	let nested = cwd.join("src");
+	std::fs::create_dir_all(&nested).expect("mkdir src");
+	std::fs::write(nested.join("switcher.ts"), "export {}\n").expect("write file");
+	let indirect = format!("{}/src/../src/switcher.ts", cwd.to_string_lossy());
+
+	let cwd_str = cwd.to_string_lossy();
+	let touched = format!(
+		r#"{{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"2026-01-01T00:00:09Z","cwd":"{cwd_str}","message":{{"role":"assistant","content":[{{"type":"tool_use","name":"Edit","input":{{"file_path":"{indirect}"}}}}]}}}}"#
+	);
+	let path = project_dir.join(format!("{session_id}.jsonl"));
+	let existing = std::fs::read_to_string(&path).expect("read session");
+	std::fs::write(&path, format!("{existing}\n{touched}")).expect("append");
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	indexer.full_scan().expect("scan");
+
+	let project_id = only_project(&db).id;
+	let sessions = db
+		.with(|conn| factorai_lib::commands::sessions::list_sessions_in(conn, &project_id))
+		.expect("list sessions");
+	let session = sessions.iter().find(|s| s.id == session_id).expect("the session");
+	assert_eq!(
+		session.last_touched.as_deref(),
+		Some(nested.join("switcher.ts").to_string_lossy().as_ref())
+	);
+
+	// **The table keeps the raw value.** `resume_cwd` probes for a transcript at
+	// `encode_path(cwd)`, and `claude` encoded the path it was given — resolving
+	// it on the way in would make that probe miss for exactly the moved sessions
+	// it exists for.
+	db.with(|conn| {
+		let stored: String = conn.query_row(
+			"SELECT last_touched FROM sessions WHERE id = ?1",
+			params![session_id],
+			|r| r.get(0),
+		)?;
+		assert_eq!(stored, indirect);
+		Ok(())
+	})
+	.expect("read row");
+}
+
 /// A row written by an older parser is reparsed once, even though the transcript
 /// has not changed — and a session with nothing to find does not reparse for
 /// ever, which is what the version stamp buys over 0008's `IS NULL` test.

@@ -3206,6 +3206,16 @@ wherever that call ran, which the transcript does not state, and the entire use
 of this value is deciding which of two checkouts a path is inside. A wrong answer
 there is worse than no answer.
 
+**Every path is compared resolved, and stored raw.** `git_worktrees` has always
+canonicalized, so the session's side has to as well or the comparison is between
+two names for one directory: a tool's absolute path can carry `..`, and a shell's
+own idea of where it is is the *logical* path, which keeps whatever symlink you
+walked through. `list_sessions` resolves `cwd`, `last_cwd` and `last_touched` on
+the way out and the table keeps the raw value — `resume_cwd` probes
+`encode_path(cwd)` for a transcript, and `claude` encoded the path it was given.
+Resolving on the way in would make that probe miss for exactly the moved
+sessions it exists for.
+
 **The human's picker is still the floor under all four.** An agent can work in
 two checkouts at once, and no inference can rank them — see "The escape is one
 control".

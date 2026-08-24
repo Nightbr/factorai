@@ -245,6 +245,17 @@ cheap: the discovery survives, only the membership goes.
 | last_cwd       | TEXT       | **last** observed `cwd` (F21, migration 0008). How the panel notices an agent that moved into a worktree without saying so. Only ever read through containment against the repository's checkouts — the raw value follows every `cd` a shell command makes. |
 | last_touched   | TEXT       | the last **absolute** path this session's own tool calls named (F21, migration 0009). The signal for an agent that drives another checkout by absolute path and so never moves its cwd at all. A guess at another program's tool schema, so it is allowed to be null for any reason; believed only when it lands in a *linked* checkout. |
 | parse_version  | INTEGER    | which version of `index_session` wrote this row (migration 0009). A row below the current constant is reparsed once on the next scan, which is the only way a column derived from a transcript can be backfilled. Replaces 0008's ad-hoc `cwd IS NOT NULL AND last_cwd IS NULL` test, which could not generalise: the same shape for a column that is legitimately null never converges. |
+
+**The three path columns are stored raw and returned resolved.** `list_sessions`
+runs `cwd`, `last_cwd` and `last_touched` through `fs::canonicalize` on the way
+out, because every path in `git_worktrees` has already been through it and the
+renderer decides which checkout a session is in by comparing the two — a path
+that reaches the same directory by another name (a `..` hop, a symlink a shell
+walked through and kept in its logical cwd) matches no checkout at all, and the
+panel then sits silently on the project. It cannot be done on the way *in*:
+`resume_cwd` probes for a transcript at `encode_path(cwd)` and `claude` encoded
+the path it was given, so a resolved twin would make that probe miss for exactly
+the moved sessions it exists for.
 | cwd            | TEXT       | **first** observed `cwd` from events — where the session started. Said "last observed" until 2026-08-21; `indexer.rs` has always written the first (`if cwd.is_none()`), and both F19's relative-path resolution and F21's checkout default read it as the starting directory. |
 | subagent_of    | TEXT       | parent session id for a sub-agent transcript; NULL for a real one. No FK: read_dir order can index an agent before its parent, and an enforced reference would turn that into an error. |
 

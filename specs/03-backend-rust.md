@@ -95,6 +95,9 @@ pin_project(id: String, pinned: bool) -> ()
 // nests those rows directly under their parent (groups ordered by the
 // parent's recency); get_session_tail resolves a sub-agent's transcript
 // through its parent's directory inside the same store directory.
+// `cwd`, `lastCwd` and `lastTouched` come back **resolved** (F21) — the table
+// keeps the raw value, because `resume_cwd` probes `encode_path(cwd)` and claude
+// encoded the path it was given. See 02-data-model.md.
 list_sessions(project_id: String) -> Vec<SessionSummary>
 get_session_tail(session_id: String, limit: usize) -> SessionPage
 // SessionSummary also carries `worktree` (F21) — the checkout the agent last

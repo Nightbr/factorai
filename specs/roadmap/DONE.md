@@ -95,8 +95,61 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
     precisely the change that matters — and the re-measured lag is one second.
 
   Two remainders stayed open and are item 37's: the graph's per-checkout `HEAD` chips
-  (cosmetic), and watching whether `setWorktree` is ever called by a real agent. A worktree
-  picker for the human is deliberately deferred — F21 § "Not in this feature" has why.
+  (cosmetic), and watching whether `setWorktree` is ever called by a real agent. The worktree
+  picker was deferred here and shipped three days later — see below.
+
+- **F21's fourth signal and the human's picker — spec `05-features.md` F21, roadmap item 37** —
+  2026-08-24, on a user's screenshot of factorai naming the wrong branch while their agent worked
+  in a worktree it had just created. All three signals had fired correctly and all three pointed
+  at the wrong tree.
+
+  **The shape.** The agent ran `git worktree add -b … ../pearl-eng-3834`, then drove that
+  checkout entirely through `git -C ../pearl-eng-3834 …` and absolute paths. Its own cwd never
+  moved, so 0008's `last_cwd` — the fix for the *previous* failure, where the agent `cd`'d —
+  kept naming the checkout the session started in. It called no `setWorktree`, and it reads and
+  writes files through its own tools rather than the bridge, so no `openFile` arrived either.
+  Nothing was broken. The data was right and simply was not about where the work was.
+
+  **So the transcript's `tool_use` paths are read after all** — the signal F21 explicitly
+  rejected, for a reason that is still true: it means parsing another program's internal tool
+  schema. The cost is paid rather than argued away — every step of the parse may find nothing, an
+  unrecognised shape yields no path rather than an error, and if the schema moves this stops
+  contributing while the two cwds carry the feature exactly as before. What tipped it is that the
+  alternative is a panel confidently describing the wrong directory, which is the failure the
+  whole feature exists to prevent.
+
+  Two asymmetries make it safe, and both are load-bearing. It is read **ahead of** the cwds,
+  because the case it exists for is one where they are correct and useless — read them first and
+  this step never runs where it was needed. And it is believed **only when it names a linked
+  checkout**, because an agent working in a worktree reads the main checkout all day (a shared
+  config, a sibling package, the spec it works from), and counting that would flicker the panel
+  on every tool call.
+
+  **The picker shipped in the same pass**, and the deferral was right: v0 existed to find out
+  whether agent-driven following works, and it does — but an agent can work in two checkouts at
+  once, and no inference can rank them. The header's checkout mark became the trigger of a menu
+  listing every checkout, the revert moved inside it so the header carries one control rather
+  than two, and the mark's gate moved from "the checkout is not the project's own" to "the
+  repository has more than one checkout". A pick writes the same `session_worktrees` row a signal
+  writes and is marked `pinned` in the renderer, which is what stops the next `openFile` dragging
+  the panel back out of the checkout a human just asked for.
+
+  **Three things worth carrying forward.**
+
+  - **A derived column needs a version stamp, not a cleverer `IS NULL`.** 0008 backfilled itself
+    with `cwd IS NOT NULL AND last_cwd IS NULL`, which worked and does not generalise: the same
+    shape for `last_touched` never converges, because a session that called no tools legitimately
+    has nothing to find and would reparse on every scan for ever. `sessions.parse_version` is the
+    general form — bump the constant, every row reparses exactly once.
+  - **Comparing paths means comparing resolved paths.** `git_worktrees` has always
+    canonicalized; the session's side had not. An absolute path with a `..` in it, or a shell's
+    logical cwd through a symlink, matches no checkout and the panel sits silently on the
+    project. `list_sessions` now resolves on the way out — and deliberately not on the way in,
+    since `resume_cwd` probes `encode_path(cwd)` for a transcript claude stored under the path it
+    was *given*.
+  - **The user was looking at a header, not a panel.** The bug arrived as "it has not detected
+    the worktree", from a branch name in the session header. Whatever else moves, that string is
+    what a supervising human reads to know which tree they are being shown.
 
 - **Settings — spec `05-features.md` F11, Q24, ADR-0013, roadmap item 4** — 2026-08-20. The
   app's first place to put a preference. `?settings=claude|editor|confirmations|sessions` on the

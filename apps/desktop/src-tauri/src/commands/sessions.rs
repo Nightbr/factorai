@@ -15,49 +15,81 @@ pub fn list_sessions(
 	state: State<'_, AppState>,
 	project_id: String,
 ) -> AppResult<Vec<SessionSummary>> {
-	state.db.with(|conn| {
-		let mut stmt = conn.prepare(
-			// Sub-agent rows sort directly under their parent: groups are
-			// ordered by the *parent's* recency (a sub-agent is part of the
-			// work its parent session was), the parent leads its group, and
-			// siblings order among themselves by recency. An orphaned
-			// sub-agent (parent transcript deleted) keeps its marking but
-			// sorts as its own group — the LEFT JOIN leaves `p` NULL and
-			// COALESCE falls back to its own updated_at.
-			// `w.path` is the checkout the agent last signalled (F21). Joined here
-			// rather than fetched per session: the renderer needs it for every row
-			// it draws — the sidebar's checkout mark — and on first paint, before
-			// any `session:worktree` event has had a reason to fire.
-			"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
-			        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.last_touched
-			 FROM sessions s
-			 JOIN discovered_projects d ON d.id = s.discovered_id
-			 LEFT JOIN sessions p ON p.id = s.subagent_of
-			 LEFT JOIN session_worktrees w ON w.session_id = s.id
-			 WHERE d.project_id = ?1
-			 ORDER BY COALESCE(p.updated_at, s.updated_at) DESC,
-			          (s.subagent_of IS NULL) DESC,
-			          s.updated_at DESC",
-		)?;
-		let rows = stmt
-			.query_map(params![project_id], |row| {
-				Ok(SessionSummary {
-					id: row.get(0)?,
-					project_id: row.get(1)?,
-					title: row.get(2)?,
-					created_at: row.get(3)?,
-					updated_at: row.get(4)?,
-					turn_count: row.get(5)?,
-					cwd: row.get(6)?,
-					subagent_of: row.get(7)?,
-					worktree: row.get(8)?,
-					last_cwd: row.get(9)?,
-					last_touched: row.get(10)?,
-				})
-			})?
-			.collect::<rusqlite::Result<Vec<_>>>()?;
-		Ok(rows)
-	})
+	state.db.with(|conn| list_sessions_in(conn, &project_id))
+}
+
+/// The body of [`list_sessions`], against a connection rather than the managed
+/// state — the shape `projects::list_projects_in` already uses, and what lets a
+/// test assert on real rows without a Tauri runtime.
+pub fn list_sessions_in(
+	conn: &rusqlite::Connection,
+	project_id: &str,
+) -> AppResult<Vec<SessionSummary>> {
+	let mut stmt = conn.prepare(
+		// Sub-agent rows sort directly under their parent: groups are
+		// ordered by the *parent's* recency (a sub-agent is part of the
+		// work its parent session was), the parent leads its group, and
+		// siblings order among themselves by recency. An orphaned
+		// sub-agent (parent transcript deleted) keeps its marking but
+		// sorts as its own group — the LEFT JOIN leaves `p` NULL and
+		// COALESCE falls back to its own updated_at.
+		// `w.path` is the checkout the agent last signalled (F21). Joined here
+		// rather than fetched per session: the renderer needs it for every row
+		// it draws — the sidebar's checkout mark — and on first paint, before
+		// any `session:worktree` event has had a reason to fire.
+		"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
+		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.last_touched
+		 FROM sessions s
+		 JOIN discovered_projects d ON d.id = s.discovered_id
+		 LEFT JOIN sessions p ON p.id = s.subagent_of
+		 LEFT JOIN session_worktrees w ON w.session_id = s.id
+		 WHERE d.project_id = ?1
+		 ORDER BY COALESCE(p.updated_at, s.updated_at) DESC,
+		          (s.subagent_of IS NULL) DESC,
+		          s.updated_at DESC",
+	)?;
+	let rows = stmt
+		.query_map(params![project_id], |row| {
+			Ok(SessionSummary {
+				id: row.get(0)?,
+				project_id: row.get(1)?,
+				title: row.get(2)?,
+				created_at: row.get(3)?,
+				updated_at: row.get(4)?,
+				turn_count: row.get(5)?,
+				// **Resolved for the renderer, raw in the table** (F21). Every path
+				// in `git_worktrees` has been through `fs::canonicalize`, and the
+				// renderer decides which checkout a session is in by comparing these
+				// against those — so a path that reaches the same file by a
+				// different name resolves to no checkout at all and the panel sits
+				// silently on the project. A tool's absolute path can carry `..`,
+				// and a shell's own idea of its directory is the *logical* one, which
+				// keeps whatever symlink you walked through.
+				//
+				// It cannot be done at write time: `resume_cwd` probes for a
+				// transcript at `encode_path(cwd)`, and `claude` encoded the path it
+				// was given, not its resolved twin. Canonicalising the stored value
+				// would make that probe miss for exactly the moved sessions it
+				// exists for.
+				cwd: resolved(row.get(6)?),
+				subagent_of: row.get(7)?,
+				worktree: row.get(8)?,
+				last_cwd: resolved(row.get(9)?),
+				last_touched: resolved(row.get(10)?),
+			})
+		})?
+		.collect::<rusqlite::Result<Vec<_>>>()?;
+	Ok(rows)
+}
+
+/// A path as the filesystem really names it, or unchanged if it cannot say.
+///
+/// A path that no longer exists is left alone rather than dropped: it is still
+/// the honest record of where the session ran, and every consumer of these
+/// fields already treats a path it cannot match as "no checkout".
+fn resolved(path: Option<String>) -> Option<String> {
+	let path = path?;
+	Some(std::fs::canonicalize(&path).map(|p| p.to_string_lossy().to_string()).unwrap_or(path))
 }
 
 /// Read the **last** `limit` events from a session. Default 100. The
