@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-24T12:49:06Z",
+  "title": "Design System: factorai",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Factorio Amber",
+        "canonical": "oklch(81.3% 0.165 75)",
+        "notes": "Round-trips to #FFB020, the brand mark's fill. The light theme uses oklch(58% 0.17 75) instead; one brand amber does not mean one token value per theme.",
+        "tonalRamp": [
+          "oklch(25% 0.06 75)",
+          "oklch(35% 0.09 75)",
+          "oklch(45% 0.12 75)",
+          "oklch(55% 0.15 75)",
+          "oklch(65% 0.165 75)",
+          "oklch(72% 0.165 75)",
+          "oklch(81.3% 0.165 75)",
+          "oklch(93% 0.07 75)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Console Black",
+        "canonical": "oklch(16% 0.008 250)",
+        "tonalRamp": [
+          "oklch(16% 0.008 250)",
+          "oklch(18% 0.008 250)",
+          "oklch(20% 0.008 250)",
+          "oklch(22% 0.008 250)",
+          "oklch(25% 0.008 250)",
+          "oklch(56% 0.006 250)",
+          "oklch(82% 0.006 250)",
+          "oklch(96% 0.004 250)"
+        ]
+      },
+      "status-working": {
+        "role": "secondary",
+        "displayName": "Session Green",
+        "canonical": "oklch(68% 0.17 150)",
+        "tonalRamp": [
+          "oklch(22% 0.06 150)",
+          "oklch(32% 0.09 150)",
+          "oklch(42% 0.12 150)",
+          "oklch(52% 0.15 150)",
+          "oklch(60% 0.17 150)",
+          "oklch(68% 0.17 150)",
+          "oklch(80% 0.14 150)",
+          "oklch(92% 0.08 150)"
+        ]
+      },
+      "status-stopped": {
+        "role": "neutral",
+        "displayName": "Inert Slate",
+        "canonical": "oklch(55% 0.01 250)",
+        "tonalRamp": [
+          "oklch(20% 0.01 250)",
+          "oklch(28% 0.01 250)",
+          "oklch(36% 0.01 250)",
+          "oklch(45% 0.01 250)",
+          "oklch(55% 0.01 250)",
+          "oklch(68% 0.008 250)",
+          "oklch(82% 0.006 250)",
+          "oklch(94% 0.004 250)"
+        ]
+      },
+      "dev": {
+        "role": "tertiary",
+        "displayName": "Build Violet",
+        "canonical": "oklch(68% 0.19 300)",
+        "notes": "The one hue nothing else in the palette uses; it separates a development window from the release one at a glance.",
+        "tonalRamp": [
+          "oklch(22% 0.08 300)",
+          "oklch(32% 0.11 300)",
+          "oklch(42% 0.14 300)",
+          "oklch(52% 0.17 300)",
+          "oklch(60% 0.19 300)",
+          "oklch(68% 0.19 300)",
+          "oklch(80% 0.15 300)",
+          "oklch(92% 0.08 300)"
+        ]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "Destructive Red",
+        "canonical": "oklch(58% 0.22 25)",
+        "tonalRamp": [
+          "oklch(22% 0.09 25)",
+          "oklch(30% 0.13 25)",
+          "oklch(38% 0.17 25)",
+          "oklch(48% 0.2 25)",
+          "oklch(58% 0.22 25)",
+          "oklch(70% 0.19 25)",
+          "oklch(82% 0.13 25)",
+          "oklch(93% 0.06 25)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(25% 0.008 250)",
+        "notes": "Every divider, every panel edge, and the window's own outline against the desktop. Always 1px."
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Metadata Grey",
+        "canonical": "oklch(56% 0.006 250)",
+        "notes": "Counts, SHAs, timestamps, section headers, and every icon affordance at rest."
+      },
+      "secondary-foreground": {
+        "role": "neutral",
+        "displayName": "Resting Text",
+        "canonical": "oklch(82% 0.006 250)",
+        "notes": "Where repeated text rests before hover or selection promotes it to foreground."
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Mercury",
+        "canonical": "oklch(96% 0.004 250)",
+        "notes": "A focus, not a default."
+      },
+      "lane-0": {
+        "role": "tertiary",
+        "displayName": "Lane Blue",
+        "canonical": "oklch(70% 0.15 255)",
+        "notes": "Categorical only. Light theme: oklch(52% 0.18 255)."
+      },
+      "lane-1": {
+        "role": "tertiary",
+        "displayName": "Lane Green",
+        "canonical": "oklch(72% 0.16 145)",
+        "notes": "Light theme: oklch(50% 0.15 145)."
+      },
+      "lane-2": {
+        "role": "tertiary",
+        "displayName": "Lane Red",
+        "canonical": "oklch(68% 0.19 25)",
+        "notes": "Light theme: oklch(54% 0.21 25)."
+      },
+      "lane-3": {
+        "role": "tertiary",
+        "displayName": "Lane Violet",
+        "canonical": "oklch(70% 0.17 300)",
+        "notes": "Light theme: oklch(50% 0.2 300)."
+      },
+      "lane-4": {
+        "role": "tertiary",
+        "displayName": "Lane Cyan",
+        "canonical": "oklch(74% 0.13 195)",
+        "notes": "Light theme: oklch(52% 0.12 195)."
+      },
+      "lane-5": {
+        "role": "tertiary",
+        "displayName": "Lane Gold",
+        "canonical": "oklch(78% 0.15 65)",
+        "notes": "Light theme: oklch(58% 0.14 65)."
+      },
+      "lane-6": {
+        "role": "tertiary",
+        "displayName": "Lane Magenta",
+        "canonical": "oklch(72% 0.17 340)",
+        "notes": "Light theme: oklch(54% 0.19 340)."
+      },
+      "lane-7": {
+        "role": "tertiary",
+        "displayName": "Lane Lime",
+        "canonical": "oklch(76% 0.16 115)",
+        "notes": "Light theme: oklch(52% 0.14 115)."
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Anything you read to navigate: tab labels, sidebar project and session rows, commit subjects, menu items, buttons."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "The same 14px unweighted: dialog prose, settings descriptions, viewer content."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Metadata, status and section headers. PROJECTS, a turn count, `missing`, the indexer line."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Terminal output, SHAs, file paths, branch chips."
+      }
+    },
+    "shadows": [
+      {
+        "name": "resting",
+        "value": "none",
+        "purpose": "Every surface that stays on screen. Depth is four lightness steps and a hairline border."
+      },
+      {
+        "name": "floating-sm",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "The card primitive."
+      },
+      {
+        "name": "floating-md",
+        "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        "purpose": "Dropdown and context menus, popovers, dialogs — surfaces that are temporary."
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition-colors",
+        "value": "color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "The default and usually only transition: hover and focus are colour changes."
+      },
+      {
+        "name": "running-pulse",
+        "value": "running-pulse 1.5s ease-in-out infinite (opacity 1 -> 0.4 -> 1)",
+        "purpose": "The working status dot, opt-in. Granted to the single dot in a session header, withheld from the sidebar and tab strip."
+      },
+      {
+        "name": "refresh-spin",
+        "value": "spin 1s linear infinite, cleared on animationiteration",
+        "purpose": "A manual refresh reports while it works and stops on a rotation boundary. Deliberately not behind motion-safe: with the animation suppressed the iteration event never fires and the state latches forever."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "none",
+        "value": "n/a",
+        "purpose": "A desktop app with a minimum window size. Side panels are user-resized, not media-queried; density is constant across widths."
+      }
+    ],
+    "chromeHeights": [
+      {
+        "name": "top-bar",
+        "value": "42px"
+      },
+      {
+        "name": "panel-header",
+        "value": "36px"
+      },
+      {
+        "name": "sidebar-footer",
+        "value": "36px"
+      },
+      {
+        "name": "session-tab",
+        "value": "30px"
+      },
+      {
+        "name": "menu-row",
+        "value": "28px"
+      },
+      {
+        "name": "sidebar-row",
+        "value": "26-28px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one amber control on a surface: the action that commits or confirms.",
+      "html": "<button class=\"ds-btn-primary\">Launch session</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 6px 12px; border: none; border-radius: 6px; background: var(--primary, oklch(81.3% 0.165 75)); color: var(--primary-foreground, oklch(16% 0.008 250)); font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary, oklch(81.3% 0.165 75)) 90%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, oklch(16% 0.008 250)), 0 0 0 4px var(--ring, oklch(81.3% 0.165 75)); } .ds-btn-primary:disabled { opacity: 0.5; pointer-events: none; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Everything beside the primary action. A tonal step, never a second accent.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 6px 12px; border: none; border-radius: 6px; background: var(--secondary, oklch(22% 0.008 250)); color: var(--secondary-foreground, oklch(82% 0.006 250)); font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-secondary:hover { background: color-mix(in oklab, var(--secondary, oklch(22% 0.008 250)) 80%, transparent); } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, oklch(16% 0.008 250)), 0 0 0 4px var(--ring, oklch(81.3% 0.165 75)); }"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "icon-button",
+      "description": "The house style for every icon-only control. No background in any state; the icon itself takes amber on hover.",
+      "html": "<button class=\"ds-icon-btn\" title=\"Refresh\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12a9 9 0 1 1-2.64-6.36\"/><path d=\"M21 3v6h-6\"/></svg></button>",
+      "css": ".ds-icon-btn { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; padding: 2px; border: none; background: transparent; border-radius: 4px; color: color-mix(in oklab, var(--muted-foreground, oklch(56% 0.006 250)) 70%, transparent); cursor: pointer; transition: color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-icon-btn svg { width: 14px; height: 14px; pointer-events: none; flex-shrink: 0; } .ds-icon-btn:hover { color: var(--primary, oklch(81.3% 0.165 75)); background: transparent; } .ds-icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--ring, oklch(81.3% 0.165 75)); } .ds-icon-btn:disabled { pointer-events: none; color: color-mix(in oklab, var(--muted-foreground, oklch(56% 0.006 250)) 30%, transparent); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "32px field sized to sit level with a default button. Focus is the same amber ring every control uses.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Search sessions\" />",
+      "css": ".ds-input { display: flex; width: 100%; height: 32px; padding: 6px 12px; border: 1px solid var(--input, oklch(22% 0.008 250)); border-radius: 6px; background: var(--background, oklch(16% 0.008 250)); color: var(--foreground, oklch(96% 0.004 250)); font-family: Inter, system-ui, sans-serif; font-size: 14px; } .ds-input::placeholder { color: var(--muted-foreground, oklch(56% 0.006 250)); } .ds-input:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, oklch(16% 0.008 250)), 0 0 0 4px var(--ring, oklch(81.3% 0.165 75)); } .ds-input:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Session Tab",
+      "kind": "nav",
+      "refersTo": "session-tab-active",
+      "description": "One tab per live agent session, with a status dot on the left and a close affordance that appears on hover. Active takes a tonal ground, never an accent one.",
+      "html": "<div class=\"ds-tabs\"><div class=\"ds-tab ds-tab--active\"><span class=\"ds-dot ds-dot--working\"></span><span class=\"ds-tab-label\">refactor the indexer</span><button class=\"ds-tab-close\" title=\"Close\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M18 6 6 18M6 6l12 12\"/></svg></button></div><div class=\"ds-tab\"><span class=\"ds-dot ds-dot--waiting\"></span><span class=\"ds-tab-label\">write the release notes</span></div></div>",
+      "css": ".ds-tabs { display: flex; align-items: center; gap: 4px; padding: 4px 0; } .ds-tab { display: flex; align-items: center; gap: 6px; height: 30px; max-width: 240px; padding: 0 8px; border-radius: 4px; background: transparent; color: var(--muted-foreground, oklch(56% 0.006 250)); font-family: Inter, system-ui, sans-serif; font-size: 14px; cursor: pointer; transition: color 150ms cubic-bezier(0.4,0,0.2,1), background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-tab:hover { color: var(--foreground, oklch(96% 0.004 250)); } .ds-tab--active { background: var(--secondary, oklch(22% 0.008 250)); color: var(--foreground, oklch(96% 0.004 250)); font-weight: 500; } .ds-tab-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-tab-close { display: inline-flex; padding: 2px; margin-right: -4px; border: none; background: transparent; border-radius: 4px; color: color-mix(in oklab, var(--muted-foreground, oklch(56% 0.006 250)) 70%, transparent); opacity: 0; cursor: pointer; transition: color 150ms, opacity 150ms; } .ds-tab-close svg { width: 14px; height: 14px; } .ds-tab:hover .ds-tab-close { opacity: 1; } .ds-tab-close:hover { color: var(--primary, oklch(81.3% 0.165 75)); } .ds-dot { display: inline-block; width: 8px; height: 8px; flex-shrink: 0; border-radius: 9999px; } .ds-dot--working { background: var(--color-status-working, oklch(68% 0.17 150)); } .ds-dot--waiting { background: var(--color-status-waiting, oklch(81.3% 0.165 75)); } .ds-dot--stopped { background: var(--color-status-stopped, oklch(55% 0.01 250)); }"
+    },
+    {
+      "name": "Ref Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "The app's recurring silhouette: a bordered 4px pill tinted from one hue. Branch refs, tags and the development-build marker all use the same geometry.",
+      "html": "<span class=\"ds-chip ds-chip--branch\">main</span> <span class=\"ds-chip ds-chip--dev\">DEV</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px; border: 1px solid; border-radius: 4px; font-family: \"JetBrains Mono\", \"Fira Code\", monospace; font-size: 12px; font-weight: 500; line-height: 1.25; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-chip--branch { border-color: color-mix(in oklab, var(--lane-0, oklch(70% 0.15 255)) 30%, transparent); background: color-mix(in oklab, var(--lane-0, oklch(70% 0.15 255)) 12%, transparent); color: var(--lane-0, oklch(70% 0.15 255)); } .ds-chip--dev { border-color: color-mix(in oklab, var(--dev, oklch(68% 0.19 300)) 30%, transparent); background: color-mix(in oklab, var(--dev, oklch(68% 0.19 300)) 12%, transparent); color: var(--dev, oklch(68% 0.19 300)); text-transform: uppercase; letter-spacing: 0.05em; }"
+    },
+    {
+      "name": "Menu",
+      "kind": "custom",
+      "refersTo": "menu-item",
+      "description": "28px rows, a 28px indicator gutter, and a 12px uppercase section label in the same voice as the sidebar's PROJECTS header. Shrinking a menu means its padding, never its labels.",
+      "html": "<div class=\"ds-menu\"><div class=\"ds-menu-label\">Sort by</div><div class=\"ds-menu-item\">Last activity</div><div class=\"ds-menu-item ds-menu-item--on\">Name</div><div class=\"ds-menu-sep\"></div><div class=\"ds-menu-item\">Turn count</div></div>",
+      "css": ".ds-menu { min-width: 200px; padding: 4px; border: 1px solid var(--border, oklch(25% 0.008 250)); border-radius: 8px; background: var(--popover, oklch(18% 0.008 250)); color: var(--popover-foreground, oklch(96% 0.004 250)); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); font-family: Inter, system-ui, sans-serif; } .ds-menu-label { padding: 4px 8px; color: var(--muted-foreground, oklch(56% 0.006 250)); font-size: 12px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; } .ds-menu-item { display: flex; align-items: center; height: 28px; padding: 4px 8px 4px 28px; border-radius: 4px; font-size: 14px; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-menu-item:hover { background: var(--secondary, oklch(22% 0.008 250)); } .ds-menu-item--on { position: relative; } .ds-menu-item--on::before { content: \"\"; position: absolute; left: 10px; width: 6px; height: 6px; border-radius: 9999px; background: var(--primary, oklch(81.3% 0.165 75)); } .ds-menu-sep { height: 1px; margin: 4px -4px; background: var(--border, oklch(25% 0.008 250)); }"
+    },
+    {
+      "name": "Session Row",
+      "kind": "card",
+      "refersTo": "session-tab",
+      "description": "The sidebar's list row. Repeated text rests at secondary-foreground; hover promotes it, selection keeps it lit permanently.",
+      "html": "<div class=\"ds-rows\"><div class=\"ds-row ds-row--selected\"><span class=\"ds-dot ds-dot--waiting\"></span><span class=\"ds-row-label\">fix the checkout picker</span><span class=\"ds-row-meta\">14</span></div><div class=\"ds-row\"><span class=\"ds-dot ds-dot--stopped\"></span><span class=\"ds-row-label\">draft the branding spec</span><span class=\"ds-row-meta\">2h</span></div></div>",
+      "css": ".ds-rows { display: flex; flex-direction: column; padding: 4px; background: var(--card, oklch(18% 0.008 250)); font-family: Inter, system-ui, sans-serif; } .ds-row { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 4px; color: var(--secondary-foreground, oklch(82% 0.006 250)); font-size: 14px; cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-row:hover { color: var(--foreground, oklch(96% 0.004 250)); background: color-mix(in oklab, var(--secondary, oklch(22% 0.008 250)) 60%, transparent); } .ds-row--selected { background: var(--secondary, oklch(22% 0.008 250)); color: var(--foreground, oklch(96% 0.004 250)); } .ds-row-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-row-meta { flex-shrink: 0; color: var(--muted-foreground, oklch(56% 0.006 250)); font-size: 12px; } .ds-dot { display: inline-block; width: 8px; height: 8px; flex-shrink: 0; border-radius: 9999px; } .ds-dot--waiting { background: var(--color-status-waiting, oklch(81.3% 0.165 75)); } .ds-dot--stopped { background: var(--color-status-stopped, oklch(55% 0.01 250)); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Room",
+    "overview": "factorai is a dark console you sit in front of all day while agents work. Its job is not to be looked at; its job is to be glanced at. Everything is arranged so that a developer returning to the window after twenty minutes away can tell, without reading, which sessions are still working, which one wants them, and which stopped. That is why the surface is quiet almost everywhere: a control room where every panel glows is a control room where nothing means anything.\n\nThe system is built from four near-black lightness steps at one hue (250) and a single warm accent. Colour is spent, not applied. Amber means your move — it is the accent, the ring, the brand mark and the waiting status, all at the same value, so the one thing that asks for the human always looks the same. Green means working, grey means inert, violet means this is the development build. Every other hue in the app is categorical rather than semantic: the commit graph's eight lane colours mean only \"not the same as my neighbour\".\n\nDensity is deliberate and non-negotiable. Rows are 28-30px, type has exactly two sizes, chrome heights are fixed rather than derived from their tallest child, and icon affordances paint no background at any time. The reference points are Linear's construction discipline and Factorio's palette; the anti-reference is a 16px-body web app with generous padding, which at this row count reads as a different, chunkier application borrowed from elsewhere.",
+    "keyCharacteristics": [
+      "Dark-first: the dark theme is the identity, not a mode; a light theme exists and is a translation, never a tint.",
+      "Two type sizes, 14px and 12px, with no third step.",
+      "One accent, used where the human must act — and almost nowhere else.",
+      "Flat: depth is four lightness steps and a hairline border.",
+      "Quiet until asked: affordances appear on hover; only state stays lit.",
+      "Machined chrome: explicit heights, hairline dividers, no decoration."
+    ],
+    "rules": [
+      {
+        "name": "The One Amber Rule",
+        "body": "Amber means the human's turn. It is the accent, the ring, the mark and the waiting status at a single value, and it must not be spent on decoration, on a chart series, or on a state that resolves itself. If two ambers would ever sit three percent apart on screen, one of them is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The Focus-Not-Default Rule",
+        "body": "Full foreground is a focus, not a default. Text repeated down a list rests at secondary-foreground and takes foreground from its row's hover; a selected row keeps foreground permanently, because selection is a state and not a hover. A column where every row is at 96% lightness has no focus at all.",
+        "section": "colors"
+      },
+      {
+        "name": "The Chrome-Is-One-Colour Rule",
+        "body": "The previous rule is about rows in a list, not about chrome. Top-bar icons are all one colour, and a toggled-on control does not brighten: state that a surface already shows needs aria-pressed, not a second colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Sizes Rule",
+        "body": "There are exactly two type sizes and 14px is the floor for anything you read to navigate. There is no 13px step and there must not be one, so the only question a new string raises is which of the two it is. Hand-written sizes are how the scale erodes; the single standing exception is a 16px avatar's initials.",
+        "section": "typography"
+      },
+      {
+        "name": "The Shrink-The-Padding Rule",
+        "body": "Making a component denser means reducing its padding, never its labels. A menu row is tightened from 32px to 28px by its vertical padding, and its item text stays at 14px.",
+        "section": "typography"
+      },
+      {
+        "name": "The Fixed-Chrome Rule",
+        "body": "Every chrome row declares its height. If a child can grow, it truncates or scrolls; it does not push its container.",
+        "section": "layout"
+      },
+      {
+        "name": "The One-Fact Row Rule",
+        "body": "28px is the height of a row carrying one fact. A row that describes an object rather than an action may stack a 12px subtitle under its label — a checkout picker row does — because a name and a branch side by side in one row truncate each other down to the prefix they share.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "A surface that stays on screen gets tone and a hairline. A surface that appears over the app and will be dismissed gets a shadow. Nothing gets both a shadow and a tonal step to say the same thing twice.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Pointer Base Rule",
+        "body": "Anything clickable shows cursor: pointer, granted by one base rule covering button, a[href], select, summary, label[for] and the ARIA interactive roles — never a utility class per control, which gets forgotten exactly where a control is hand-rolled. Disabled controls are excluded: a pointer on something inert is a lie.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do use one of the two type sizes — 14px to navigate by, 12px for metadata, status and section headers.",
+      "Do give every chrome row an explicit height, and let its children truncate.",
+      "Do use IconButton for every icon-only control, and let its hover be the icon taking amber.",
+      "Do keep repeated text at secondary-foreground and let hover or selection promote it to foreground.",
+      "Do import the chip shape from its constant rather than re-deriving its border, radius, padding and size.",
+      "Do let a chevron take colour from whatever the click target is — its own hover when it is the target, its row's when the row is.",
+      "Do ship a keyboard path beside every pointer gesture — a feature only a mouse can reach is half a feature.",
+      "Do give a light-theme token its own value rather than a tint of the dark one; lane colours drop ~20 lightness points and move per hue between themes.",
+      "Do report while a manual refresh works, and stop on a rotation boundary so a 20ms refetch is one clean turn rather than a one-frame flash."
+    ],
+    "donts": [
+      "Don't spend amber on anything that is not the human's turn to act.",
+      "Don't paint a background behind an icon button in any state, including hover, active and toggled-on.",
+      "Don't brighten a chrome icon to show it is toggled on — the surface it toggles is already visible; use aria-pressed.",
+      "Don't introduce a third type size, and don't hand-write one to sneak past the scale.",
+      "Don't add a shadow to a surface that stays on screen; tone and a hairline are the elevation model.",
+      "Don't animate more than one thing at a time in a list. Status animation is opt-in and belongs to the single dot that describes the current view.",
+      "Don't use HTML5 drag-and-drop; it is dead in this shell on macOS. Drag with pointer events.",
+      "Don't put a raw input, button or select in app code — the primitives carry the scale, and an element that opts out of them is the next inline override.",
+      "Don't grant the pointer cursor with a per-control class; extend the base rule instead, so disabled controls keep being excluded."
+    ]
+  }
+}

@@ -2,7 +2,7 @@
 
 `CLAUDE.md` is a symlink to this file.
 
-Quick links: [specs/](specs/) · [specs/roadmap/](specs/roadmap/) · [docs/adr/](docs/adr/)
+Quick links: [specs/](specs/) · [specs/roadmap/](specs/roadmap/) · [docs/adr/](docs/adr/) · [DESIGN.md](DESIGN.md) · [PRODUCT.md](PRODUCT.md)
 
 ---
 
@@ -266,87 +266,29 @@ Concrete rules:
 
 ### Design rules
 
-- **Two type sizes, and 14px is the floor for anything you read to
-  navigate.** `text-sm` covers tab labels — all three strips, the top bar's,
-  the file panel's and the commit pane's — the sidebar's project *and* session
-  rows, and the commit subject. `text-xs` is for **metadata, status and
-  section headers**: a SHA, a count, `missing`, the footer's indexer line, an
-  uppercase `PROJECTS`. There is no 13px step and there should not be one: the
-  app has two sizes on purpose, so the only question a new string raises is
-  which of the two it is. Added 2026-08-18 on user feedback — tab names and
-  the sidebar's session rows were `text-xs`, which sized the things you
-  navigate by for glancing at. Hand-written sizes (`text-[11px]`) are how the
-  scale erodes; the one exception left is a deliberate micro-mark, a 16px
-  avatar's initials. The dev badge was the other until 2026-08-19, when it
-  stopped hand-rolling a 10px bold mono block and took F18's ref-chip shape
-  instead — see `DevBadge`.
-- **Anything clickable shows `cursor: pointer`.** Tailwind v4's
-  Preflight sets `cursor: default` on buttons, so this does not happen
-  by itself. It is one base rule in
-  `packages/ui/src/styles/globals.css` covering `button`, `a[href]`,
-  `select`, `summary`, `label[for]` and the ARIA interactive roles —
-  **not** a `cursor-pointer` class per control, which gets forgotten
-  exactly where a control is hand-rolled. Disabled controls are
-  excluded: a pointer on something inert is a lie. If you add a new
-  interactive role, add it there rather than patching the component.
-- **Icon buttons paint no background, ever.** Their hover state is the
-  **icon taking colour** (`hover:text-primary`), not a filled block
-  behind it: at 14px the block is bigger than the thing it highlights
-  and reads as a widget rather than an affordance. That is what
-  `IconButton` in `@factorai/ui` is for — use it rather than
-  `Button variant="ghost" size="icon"`, and don't add `hover:bg-*` to
-  it. It deliberately carries no `cursor-pointer` class either, so the
-  base rule above stays in charge of disabled controls.
-- **A menu row is 28px, and a menu's section label is a section
-  header.** shadcn ships `py-1.5` items, a `pl-8` indicator gutter and a
-  `text-sm font-semibold` label — proportions for a 16px-body web app,
-  which beside this app's 26px rows read as a chunkier application
-  borrowed from elsewhere. The tightened metrics (`py-1`, `pl-7`, and a
-  `text-xs` uppercase label in the same voice as `PROJECTS`) live on
-  `DropdownMenu` and `ContextMenu` in `@factorai/ui`, so every menu gets
-  them rather than the one whose padding somebody happened to notice.
-  Item text stays `text-sm` — shrinking a menu means its padding, never
-  its labels. Added 2026-08-18 on user feedback about the sidebar's sort
-  menu. **28px is the height of a row carrying one fact**: a row that describes
-  an *object* rather than an action may stack a `text-xs` subtitle under its
-  label, as F21's checkout picker does — a name and a branch side by side in one
-  row truncate each other to the prefix they share.
-- **Chevrons colour on hover too** — the sidebar's expand toggle from
-  its own hover, the file tree's from its row's (`group-hover`), since
-  there the whole row is the click target.
-- Rows you act on repeatedly (pinned, selected) keep their hover
-  affordances permanently visible; everything else stays quiet until
-  hovered.
-- **Full `foreground` is a focus, not a default.** Text repeated down a
-  list — a commit subject, a filename — rests at `secondary-foreground`
-  and takes `foreground` from its row's hover; a *selected* row keeps
-  `foreground` permanently, since selection is a state and not a hover.
-  A column where every row is at 96% lightness has no focus at all,
-  which is what the graph looked like until 2026-08-18.
-- **This rule is about rows in a list, not about chrome.** The top bar's
-  icons are **all one colour** — `IconButton`'s default, hovering to
-  primary — and a toggled-on control does not brighten. The panel toggle
-  did until 2026-08-20, and it was wrong twice: a 288px panel is either on
-  screen or it is not, so the colour restated something impossible to
-  miss, and it made two neighbouring icons in the same row disagree about
-  what a header icon looks like. State that a surface already shows needs
-  `aria-pressed`, not a second colour. Added on user feedback.
-- **A chrome row gets an explicit height, never one derived from its tallest
-  child.** The top bar is `h-10.5`, the file panel header and the sidebar footer
-  are `h-9`. A row sized by `py-*` moves the moment a taller child appears in it,
-  and the thing that appears is by definition the thing you were already looking
-  at: the sidebar footer grew 6px when F14's badge staged an update, shifting the
-  whole sidebar to announce something the badge was announcing anyway. Added
-  2026-08-20 on user feedback.
-- **A manual refresh reports while it works.** The panel's Files and Graph
-  buttons spin their icon for as long as `useIsFetching` on the key they
-  invalidate says there is work — not on a fixed timer, which reassures rather
-  than reports. It stops on a **rotation boundary** (`animationiteration`, not a
-  timeout), so a 20ms refetch is one clean turn instead of a one-frame flash
-  ending at an arbitrary angle. It is deliberately **not** behind `motion-safe:`,
-  which would be the instinct: with the animation suppressed the
-  `animationiteration` that clears the state never fires, so the state latches on
-  forever.
+**`DESIGN.md` at the repo root is the design contract**, the way `specs/` is the
+behaviour contract: the palette, the two type sizes, the density metrics, the
+flat elevation model and the named rules all live there, with
+`.impeccable/design.json` as its machine-readable sidecar. Read it before
+touching UI, and fix it in the same commit when a rule changes. The dated user
+feedback each rule came from is logged in `specs/roadmap/DONE.md`.
+
+What stays here is only *where a rule lives in this repo*, which `DESIGN.md`
+does not carry:
+
+- The pointer-cursor base rule is one block in
+  `packages/ui/src/styles/globals.css`. A new interactive role is added there,
+  not patched onto the component.
+- Icon-only controls use **`IconButton`** from `@factorai/ui` — never
+  `Button variant="ghost" size="icon"`, and never with a `hover:bg-*` added.
+- Menu metrics (`py-1`, `pl-7`, `text-xs` uppercase label) live on
+  `DropdownMenu` and `ContextMenu` in `@factorai/ui`, so every menu inherits
+  them rather than the one whose padding somebody noticed.
+- Chrome heights are literal: top bar `h-10.5`, file panel header and sidebar
+  footer `h-9`, session tab `h-7.5`.
+- The refresh spinner clears on `animationiteration` and is deliberately **not**
+  behind `motion-safe:` — with the animation suppressed the event never fires,
+  so the state latches on forever.
 
 ### Backend
 
@@ -391,10 +333,20 @@ ADRs are immutable. To revise a decision, write a new ADR that
 
 ## 6. Specs (`specs/`)
 
-The `specs/` directory is the design source of truth. Nine numbered
-files plus two annexes today; add new ones rather than overflowing
-existing ones. If the spec and the code disagree, **fix whichever is
-wrong** — usually the spec, since code is exact and prose is loose.
+The `specs/` directory is the source of truth for **behaviour**. Nine
+numbered files plus two annexes today; add new ones rather than
+overflowing existing ones. If the spec and the code disagree, **fix
+whichever is wrong** — usually the spec, since code is exact and prose is
+loose.
+
+Two root files hold the other halves, and they are contracts on the same
+terms: **`DESIGN.md`** is the visual system — tokens, type scale, density,
+elevation, component behaviour — with `.impeccable/design.json` as its
+sidecar, and **`PRODUCT.md`** is durable product truth: users, purpose,
+positioning, constraints, brand commitments. `specs/09-branding.md` keeps
+the mark itself, since a logo's construction is not a UI rule. A visual
+change updates `DESIGN.md` in the same commit, exactly as a contract change
+updates its spec.
 
 `08-inconsistencies.md` is where a contradiction goes when you find one
 and can't fix it on the spot — doc against code, doc against doc, or a
@@ -494,6 +446,9 @@ cargo test
 
 ### Helpful files when picking up work
 
+- `DESIGN.md` — the visual system: palette, two type sizes, density
+  metrics, named rules. Read before touching UI.
+- `PRODUCT.md` — who this is for, what it promises, what may not change.
 - `specs/00-overview.md` — what we're building, MVP scope.
 - `specs/03-backend-rust.md` — the full Tauri command surface.
 - `specs/04-frontend.md` — routes, components, state shape.
