@@ -121,9 +121,11 @@ set_session_worktree(session_id: String, project_path: String, path: String) -> 
 // Scoped to the workspace — see F4. Nothing outside it was ever indexed.
 search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<SearchHit>
 // NOTE: fork_session was specced but cut from the MVP (see 05-features.md F6).
-// SearchHit = { sessionId, projectId, title, role, snippet } — no event_index,
-// the FTS index stores no per-event position. `title` is JOINed from sessions
-// for a human-readable result label.
+// SearchHit = { sessionId, projectId, projectName, projectPath, title, role,
+// snippet } — no event_index, the FTS index stores no per-event position.
+// `title` is JOINed from sessions and the two project fields from projects, so
+// a row can say which codebase a hit came from and draw the same path-hashed
+// icon the sidebar does.
 
 // terminal
 start_session(project_id: String) -> SessionId          // see "Session ids" below

@@ -461,9 +461,9 @@ were removed in `c6374d6` (mounting 100+ React cards in one paint froze the
 Linux webview); the session view is terminal-only (see 05-features.md F3).
 
 The only surface that renders session content is the **search results**
-view (`/search`, F4). It lists `search_sessions` hits, each a small row:
-project + session title, the matched role, and a `snippet()` excerpt
-(highlighted match). Rows are bounded (≤ `limit`, default 200) so no
+view (`/search`, F4). It lists `search_sessions` hits, each a small row: the
+project's icon and name, the session title, the matched role, and a `snippet()`
+excerpt (highlighted match). Rows are bounded (≤ `limit`, default 200) so no
 virtualization is needed. Click a row → navigate to that session (opens its
 terminal). No "fork" action — fork was cut from the MVP.
 

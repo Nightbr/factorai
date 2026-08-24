@@ -96,6 +96,11 @@ pub struct SessionSummary {
 pub struct SearchHit {
 	pub session_id: String,
 	pub project_id: String,
+	/// Workspace display name and folder of the project the hit belongs to,
+	/// JOINed alongside the title. The path travels because the renderer's
+	/// project icon hashes its hue from it.
+	pub project_name: String,
+	pub project_path: String,
 	pub title: String,
 	pub role: String,
 	pub snippet: String,

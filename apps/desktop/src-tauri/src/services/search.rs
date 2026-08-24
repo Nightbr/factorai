@@ -3,7 +3,9 @@
 //! Queries the `messages_fts` FTS5 table populated by the indexer. Hits
 //! identify a *session* — the FTS index stores no per-event position, and the
 //! session view is terminal-only, so there is nothing to navigate *to within*
-//! a session. Results are JOINed against `sessions` for a human title.
+//! a session. Results are JOINed against `sessions` for a human title and
+//! against `projects` for the project the session belongs to — "which
+//! conversation was that" is usually half of "in which codebase".
 
 use rusqlite::{params, Connection};
 
@@ -34,11 +36,12 @@ pub fn build_match(query: &str) -> Option<String> {
 /// restricts to one project. `limit` is clamped to `[1, MAX_HITS]`.
 ///
 /// The project a hit belongs to is resolved through `sessions` →
-/// `discovered_projects` rather than stored on the FTS row. A workspace id is
-/// not stable across a remove and a re-add, and an index full of ids that no
-/// longer resolve is worse than one indexed join.
+/// `discovered_projects` → `projects` rather than stored on the FTS row. A
+/// workspace id is not stable across a remove and a re-add, and an index full
+/// of ids that no longer resolve is worse than one indexed join. Resolving it
+/// live is also what keeps a renamed project's name right in old hits.
 ///
-/// The join is inner, which is also what scopes the search: a session whose
+/// The joins are inner, which is also what scopes the search: a session whose
 /// directory has no `project_id` isn't in the workspace, and its rows never
 /// reach a result. Indexing is gated the same way, so in practice there are no
 /// such rows — the join is the belt to that braces.
@@ -57,20 +60,24 @@ pub fn search(
 	// puts the best matches first. The FTS table is named in full (not
 	// aliased) so the bm25()/snippet() auxiliary functions resolve cleanly.
 	let select = "SELECT messages_fts.session_id, discovered_projects.project_id, \
+		projects.display_name, projects.real_path, \
 		COALESCE(sessions.title, ''), messages_fts.role, \
 		snippet(messages_fts, 2, '', '', '…', 16) \
 		FROM messages_fts \
 		JOIN sessions ON sessions.id = messages_fts.session_id \
 		JOIN discovered_projects ON discovered_projects.id = sessions.discovered_id \
+		JOIN projects ON projects.id = discovered_projects.project_id \
 		WHERE messages_fts MATCH ?1 AND discovered_projects.project_id IS NOT NULL";
 
 	let map = |row: &rusqlite::Row<'_>| {
 		Ok(SearchHit {
 			session_id: row.get(0)?,
 			project_id: row.get(1)?,
-			title: row.get(2)?,
-			role: row.get(3)?,
-			snippet: row.get(4)?,
+			project_name: row.get(2)?,
+			project_path: row.get(3)?,
+			title: row.get(4)?,
+			role: row.get(5)?,
+			snippet: row.get(6)?,
 		})
 	};
 
@@ -104,15 +111,20 @@ mod tests {
 
 	/// Three sessions: two in workspace project `p1`, one in `p2`, and one in a
 	/// directory nobody has added — `d3` has no `project_id`, which is what the
-	/// scoping test needs.
+	/// scoping test needs. `projects` carries the two workspace rows a hit is
+	/// labelled from.
 	fn setup() -> Connection {
 		let conn = Connection::open_in_memory().unwrap();
 		conn.execute_batch(
-			"CREATE TABLE discovered_projects (id INTEGER PRIMARY KEY, project_id TEXT);
+			"CREATE TABLE projects (id TEXT PRIMARY KEY, real_path TEXT, display_name TEXT);
+			 CREATE TABLE discovered_projects (id INTEGER PRIMARY KEY, project_id TEXT);
 			 CREATE TABLE sessions (id TEXT PRIMARY KEY, discovered_id INTEGER, title TEXT);
 			 CREATE VIRTUAL TABLE messages_fts USING fts5(
 				session_id UNINDEXED, role, body,
 				tokenize = 'porter unicode61');
+			 INSERT INTO projects(id, real_path, display_name)
+			   VALUES('p1', '/home/dev/factorai', 'factorai'),
+			         ('p2', '/home/dev/orchard', 'orchard');
 			 INSERT INTO discovered_projects(id, project_id) VALUES(1,'p1'),(2,'p2'),(3,NULL);
 			 INSERT INTO sessions(id, discovered_id, title)
 			   VALUES('s1', 1, 'Refactor the indexer'),
@@ -147,13 +159,16 @@ mod tests {
 	}
 
 	#[test]
-	fn finds_matches_and_joins_title() {
+	fn finds_matches_and_joins_title_and_project() {
 		let conn = setup();
 		let hits = search(&conn, "indexer", None, 50).unwrap();
 		assert_eq!(hits.len(), 2, "two messages mention 'indexer' inside the workspace");
 		assert!(hits.iter().all(|h| h.session_id == "s1"));
 		assert!(hits.iter().all(|h| h.title == "Refactor the indexer"));
 		assert!(hits.iter().all(|h| h.project_id == "p1"));
+		// The hit says which codebase it came from, not just which session.
+		assert!(hits.iter().all(|h| h.project_name == "factorai"));
+		assert!(hits.iter().all(|h| h.project_path == "/home/dev/factorai"));
 		assert!(hits.iter().any(|h| h.snippet.contains("indexer")));
 	}
 
@@ -177,6 +192,8 @@ mod tests {
 		assert_eq!(p2.len(), 1);
 		assert_eq!(p2[0].session_id, "s2");
 		assert_eq!(p2[0].title, "", "NULL title coalesces to empty string");
+		assert_eq!(p2[0].project_name, "orchard");
+		assert_eq!(p2[0].project_path, "/home/dev/orchard");
 		// a term only present in p1 returns nothing when filtered to p2
 		assert!(search(&conn, "refactor", Some("p2"), 50).unwrap().is_empty());
 	}

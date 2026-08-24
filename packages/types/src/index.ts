@@ -132,6 +132,14 @@ export type ContentBlock =
 export interface SearchHit {
 	sessionId: string;
 	projectId: string;
+	/** Workspace project display name, JOINed for the result label. A hit that
+	 *  only names its session answers "which conversation" but not "which
+	 *  codebase", and the second question is the one you are usually asking. */
+	projectName: string;
+	/** The project's folder on disk. Carried so a hit can render the same
+	 *  path-hashed `ProjectIcon` the sidebar and tab strip do — the hue comes
+	 *  from the path, so a name alone would colour it differently. */
+	projectPath: string;
 	/** Session title (may be empty if not yet derived). */
 	title: string;
 	role: string;

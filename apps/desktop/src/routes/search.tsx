@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
+import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { rootRoute } from './__root';
@@ -50,6 +51,20 @@ function SearchView() {
 								className="block px-4 py-3 transition-colors hover:bg-secondary/50"
 							>
 								<div className="flex items-center gap-2">
+									{/* Project first, then session: a hit answers "which
+									    conversation" only once you know which codebase it was
+									    in, and across a workspace two projects routinely hold
+									    sessions with the same title. Icon and name together
+									    because the icon is what the sidebar and the tab strip
+									    are already scanned by — same hue, same initials, hashed
+									    from the same path. */}
+									<ProjectIcon name={h.projectName} path={h.projectPath} size={16} />
+									<span
+										className="max-w-[10rem] shrink-0 truncate text-muted-foreground text-xs"
+										title={h.projectPath}
+									>
+										{h.projectName}
+									</span>
 									<span className="min-w-0 flex-1 truncate font-medium text-sm">
 										{h.title || h.sessionId}
 									</span>

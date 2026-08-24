@@ -705,12 +705,17 @@ export function fixtureMissingProject(): TestFixture {
 /** Same base shape plus a couple of search hits for the /search route. */
 export function fixtureWithSearchHits(): TestFixture {
 	const base = fixtureOneProjectOneSession();
-	const projectId = base.projects?.[0]?.id ?? '';
+	const project = base.projects?.[0];
+	const projectId = project?.id ?? '';
 	const sessionId = base.sessionsByProject?.[projectId]?.[0]?.id ?? '';
 	const searchHits: SearchHit[] = [
 		{
 			sessionId,
 			projectId,
+			// A hit carries its own project label — the backend JOINs it, so the
+			// fixture states it rather than having the view look it up.
+			projectName: project?.displayName ?? '',
+			projectPath: project?.realPath ?? '',
 			title: 'Refactor the auth middleware',
 			role: 'user',
 			snippet: 'please refactor the auth middleware to use jwt …',

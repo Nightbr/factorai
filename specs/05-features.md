@@ -400,18 +400,30 @@ indexing and drop the `project_id IS NOT NULL` clause in `services/search.rs`.
 that lists hits grouped by session, each with a `snippet()` excerpt and the
 matched role. Click a hit → navigate to that session (opens its terminal).
 
+**A hit names its project, not just its session.** Results are workspace-wide,
+and a session title on its own doesn't place a conversation: two projects
+routinely hold a "Fix the flaky test". The row leads with the project's
+`ProjectIcon` and display name — the same path-hashed icon the sidebar and the
+tab strip are scanned by — then the session title, then the matched role. The
+project's folder is the row's hover title.
+
 **Backend.** `search_sessions(query, project_id?, limit)` → FTS5 over
 `messages_fts` with `snippet()` + `bm25()` ranking. Returns up to `limit`
-(default/cap 200) hits, each `{ sessionId, projectId, title, role, snippet }`
-(`title` JOINed from `sessions` for the result label). The FTS index stores
-no per-event position, so hits carry no `event_index`.
+(default/cap 200) hits, each
+`{ sessionId, projectId, projectName, projectPath, title, role, snippet }`
+(`title` JOINed from `sessions`, `projectName` / `projectPath` from `projects`,
+for the result label). `projectPath` travels because the icon's hue is hashed
+from the path, so a name alone would colour the same project differently here
+than in the sidebar. The FTS index stores no per-event position, so hits carry
+no `event_index`.
 
 `messages_fts` carries **no `project_id` column**. It used to, holding the
 encoded directory name, which was stable; a workspace id is not, since removing
 a project and adding it back mints a new one and every stored row would be
-stale. The project is resolved through `sessions` → `discovered_projects`
-instead — one indexed join, always current, and the same join is what scopes the
-search: it is inner, and a directory with no `project_id` isn't in the
+stale. The project is resolved through `sessions` → `discovered_projects` →
+`projects` instead — indexed joins, always current (a renamed project is named
+correctly in hits indexed before the rename), and the same joins are what scope
+the search: they are inner, and a directory with no `project_id` isn't in the
 workspace.
 
 **Edge cases.**

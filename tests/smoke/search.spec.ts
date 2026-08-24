@@ -14,6 +14,12 @@ test.describe('full-text search', () => {
 		await expect(page.getByText('Refactor the auth middleware', { exact: true })).toBeVisible();
 		await expect(page.getByText(/please refactor the auth middleware/i)).toBeVisible();
 
+		// A hit names the project it came from — two projects routinely hold
+		// sessions with the same title, so the title alone doesn't place it.
+		const hit = page.locator('li', { hasText: 'Refactor the auth middleware' });
+		await expect(hit.getByText('foo', { exact: true })).toBeVisible();
+		await expect(hit.getByTestId('project-icon')).toBeVisible();
+
 		// Clicking the hit opens that session's terminal view.
 		await page.getByText(/please refactor the auth middleware/i).click();
 		// Header names the session by title; the uuid is on the hover title (F6).
