@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localImageSrc, resolveRelative } from './MarkdownView';
+import { localImageSrc, mermaidSource, resolveRelative } from './MarkdownView';
 
 describe('resolveRelative', () => {
 	const from = '/home/alice/repo/docs/guide.md';
@@ -72,5 +72,80 @@ describe('localImageSrc', () => {
 
 	it('keeps a stray percent that is not an escape', () => {
 		expect(localImageSrc(from, '100%off.png')).toBe('/home/alice/repo/docs/100%off.png');
+	});
+});
+
+interface TestNode {
+	type: string;
+	tagName?: string;
+	value?: string;
+	properties?: { className?: unknown };
+	children?: TestNode[];
+}
+
+describe('mermaidSource', () => {
+	/** The hast a ```<info> fence lowers to. */
+	const fence = (info: string | null, body: string): TestNode => ({
+		type: 'element',
+		tagName: 'pre',
+		properties: {},
+		children: [
+			{
+				type: 'element',
+				tagName: 'code',
+				properties: info ? { className: [`language-${info}`] } : {},
+				children: [{ type: 'text', value: body }],
+			},
+		],
+	});
+
+	it('reads the source out of a mermaid fence', () => {
+		expect(mermaidSource(fence('mermaid', 'graph TD\n  A --> B\n'))).toBe('graph TD\n  A --> B\n');
+	});
+
+	it('leaves every other fence alone', () => {
+		expect(mermaidSource(fence('ts', 'const a = 1;'))).toBeNull();
+		expect(mermaidSource(fence(null, 'plain'))).toBeNull();
+		// Close, but not the language remark labelled it with.
+		expect(mermaidSource(fence('mmd', 'graph TD'))).toBeNull();
+		expect(mermaidSource(fence('mermaid-js', 'graph TD'))).toBeNull();
+	});
+
+	it('accepts a className that arrived as a string', () => {
+		const node = fence('mermaid', 'graph TD');
+		const code = node.children?.[0];
+		if (code) code.properties = { className: 'language-mermaid' };
+		expect(mermaidSource(node)).toBe('graph TD');
+	});
+
+	it('has nothing to draw for an empty fence', () => {
+		expect(mermaidSource(fence('mermaid', ''))).toBeNull();
+		expect(mermaidSource(fence('mermaid', '  \n '))).toBeNull();
+	});
+
+	it('is null for a pre that is not a fenced code block', () => {
+		expect(mermaidSource(undefined)).toBeNull();
+		expect(
+			mermaidSource({ type: 'element', tagName: 'p', properties: {}, children: [] }),
+		).toBeNull();
+		expect(
+			mermaidSource({
+				type: 'element',
+				tagName: 'pre',
+				properties: {},
+				children: [{ type: 'text', value: 'graph TD' }],
+			}),
+		).toBeNull();
+	});
+
+	it('joins the text nodes remark may have split the literal across', () => {
+		const node = fence('mermaid', '');
+		const code = node.children?.[0];
+		if (code)
+			code.children = [
+				{ type: 'text', value: 'graph TD\n' },
+				{ type: 'text', value: '  A --> B' },
+			];
+		expect(mermaidSource(node)).toBe('graph TD\n  A --> B');
 	});
 });

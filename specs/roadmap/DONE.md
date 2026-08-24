@@ -3,6 +3,47 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Mermaid diagrams in the markdown preview — spec `05-features.md` F7, ADR-0021** — 2026-08-24,
+  user ask. A `mermaid` fence in a rendered `.md` used to be a code block of `graph TD` lines.
+  It now draws. This is the one kind of content where the rendered view was strictly *worse* than
+  the source view, and the documents this viewer is pointed at — `specs/`, `docs/adr/`, whatever
+  an agent just wrote — are exactly the ones with diagrams in them.
+
+  **Four decisions worth keeping, three of which are not the obvious one:**
+
+  - **The override is on `pre`, not on `code`.** Returning a diagram from the `code` component
+    leaves it wrapped in the `<pre>` react-markdown already emitted, which is styled as a code
+    block and is not allowed to contain flow content. And the source is read off the **hast
+    node**, not off React `children` — children here is a rendered `<code>` whose own children may
+    be split across several text nodes, and reassembling a diagram out of those is how it loses a
+    line break.
+  - **The palette is converted at render time, not copied into hex.** Mermaid derives most of a
+    diagram's colours from a few seeds with `khroma`, which parses hex and **not `oklch()`** —
+    hand it a token from `globals.css` and it silently produces black. So `mermaidTheme.ts` reads
+    the custom properties off the document and converts them. A second copy of the palette in hex
+    would have been half the code and would have gone stale the first time a token moved; the
+    amber moved 3% on 2026-08-19. The light theme (item 32) now costs nothing here.
+  - **`suppressErrorRendering: true`, which is not mermaid's default.** Left on, a fence that
+    won't parse appends a bomb-glyph diagram into the DOM with nothing saying which fence produced
+    it. Off, `render` throws and cleans up its own temporary nodes, and the failure is reported in
+    place with the fence's source kept and shown — a diagram that won't parse is still what the
+    author wrote.
+  - **The SVG is parsed and adopted, not `dangerouslySetInnerHTML`.** Mermaid has already run its
+    output through DOMPurify (`securityLevel` stays `strict`), so this is not the sanitising step;
+    it is how the markup becomes real nodes without an escape hatch `biome`'s recommended set
+    rejects. Parsed as `text/html`, **not** `image/svg+xml`: the HTML parser puts inline SVG in the
+    right namespace and tolerates the `<foreignObject>` label markup, which is not always
+    well-formed XML.
+
+  Mermaid is ~2.5MB — larger than Monaco — so it sits behind a dynamic import a level below the
+  viewer's own chunk and nothing loads it unless a document actually has a fence. It is in
+  `optimizeDeps.include` for the reason Monaco and pdf.js are: a chunk discovered mid-interaction
+  prebundles and reloads the page at exactly the wrong moment.
+
+  **Not done, deliberately:** no pan, no zoom — a wide diagram scrolls sideways in its own
+  container. `ImageView`'s controls are the shape that would take. Mermaid is wired into
+  `MarkdownView` only, not the diff viewer.
+
 - **F21's fifth signal — the paths a shell command names — spec `05-features.md` F21, roadmap
   item 37** — 2026-08-24, on a user's screenshot of factorai naming `pearl` and its old branch
   while their agent worked in `../pearl-eng-3333`. Hours after the fourth signal shipped, and

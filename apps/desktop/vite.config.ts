@@ -50,6 +50,11 @@ export default defineConfig({
 			// opened — so it would otherwise prebundle and reload the page at
 			// exactly that moment. Same reasoning as Monaco's three above.
 			'pdfjs-dist',
+			// Mermaid is lazier still — only a markdown file with a diagram in it
+			// pulls it — and it fans out into dozens of CJS grammar packages, so
+			// discovering it at that moment is a long prebundle *and* a page
+			// reload mid-read. Same reasoning as the three above.
+			'mermaid',
 		],
 	},
 	server: {

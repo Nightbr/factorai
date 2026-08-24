@@ -1,3 +1,4 @@
+import { MermaidDiagram } from '@components/viewer/MermaidDiagram';
 import { iconKeyFor } from '@lib/fileIcon';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, openExternally } from '@lib/tauri';
@@ -14,6 +15,57 @@ import remarkGfm from 'remark-gfm';
  * a README that embeds a `<script>` stays inert text. We keep it that way — no
  * `rehype-raw`.
  */
+
+/**
+ * A hast node, structurally — enough of one to read a fenced code block out of.
+ *
+ * Written out here rather than imported from `hast`: `@types/hast` is
+ * react-markdown's dependency and not ours, and the shape this needs is four
+ * fields deep. The `node` react-markdown hands a component satisfies it.
+ */
+interface HastNode {
+	type: string;
+	tagName?: string;
+	value?: string;
+	properties?: { className?: unknown };
+	children?: HastNode[];
+}
+
+function classNames(node: HastNode): string[] {
+	const raw = node.properties?.className;
+	if (Array.isArray(raw)) return raw.map(String);
+	return typeof raw === 'string' ? raw.split(/\s+/) : [];
+}
+
+/**
+ * The diagram source in a ```mermaid fence, or null if this `<pre>` is an
+ * ordinary code block.
+ *
+ * Read off the hast node rather than off React children: `children` here is
+ * an already-rendered `<code>` element whose own children may have been split
+ * by the highlighter or the parser, and reassembling text out of that is how
+ * a diagram loses a line break. The node still has the literal.
+ *
+ * The language comes from the fence's info string, which remark turns into a
+ * `language-*` class. Only `mermaid` counts — a fence labelled `mmd`, or one
+ * with no label at all, is a code block and stays one.
+ */
+export function mermaidSource(node: HastNode | undefined): string | null {
+	if (!node || node.tagName !== 'pre') return null;
+	const elements = (node.children ?? []).filter((child) => child.type === 'element');
+	const [code] = elements;
+	if (elements.length !== 1 || !code || code.tagName !== 'code') return null;
+	if (!classNames(code).includes('language-mermaid')) return null;
+
+	const text = (code.children ?? [])
+		.filter((child) => child.type === 'text')
+		.map((child) => child.value ?? '')
+		.join('');
+	// Remark keeps the newline that closes the fence; mermaid does not care, but
+	// an all-whitespace fence is nothing to draw and would fail as a parse error
+	// rather than as the empty block it is.
+	return text.trim() ? text : null;
+}
 
 /**
  * Resolve a relative markdown link or image against the file it appears in.
@@ -127,6 +179,16 @@ export function MarkdownView({ source, path, onOpenPath }: MarkdownViewProps) {
 						img: ({ src, alt, title }) => (
 							<MarkdownImage src={src ?? ''} alt={alt ?? ''} title={title} from={path} />
 						),
+						// A ```mermaid fence is a diagram; every other fence is a code
+						// block and renders as one. Overriding `pre` rather than `code`
+						// because the diagram replaces the whole block — returning it
+						// from `code` would leave it wrapped in a `<pre>`, which is
+						// styled as a code block and may not contain flow content.
+						pre: ({ node, children, ...props }) => {
+							const diagram = mermaidSource(node);
+							if (diagram !== null) return <MermaidDiagram code={diagram} />;
+							return <pre {...props}>{children}</pre>;
+						},
 					}}
 				>
 					{source}

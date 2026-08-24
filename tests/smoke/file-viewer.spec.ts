@@ -281,6 +281,33 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
 	});
 
+	test('@smoke a mermaid fence renders as a diagram, and a broken one keeps its source', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const md = page.getByTestId('file-viewer').getByTestId('markdown-view');
+		// An `<svg>` that mermaid laid out, with the node label in it — not the
+		// fence's text sitting in a code block. Mermaid loads lazily, so this is
+		// the one place in the suite that waits for a chunk.
+		const diagram = md.getByTestId('mermaid-diagram');
+		await expect(diagram.locator('svg')).toBeVisible({ timeout: 15_000 });
+		await expect(diagram).toContainText('Terminal');
+
+		// The fence mermaid rejects reports it and keeps the source, rather than
+		// leaving a gap or replacing the page with mermaid's bomb glyph.
+		const failed = md.getByTestId('mermaid-error');
+		await expect(failed).toBeVisible();
+		await expect(failed).toContainText('nothing mermaid knows how to draw');
+
+		// And a fence in any other language is still a code block.
+		await expect(md.locator('pre code.language-ts')).toHaveText('const answer = 42;\n');
+	});
+
 	test('@smoke markdown images resolve against the file they are in', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

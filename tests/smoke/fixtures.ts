@@ -612,6 +612,22 @@ export function fixtureWithFileTree(): TestFixture {
 					'| --- | --- |',
 					'| `foo-core` | Shared helpers |',
 					'',
+					// One fence per branch of the `pre` override: a diagram, a
+					// diagram mermaid cannot parse, and a fence that is just code.
+					'```mermaid',
+					'graph TD',
+					'  Session --> Terminal',
+					'```',
+					'',
+					'```mermaid',
+					'notadiagram TD',
+					'  nothing mermaid knows how to draw',
+					'```',
+					'',
+					'```ts',
+					'const answer = 42;',
+					'```',
+					'',
 				].join('\n'),
 			),
 			[`${root}/docs/guide.md`]: contents(`${root}/docs/guide.md`, '# Guide\n\nDeeper docs.\n'),
@@ -788,6 +804,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		subagentOf: null,
 		worktree: null,
 		lastCwd: null,
+		touchedPaths: [],
 	}));
 
 	return {
@@ -804,11 +821,12 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					turnCount: 3,
 					cwd: alpha.realPath,
 					subagentOf: null,
-		touchedPaths: [],
 					worktree: null,
 					lastCwd: null,
+					touchedPaths: [],
 					worktree: null,
 					lastCwd: null,
+					touchedPaths: [],
 				},
 			],
 		},
@@ -823,10 +841,8 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
  * Claude's store, the other is what you added. One row is already in the
  * workspace and one folder has been deleted, since those are the two states the
  * dialog has to render differently.
-					touchedPaths: [],
  */
 export function fixtureImportCandidates(): TestFixture {
-					touchedPaths: [],
 	const known: Project = {
 		id: 'p0000004-0000-4000-8000-000000000004',
 		realPath: '/home/alice/code/known',

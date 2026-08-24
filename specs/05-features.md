@@ -758,6 +758,38 @@ A leading `/` resolves as a **filesystem** path, for images and links alike.
 There is no site root here to be relative to, so `/home/me/diagram.png` means
 that file.
 
+**A `mermaid` fence renders as a diagram** (added 2026-08-24, ADR-0021). The
+documents this viewer is pointed at are the ones an agent writes and the ones a
+repository already has, and a diagram left as its own source is the one kind of
+content where the rendered view is *worse* than the source view — `specs/`
+and `docs/adr/` in this repo are the worked example.
+
+- **Only a `mermaid` fence counts.** A fence labelled `mmd`, or one with no label, is
+  a code block and stays one. Guessing at unlabelled fences would turn any file
+  whose first line reads `graph TD` into a rendering attempt.
+- **Mermaid is loaded only when a document has one.** It is ~2.5MB, larger than
+  Monaco, and it sits behind a dynamic import a level below the viewer's own
+  chunk — opening a README with no diagram in it does not pay for it. See
+  `components/viewer/mermaid.ts`.
+- **The diagram is drawn in the app's palette**, resolved from the CSS custom
+  properties at render time rather than from a second copy of the palette:
+  mermaid seeds its derived colours with `khroma`, which cannot parse the
+  `oklch()` our tokens are written in, so `mermaidTheme.ts` converts them. The
+  seeds are neutral on purpose — a node is the raised surface a code block is,
+  not the brand amber. A diagram is content, and content coloured like chrome
+  reads as chrome.
+- **A fence mermaid cannot parse keeps its source**, under a one-line error, in
+  the same dashed frame a missing image gets. Mermaid's own error rendering is
+  a bomb glyph with nothing to say which fence produced it, and it is turned
+  off (`suppressErrorRendering`) so the failure can be reported in place.
+- **Diagrams are rendered, not interactive.** No pan, no zoom; a wide diagram
+  scrolls sideways in its own container. `click` directives are inert, because
+  `securityLevel` stays at its `strict` default — the same stance as not adding
+  `rehype-raw`.
+- **A fence occupies no space until its diagram lands.** Same call as
+  `LocalImage`, same reason: a placeholder that reflows the page a frame later
+  is worse than a beat of nothing.
+
 **Opening.** A **single** click on a file row opens the viewer; directories
 still toggle. "Open in default app" moved into the viewer header — it used to
 be the tree's double-click, which can't coexist with click-to-open, because
