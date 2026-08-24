@@ -4,7 +4,8 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
 [`README.md`](./README.md) for the workflow.
 
 - **Mermaid diagrams in the markdown preview — spec `05-features.md` F7, ADR-0021** — 2026-08-24,
-  user ask. A `mermaid` fence in a rendered `.md` used to be a code block of `graph TD` lines.
+  shipped as **v0.22.0**, user ask. A `mermaid` fence in a rendered `.md` used to be a code block of
+  `graph TD` lines.
   It now draws. This is the one kind of content where the rendered view was strictly *worse* than
   the source view, and the documents this viewer is pointed at — `specs/`, `docs/adr/`, whatever
   an agent just wrote — are exactly the ones with diagrams in them.
@@ -45,7 +46,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   `MarkdownView` only, not the diff viewer.
 
 - **F21's fifth signal — the paths a shell command names — spec `05-features.md` F21, roadmap
-  item 37** — 2026-08-24, on a user's screenshot of factorai naming `pearl` and its old branch
+  item 37** — 2026-08-24, shipped as **v0.22.0**, on a user's screenshot of factorai naming `pearl` and its old branch
   while their agent worked in `../pearl-eng-3333`. Hours after the fourth signal shipped, and
   defeated by it in the one way the fourth signal cannot see: the agent did the entire hour
   through `Bash`. 44 shell calls, and not one `Read`, `Write` or `Edit`, so a harvest of
