@@ -70,9 +70,13 @@ export function CheckoutMenu({ worktrees, current, onSelect, onRevert }: Checkou
 					<ChevronDown className="size-3 shrink-0" aria-hidden />
 				</button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="start" className="w-64">
+			<DropdownMenuContent align="start" className="w-96 max-w-[calc(100vw-2rem)]">
 				<DropdownMenuLabel>Checkouts</DropdownMenuLabel>
+				{/* A worktree-heavy repository is this menu's normal case, not its edge
+				    one — a real user had five — and a menu taller than the window is a
+				    menu with rows you cannot reach. */}
 				<DropdownMenuRadioGroup
+					className="max-h-[60vh] overflow-y-auto"
 					value={current}
 					onValueChange={(path) => {
 						if (path !== current) onSelect(path);
@@ -86,20 +90,39 @@ export function CheckoutMenu({ worktrees, current, onSelect, onRevert }: Checkou
 							// selectable, following the panel's own rule: filtering it out
 							// leaves a checkout you cannot see and so cannot reason about.
 							disabled={!worktree.exists}
+							// The whole truth for a name or a branch too long to draw. The
+							// path is here and nowhere else: it is what tells two checkouts
+							// apart when everything else about them reads the same, and it is
+							// never short enough to spend a row on.
+							title={`${checkoutLabel(worktree)}\n${worktree.branch ?? 'detached HEAD'}\n${worktree.path}`}
+							className="py-1.5"
 						>
-							<span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-								<span className="truncate">{checkoutLabel(worktree)}</span>
-								{/* Branch, `missing`, `locked` — metadata, in the voice the
-								    sidebar's own `missing` already speaks in. The branch is
-								    here rather than in the label because two checkouts can
-								    share a name's shape and never a branch. */}
-								<span className="shrink-0 text-muted-foreground text-xs">
-									{!worktree.exists
-										? 'missing'
-										: worktree.locked
-											? 'locked'
-											: (worktree.branch ?? 'detached')}
+							{/* **A subtitle, not a second column.** They were side by side and it
+							    did not survive contact with real data: a checkout named after its
+							    branch puts two 40-character strings in one 256px row, and both
+							    truncate to the prefix they share. Stacked, each gets the full
+							    width — and the `min-w-0` chain is what makes `truncate` fire at
+							    all: a flex child's default `min-width: auto` silently refuses to
+							    shrink, which is why the old row overflowed the menu instead of
+							    ellipsing inside it. */}
+							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+								<span className="flex min-w-0 items-center gap-2">
+									<span className="min-w-0 truncate">{checkoutLabel(worktree)}</span>
+									{/* Only the two states that change whether a row can be chosen at
+									    all — the voice the project row's own `missing` already speaks
+									    in. Both are short by construction, so neither fights the name
+									    for width. */}
+									{stateChip(worktree) && (
+										<span className="shrink-0 text-muted-foreground text-xs">
+											{stateChip(worktree)}
+										</span>
+									)}
 								</span>
+								{branchSubtitle(worktree) && (
+									<span className="min-w-0 truncate text-muted-foreground text-xs">
+										{branchSubtitle(worktree)}
+									</span>
+								)}
 							</span>
 						</DropdownMenuRadioItem>
 					))}
@@ -118,4 +141,39 @@ export function CheckoutMenu({ worktrees, current, onSelect, onRevert }: Checkou
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
+}
+
+/** `locked` or `missing` — or nothing, which is most rows.
+ *
+ *  **There is deliberately no `main` chip.** The main checkout is git's first row
+ *  and stays first here, so the position already says it; the word did not, and
+ *  beside a branch called `main` it read as a stutter. What is left are the two
+ *  states that change whether a row can be chosen at all.
+ *
+ *  Exported for its own test, like `branchSubtitle` below: both are rules about
+ *  what a row *says*, and neither needs a render to exercise. */
+export function stateChip(worktree: GitWorktree): string | null {
+	if (!worktree.exists) return 'missing';
+	return worktree.locked ? 'locked' : null;
+}
+
+/**
+ * The branch, **when it is not already what the name says**.
+ *
+ * A worktree is usually created for a branch and named after it, so printing
+ * both is printing one fact twice — and in a real repository the two 40-character
+ * strings that result are the crowding this menu was rebuilt to fix. The test is
+ * the branch's last segment appearing in the name, which is what survives the
+ * usual `feature/eng-3759-x` → `repo-eng-3759-x` renaming.
+ *
+ * A checkout with no branch at all still gets a subtitle: "no branch" is the fact
+ * you most need before picking one.
+ */
+export function branchSubtitle(worktree: GitWorktree): string | null {
+	if (!worktree.exists) return 'directory is gone';
+	if (!worktree.branch) return 'detached HEAD';
+	const tail = worktree.branch.split('/').pop() ?? worktree.branch;
+	return checkoutLabel(worktree).toLowerCase().includes(tail.toLowerCase())
+		? null
+		: worktree.branch;
 }

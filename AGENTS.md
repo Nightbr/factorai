@@ -307,7 +307,10 @@ Concrete rules:
   them rather than the one whose padding somebody happened to notice.
   Item text stays `text-sm` — shrinking a menu means its padding, never
   its labels. Added 2026-08-18 on user feedback about the sidebar's sort
-  menu.
+  menu. **28px is the height of a row carrying one fact**: a row that describes
+  an *object* rather than an action may stack a `text-xs` subtitle under its
+  label, as F21's checkout picker does — a name and a branch side by side in one
+  row truncate each other to the prefix they share.
 - **Chevrons colour on hover too** — the sidebar's expand toggle from
   its own hover, the file tree's from its row's (`group-hover`), since
   there the whole row is the click target.

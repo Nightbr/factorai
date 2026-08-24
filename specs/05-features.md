@@ -3436,9 +3436,34 @@ already carries a status dot, a project, a branch, a title and a close button,
 and one thing that both says where you are and takes you elsewhere is fewer
 things in that row than a mark plus a switcher. It keeps `IconButton`'s hover
 rule — the text and icon take colour, no filled block — so it still reads as
-quiet furniture until you reach for it. In the menu: every checkout git knows,
-`text-sm` label and `text-xs` metadata (its branch, or `locked` / `missing`), a
-missing one listed and disabled, and the revert as a separated last item.
+quiet furniture until you reach for it.
+
+**A menu row is a name, and a subtitle only when there is a second fact.**
+Rewritten 2026-08-24 on user feedback, having shipped a row that put the checkout
+name and its branch side by side in a 256px menu. That is one fact printed twice
+in every repository that names a worktree after its branch — which is every
+repository that uses them seriously — so both strings truncated to the prefix
+they share, and one of them overflowed the menu rather than ellipsing inside it
+(a flex child's `min-width: auto` refuses to shrink; `truncate` needs the
+`min-w-0` chain to fire at all). What replaced it:
+
+- **384px wide**, and scrolling at `60vh`. Five checkouts with 40-character names
+  is the case this menu is *for*, not its edge.
+- **The branch is a subtitle, and only when the name does not already carry it** —
+  tested by the branch's last segment appearing in the name, which survives the
+  usual `feature/eng-3759-x` → `repo-eng-3759-x` renaming. A checkout with no
+  branch says `detached HEAD` rather than nothing, since that is the fact you
+  most need before picking it.
+- **No `main` chip.** Git's main checkout is the list's first row, so the position
+  says it; beside a branch called `main` the word read as a stutter. The two
+  chips left are `locked` and `missing`, which change whether a row can be chosen
+  at all — a missing one is listed and disabled, per the rule below.
+- **The full name, branch and path are one hover away**, in the row's `title`.
+  The path is there and nowhere else: it is what tells two checkouts apart when
+  everything else about them reads the same, and it is never short enough to
+  spend a row on.
+
+The revert stays the separated last item.
 
 **The tree names the checkout beside its root folder**, `text-xs`, and **only
 when it is not the project's own**. So the root row reads `factorai · ⧉
