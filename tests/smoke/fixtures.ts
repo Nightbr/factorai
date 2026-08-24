@@ -333,6 +333,41 @@ export function fixtureAgentWorkedByAbsolutePath(): TestFixture {
 	};
 }
 
+/**
+ * A repository whose second checkout is on no branch at all (F21).
+ *
+ * The state the header used to say nothing about: a detached `HEAD` gave the
+ * branch badge nothing to print, so beside a checkout mark that was present the
+ * gap read as "this app has no idea", not as "there is no branch".
+ */
+export function fixtureDetachedCheckout(): TestFixture {
+	const base = fixtureSessionInAWorktree();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const worktreePath = '/home/alice/code/worktrees/feature-x';
+	const head = 'c'.repeat(40);
+
+	return {
+		...base,
+		gitStatuses: {
+			...base.gitStatuses,
+			[worktreePath]: {
+				repoRoot: project.realPath,
+				branch: null,
+				head,
+				changes: [],
+				total: 0,
+				truncated: false,
+			},
+		},
+		gitWorktrees: {
+			[project.realPath]: (base.gitWorktrees?.[project.realPath] ?? []).map((w) =>
+				w.path === worktreePath ? { ...w, branch: null, head } : w,
+			),
+		},
+	};
+}
+
 /** A parent session plus two nested sub-agents — the F2 nesting shape, with
  *  the project's count covering only the parent (sub-agents don't count). */
 export function fixtureWithSubagents(): TestFixture {

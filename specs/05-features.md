@@ -3431,6 +3431,15 @@ never instead of it — two facts rather than one, because they usually agree an
 the interesting cases are when they do not: a detached `HEAD` in a worktree, or
 two checkouts on one branch.
 
+**A checkout on no branch names its commit instead. Added 2026-08-24.** The
+branch badge was simply absent for a detached `HEAD`, which is the right answer
+for a folder that is not a repository and the wrong one here: beside a checkout
+mark that is present, the gap reads as "the app has nothing to say about the
+branch" rather than "there is no branch". It draws the short SHA behind a commit
+icon — a position in history is not a name for one — with the full SHA on hover.
+A folder outside a repository still draws nothing, since it has no branch *and*
+no commit.
+
 **The mark is the menu's trigger**, rather than a control beside it. The header
 already carries a status dot, a project, a branch, a title and a close button,
 and one thing that both says where you are and takes you elsewhere is fewer

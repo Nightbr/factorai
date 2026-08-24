@@ -2,7 +2,7 @@ import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { BookOpen, GitBranch, Play, TriangleAlert, X } from 'lucide-react';
+import { BookOpen, GitBranch, GitCommitHorizontal, Play, TriangleAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
@@ -59,6 +59,10 @@ function SessionView() {
 	// tree (F3) — and it shares `gitStatus`'s cache entry for that path, which is
 	// the one the panel is already polling.
 	const branch = useGitBranch(root);
+	// The commit a branchless checkout is sitting on. Null unless the checkout is
+	// one git knows and is really on disk — a folder that is not a repository has
+	// no branch *and* no commit, and that case still draws nothing at all.
+	const detachedAt = branch ? null : (worktrees.find((w) => w.path === root)?.head ?? null);
 	const clearWorktree = useTerminalStore((s) => s.clearWorktree);
 	const pinWorktree = useTerminalStore((s) => s.pinWorktree);
 
@@ -199,7 +203,7 @@ function SessionView() {
 				    `max-w-[12rem]` so a long branch name truncates instead of pushing
 				    the Close button around; the full name is on hover, following the
 				    session id below it. */}
-				{branch && (
+				{branch ? (
 					<span
 						className="flex min-w-0 max-w-[12rem] shrink-0 items-center gap-1 text-muted-foreground text-xs"
 						title={`On branch ${branch}`}
@@ -208,6 +212,24 @@ function SessionView() {
 						<GitBranch className="size-3 shrink-0" aria-hidden />
 						<span className="truncate">{branch}</span>
 					</span>
+				) : (
+					/* **A detached HEAD is a state, not a missing fact.** The badge used
+					   to be absent for it, which is right when the folder is not a
+					   repository at all and wrong here: beside a checkout mark that is
+					   present, the gap reads as "this app has nothing to say about the
+					   branch" rather than "there is no branch". The commit icon is the
+					   distinction — this is a position in history, not a name for one —
+					   and the short SHA is what you would have run `git status` for. */
+					detachedAt && (
+						<span
+							className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs"
+							title={`Detached HEAD at ${detachedAt}`}
+							data-testid="session-branch"
+						>
+							<GitCommitHorizontal className="size-3 shrink-0" aria-hidden />
+							<span>{detachedAt.slice(0, 7)}</span>
+						</span>
+					)
 				)}
 				{/* **The checkout, beside the branch and never instead of it** (F21).
 				    Two facts rather than one: they usually agree, and the cases where

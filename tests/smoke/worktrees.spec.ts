@@ -3,6 +3,7 @@ import {
 	FOO_ID,
 	fixtureAgentMovedWithoutSaying,
 	fixtureAgentWorkedByAbsolutePath,
+	fixtureDetachedCheckout,
 	fixtureOneProjectOneSession,
 	fixtureSessionInAWorktree,
 	installMockBridge,
@@ -186,6 +187,22 @@ test.describe('worktrees', () => {
 
 		await expect(page.getByTestId('session-worktree')).toContainText('feature-x');
 		await expect(page.getByText('switcher.ts')).toBeVisible();
+	});
+
+	test('@smoke a checkout on no branch says which commit it is on', async ({ page }) => {
+		// The badge used to be absent here, which is right for a folder that is not
+		// a repository and wrong for this: beside a checkout mark that is present,
+		// nothing reads as "no idea" rather than as "no branch".
+		await installMockBridge(page, fixtureDetachedCheckout());
+		await page.goto(IN_WORKTREE);
+
+		const badge = page.getByTestId('session-branch');
+		await expect(badge).toContainText('ccccccc');
+		await expect(badge).toHaveAttribute('title', `Detached HEAD at ${'c'.repeat(40)}`);
+
+		// And the menu row says it in words, where there is room for words.
+		await page.getByTestId('session-worktree').click();
+		await expect(page.getByRole('menuitemradio', { name: /detached HEAD/ })).toBeVisible();
 	});
 
 	test('@smoke the revert returns the panel to the session’s own checkout', async ({ page }) => {
