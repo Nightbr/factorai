@@ -882,13 +882,31 @@ fn now_ms() -> i64 {
 		.unwrap_or(0)
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use std::sync::{Arc, Mutex as StdMutex};
 
 	type DataLog = Arc<StdMutex<Vec<TerminalDataEvent>>>;
 	type ExitLog = Arc<StdMutex<Vec<TerminalExitEvent>>>;
+
+	fn sh_cmd(cmd: &str) -> Vec<String> {
+		#[cfg(unix)]
+		{
+			vec!["/bin/sh".into(), "-c".into(), cmd.into()]
+		}
+		#[cfg(windows)]
+		{
+			let win_cmd = if let Some(secs) = cmd.strip_prefix("sleep ") {
+				format!("ping 127.0.0.1 -n {secs} >NUL")
+			} else if cmd == "true" {
+				"exit 0".to_string()
+			} else {
+				cmd.to_string()
+			};
+			vec!["cmd".into(), "/c".into(), win_cmd]
+		}
+	}
 
 	fn make_manager() -> (TerminalManager, DataLog, ExitLog) {
 		make_manager_in(PathBuf::from("/nonexistent-claude-dir"))
@@ -934,7 +952,7 @@ mod tests {
 		let id = mgr
 			.spawn_with_argv(
 				opts(80, 24),
-				Some(vec!["/bin/sh".into(), "-c".into(), "echo HELLO_PTY".into()]),
+				Some(sh_cmd("echo HELLO_PTY")),
 			)
 			.expect("spawn");
 		// Wait for the child to exit.
@@ -976,6 +994,7 @@ mod tests {
 	/// `.mount_*` entries from two different mounts, and this test failed on
 	/// exactly those when the strip was widened to catch them.
 	#[test]
+	#[cfg(unix)]
 	fn a_child_runs_with_the_login_shell_path() {
 		let (mgr, data, exit) = make_manager();
 		let id = mgr
@@ -1024,6 +1043,7 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn write_input_reaches_child_process() {
 		// Spawn a tiny shell script that reads one line and echoes it with a
 		// recognisable prefix. Avoids `cat`'s line-buffer quirks.
@@ -1063,7 +1083,7 @@ mod tests {
 		let id = mgr
 			.spawn_with_argv(
 				opts(80, 24),
-				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 60".into()]),
+				Some(sh_cmd("sleep 60")),
 			)
 			.expect("spawn sleep");
 		assert_eq!(mgr.live_count(), 1);
@@ -1084,7 +1104,7 @@ mod tests {
 		let id = mgr
 			.spawn_with_argv(
 				opts(80, 24),
-				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
+				Some(sh_cmd("sleep 30")),
 			)
 			.unwrap();
 		let listing = mgr.list();
@@ -1105,6 +1125,7 @@ mod tests {
 	/// has shipped once already: a right rule that never reaches the process
 	/// (see `a_child_runs_with_the_login_shell_path`).
 	#[test]
+	#[cfg(unix)]
 	fn a_title_written_by_a_real_child_moves_the_status() {
 		let statuses: Arc<StdMutex<Vec<TerminalStatusEvent>>> = Arc::new(StdMutex::new(Vec::new()));
 		let sc = statuses.clone();
@@ -1152,7 +1173,7 @@ mod tests {
 		let mut o = opts(80, 24);
 		o.cwd = Some("/definitely/not/a/directory".into());
 		let err = mgr
-			.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "true".into()]))
+			.spawn_with_argv(o, Some(sh_cmd("true")))
 			.expect_err("a missing cwd must not spawn");
 		// portable-pty starts the child elsewhere rather than failing, so without
 		// this guard a new session in a deleted project folder would be filed
@@ -1215,7 +1236,7 @@ mod tests {
 		let mut o = opts(80, 24);
 		o.project_id = "proj".into();
 		let session = o.session_id.clone();
-		mgr.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+		mgr.spawn_with_argv(o, Some(sh_cmd("sleep 30")))
 			.unwrap();
 
 		// Live, never messaged → the click lands on it rather than a second claude.
@@ -1233,7 +1254,7 @@ mod tests {
 		o.project_id = "proj".into();
 		let session = o.session_id.clone();
 		write_transcript(tmp.path(), "/tmp/proj", &session);
-		mgr.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+		mgr.spawn_with_argv(o, Some(sh_cmd("sleep 30")))
 			.unwrap();
 
 		// It has real content, so "new session" must not hijack it.
@@ -1247,7 +1268,7 @@ mod tests {
 		for _ in 0..3 {
 			mgr.spawn_with_argv(
 				opts(80, 24),
-				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
+				Some(sh_cmd("sleep 30")),
 			)
 			.unwrap();
 		}
@@ -1279,7 +1300,7 @@ mod tests {
 		// the handle — and the bridge with it — is gone before we look.
 		mgr.spawn_with_argv(
 			opts(80, 24),
-			Some(vec!["/bin/sh".into(), "-c".into(), "sleep 5".into()]),
+			Some(sh_cmd("sleep 5")),
 		)
 		.expect("spawn");
 

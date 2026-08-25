@@ -14,17 +14,39 @@ use crate::services::jsonl::EventIter;
 /// Encode an absolute filesystem path into the directory name Claude Code uses
 /// under `~/.claude/projects/`.
 ///
-/// Rule: drop the leading `/`, then replace each `/` with `-`. Trailing slashes
-/// are dropped. Example: `/Users/alice/code/foo` becomes
-/// `-Users-alice-code-foo`.
+/// On Unix: drop the leading `/`, then replace each `/` with `-`. Trailing slashes
+/// are dropped. Example: `/Users/alice/code/foo` becomes `-Users-alice-code-foo`.
+#[cfg(unix)]
+pub fn encode_path(p: &Path) -> String {
+	let mut s = p.to_string_lossy().to_string();
+	while s.ends_with('/') {
+		s.pop();
+	}
+	let trimmed = s.trim_start_matches('/');
+	let sanitized = trimmed.replace('/', "-");
+	format!("-{sanitized}")
+}
+
+/// Encode an absolute filesystem path into the directory name Claude Code uses
+/// under `~/.claude/projects/` on Windows.
+///
+/// On Windows: strip UNC prefix (`\\?\`), drop trailing slashes/backslashes,
+/// then replace `/`, `\`, and `:` with `-`.
+/// Example: `C:\Users\alice\code\foo` becomes `C--Users-alice-code-foo`.
+#[cfg(windows)]
 pub fn encode_path(p: &Path) -> String {
 	let mut s = p.to_string_lossy().to_string();
 	while s.ends_with('/') || s.ends_with('\\') {
 		s.pop();
 	}
-	let trimmed = s.trim_start_matches(['/', '\\', '?']);
-	let sanitized = trimmed.replace(['/', '\\', ':'], "-");
-	format!("-{sanitized}")
+	let mut trimmed = s.as_str();
+	if let Some(stripped) = trimmed.strip_prefix(r"\\?\UNC\") {
+		trimmed = stripped;
+	} else if let Some(stripped) = trimmed.strip_prefix(r"\\?\") {
+		trimmed = stripped;
+	}
+	let trimmed = trimmed.trim_start_matches(['/', '\\']);
+	trimmed.replace(['/', '\\', ':'], "-")
 }
 
 /// Best-effort decode. Ambiguous when the original path contained a literal `-`
@@ -169,26 +191,51 @@ mod tests {
 	use std::path::PathBuf;
 
 	#[test]
+	#[cfg(unix)]
 	fn encode_simple_path() {
 		assert_eq!(encode_path(&PathBuf::from("/Users/alice/code/foo")), "-Users-alice-code-foo");
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn encode_drops_trailing_slash() {
 		assert_eq!(encode_path(&PathBuf::from("/Users/alice/")), "-Users-alice");
 	}
 
 	#[test]
+	#[cfg(windows)]
+	fn encode_windows_path() {
+		assert_eq!(
+			encode_path(&PathBuf::from(r"C:\Users\alice\code\foo")),
+			"C--Users-alice-code-foo"
+		);
+		assert_eq!(encode_path(&PathBuf::from(r"\\?\C:\Users\alice\code")), "C--Users-alice-code");
+		assert_eq!(encode_path(&PathBuf::from(r"C:\Users\alice\")), "C--Users-alice");
+	}
+
+	#[test]
+	#[cfg(unix)]
 	fn decode_simple_roundtrip() {
 		assert_eq!(decode_candidates("-Users-alice-code-foo")[0], "/Users/alice/code/foo");
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn transcript_path_is_derived_from_the_folder() {
 		let dir = PathBuf::from("/home/me/.claude");
 		assert_eq!(
 			transcript_path(&dir, &PathBuf::from("/home/me/code/foo"), "s1"),
 			PathBuf::from("/home/me/.claude/projects/-home-me-code-foo/s1.jsonl")
+		);
+	}
+
+	#[test]
+	#[cfg(windows)]
+	fn transcript_path_is_derived_from_the_folder_windows() {
+		let dir = PathBuf::from(r"C:\Users\me\.claude");
+		assert_eq!(
+			transcript_path(&dir, &PathBuf::from(r"C:\Users\me\code\foo"), "s1"),
+			PathBuf::from(r"C:\Users\me\.claude\projects\C--Users-me-code-foo\s1.jsonl")
 		);
 	}
 

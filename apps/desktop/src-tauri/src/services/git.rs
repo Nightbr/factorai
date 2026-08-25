@@ -1006,7 +1006,22 @@ fn group_order(group: GitGroup) -> u8 {
 }
 
 fn canonical(path: &str) -> PathBuf {
-	std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
+	let p = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+	#[cfg(windows)]
+	{
+		let s = p.to_string_lossy();
+		if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
+			PathBuf::from(format!(r"\\{}", stripped))
+		} else if let Some(stripped) = s.strip_prefix(r"\\?\") {
+			PathBuf::from(stripped)
+		} else {
+			p
+		}
+	}
+	#[cfg(not(windows))]
+	{
+		p
+	}
 }
 
 /// `target` expressed relative to `base`, with `../` for each level it escapes.
@@ -1036,7 +1051,7 @@ fn git_err(e: git2::Error) -> AppError {
 	AppError::Io(format!("git: {}", e.message()))
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use git2::{IndexAddOption, Oid, Signature};

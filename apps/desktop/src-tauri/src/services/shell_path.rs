@@ -73,9 +73,7 @@ const END: &str = "__FACTORAI_PATH_END__";
 /// here on purpose: Apple Silicon puts it in `/opt/homebrew`, Intel in
 /// `/usr/local`, and a floor that only knows one of them is a floor that drops
 /// half of macOS through it.
-///
-/// On Windows this constant is unused but kept so imports in `child_env` compile
-/// without platform guards.
+#[cfg(unix)]
 pub const FALLBACK_PATH: &str =
 	"/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 

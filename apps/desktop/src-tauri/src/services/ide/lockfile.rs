@@ -137,7 +137,8 @@ fn write_private(path: &Path, body: &[u8]) -> io::Result<()> {
 	file.sync_all()
 }
 
-/// Windows: no Unix permission bits; just write the file and sync.
+/// Windows: no POSIX permission bits (0o600); relies on the inherited user-only ACL
+/// of `%USERPROFILE%\.claude\`.
 #[cfg(windows)]
 fn write_private(path: &Path, body: &[u8]) -> io::Result<()> {
 	use std::io::Write;
@@ -216,16 +217,16 @@ pub fn pid_is_alive(pid: u32) -> bool {
 	unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
-/// Windows stub: open the process handle to test for existence.
+/// Windows process check: open process handle and verify exit code.
 ///
-/// `OpenProcess` with `PROCESS_QUERY_LIMITED_INFORMATION` (0x1000) succeeds
-/// only for live processes we have permission to observe. We close the handle
-/// immediately via the `HANDLE` wrapper's drop. A failed open is treated as
-/// "gone" — the safe direction: we leave the file rather than deleting a
-/// stranger's lock.
+/// `OpenProcess` with `PROCESS_QUERY_LIMITED_INFORMATION` (0x1000) succeeds if
+/// we have permission to observe the process. Because Windows keeps process
+/// objects alive as long as any handle remains open, we also query
+/// `GetExitCodeProcess` to ensure `code == 259` (`STILL_ACTIVE`).
+/// We close the handle explicitly with `CloseHandle`. Returning `false` allows
+/// `sweep` to clean up stale lockfiles from dead processes.
 ///
-/// The two WinAPI symbols are declared inline so no additional crate is needed
-/// (they come from the Windows SDK, which the MSVC toolchain always ships).
+/// The WinAPI symbols are declared inline so no additional crate is needed.
 #[cfg(windows)]
 pub fn pid_is_alive(pid: u32) -> bool {
 	// SAFETY: pure FFI calls. `OpenProcess` returns NULL on failure, non-NULL
@@ -233,16 +234,20 @@ pub fn pid_is_alive(pid: u32) -> bool {
 	#[link(name = "kernel32")]
 	extern "system" {
 		fn OpenProcess(desired_access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+		fn GetExitCodeProcess(handle: *mut std::ffi::c_void, exit_code: *mut u32) -> i32;
 		fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
 	}
 	const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+	const STILL_ACTIVE: u32 = 259;
 	unsafe {
 		let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
 		if h.is_null() {
 			return false;
 		}
+		let mut code: u32 = 0;
+		let ok = GetExitCodeProcess(h, &mut code) != 0 && code == STILL_ACTIVE;
 		CloseHandle(h);
-		true
+		ok
 	}
 }
 
