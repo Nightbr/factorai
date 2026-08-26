@@ -619,67 +619,106 @@ Worth confirming when someone picks this up:
   geometry from `xwininfo -id <wid>`, and dump per-pixel luminance. Scaled screenshots lie about
   exactly the pixels this is about — the first round of this was diagnosed wrongly off one.
 
-## 28. Order the pinned projects by hand (F1)
+## 28. Order every project by hand — and drop pinning and the sort control
 
-**User ask, 2026-08-16:** the pinned block should be in the order *you* choose, not the order a
-sort picked for you. Appended after item 27 — numbering here is append-only.
+**Rewritten 2026-08-26 on a user ask; supersedes the version filed 2026-08-16.** That entry asked
+for the *pinned block* to be hand-ordered, and spent most of its length on what the sort control
+should mean afterwards. The answer is that neither should survive: **every project sits where you
+dragged it, and there is no sort control.** Pinning is a one-bit approximation of an ordering, and
+F1's "the sort applies inside both groups, so the control means one thing wherever you look" was
+the compromise a two-tier list forced. One hand-ordered list has no tiers and nothing to
+reconcile.
 
-**What pinning is today.** `projects.pinned` is a boolean column, set through `pin_project`, and
-F1 is explicit that it is the column and **not** a client-side list. The block's *internal* order
-is nobody's choice: `groupProjects` in `Sidebar.tsx` filters the already-sorted list in two, so a
-pinned project sits wherever the sidebar's sort control put it — `recent` keeps the backend's
-`last_session_at DESC`, `name` is a `localeCompare`. Pinning three projects to the top and having
-them shuffle every time one of them runs a session is the complaint.
+**Item 41 (project groups) is the other half of the same ask and lands after this one.** Groups
+are what replaces the pinned block for *organising*; this item is only *ordering*. Read them
+together: 28 is the ordinal and the drag, 41 is the containers that reuse both.
 
-**The real decision is what the sort control means afterwards**, and it has to be made before any
-schema. F1 chose deliberately that the sort *"applies inside both groups, so the control means one
-thing wherever you look"*. A hand-ordered pinned block contradicts that, and there are only two
-honest resolutions:
+**The deletions are the bulk of the work**, and `pinned` reaches further than the sidebar:
 
-- **Manual order always wins in the pinned block**, and the sort control governs `rest` alone.
-  Simplest to explain — "you pinned these, you arranged them" — but it makes the control mean two
-  things after all, and the block needs to *say* it's manually ordered or the control looks broken.
-- **Manual is a third value of the sort control** (`recent | name | manual`), applying to the
-  pinned block only, with the two existing sorts still reaching inside it. Keeps one control with
-  one meaning, at the cost of a mode nobody discovers.
+- `projects.pinned` (0001, recreated on `workspace_projects` in 0004) and the
+  `ORDER BY p.pinned DESC` in `PROJECT_SELECT`.
+- `pin_project` in `commands/projects.rs`, `cmd.pinProject` in `lib/tauri.ts`, and the
+  `pin_project` branch of `mockInvoke`.
+- `Project.pinned` in `packages/types`.
+- The hover pin and its state-at-rest / action-on-hover glyph rule, the `Pin / Unpin` context-menu
+  row, and `usePinProject`'s optimistic write — all `SidebarProject.tsx`. Note
+  `alwaysShowControls` reads `project.pinned` to keep the `+` visible without hovering; decide
+  what replaces the condition (recommendation: `isActive` alone).
+- `sortProjects` and `groupProjects` in `Sidebar.tsx`, the pinned `<ul data-testid="pinned-projects">`
+  and its divider, and the Sort radio group in the `ArrowUpDown` menu. Expand all / Collapse all
+  stay, so that menu keeps a reason to exist.
+- `ProjectSort` and `sort` in `sidebarStore` — a *persisted* key, so this is version 3 plus a
+  `migrate` branch that drops it, alongside the v1→v2 one already there.
+- The three test surfaces that assert on the flag: `SidebarProject.test.ts`'s fixture, and the
+  Rust integration tests (`add_project_integration.rs`, `indexer_integration.rs`,
+  `workspace_migration.rs`). The indexer one is the load-bearing one — it guards that an upsert
+  touches only `real_path` and `display_name`, which is now an assertion about `sort_order`.
 
-Pick one and write it into F1 in the same commit (§ 2a) — the current F1 sentence is wrong under
-either.
+And the build:
 
-- [ ] **Storage: an ordinal column, not an overloaded flag.** `pinned` stays a boolean; add
-      `pin_order INTEGER` beside it. **Check the highest migration on an up-to-date `origin/main`
-      before naming the file** — 0001–0005 exist locally and migrations are keyed by *name*, so a
-      second `0006` cannot be renumbered once it has run anywhere (§ 2b, the 0004 collision).
-- [ ] **One command that writes the whole order**, e.g. `reorder_pinned_projects(ids: Vec<String>)`
-      in `commands/projects.rs`, rewriting every ordinal in a single transaction. A per-row
-      "move up" command looks cheaper and isn't: it leaves gaps, races the 2s refetch, and has no
-      way to reject an order that no longer matches what the user saw.
-- [ ] **Decide where a newly pinned project lands** — top or bottom of the block. `pin_project`
-      currently writes a flag and nothing else; it now has to assign an ordinal too, and
-      *unpinning* has to decide whether the old position is remembered for a re-pin (recommendation:
-      it isn't — a repin goes to the end, and that is one less piece of invisible state).
-- [ ] **The gesture, cheapest first.** The row's `ContextMenu` already exists (item 25) and already
-      carries Pin / Unpin, so **`Move up` / `Move down` rows in it are nearly free** and are a
-      complete answer to the ask. Drag-and-drop is the nicer gesture and **no longer needs the ADR
-      this entry asked for**: dnd-kit landed 2026-08-18 for the session tabs (ADR-0016), so the
-      dependency is already load-bearing and paid for, and `SessionTabs` is the worked example —
-      `verticalListSortingStrategy` instead of the horizontal one. Two things from that work carry
-      over: **do not** reach for HTML5 drag-and-drop (it does nothing on macOS, § 4), and the
-      keyboard path is still required — the tabs took `Alt`+arrows rather than dnd-kit's
-      `KeyboardSensor`, for reasons that apply to a row you also activate with Enter. Ship the menu
-      rows first regardless; they are the cheap complete answer.
-- [ ] **Optimistic update or it will fight the poll.** The sidebar refetches every 2s and
-      `usePinProject` already shows the pattern (`onMutate` rewrites the cached list). A reorder
-      that waits for the round-trip will visibly snap back; the optimistic write has to cover the
-      ordering, not just the flag.
-- [ ] **Keep the ordering rule pure and exported**, the way `sortProjects` is — the whole point of
-      that shape is that the rule is testable without a render. `Sidebar.test.ts` /
-      `SidebarProject.test.ts` cover the unit; add one `@smoke` case that reorders and asserts the
-      order survives a refetch.
+- [ ] **Storage: `sort_order INTEGER NOT NULL` on `workspace_projects`.** Migration **0011** —
+      0001–0010 exist locally, so **check the highest on an up-to-date `origin/main` before naming
+      the file**: migrations are keyed by name and a second `0011` cannot be renumbered once it
+      has run anywhere (§ 2b, the 0004 collision).
+- [ ] **Seed the ordinals from what the user is looking at today**, so nobody's sidebar reshuffles
+      on upgrade: `pinned DESC, last_session_at DESC, display_name ASC`. Note `last_session_at` is
+      **not a column** — it is computed in `PROJECT_SELECT`, so the seeding statement either
+      reproduces that join or settles for `pinned DESC, display_name ASC`. Pick one and say which
+      in the migration's comment.
+- [ ] **Dropping `pinned` is a table rebuild, not `ALTER TABLE … DROP COLUMN`.** rusqlite 0.31
+      bundles SQLite 3.45 so the statement exists, but SQLite refuses to drop a column named in a
+      CHECK constraint and this one is declared `CHECK (pinned IN (0, 1))`. So: create, copy, drop,
+      rename — and mind `discovered_projects.project_id`, whose FK points at the table being
+      rebuilt (`PRAGMA foreign_keys` must be off for the swap, or the copy cascades).
+- [ ] **One command that writes the whole order** — `reorder_projects(ids: Vec<String>)` in
+      `commands/projects.rs`, rewriting every ordinal in a single transaction. A per-row "move up"
+      command looks cheaper and isn't: it leaves gaps, races the 2s refetch, and has no way to
+      reject an order that no longer matches what the user saw.
+- [ ] **A newly added project lands at the top.** F1 already navigates to the project you just
+      added, and sending you to a row below the fold is the wrong end of the list.
+      `add_project` assigns the ordinal.
+- [ ] **The gesture: dnd-kit, `verticalListSortingStrategy`.** ADR-0016 is already paid for and
+      `SessionTabs` is the worked example, including the 4px activation constraint that keeps a
+      click a click. **Not** HTML5 drag-and-drop — it does nothing on macOS (§ 4). The keyboard
+      path is required, and the tabs took `Alt`+arrows rather than dnd-kit's `KeyboardSensor`, for
+      reasons that apply exactly to a row you also activate with Enter. `Move up` / `Move down` in
+      the row's `ContextMenu` stay the cheap complete answer, and the menu now has a free slot
+      where Pin / Unpin was.
+- [ ] **Optimistic, or it will fight the poll.** The sidebar refetches every 2s; the optimistic
+      write has to cover the ordering, not a flag.
+- [ ] **Keep the ordering rule pure and exported**, the way `sortProjects` was — that shape is why
+      the rule is testable without a render. One `@smoke` case: reorder, then assert the order
+      survives a refetch.
 
-**Not a general project ordering.** This is the pinned block only. `rest` stays sorted, because a
-hand-ordered list of every project the workspace has ever seen is a thing to maintain rather than
-a feature.
+**What this costs, so it isn't a surprise.** *Recent* goes away: a project you haven't touched in
+a month no longer floats up. That is the ask rather than a side effect, but it means a
+forty-project sidebar becomes a list you maintain — item 41's groups and their collapse are the
+mitigation, which is the other reason the two belong together. Worth knowing too that the
+sidebar's search box is **FTS session search** and navigates to `/search`; it does not filter the
+project list. After this there is no name-ordered way to find a row, and if a project filter turns
+out to be needed it is a new item, not a quiet addition here.
+
+**Update F1 in the same commit** (§ 2a): the pinning paragraphs, the pinned-block paragraph, and
+the sort control in the section-header paragraph are all wrong afterwards.
+
+**And write the superseding ADR in that same commit** — decided 2026-08-26, when this rewrite was
+filed. Two shipped ADRs describe a world where pinning exists, and ADRs are immutable (§ 5), so
+neither is edited:
+
+- [ADR-0011](../../docs/adr/0011-a-project-is-a-folder-in-the-workspace.md) argues project
+  identity is a uuid rather than a path so that moving a folder keeps the project "without
+  orphaning its pins". The argument survives the removal intact — a hand-assigned ordinal and a
+  group membership are exactly the same kind of decision a path-derived id would throw away — so
+  what the new ADR does is restate the reason in terms of what the row now carries.
+- [ADR-0016](../../docs/adr/0016-dnd-kit-for-pointer-based-reordering.md) names "roadmap item 28's
+  pinned-project reordering" as the surface that reuses dnd-kit. The dependency choice is
+  unchanged; only the surface's description is stale.
+
+One ADR supersedes both, links both ways, and records the decision this item actually makes:
+**order is a stored per-project ordinal the user writes by dragging, and there is no derived
+order and no pinned flag.** That is a storage strategy and a cross-cutting sidebar pattern — both
+on § 5's list — and item 41's `group_id` lands on top of it, so it is worth stating once rather
+than leaving it implied by a migration comment.
 
 ## 29. Error boundaries — per-surface, so one crash costs one pane
 
@@ -1133,3 +1172,62 @@ Then, in order:
 **Worktrees make "the current branch" ambiguous** (item 37, F21). Resolve it against the checkout
 the panel is showing, which is the rule F21 already settled for the file panel — not against the
 repository's `HEAD`, which may be a checkout nobody is looking at.
+
+## 41. Project groups — Pro, Perso, Side projects
+
+**User ask, 2026-08-26**, filed alongside item 28's rewrite and deliberately split from it. A flat
+hand-ordered list is still one list; the value in "Pro / Perso / Side projects" is a sidebar that
+shows one part of your life at a time. It is also where the pinned block *went*: a group you named
+is a better answer to "these three matter" than a boolean was.
+
+**Depends on item 28.** The ordinal column, `reorder_projects`, and the dnd-kit sortable list are
+all reused. Build it after, not beside.
+
+The shape:
+
+- [ ] **A group is a row that holds projects** — a name, a collapse chevron, and a count when
+      collapsed. `project_groups(id TEXT PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT
+      NULL)`, plus `workspace_projects.group_id TEXT REFERENCES project_groups(id) ON DELETE SET
+      NULL`. `SET NULL` is the load-bearing part: deleting a group un-files its projects, it never
+      deletes them.
+- [ ] **Ungrouped projects are not a group.** They stay at the top level, interleaved with group
+      rows by `sort_order`, so the sidebar is one ordered list of rows where some rows expand. A
+      synthetic "Ungrouped" container is the alternative and it makes a fresh workspace display a
+      group nobody created.
+- [ ] **Ordering is two levels and one rule** — `sort_order` among top-level rows, `sort_order`
+      within a group. Either `reorder_projects` grows a scope argument or it gains a sibling;
+      decide once rather than ending up with both.
+- [ ] **`Move to group ▸` in the row's context menu ships first.** It is the complete answer for
+      the keyboard, and it is cheap. Drag between groups is the nicer gesture and the harder one:
+      it needs a droppable per group, a **collapsed** group has to accept a drop (spring-open on
+      hover if it's affordable), and `Alt`+arrows only reorders *within* a level — changing level
+      needs its own affordance or the menu row is it.
+- [ ] **Creating, renaming, deleting.** "New Group…" joins the section header's `FolderPlus` menu,
+      beside the two Add doors. Rename is inline — and it is the sidebar's first inline-edit
+      surface, so if **item 17** (rename a session) is anywhere nearby, build the control as a
+      primitive in `@factorai/ui` once rather than twice.
+- [ ] **Expansion joins `sidebarStore.expanded`**, which holds project ids today. A group id is
+      the same kind of durable id, so either a second array or one shared list — and either way
+      `expandAll` / `collapseAll` now have to mean projects *and* groups.
+- [ ] **An empty group stays, and says it is empty.** It is a container you made on purpose;
+      tidying it away for you is worse than a quiet row.
+
+Answer these before building:
+
+- **One group per project, or many?** Recommendation: one. Many turns the sidebar into a tag view
+  and the ordering rule into a per-tag ordinal, which is a different feature wearing this one's
+  name.
+- **Nesting?** Recommendation: no. One level.
+- **Does anything outside the sidebar see a group?** Scoping search to one ("search only Pro") is
+  the obvious next ask, and it is the reason `group_id` belongs on the row rather than in a
+  renderer preference. Out of scope here — do not build it, do not preclude it.
+
+**Where it is specified.** A section inside F1 rather than a new `F22`: the project list is one
+surface, and splitting its contract across two features makes the sidebar harder to read than the
+feature is. Same commit as the code, as ever (§ 2a).
+
+**ADR-wise this rides on item 28's**, which supersedes ADR-0011 and ADR-0016 and states the
+ordering model this builds on. A group is one more column and one more table under the same
+decision, so it wants a new ADR only if an answer above goes the other way — many groups per
+project, or nesting, would each be a different storage strategy rather than an extension of that
+one.
