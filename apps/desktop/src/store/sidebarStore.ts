@@ -3,10 +3,20 @@ import { persist } from 'zustand/middleware';
 
 /** How the project list is ordered (specs/05-features.md F1).
  *
- *  `recent` is what the backend already returns — `last_session_at DESC`, so
- *  whatever you touched last floats up. `name` is for when you know what you're
- *  looking for and want it to stay put. */
-export type ProjectSort = 'recent' | 'name';
+ *  `manual` is the order you dragged the rows into — the stored `sortOrder` on
+ *  each project. It is the default, because a list that stays where you put it
+ *  is the point of being able to put it anywhere.
+ *
+ *  `name` and `recent` are **views over the same list**: they derive an order
+ *  from fields the row already carries and write nothing. `recent` used to mean
+ *  "keep whatever `list_projects` returned", because that query ordered by
+ *  recency; it now orders by ordinal, so `recent` derives its own order from
+ *  `lastSessionAt`.
+ *
+ *  The union widened from `'recent' | 'name'` without a store version bump: both
+ *  old values are still valid, so a persisted state needs no migration. Only the
+ *  default for a fresh install changed. */
+export type ProjectSort = 'manual' | 'name' | 'recent';
 
 /** Narrower and project names truncate to nothing; wider and it eats the pane
  *  the terminal needs. */
@@ -48,6 +58,12 @@ interface SidebarState {
  * before the first paint or the list renders wrong and then jumps. `sort` and
  * `width` are id-free and carry over untouched.
  *
+ * **There is no v2 → v3, deliberately.** Adding `manual` widened `ProjectSort`
+ * rather than replacing it, so every persisted `sort` — `'recent'` included — is
+ * still a value the store accepts. A migration here could only move someone off
+ * a mode that is still on the menu, which is discarding a preference they set,
+ * so the version stays at 2 and only the default for a fresh install changed.
+ *
  * Pure and exported so the rule is testable without a storage round-trip.
  */
 export function migrateSidebarState(state: unknown, from: number): unknown {
@@ -59,7 +75,7 @@ export function migrateSidebarState(state: unknown, from: number): unknown {
 export const useSidebarStore = create<SidebarState>()(
 	persist(
 		(set) => ({
-			sort: 'recent',
+			sort: 'manual',
 			expanded: [],
 			width: DEFAULT_SIDEBAR_WIDTH,
 

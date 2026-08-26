@@ -208,13 +208,20 @@ actions never write the second.
 | id               | TEXT PK   | uuid v4. Not derived from the path                      |
 | real_path        | TEXT      | canonical absolute path, **NOT NULL UNIQUE**            |
 | display_name     | TEXT      | last path component                                     |
-| pinned           | INTEGER   | 0/1                                                     |
+| sort_order       | INTEGER   | where the user dragged it (ADR-0023)                    |
 | missing          | INTEGER   | 0/1 — the folder is gone from disk                      |
 | opened_at        | INTEGER   | unix ms                                                 |
 
 `session_count` and `last_session_at` are **not columns**. They are aggregated
 per query from the sessions of every discovered directory linked to the folder:
 they change whenever the indexer runs, and a stale count is worse than a join.
+
+`sort_order` is **not a permutation of `0..n-1`**. `add_project` writes
+`MIN(sort_order) - 1` so a new project lands on top without an UPDATE over every
+row, and `remove_project` leaves a hole; `list_projects` tie-breaks on
+`display_name` so the order stays deterministic anyway, and `reorder_projects`
+renumbers densely from zero. There was a `pinned INTEGER` column here until
+migration 0011 — see ADR-0023 for why an ordinal replaced it.
 
 ### `discovered_projects` — what the agents' stores hold
 

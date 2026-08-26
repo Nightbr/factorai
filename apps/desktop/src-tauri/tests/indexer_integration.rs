@@ -288,14 +288,17 @@ fn malformed_jsonl_line_is_skipped_not_fatal() {
 	.unwrap();
 }
 
-/// Pinning is a workspace decision, and the scan has no business touching it.
+/// Where a project sits is a workspace decision, and the scan has no business
+/// touching it.
 ///
 /// Under the old model this was a live risk: the indexer upserted the very row
-/// that held the pin, so one careless column in that `ON CONFLICT` cleared
-/// every pin in the sidebar. It now writes a different table entirely, and this
-/// test is what keeps that true (specs/05-features.md F1).
+/// that held the ordering decision — a pin, then — so one careless column in
+/// that `ON CONFLICT` reshuffled the whole sidebar. It now writes a different
+/// table entirely, and this test is what keeps that true (specs/05-features.md
+/// F1). The flag it used to guard is gone; the column it guards now is
+/// `sort_order`, which is strictly more to lose.
 #[test]
-fn a_pinned_project_stays_pinned_across_a_rescan() {
+fn a_hand_ordered_project_keeps_its_place_across_a_rescan() {
 	let tmp = TempDir::new().unwrap();
 	let db = open_db(tmp.path());
 	let (claude_dir, _cwd, _store, _sid) = fixture_one_session(tmp.path(), &db);
@@ -304,32 +307,36 @@ fn a_pinned_project_stays_pinned_across_a_rescan() {
 
 	let id = only_project(&db).id;
 	db.with(|conn| {
-		conn.execute("UPDATE projects SET pinned = 1 WHERE id = ?1", params![&id])?;
+		conn.execute("UPDATE projects SET sort_order = 42 WHERE id = ?1", params![&id])?;
 		Ok(())
 	})
-	.expect("pin");
+	.expect("place it");
 
 	indexer.full_scan().expect("second scan");
 
-	assert!(only_project(&db).pinned, "re-scanning must not clear a pin");
+	assert_eq!(only_project(&db).sort_order, 42, "re-scanning must not reorder the sidebar");
 }
 
-/// `list_projects` orders pinned first, and only then by recency — the sidebar
-/// leans on this for its pinned block.
+/// `list_projects` returns the hand order, and recency does not enter into it.
+///
+/// This test used to assert the opposite half of the same query — that a pin beat
+/// a fresher session. Both facts are about the same thing: what the sidebar's
+/// default order is allowed to depend on. It is now one stored column, and the
+/// derived orders (`Name`, `Recent`) are the renderer's, computed from the fields
+/// this command already returns.
 #[test]
-fn pinned_projects_sort_ahead_of_more_recent_ones() {
+fn list_projects_returns_the_hand_order_not_recency() {
 	let tmp = TempDir::new().unwrap();
 	let db = open_db(tmp.path());
 	let old = make_folder(tmp.path(), "old");
 	let new = make_folder(tmp.path(), "new");
 
 	let old_id = add_project_in(&db, old.to_str().unwrap()).expect("add old").id;
-	add_project_in(&db, new.to_str().unwrap()).expect("add new");
+	let new_id = add_project_in(&db, new.to_str().unwrap()).expect("add new").id;
 
-	// Give each a session, so recency is a real ordering signal, then pin the
-	// staler one.
+	// Give each a session, so recency is a real signal that could compete, then
+	// put the staler one first by hand.
 	db.with_mut(|conn| {
-		conn.execute("UPDATE projects SET pinned = 1 WHERE id = ?1", params![&old_id])?;
 		conn.execute(
 			"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, file_mtime, file_size)
 			 SELECT 's-' || d.id, d.id, 't', 0, CASE WHEN d.project_id = ?1 THEN 100 ELSE 900 END, 0, 0
@@ -339,6 +346,7 @@ fn pinned_projects_sort_ahead_of_more_recent_ones() {
 		Ok(())
 	})
 	.expect("seed");
+	factorai_lib::commands::projects::reorder_projects_in(&db, &[old_id, new_id]).expect("reorder");
 
 	let ordered: Vec<String> = db
 		.with(factorai_lib::commands::projects::list_projects_in)
@@ -347,7 +355,7 @@ fn pinned_projects_sort_ahead_of_more_recent_ones() {
 		.map(|p| p.display_name)
 		.collect();
 
-	// The stale-but-pinned project wins over the freshly-used one.
+	// The stale project the user put first wins over the freshly-used one.
 	assert_eq!(ordered, vec!["old".to_string(), "new".to_string()]);
 }
 

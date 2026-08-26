@@ -1,5 +1,10 @@
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
+import { useSortable } from '@dnd-kit/sortable';
+// Aliased for the same reason `SessionTabs` aliases it: dnd-kit's `CSS` helper
+// shadows the global one at module scope, and a file that ever calls
+// `CSS.escape` gets a runtime error instead of a transform.
+import { CSS as DndCss } from '@dnd-kit/utilities';
 import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
 import {
 	Button,
@@ -24,9 +29,17 @@ import { pendingSessions } from '@lib/sessionGroups';
 import { cmd, openExternally } from '@lib/tauri';
 import { useSidebarStore } from '@store/sidebarStore';
 import { useTerminalStore } from '@store/terminalStore';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { AlertTriangle, ChevronRight, FolderOpen, Pin, PinOff, Plus, Trash2 } from 'lucide-react';
+import {
+	AlertTriangle,
+	ArrowDown,
+	ArrowUp,
+	ChevronRight,
+	FolderOpen,
+	Plus,
+	Trash2,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 /** How many sessions an expanded project shows. Enough to cover "the one I was
@@ -66,14 +79,32 @@ interface SidebarProjectProps {
 	 *  when it has none (F10). Was `isLive: boolean` while a live PTY was one
 	 *  state and the dot could only mean "connected". */
 	liveStatus?: TerminalStatus;
+	/** False under the `name` and `recent` sorts, where the displayed order is
+	 *  derived and a drop has nowhere to land. It switches off the drag, the
+	 *  keyboard nudge and the two menu rows together — a gesture that is only
+	 *  half unavailable is worse than one that is plainly off. */
+	canReorder: boolean;
+	onNudge: (projectId: string, delta: -1 | 1) => void;
 }
 
-export function SidebarProject({ project, isActive, liveStatus }: SidebarProjectProps) {
+export function SidebarProject({
+	project,
+	isActive,
+	liveStatus,
+	canReorder,
+	onNudge,
+}: SidebarProjectProps) {
 	const expanded = useSidebarStore((s) => s.expanded.includes(project.id));
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
 	const startSession = useStartSession();
-	const togglePin = usePinProject(project);
 	const removeProject = useRemoveProject();
+	// `disabled` rather than a conditional hook: `useSortable` has to be called on
+	// every render, and dnd-kit's own switch is what stops it claiming pointer
+	// events under a derived sort.
+	const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
+		id: project.id,
+		disabled: !canReorder,
+	});
 	// Removing is silent when nothing is running: it touches nothing on disk and
 	// re-adding rebuilds, so a dialog on every tidy-up is friction on the action
 	// you will do thirty times. A live PTY is the exception — see the dialog.
@@ -100,27 +131,86 @@ export function SidebarProject({ project, isActive, liveStatus }: SidebarProject
 	// There is no longer an "unresolved path" case to gate on as well: a project
 	// is a folder you added, so it always has one (ADR-0011).
 	const canStart = !project.missing;
-	// Pinned and selected projects keep their controls on show: both are rows you
-	// act on repeatedly, so the affordance shouldn't need hunting for. Everything
-	// else stays quiet until hovered.
-	const alwaysShowControls = project.pinned || isActive;
+	// The selected project keeps its controls on show: it is the row you act on
+	// repeatedly, so the affordance shouldn't need hunting for. Everything else
+	// stays quiet until hovered. This used to read `project.pinned || isActive`,
+	// and dropping the pin left `isActive` as the whole of the rule — which is
+	// what it always meant.
+	const alwaysShowControls = isActive;
 
 	return (
-		<li>
+		// **The sortable node is the whole `<li>`, session list included.** An
+		// expanded project lifts as one block and its neighbours slide under it,
+		// which is honest about what is moving. Translating the row alone would leave
+		// its sessions sitting under whatever row took its place.
+		//
+		// `Translate`, not `Transform` — the difference is `scaleX`, which dnd-kit
+		// publishes so a `DragOverlay` can morph into the target's box. We drag the
+		// element itself, so on rows of different heights that scale is pure
+		// distortion. Learnt on the tab strip, where it read as a tab that zoomed.
+		<li
+			ref={setNodeRef}
+			style={{ transform: DndCss.Translate.toString(transform), transition }}
+			className={isDragging ? 'relative z-10' : undefined}
+		>
 			{/* F1 once rejected a right-click menu here, on the grounds that one
 			    action (pin) didn't justify building the system. That reasoning has
-			    expired: there are three now, and one of them — Remove — has nowhere
-			    else sane to live. A fifth hover target in a 180px row would be a
-			    misclick waiting to happen, and this row has no undo. */}
+			    expired: Remove has nowhere else sane to live, and Move up / Move down
+			    are the keyboard's complete answer to a drag. A fifth hover target in
+			    a 180px row would be a misclick waiting to happen, and this row has no
+			    undo. */}
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					{/* The row is a flex container, so the hover background covers the
 					    chevron, the link and the + alike. Each is a SIBLING of the Link —
 					    nesting a button inside an anchor is invalid, and the two would
-					    fight over the click. */}
+					    fight over the click.
+
+					    **The drag starts anywhere on the row**, not from a grip: F1 already
+					    called this row "reading as a toolbar" at five elements, and a
+					    sixth to grab would be worse than the gesture is good. The 4px
+					    activation distance is what keeps a press a click. */}
 					<div
+						{...listeners}
+						// `Alt`+arrows rather than dnd-kit's `KeyboardSensor`: that sensor
+						// takes the space bar to lift, and space on a project row means
+						// *open this project*. On the row rather than the Link so it fires
+						// wherever focus sits inside the row — the event bubbles up from
+						// the chevron and the `+` too — which is also why the row itself is
+						// not a tab stop.
+						onKeyDown={
+							canReorder
+								? (e) => {
+										if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+										e.preventDefault();
+										onNudge(project.id, e.key === 'ArrowUp' ? -1 : 1);
+									}
+								: undefined
+						}
+						aria-keyshortcuts={canReorder ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
+						// **Tonal lift plus a hairline, no shadow** (DESIGN.md): the
+						// elevation model is four lightness steps and a 1px line, and
+						// shadows are reserved for surfaces that will be dismissed. A
+						// `ring` rather than a `border` because a border appearing would
+						// change the row's height in the middle of the gesture.
+						//
+						// `touch-none` so a drag on a trackpad or touchscreen is a drag
+						// rather than a scroll, and **`select-none` because otherwise the
+						// browser selects the project name instead of dragging the row.**
+						// Found by dragging it: `draggable={false}` on the Link stops the
+						// native anchor drag, and native *text selection* is what takes the
+						// gesture next — dnd-kit's pointer sensor never claims it, so the
+						// row does not move and five rows of grey highlight appear instead.
+						// dnd-kit adds neither property; `touch-action` is only the touch
+						// half of the same problem.
 						className={`group flex items-center pr-1 transition-colors ${
-							isActive ? 'bg-secondary' : 'hover:bg-secondary/50'
+							canReorder ? 'touch-none select-none' : ''
+						} ${
+							isDragging
+								? 'bg-secondary ring-1 ring-border'
+								: isActive
+									? 'bg-secondary'
+									: 'hover:bg-secondary/50'
 						}`}
 						data-testid={`project-row-${project.id}`}
 					>
@@ -138,6 +228,11 @@ export function SidebarProject({ project, isActive, liveStatus }: SidebarProject
 						<Link
 							to="/projects/$id"
 							params={{ id: project.id }}
+							// **A native anchor is draggable by default**, and that drag is
+							// the HTML5 one — dead on macOS in this shell (§ 4). Without this
+							// the browser starts it on the project name and dnd-kit never
+							// sees the gesture at all.
+							draggable={false}
 							data-missing={project.missing || undefined}
 							// Dimmed rather than struck through or badged: the row is still
 							// worth opening — its transcripts are all still there — it just
@@ -162,29 +257,9 @@ export function SidebarProject({ project, isActive, liveStatus }: SidebarProject
 							)}
 						</Link>
 
-						<IconButton
-							// `group/pin` scopes the glyph swap below to THIS icon's hover, not
-							// the row's — the row already owns the bare `group`.
-							className={`group/pin transition-all focus-visible:opacity-100 ${
-								alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-							}`}
-							aria-label={
-								project.pinned ? `Unpin ${project.displayName}` : `Pin ${project.displayName}`
-							}
-							title={project.pinned ? 'Unpin' : 'Pin to top'}
-							onClick={() => togglePin()}
-						>
-							{project.pinned ? (
-								<>
-									{/* Filled at rest says "pinned"; slashed under the cursor says
-									    what the click will do. */}
-									<Pin className="fill-current group-hover/pin:hidden" />
-									<PinOff className="hidden group-hover/pin:block" />
-								</>
-							) : (
-								<Pin />
-							)}
-						</IconButton>
+						{/* The hover pin stood here, with its state-at-rest / action-on-hover
+						    glyph swap. Where a project sits is now the whole answer to what
+						    the pin was asking, so the row is back to four elements. */}
 
 						{/* The title lives on the wrapper: a disabled button sets
 						    pointer-events-none, which suppresses a native tooltip on the
@@ -198,8 +273,8 @@ export function SidebarProject({ project, isActive, liveStatus }: SidebarProject
 							}
 						>
 							<IconButton
-								// Always there on a pinned or selected project: those are the ones
-								// you start work in, so the affordance shouldn't need hunting for.
+								// Always there on the selected project: it is the one you start
+								// work in, so the affordance shouldn't need hunting for.
 								className={`transition-all focus-visible:opacity-100 ${
 									alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
 								}`}
@@ -213,10 +288,23 @@ export function SidebarProject({ project, isActive, liveStatus }: SidebarProject
 					</div>
 				</ContextMenuTrigger>
 				<ContextMenuContent className="w-56">
-					<ContextMenuItem onSelect={() => togglePin()}>
-						{project.pinned ? <PinOff /> : <Pin />}
-						{project.pinned ? 'Unpin' : 'Pin to top'}
-					</ContextMenuItem>
+					{/* Present only where they work. Under a derived sort these are
+					    absent rather than greyed: a disabled row invites you to hunt for
+					    the thing blocking it, and the thing blocking it is a sort mode
+					    two clicks away in another menu. */}
+					{canReorder && (
+						<>
+							<ContextMenuItem onSelect={() => onNudge(project.id, -1)}>
+								<ArrowUp />
+								Move up
+							</ContextMenuItem>
+							<ContextMenuItem onSelect={() => onNudge(project.id, 1)}>
+								<ArrowDown />
+								Move down
+							</ContextMenuItem>
+							<ContextMenuSeparator />
+						</>
+					)}
 					<ContextMenuItem
 						disabled={project.missing}
 						onSelect={() => void openExternally(project.realPath)}
@@ -225,8 +313,8 @@ export function SidebarProject({ project, isActive, liveStatus }: SidebarProject
 						Reveal in file manager
 					</ContextMenuItem>
 					<ContextMenuSeparator />
-					{/* Below the separator and nowhere near Pin: this one has no undo,
-					    and the two are otherwise a slip apart. */}
+					{/* Below the separator and away from everything else: this one has no
+					    undo, and it is otherwise a slip from Reveal. */}
 					<ContextMenuItem
 						variant="destructive"
 						data-testid={`remove-project-${project.id}`}
@@ -278,31 +366,6 @@ export function SidebarProject({ project, isActive, liveStatus }: SidebarProject
 			</Dialog>
 		</li>
 	);
-}
-
-/**
- * Pin/unpin, applied to the cached list before the write lands.
- *
- * The projects query polls every 2s, so without the optimistic write the row
- * would sit still for up to two seconds after a click — long enough to click
- * again and toggle it straight back. `list_projects` re-derives the true order
- * on the next fetch, so a failed write self-corrects rather than needing a
- * rollback path.
- */
-function usePinProject(project: Project): () => void {
-	const queryClient = useQueryClient();
-
-	const mutation = useMutation({
-		mutationFn: (pinned: boolean) => cmd.pinProject(project.id, pinned),
-		onMutate: (pinned: boolean) => {
-			queryClient.setQueryData<Project[]>(queryKeys.projects(), (previous) =>
-				previous?.map((p) => (p.id === project.id ? { ...p, pinned } : p)),
-			);
-		},
-		onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects() }),
-	});
-
-	return () => mutation.mutate(!project.pinned);
 }
 
 function SessionList({ project }: { project: Project }) {

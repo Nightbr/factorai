@@ -89,17 +89,21 @@ test.describe('remove project', () => {
 		expect(calls.some((c) => c.name === 'terminal_kill')).toBe(false);
 	});
 
-	test('@smoke the same menu carries pin, so the row has one place for its actions', async ({
+	test('@smoke the same menu carries the reorder, so the row has one place for its actions', async ({
 		page,
 	}) => {
 		await installMockBridge(page, fixtureOneProjectOneSession());
 		await page.goto('/');
 
 		await openRowMenu(page);
-		await page.getByRole('menuitem', { name: 'Pin to top' }).click();
 
 		// F1's old rejection of a row context menu rested on pin being the only
-		// action; it lives here now alongside the other two.
-		await expect(page.getByTestId('pinned-projects')).toBeVisible();
+		// action. Pin is gone and the menu is still the right answer: Remove has
+		// nowhere else sane to live, and Move up / Move down are the keyboard's
+		// complete answer to a gesture only a mouse can otherwise reach.
+		await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeVisible();
+		await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeVisible();
+		await expect(page.getByRole('menuitem', { name: 'Reveal in file manager' })).toBeVisible();
+		await expect(page.getByRole('menuitem', { name: 'Remove Project' })).toBeVisible();
 	});
 });

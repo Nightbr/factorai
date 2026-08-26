@@ -17,7 +17,10 @@ pub struct Project {
 	/// whenever the indexer runs, and a stale count is worse than a join.
 	pub last_session_at: Option<i64>,
 	pub session_count: i64,
-	pub pinned: bool,
+	/// Where the user dragged this project. A stored decision, not a derived
+	/// order — see migration 0011. `Manual` sort reads it; `Name` and `Recent`
+	/// are views over the same list that ignore it.
+	pub sort_order: i64,
 	/// The folder is gone from disk. Set by the scan, not computed per
 	/// `list_projects` — that query is polled every 2s (F1).
 	pub missing: bool,

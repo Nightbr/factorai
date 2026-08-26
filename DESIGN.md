@@ -330,12 +330,24 @@ decoration.
   button in the app. This is the default and the overwhelming majority.
 - **Floating surface** (`box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05)` and its
   `-md` step for menus and dialogs): applied only to overlays and to `Card`.
+- **Lifted surface** (`ring-1 ring-border` over the `secondary` ground, no
+  shadow): the one row or tab currently being dragged. A **ring**, not a
+  `border` — a border appearing would change the element's height in the middle
+  of the gesture. See The Lifted-Row Rule.
 
 ### Named Rules
 
 **The Flat-By-Default Rule.** A surface that stays on screen gets tone and a
 hairline. A surface that appears over the app and will be dismissed gets a
 shadow. Nothing gets both a shadow and a tonal step to say the same thing twice.
+
+**The Lifted-Row Rule.** An element being dragged says so with the model's own
+two devices — the `secondary` tonal step and a hairline `ring` — and **not** with
+a shadow. A dragged row is still part of the list it is in; it is going to land
+in that list, not be dismissed, so the shadow would be claiming the wrong thing.
+The tone alone is not enough, because the selected row it may be passing over
+already carries it, which is what the ring is for. See
+`specs/08-inconsistencies.md` for the one place that does not yet follow this.
 
 ## Shapes
 
@@ -397,8 +409,10 @@ The house style for every icon-only control, and **not** a ghost button.
 - **Chevrons take colour on hover too** — the sidebar's expand toggle from its
   own hover, the file tree's from its row's, since there the whole row is the
   click target.
-- **Rows you act on repeatedly** — pinned, selected — keep their hover
+- **The row you act on repeatedly** — the selected one — keeps its hover
   affordances permanently visible. Everything else stays quiet until hovered.
+  This read "pinned, selected" until pinning was replaced by a hand-ordered
+  sidebar; selection was always the load-bearing half.
 
 **The Pointer Base Rule.** Anything clickable shows `cursor: pointer`, granted by
 one base rule covering `button`, `a[href]`, `select`, `summary`, `label[for]` and
@@ -473,7 +487,9 @@ agent session.
 - Active tab: `secondary` ground and full-strength text. Inactive: transparent
   and muted.
 - Reordering is pointer-based (dnd-kit) with a 4px activation distance so a click
-  stays a click, and every drag ships a keyboard path beside it.
+  stays a click, and every drag ships a keyboard path beside it — `Alt`+arrows,
+  never a lift-and-drop mode, since space and Enter both activate the thing being
+  dragged. The sidebar's project rows are the other surface with this gesture.
 
 ### Status Dot (signature)
 

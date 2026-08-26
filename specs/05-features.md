@@ -18,17 +18,18 @@ scan writes it. Everything else in this section falls out of that split, most of
 all the fact that **removing a project sticks** — the scan has nothing to put
 back.
 
-**Behavior.** On launch, show the folders in the workspace, ordered by
-`last_session_at DESC`. Pinned projects float to the top. A folder Claude has
-never run in is an ordinary project with no sessions yet; a folder Claude has
-worked in that you never added does not appear at all, and nothing announces it.
+**Behavior.** On launch, show the folders in the workspace **in the order the
+user put them in** — the stored `sort_order` on each row, written by dragging.
+A folder Claude has never run in is an ordinary project with no sessions yet; a
+folder Claude has worked in that you never added does not appear at all, and
+nothing announces it.
 
 **UI.** Sidebar section. Each row: a collapse/expand chevron, the project
 avatar **badged with the status dot** when any terminal in it is live, the
-display name, and — on hover — a pin and a `+` for a new session. The badge sits
-on the avatar's corner rather than as another item in the row: at four possible
-elements (chevron, avatar, name, dot, pin, `+`) the row was reading as a
-toolbar.
+display name, and — on hover — a `+` for a new session. The badge sits on the
+avatar's corner rather than as another item in the row: at four possible elements
+(chevron, avatar, name, dot, `+`) the row was already reading as a toolbar, which
+is also why the reorder gesture added no sixth element and no grip.
 
 The sidebar is **resizable** by the same handle mechanism as the file panel —
 one `PanelResizer` told which edge it sits on, since the sign of the drag is
@@ -36,47 +37,90 @@ all that differs. Width persists (180–480px). The session count was dropped fr
 competed with the status dot for the end of the row, and it is not what you
 scan a sidebar for.
 
-**Pinning** is a **hover icon, and also a context-menu item.** An earlier draft
-of this section rejected a right-click menu outright, on the grounds that
-nothing in the app teaches anyone to right-click and that building the system
-for one action would drag "Reveal in file manager" along with it. **That
-reasoning has expired** and this paragraph supersedes it: there are three
-actions now, and one of them — Remove — has nowhere else sane to live. A fifth
-hover target in a 180px row is a misclick waiting to happen on a row with no
-undo.
+### Ordering
 
-So the row has both, and they are not redundant: the icon is the fast path for
-the action you take constantly, the menu is the one place all three live. The
-hover icon stays exactly as specced below. Pinned projects rise into a
-block at the top of the list, separated by a divider with **no header** — the
-filled pin on each row is what says why they're up there, and it doubles as the
-unpin target. The glyph shows **state at rest and action on hover**: an
-unpinned row gets an outline pin, a pinned one a filled pin, and hovering a
-pinned pin swaps it to a slashed `PinOff` — so the icon answers both "is this
-pinned?" and "what will clicking do?" without a tooltip. A slashed pin on an
-*unpinned* row would say the opposite of what clicking does, so it is never
-used there.
+**Every project sits where you dragged it.** The order is a stored per-project
+ordinal, `projects.sort_order`, written by `reorder_projects` — not a client
+preference, so it is per-machine and survives reindexing (the indexer writes
+`discovered_projects`, never this table, guarded by a test).
 
-Neither the pin nor the `+` wears button chrome: a filled hover background
+**This replaced pinning**, which stood here until 2026-08-26 as a hover icon plus
+a context-menu row, floating a block of projects to the top above a headerless
+divider. A pin is a one-bit approximation of an ordering: it can say "this
+matters" and nothing else, and it forced the list into two tiers that the sort
+control then had to mean the same thing inside both of. One hand-ordered list has
+no tiers and nothing to reconcile. Migration 0011 dropped the column and seeded
+the ordinals from `pinned DESC, display_name ASC`, so the decision behind an
+existing pin is carried forward as a position rather than thrown away.
+
+**The sort control offers `Manual`, `Name` and `Recent`**, in the `ArrowUpDown`
+menu in the section header alongside Expand all / Collapse all. `Manual` is the
+default and reads `sort_order`. The other two are **views over the same list**:
+they derive an order from fields the row already carries and write nothing.
+`Recent` derives from `last_session_at`, with projects Claude has never run in
+sorting last — "never used" is not "used most recently". All three go through one
+pure exported `sortProjects`, so the rule is testable without a render.
+
+**The drag is live in `Manual` only.** Under `Name` or `Recent` there is no
+sensor, no key handler and no `Move up` / `Move down` in the row's menu: a
+derived order has nowhere for a drop to land, and the ordinal a drop would write
+is invisible behind the rule overriding it. Letting a drop silently switch the
+mode to `Manual` was considered and rejected — a 4px slip on a click would then
+change a mode nobody asked to change. The menu rows are **absent rather than
+disabled**, because the thing blocking them is a sort mode in a different menu
+and a greyed row invites a hunt for it.
+
+**The gesture is dnd-kit, pointer-based** ([ADR-0016](../docs/adr/0016-dnd-kit-for-pointer-based-reordering.md)),
+with the 4px activation distance that keeps a click a click. Listeners sit on the
+**whole row** rather than a grip, and the sortable node is the whole `<li>`, so an
+expanded project lifts with its session list instead of leaving it behind under
+whatever row takes its place. The row's `<Link>` carries `draggable={false}`: a
+native anchor is draggable by default and that drag is the HTML5 one, which is
+dead in this shell on macOS. The lift is tonal plus a hairline ring, not a
+shadow — see `DESIGN.md`.
+
+**The keyboard path is `Alt`+ArrowUp / `Alt`+ArrowDown**, on the row rather than
+the link so it fires wherever focus sits inside the row, announced by
+`aria-keyshortcuts`. Not dnd-kit's `KeyboardSensor`: it takes the space bar to
+lift, and space on a project row means *open this project*. `SessionTabs` made
+the same call first (F16). `Move up` / `Move down` in the context menu are the
+discoverable form of the same move and go through the same code.
+
+**The write is one command for the whole list**, and it **rejects a stale set**:
+if the ids it is handed are not exactly the workspace's project ids, nothing is
+written and it errors, so an order computed against a list that has since changed
+cannot be applied. The renderer writes optimistically — including the cached
+`sortOrder` values, not just the array positions — and restores its snapshot on
+that error. It also **pauses the 2s poll for the duration of the drag**, so no row
+can move, appear or vanish under the pointer mid-gesture.
+
+**A newly added project lands at the top**, via `MIN(sort_order) - 1` rather than
+renumbering the table. F1 already navigates to the project you just added, and
+sending you to a row below the fold is the wrong end of the list. Ordinals
+therefore go sparse; `list_projects` tie-breaks on `display_name` so the order
+stays deterministic, and the next drag renumbers densely from zero.
+
+Neither the `+` nor the chevron wears button chrome: a filled hover background
 behind a 14px glyph in a dense row reads as a widget when all it is is an
-affordance. Both sit muted at rest and take full colour only under the cursor.
-On a **pinned** project both stay visible without hovering — those are the
-projects you start work in, so the affordance shouldn't need hunting for.
-
-The flag is the `projects.pinned` column via `pin_project` — **not** a client
-preference, so it is per-machine and survives reindexing (the indexer's upsert
-touches only `real_path` and `display_name`, guarded by a test). The click
-writes optimistically to the cached list, because the projects query polls at
-2s and the row would otherwise sit still long enough to be clicked twice.
+affordance. Both sit muted at rest and take full colour only under the cursor. On
+the **selected** project the `+` stays visible without hovering — that is the row
+you start work in, so the affordance shouldn't need hunting for.
 
 The scrolling list reserves a right-hand gutter so those hover buttons never
 sit under the scrollbar.
 
 **The row's context menu** (`ContextMenu` in `@factorai/ui`, the same primitive
-the file tree's menu reuses — F12) carries **Pin / Unpin**,
-**Reveal in file manager**, a separator, and **Remove Project**. Remove sits
-below the separator and nowhere near Pin: the two are otherwise a slip apart and
-only one of them is reversible with a click.
+the file tree's menu reuses — F12) carries **Move up** / **Move down** under
+`Manual`, **Reveal in file manager**, a separator, and **Remove Project**. An
+earlier draft of this section rejected a right-click menu outright, on the
+grounds that nothing in the app teaches anyone to right-click and that building
+the system for one action (pin) would drag "Reveal in file manager" along with
+it. **That reasoning has expired** and this paragraph supersedes it: Remove has
+nowhere else sane to live, and the two Move rows are the keyboard's complete
+answer to a gesture a mouse would otherwise own. A fifth hover target in a 180px
+row is a misclick waiting to happen on a row with no undo. Remove sits below the
+separator and away from everything else: it is otherwise a slip from Reveal, and
+only one of the two is reversible.
 
 **Removing a project.** It drops the folder from the workspace and purges this
 project's rows from the index. Nothing under `~/.claude` is touched — ADR-0004
@@ -157,7 +201,7 @@ The project's id is a **uuid**, and the folder's canonical path is what makes it
 unique. Adding a folder twice is a no-op returning the existing project, so
 neither the picker nor the import dialog can make duplicates; the path is
 **canonicalized first**, so a symlink or a `..` lands on the row it should.
-`display_name` and `pinned` are left alone on conflict — re-adding a project
+`display_name` and `sort_order` are left alone on conflict — re-adding a project
 must not silently rename or unpin it.
 
 Cancelling the picker is an answer, not a failure — nothing happens and nothing
@@ -174,7 +218,7 @@ offered. One rule covers both without a flag the caller can get wrong — and it
 still rejects a typo, which no store has ever heard of.
 
 **Backend.** `list_projects()`, `add_project()`, `remove_project()`,
-`list_import_candidates()`, `pin_project()`, `resolve_project_path()`.
+`list_import_candidates()`, `reorder_projects()`, `resolve_project_path()`.
 `list_projects` joins the workspace to its discovered directories and aggregates
 `session_count` / `last_session_at` per query rather than storing them — they
 change whenever the indexer runs, and a stale count is worse than a join.
@@ -2303,8 +2347,8 @@ resting colour is `--secondary-foreground` (82%, the same hue two steps quieter)
 and the row under the pointer takes full `--foreground`.
 
 A **selected** row keeps full foreground without waiting for a hover: selection
-is a state, not a hover — the same rule as pinned rows keeping their affordances
-on show. (This used to cite the panel toggle's open state as the precedent. That
+is a state, not a hover — the same rule as the selected project keeping its `+`
+on show (F1). (This used to cite the panel toggle's open state as the precedent. That
 went away on 2026-08-20: the rule holds for a row in a list, where the resting
 colour is all you have to tell rows apart, and not for a header icon whose state
 is a whole panel being on screen. See F12.)

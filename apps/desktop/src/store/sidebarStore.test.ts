@@ -44,6 +44,17 @@ describe('migrateSidebarState', () => {
 		expect(migrateSidebarState(v2, 2)).toBe(v2);
 	});
 
+	it('keeps a persisted `recent`, which adding `manual` did not invalidate', () => {
+		// `ProjectSort` widened rather than changed, so there is no v3 and nothing
+		// to remap: `recent` is still a mode on the menu. Migrating someone off it
+		// would be discarding a preference they set. Only the default for a fresh
+		// install moved to `manual`.
+		const persisted = { sort: 'recent', width: 256, expanded: [] };
+
+		expect(migrateSidebarState(persisted, 2)).toBe(persisted);
+		expect((migrateSidebarState({ ...persisted }, 1) as typeof persisted).sort).toBe('recent');
+	});
+
 	it('survives a persisted blob that is not an object', () => {
 		// Hand-edited or half-written localStorage shouldn't take the app down on
 		// boot — the store falls back to its defaults instead.

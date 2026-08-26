@@ -96,14 +96,19 @@ fn every_resolved_project_survives_the_migration() {
 	let names: Vec<&str> = projects.iter().map(|p| p.display_name.as_str()).collect();
 	assert_eq!(names, vec!["foo", "bar"], "both resolved projects are in the workspace");
 
+	// The pin itself is gone (0011), but the decision behind it is not thrown
+	// away: 0011 seeds `sort_order` from `pinned DESC, display_name ASC`, so a
+	// project someone had marked as mattering still comes out on top. That is
+	// what makes `foo` — pinned, and alphabetically second — project[0] here.
 	let foo = &projects[0];
-	assert!(foo.pinned, "a pin is a decision and must survive");
+	assert_eq!(foo.sort_order, 0, "a pin was a decision and the seed honours it");
 	assert_eq!(foo.real_path, "/home/me/code/foo");
 	assert_eq!(foo.session_count, 2);
 	assert_eq!(foo.last_session_at, Some(900));
 	assert_eq!(foo.id.len(), 36, "reissued as a uuid, got {}", foo.id);
 
 	let bar = &projects[1];
+	assert_eq!(bar.sort_order, 1);
 	assert!(bar.missing, "the missing flag carries over rather than resetting");
 	assert_eq!(bar.session_count, 1);
 }

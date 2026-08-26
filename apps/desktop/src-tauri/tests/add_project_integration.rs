@@ -66,7 +66,10 @@ fn adds_a_folder_claude_has_never_run_in() {
 	assert_eq!(project.display_name, "brand-new");
 	assert_eq!(project.session_count, 0);
 	assert_eq!(project.last_session_at, None);
-	assert!(!project.pinned);
+	// The top of an empty list. `MIN(sort_order) - 1` over no rows is -1, which is
+	// as good a first ordinal as 0 — `reorder_projects` renumbers from zero the
+	// first time anything is dragged.
+	assert_eq!(project.sort_order, -1);
 	// The path is what a session spawn will use as its cwd, and what the
 	// transcript directory is derived from, so it has to be the real one.
 	assert_eq!(project.real_path, dir.canonicalize().unwrap().to_str().unwrap());
@@ -190,7 +193,7 @@ fn re_adding_a_removed_project_recovers_its_history() {
 }
 
 #[test]
-fn adding_twice_is_idempotent_and_keeps_the_pin() {
+fn adding_twice_is_idempotent_and_keeps_its_place() {
 	let tmp = TempDir::new().unwrap();
 	let dir = tmp.path().join("code").join("foo");
 	std::fs::create_dir_all(&dir).unwrap();
@@ -198,17 +201,40 @@ fn adding_twice_is_idempotent_and_keeps_the_pin() {
 
 	let first = add_project_in(&db, dir.to_str().unwrap()).expect("add");
 	db.with_mut(|conn| {
-		conn.execute("UPDATE projects SET pinned = 1 WHERE id = ?1", params![first.id])?;
+		conn.execute("UPDATE projects SET sort_order = 7 WHERE id = ?1", params![first.id])?;
 		Ok(())
 	})
-	.expect("pin");
+	.expect("place it");
 
 	let second = add_project_in(&db, dir.to_str().unwrap()).expect("add again");
 
 	assert_eq!(project_count(&db), 1);
 	assert_eq!(second.id, first.id);
-	// Re-adding a project you have already pinned must not quietly unpin it.
-	assert!(second.pinned);
+	// Where a project sits is a decision you made by dragging it. Re-adding the
+	// same folder — from the picker or from the import dialog — must not quietly
+	// move it back to the top.
+	assert_eq!(second.sort_order, 7);
+}
+
+/// A project you just added is the one you are about to work in, so it goes to
+/// the top rather than below the fold (F1).
+#[test]
+fn each_new_project_lands_above_the_last() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+
+	let mut added = Vec::new();
+	for name in ["first", "second", "third"] {
+		let dir = tmp.path().join("code").join(name);
+		std::fs::create_dir_all(&dir).unwrap();
+		added.push(add_project_in(&db, dir.to_str().unwrap()).expect("add").display_name);
+	}
+
+	let ordered: Vec<String> =
+		db.with(list_projects_in).expect("list").into_iter().map(|p| p.display_name).collect();
+
+	added.reverse();
+	assert_eq!(ordered, added, "newest first, without renumbering the table");
 }
 
 #[test]

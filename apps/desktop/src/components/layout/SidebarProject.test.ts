@@ -1,6 +1,5 @@
-import { sortProjects } from '@components/layout/Sidebar';
 import { SIDEBAR_SESSION_LIMIT, orderSessions } from '@components/layout/SidebarProject';
-import type { Project, SessionSummary } from '@factorai/types';
+import type { SessionSummary } from '@factorai/types';
 import type { LiveTerminal } from '@store/terminalStore';
 import { describe, expect, it } from 'vitest';
 
@@ -24,18 +23,6 @@ function live(...ids: string[]): Record<string, LiveTerminal> {
 	return Object.fromEntries(
 		ids.map((id) => [id, { terminalId: `t-${id}`, projectId: 'p', status: 'working' as const }]),
 	);
-}
-
-function project(id: string, displayName: string): Project {
-	return {
-		id,
-		realPath: `/code/${displayName}`,
-		displayName,
-		lastSessionAt: 0,
-		missing: false,
-		sessionCount: 1,
-		pinned: false,
-	};
 }
 
 describe('orderSessions', () => {
@@ -126,33 +113,5 @@ describe('orderSessions', () => {
 
 		expect(ordered).toHaveLength(9);
 		expect(ordered.every((s) => s.subagentOf === null)).toBe(true);
-	});
-});
-
-describe('sortProjects', () => {
-	it('leaves recent order exactly as the backend returned it', () => {
-		// `list_projects` already orders by last_session_at DESC; re-sorting
-		// client-side would only risk disagreeing with the indexer.
-		const projects = [project('1', 'zulu'), project('2', 'alpha')];
-
-		expect(sortProjects(projects, 'recent').map((p) => p.displayName)).toEqual(['zulu', 'alpha']);
-	});
-
-	it('sorts by name case-insensitively', () => {
-		const projects = [project('1', 'zulu'), project('2', 'Alpha'), project('3', 'mike')];
-
-		expect(sortProjects(projects, 'name').map((p) => p.displayName)).toEqual([
-			'Alpha',
-			'mike',
-			'zulu',
-		]);
-	});
-
-	it('does not mutate the array it was given', () => {
-		const projects = [project('1', 'zulu'), project('2', 'alpha')];
-
-		sortProjects(projects, 'name');
-
-		expect(projects.map((p) => p.displayName)).toEqual(['zulu', 'alpha']);
 	});
 });

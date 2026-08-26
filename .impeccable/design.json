@@ -202,6 +202,11 @@
         "name": "floating-md",
         "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
         "purpose": "Dropdown and context menus, popovers, dialogs — surfaces that are temporary."
+      },
+      {
+        "name": "lifted",
+        "value": "ring-1 ring-border over the secondary ground, box-shadow: none",
+        "purpose": "The one row or tab currently being dragged. A ring, not a border — a border appearing would change the element's height mid-gesture."
       }
     ],
     "motion": [
@@ -371,6 +376,11 @@
       {
         "name": "The Flat-By-Default Rule",
         "body": "A surface that stays on screen gets tone and a hairline. A surface that appears over the app and will be dismissed gets a shadow. Nothing gets both a shadow and a tonal step to say the same thing twice.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Lifted-Row Rule",
+        "body": "An element being dragged says so with the model's own two devices — the secondary tonal step and a hairline ring — and not with a shadow. A dragged row is still part of the list it is in: it is going to land there, not be dismissed, so a shadow would claim the wrong thing. Tone alone is not enough, because the selected row it may pass over already carries it, which is what the ring is for.",
         "section": "elevation"
       },
       {

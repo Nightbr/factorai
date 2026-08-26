@@ -38,6 +38,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// too makes the signal noisy, which is why 0009's single value becomes a list —
 	// and why 0009's column is left behind rather than dropped. See the file.
 	("0010_session_touched_paths", include_str!("migrations/0010_session_touched_paths.sql")),
+	// Where a project sits in the sidebar becomes a stored ordinal you drag, and
+	// `pinned` goes with it. Note what the file says about DROP COLUMN and about
+	// why a table rebuild cannot use `PRAGMA foreign_keys` from in here.
+	("0011_project_sort_order", include_str!("migrations/0011_project_sort_order.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

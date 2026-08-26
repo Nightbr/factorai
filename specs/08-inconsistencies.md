@@ -25,6 +25,10 @@ screenshot helper carries a bug its own README documents for a sibling script
 and not for it. Six left, and it is another one found by using the thing rather
 than by reading it.
 
+**Status 2026-08-26:** **C8** added while building the sidebar's hand-ordering
+(roadmap item 28). Seven left. Same shape as C5 and C7: found by writing code
+against the doc, not by reading the docs against each other.
+
 Worth noting what those two have in common: **both were found by reading the code a
 spec described, not by reading specs against each other.** C5 and C6 are each a
 claim that was true when written and quietly stopped being true, and neither would
@@ -33,7 +37,7 @@ during feature work rather than in scheduled passes.
 
 ---
 
-## Still open — six decisions
+## Still open — seven decisions
 
 Everything else compiled on 2026-08-15 has been resolved and deleted, per the
 rule above. What remains needs a call rather than an edit.
@@ -90,6 +94,37 @@ source the README already prescribes for clicks. The decision this needs: whethe
 `geometry.sh` together, and invalidating every coordinate anyone has written
 down against the current behaviour), or whether both callers should convert. Not
 fixed here because it has callers and this was a docs change.
+
+---
+
+**C8 — `SessionTabs` puts a shadow on the tab it is dragging, and the elevation
+model says it shouldn't.** `DESIGN.md`'s Shadow Vocabulary lists "every panel,
+**row**, **tab**, input and button" as `box-shadow: none`, and reserves shadows
+for surfaces that "genuinely float above the app rather than being part of it" —
+the dialog, the popover, the menus, `Card`. `SessionTabs.tsx` applies
+`shadow-lg` to the tab under the cursor mid-drag. That is neither a documented
+exception nor one of the two named shadow steps: `shadow-lg` is not in the
+vocabulary at all, which lists only `floating-sm` and its `-md` step.
+
+It was undocumented rather than wrong-by-decision — it shipped with the dnd-kit
+migration on 2026-08-18 and nobody wrote a rule for it. Building the sidebar's
+project reorder on 2026-08-26 forced the question, since that is the second drag
+surface and it had to look like something. The sidebar took **tonal plus a
+hairline ring** (`bg-secondary` + `ring-1 ring-border`, no shadow), on the
+reasoning now written down as `DESIGN.md`'s **Lifted-Row Rule**: a dragged row is
+going to land in the list it is in, not be dismissed, so a shadow claims the
+wrong thing — and a ring rather than a border because a border appearing changes
+the element's height in the middle of the gesture.
+
+So the app now has two drag treatments, and the docs describe one of them.
+
+The decision this needs: whether the tab strip moves to the Lifted-Row Rule —
+one line in `SessionTabs.tsx`, and the two drag surfaces then match — or whether
+a **tab** is genuinely different enough from a **row** to earn its own step, in
+which case `shadow-lg` needs adding to the vocabulary and the Lifted-Row Rule
+needs narrowing to say where it applies. Not settled here because it is a change
+to a shipped surface that item 28 had no reason to touch, and changing it
+untested would trade a documented inconsistency for an undocumented one.
 
 ---
 

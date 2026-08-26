@@ -125,7 +125,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		displayName: 'foo',
 		lastSessionAt: Date.now() - 60_000,
 		sessionCount: 1,
-		pinned: false,
+		sortOrder: 0,
 		missing: false,
 	};
 	const session: SessionSummary = {
@@ -795,7 +795,8 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		displayName: 'zulu',
 		lastSessionAt: Date.now() - 1_000,
 		sessionCount: 12,
-		pinned: false,
+		// zulu first by hand, which is also what the old recency default showed.
+		sortOrder: 0,
 		missing: false,
 	};
 	const alpha: Project = {
@@ -804,7 +805,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		displayName: 'alpha',
 		lastSessionAt: Date.now() - 90_000,
 		sessionCount: 1,
-		pinned: false,
+		sortOrder: 1,
 		missing: false,
 	};
 
@@ -865,7 +866,7 @@ export function fixtureImportCandidates(): TestFixture {
 		displayName: 'known',
 		lastSessionAt: Date.now() - 10_000,
 		sessionCount: 4,
-		pinned: false,
+		sortOrder: 0,
 		missing: false,
 	};
 	const candidate = (

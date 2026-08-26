@@ -207,7 +207,7 @@ pub fn run() {
 			commands::projects::remove_project,
 			commands::projects::list_import_candidates,
 			commands::projects::resolve_project_path,
-			commands::projects::pin_project,
+			commands::projects::reorder_projects,
 			commands::sessions::list_sessions,
 			commands::sessions::get_session_tail,
 			commands::sessions::search_sessions,

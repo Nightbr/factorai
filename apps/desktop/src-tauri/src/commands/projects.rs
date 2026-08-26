@@ -3,9 +3,10 @@
 //!
 //! Nothing here writes `discovered_projects.agent`/`key`/`real_path` — those
 //! belong to the scan. What these commands own is membership: which folders are
-//! in the workspace, and the `project_id` link that follows from it.
+//! in the workspace, the `project_id` link that follows from it, and the order
+//! the user dragged them into.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -20,7 +21,7 @@ use crate::state::AppState;
 
 /// Columns and aggregates for one workspace row, shared by every query that
 /// returns a [`Project`] so the shape can't drift between them.
-const PROJECT_SELECT: &str = "SELECT p.id, p.real_path, p.display_name, p.pinned, p.missing,
+const PROJECT_SELECT: &str = "SELECT p.id, p.real_path, p.display_name, p.sort_order, p.missing,
 	-- Sub-agents don't count: the number answers how many sessions the project
 	-- has, and an agent run on a session's behalf is part of that session
 	-- rather than another one. Last activity is not filtered the same way --
@@ -38,7 +39,7 @@ fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
 		id: row.get(0)?,
 		real_path: row.get(1)?,
 		display_name: row.get(2)?,
-		pinned: row.get::<_, i64>(3)? != 0,
+		sort_order: row.get(3)?,
 		missing: row.get::<_, i64>(4)? != 0,
 		session_count: row.get(5)?,
 		last_session_at: row.get(6)?,
@@ -50,8 +51,22 @@ pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
 	state.db.with(list_projects_in)
 }
 
+/// Every project, in the order the user put them in.
+///
+/// The renderer sorts too — it owns the `Name` and `Recent` views, and its
+/// `Manual` view reads `sort_order` rather than trusting this array — so the
+/// ORDER BY here is not load-bearing for the sidebar. It stays because it costs
+/// nothing, because it makes this command's output meaningful to any other
+/// caller, and because it turns a drift between the two rules into a visible bug
+/// rather than a silent one.
+///
+/// **The `display_name` tiebreak is doing real work.** Ordinals go sparse:
+/// `remove_project` leaves a hole and `add_project` writes `MIN(sort_order) - 1`
+/// rather than renumbering the table, so two rows can briefly share a value.
+/// Without the tiebreak the list order between them would be whatever SQLite
+/// felt like, which is a sidebar that reshuffles on a poll.
 pub fn list_projects_in(conn: &Connection) -> AppResult<Vec<Project>> {
-	let sql = format!("{PROJECT_SELECT} ORDER BY p.pinned DESC, 7 DESC, p.display_name ASC");
+	let sql = format!("{PROJECT_SELECT} ORDER BY p.sort_order, p.display_name ASC");
 	let mut stmt = conn.prepare(&sql)?;
 	let rows = stmt.query_map([], map_project)?.collect::<rusqlite::Result<Vec<_>>>()?;
 	Ok(rows)
@@ -65,8 +80,8 @@ pub fn list_projects_in(conn: &Connection) -> AppResult<Vec<Project>> {
 /// encoding; it is now the `real_path` UNIQUE constraint doing the same job
 /// without borrowing another program's naming scheme.
 ///
-/// `display_name` and `pinned` are left alone on conflict — re-adding a project
-/// must not silently rename or unpin it.
+/// `display_name` and `sort_order` are left alone on conflict — re-adding a
+/// project must not silently rename it or move it in the sidebar.
 #[tauri::command]
 pub fn add_project(state: State<'_, AppState>, path: String) -> AppResult<Project> {
 	let project = add_project_in(&state.db, &path)?;
@@ -131,9 +146,19 @@ pub fn add_project_in(db: &Db, path: &str) -> AppResult<Project> {
 
 	db.with_mut(|conn| {
 		let tx = conn.transaction()?;
+		// **A new project lands at the top.** `add_project` already navigates you
+		// to the project you just added (F1), and sending you to a row below the
+		// fold is the wrong end of the list.
+		//
+		// `MIN(sort_order) - 1` rather than renumbering the table: one scalar read
+		// instead of an UPDATE over every row, and negative ordinals are fine —
+		// `reorder_projects` rewrites the whole list densely the next time anything
+		// is dragged. On an empty workspace this is -1, which is as good a first
+		// ordinal as 0.
 		tx.execute(
-			"INSERT INTO projects(id, real_path, display_name, missing, opened_at)
-			 VALUES(?1, ?2, ?3, ?4, ?5)
+			"INSERT INTO projects(id, real_path, display_name, missing, opened_at, sort_order)
+			 VALUES(?1, ?2, ?3, ?4, ?5,
+			        (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM projects))
 			 ON CONFLICT(real_path) DO UPDATE SET missing = excluded.missing",
 			params![id, real_path, display_name, missing as i64, now],
 		)?;
@@ -238,10 +263,61 @@ pub fn resolve_project_path(state: State<'_, AppState>, id: String) -> AppResult
 	})
 }
 
+/// Write the whole project order at once (F1, roadmap item 28).
+///
+/// **One command for the whole list, not a per-row "move up".** A move-up
+/// command looks cheaper and isn't: it leaves gaps, it races the sidebar's 2s
+/// refetch, and it has no way to notice that the list it is moving a row within
+/// is not the list the user was looking at.
+///
+/// **Strict on a stale set.** If `ids` is not exactly the set of project ids in
+/// the table, nothing is written and this is an error. The renderer's `onError`
+/// invalidates the query and the list snaps back to what is true. A project
+/// added or removed between the render and the drop is the case this exists for:
+/// applying a partial order to a list the user never saw is worse than doing
+/// nothing and saying so.
 #[tauri::command]
-pub fn pin_project(state: State<'_, AppState>, id: String, pinned: bool) -> AppResult<()> {
-	state.db.with(|conn| {
-		conn.execute("UPDATE projects SET pinned = ?2 WHERE id = ?1", params![id, pinned as i64])?;
+pub fn reorder_projects(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<()> {
+	reorder_projects_in(&state.db, &ids)
+}
+
+/// The body of [`reorder_projects`], taking the database directly so the rule
+/// can be tested without a Tauri app.
+pub fn reorder_projects_in(db: &Db, ids: &[String]) -> AppResult<()> {
+	db.with_mut(|conn| {
+		let tx = conn.transaction()?;
+
+		let mut stmt = tx.prepare("SELECT id FROM projects")?;
+		let existing: HashSet<String> =
+			stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
+		drop(stmt);
+
+		// Set equality, both directions, and a length check for the duplicate
+		// case — `["a", "a"]` against a one-row table has the right set and the
+		// wrong list, and it would write the same ordinal twice.
+		let incoming: HashSet<&String> = ids.iter().collect();
+		if incoming.len() != ids.len() || existing.len() != ids.len() {
+			return Err(AppError::InvalidInput(format!(
+				"reorder_projects: got {} ids for {} projects",
+				ids.len(),
+				existing.len()
+			)));
+		}
+		if let Some(unknown) = ids.iter().find(|id| !existing.contains(*id)) {
+			return Err(AppError::InvalidInput(format!(
+				"reorder_projects: no such project {unknown}"
+			)));
+		}
+
+		// Dense from zero, so the ordinals stay small and readable and any gap
+		// left by a removal is repaired by the next drag.
+		let mut stmt = tx.prepare("UPDATE projects SET sort_order = ?2 WHERE id = ?1")?;
+		for (index, id) in ids.iter().enumerate() {
+			stmt.execute(params![id, index as i64])?;
+		}
+		drop(stmt);
+
+		tx.commit()?;
 		Ok(())
 	})
 }

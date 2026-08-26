@@ -10,7 +10,8 @@ error.rs              # AppError (thiserror + Serialize), the command boundary
 commands/
   mod.rs
   projects.rs         # list_projects, add_project, remove_project,
-                      #   list_import_candidates, resolve_project_path, pin_project
+                      #   list_import_candidates, resolve_project_path,
+                      #   reorder_projects
   sessions.rs         # list_sessions, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
@@ -85,7 +86,11 @@ remove_project(id: String) -> ()
 // covers the workspace, and the point is to show what isn't in it.
 list_import_candidates() -> Vec<ImportCandidate>
 resolve_project_path(id: String) -> Option<String>
-pin_project(id: String, pinned: bool) -> ()
+// Writes the whole sidebar order in one transaction (F1). **Rejects a stale
+// set**: if `ids` is not exactly the workspace's project ids, nothing is written
+// and this is an InvalidInput — an order computed against a list that has since
+// changed must not be applied to the list that exists now.
+reorder_projects(ids: Vec<String>) -> ()
 
 // sessions
 // Joins through discovered_projects: a project's sessions are those of every

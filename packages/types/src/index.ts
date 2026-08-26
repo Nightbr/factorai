@@ -9,13 +9,16 @@
  */
 export interface Project {
 	/** uuid v4. Not derived from the path — moving a folder later can keep the
-	 *  project rather than orphaning its pin and its sessions. */
+	 *  project rather than orphaning its place in the sidebar and its sessions. */
 	id: string;
 	realPath: string;
 	displayName: string;
 	lastSessionAt: number | null;
 	sessionCount: number;
-	pinned: boolean;
+	/** Where the user dragged this project. A stored decision, not a derived
+	 *  order (migration 0011). The `manual` sort reads it; `name` and `recent`
+	 *  are views over the same list that ignore it. */
+	sortOrder: number;
 	/** The folder is gone from disk. Set by the indexer's scan, not computed per
 	 *  `list_projects` call — that query is polled every 2s. */
 	missing: boolean;

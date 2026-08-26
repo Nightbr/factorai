@@ -3,6 +3,81 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Order every project by hand — spec `05-features.md` F1, ADR-0023** — 2026-08-26, user ask,
+  after a `clarify-needs` interview. Pinning is gone; `projects.sort_order` (migration 0011) is
+  where a project sits, written by dragging the row. The sort control **survives and grows a
+  `Manual` mode** beside `Name` and `Recent` — which is the one place the interview overturned the
+  filed plan, and it disposed of that plan's stated cost ("after this there is no name-ordered way
+  to find a row").
+
+  A pin is a one-bit approximation of an ordering: it says "this matters" and nothing else, and it
+  forced the list into two tiers that the sort control then had to mean the same thing inside both
+  of. One hand-ordered list has no tiers. `reorder_projects(ids)` writes the whole order in one
+  transaction and **rejects a stale id set**; `add_project` puts a new project on top with
+  `MIN(sort_order) - 1`; the drag is dnd-kit on the whole row with the tab strip's 4px activation
+  constraint, `Alt`+arrows beside it, and `Move up` / `Move down` in the slot Pin / Unpin vacated.
+
+  **Two migration facts, both measured, both of which the TODO entry had wrong.** They are recorded
+  in 0011's own comments because the second one outlives this feature:
+
+  - **Dropping `pinned` needed no table rebuild.** SQLite's `DROP COLUMN` restriction is on
+    *table-level* CHECK constraints, not inline column ones — the drop rewrites the `CREATE TABLE`
+    text and re-parses it, so an inline `CHECK` leaves with its column. Verified against the real
+    0004 schema on SQLite 3.45.0: the drop returns `Ok`, `missing`'s own inline CHECK still fires
+    afterwards, and the `discovered_projects` links are untouched. A table-level CHECK or an index
+    on the column fails with `error in table t2 after drop column: no such column: pinned`.
+  - **And the rebuild the entry described could not have worked.** It called for
+    `PRAGMA foreign_keys = OFF` around a `DROP TABLE`, because that drop fires
+    `discovered_projects.project_id`'s `ON DELETE SET NULL` and unlinks every session. That pragma
+    is a **silent no-op** here: `Db::migrate` runs every migration inside one `conn.transaction()`,
+    and SQLite ignores it inside a transaction. Measured — the pragma leaves `foreign_keys` at `1`
+    and the child row is nulled. Any future migration that rebuilds a referenced table has to stash
+    and restore the links itself, or teach the runner to run that one outside the shared
+    transaction.
+
+  **Three things found by using it, which no amount of type-checking would have caught:**
+
+  - **The row needed `select-none`.** `draggable={false}` on the row's `<Link>` is required — a
+    native anchor is draggable by default and that drag is the HTML5 one, dead on macOS — but with
+    it off, native **text selection** takes the gesture instead. The row did not move and five rows
+    of grey highlight appeared. dnd-kit adds neither property, and `touch-action` is only the touch
+    half of the same problem.
+  - **The 0011 seed is visible and correct on real data.** This machine had three pinned projects;
+    after the migration they sat at ordinals 0–2 with the rest alphabetical after them, so a pin
+    was carried forward as a *position* rather than discarded.
+  - **`scripts/qa/` had no way to drive a drag**, which is why the first two of these took so long
+    to see. `drag.sh` is new: press, step, release, with the intermediate moves that dnd-kit's
+    activation distance requires. It deliberately does **not** carry `click.sh`'s (47, 73)
+    frame-offset bug — it resolves the client area from `xwininfo` — and it asserts focus by **pid**
+    before pressing, which `click.sh` does not do at all. Worth reading before C7 is fixed.
+
+  **A caution for the next agent doing this kind of QA.** Screenshotting a `xdotool` drag is much
+  harder than it looks: a 14-step drag completes in well under a second, so a capture 0.8s later is
+  *post-drop* and reads as "the lift never rendered". Two rounds were spent chasing a ring that was
+  rendering fine. The lift styles were settled in one Playwright call reading `getComputedStyle`
+  mid-drag, and only then confirmed in the real window by holding the button down for 2.5s — where
+  the ring measures exactly `(31, 34, 37)`, `--border`. **Prove a style with Playwright; use the
+  real window for the things only it has**, which here was the migration running against a live
+  database.
+
+  **No `sidebarStore` version bump**, reversing the filed plan a second time: adding `manual`
+  *widened* `ProjectSort` rather than replacing anything, so every persisted value stays valid —
+  and this machine's persisted `sort: 'name'` survived the upgrade, which is the behaviour visible
+  in the QA pass. Migrating someone off a mode still on the menu would discard a preference they
+  set. Only the default for a fresh install moved.
+
+  **ADR-0023 supersedes nothing**, also reversing the filed plan. ADR-0011 decided project identity
+  is a uuid rather than a path and merely *cited* pins as a benefit — an ordinal is the same kind of
+  decision a path-derived id would throw away, so the argument is strengthened, not revised. ADR-0016
+  decided the drag library, which is what this builds on; only its sentence naming the future surface
+  reads stale. A supersede link means "this decision was revised", and spending it on two decisions
+  that stand would have told the next reader that a project is no longer a folder in the workspace.
+
+  **Left open as `08-inconsistencies.md` C8**: the sidebar's lift is tonal plus a hairline ring, per
+  `DESIGN.md`'s new Lifted-Row Rule, while `SessionTabs` puts `shadow-lg` on the tab it is dragging
+  — undocumented, and against the same Shadow Vocabulary. Two drag treatments, one documented.
+  Changing the shipped tab strip was out of scope here.
+
 - **A search hit names its project — spec `05-features.md` F4** — 2026-08-24, shipped as
   **v0.24.0**, user ask. Search is workspace-wide, and a result row said only which *session* it
   came from. That is half an answer: a session title does not place a conversation, several

@@ -17,8 +17,10 @@ test('@smoke clickable elements resolve to cursor:pointer', async ({ page }) => 
 			.first()
 			.evaluate((el) => getComputedStyle(el).cursor);
 
-	// A hand-rolled control, a primitive-backed one, and a link.
-	expect(await cursorOf('button[aria-label^="Pin "]')).toBe('pointer');
+	// A hand-rolled control, a primitive-backed one, and a link. The row's expand
+	// chevron stands in for the first of those — it was the pin until pinning went
+	// (roadmap item 28), and it is the same `IconButton` in the same row.
+	expect(await cursorOf('button[aria-label^="Expand "]')).toBe('pointer');
 	expect(await cursorOf('button[aria-label="Sort and expand projects"]')).toBe('pointer');
 	expect(await cursorOf('a[href*="/projects/"]')).toBe('pointer');
 	// Disabled stays inert.

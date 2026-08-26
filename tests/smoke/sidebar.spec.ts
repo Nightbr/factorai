@@ -39,7 +39,7 @@ test.describe('sidebar projects', () => {
 		await page.goto('/');
 
 		const names = page.locator('aside li > div a[href*="/projects/"]');
-		// Recency order from the backend: zulu first despite the alphabet.
+		// The hand order out of the fixture: zulu first, despite the alphabet.
 		await expect(names.first()).toContainText('zulu');
 
 		await page.getByRole('button', { name: 'Sort and expand projects' }).click();
@@ -76,43 +76,110 @@ test.describe('sidebar projects', () => {
 	});
 });
 
-test.describe('pinned projects', () => {
-	test('@smoke pinning moves a project above the divider and back', async ({ page }) => {
+test.describe('hand-ordered projects', () => {
+	/** Every project row, top to bottom. */
+	function rowNames(page: import('@playwright/test').Page) {
+		return page.getByTestId('projects').locator('> li > div a[href*="/projects/"]');
+	}
+
+	test('@smoke Alt+ArrowDown moves a project, and the order survives a refetch', async ({
+		page,
+	}) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
 
-		// Nothing pinned: no pinned block at all.
-		await expect(page.getByTestId('pinned-projects')).toHaveCount(0);
+		const names = rowNames(page);
+		await expect(names.first()).toContainText('zulu');
 
-		await page.getByRole('button', { name: 'Pin alpha' }).click();
+		// The keyboard path is the one asserted here because it cannot flake: no
+		// activation distance, no collision detection, no pointer geometry. The
+		// mouse drag has its own test below.
+		await names.first().focus();
+		await page.keyboard.press('Alt+ArrowDown');
 
-		const pinnedBlock = page.getByTestId('pinned-projects');
-		await expect(pinnedBlock).toBeVisible();
-		await expect(pinnedBlock.getByRole('link', { name: /alpha/ })).toBeVisible();
-		// And it is no longer in the main list.
-		await expect(page.locator('aside ul:not([data-testid])').getByText('alpha')).toHaveCount(0);
+		await expect(names.first()).toContainText('alpha');
 
-		// The pin is now the unpin target, and visible without hovering.
-		const unpin = page.getByRole('button', { name: 'Unpin alpha' });
-		await expect(unpin).toBeVisible();
-		await unpin.click();
-		await expect(page.getByTestId('pinned-projects')).toHaveCount(0);
+		// **The point of the test.** The sidebar refetches every 2s, so an
+		// optimistic write that never reached the backend would snap back. Waiting
+		// past one full poll and re-asserting is what proves `reorder_projects` was
+		// called and the mock's fixture actually changed.
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'reorder_projects')).toBe(true);
+		await page.waitForTimeout(2_500);
+		await expect(names.first()).toContainText('alpha');
 	});
 
-	test('@smoke the chosen sort applies inside the pinned block too', async ({ page }) => {
+	test('@smoke dragging a project past its neighbour reorders the list', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
 
-		await page.getByRole('button', { name: 'Pin alpha' }).click();
-		await page.getByRole('button', { name: 'Pin zulu' }).click();
+		const names = rowNames(page);
+		await expect(names.first()).toContainText('zulu');
 
-		const pinnedNames = page.getByTestId('pinned-projects').getByRole('link');
-		// Recency order first: zulu was touched most recently.
-		await expect(pinnedNames.first()).toContainText('zulu');
+		const from = await names.first().boundingBox();
+		const to = await names.nth(1).boundingBox();
+		if (!from || !to) throw new Error('no row geometry');
+
+		// Past the row's midpoint, because `closestCenter` decides the drop on
+		// centres — stopping short of it lands back where it started. The
+		// intermediate move is not decoration: dnd-kit needs a pointermove past
+		// the 4px activation distance before it starts tracking at all.
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
+		await page.mouse.move(from.x + from.width / 2, to.y + to.height);
+		await page.mouse.up();
+
+		await expect(names.first()).toContainText('alpha');
+	});
+
+	test('@smoke a click on a row still opens it, so the drag has not eaten the click', async ({
+		page,
+	}) => {
+		// The 4px activation distance exists for exactly this. Without it dnd-kit
+		// claims the pointerdown and swallows the click that follows.
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		await rowNames(page).first().click();
+
+		await expect(page).toHaveURL(new RegExp(`/projects/${ZULU_ID}$`));
+	});
+
+	test('@smoke a derived sort turns the reorder off entirely', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
 
 		await page.getByRole('button', { name: 'Sort and expand projects' }).click();
 		await page.getByRole('menuitemradio', { name: 'Name' }).click();
-		await expect(pinnedNames.first()).toContainText('alpha');
+
+		const names = rowNames(page);
+		await expect(names.first()).toContainText('alpha');
+
+		// No key handler...
+		await names.first().focus();
+		await page.keyboard.press('Alt+ArrowDown');
+		await expect(names.first()).toContainText('alpha');
+
+		// ...and no menu rows either. Absent, not disabled: the thing blocking them
+		// is a sort mode in another menu, and a greyed row invites a hunt for it.
+		await names.first().click({ button: 'right' });
+		await expect(page.getByRole('menuitem', { name: 'Move up' })).toHaveCount(0);
+		await expect(page.getByRole('menuitem', { name: 'Move down' })).toHaveCount(0);
+
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'reorder_projects')).toBe(false);
+	});
+
+	test('@smoke Move down in the row menu is the same move as the key', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		const names = rowNames(page);
+		await names.first().click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Move down' }).click();
+
+		await expect(names.first()).toContainText('alpha');
 	});
 });
 

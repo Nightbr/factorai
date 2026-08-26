@@ -11,6 +11,7 @@ Linux/X11 + GNOME.
 | `focus.sh` | Brings factorai to the front via `wmctrl -a` | ✓ |
 | `screenshot.sh OUT.png` | Captures the active window via `gnome-screenshot` (fallback: `import`, `scrot`) | ✓ |
 | `geometry.sh` | Prints `WIDTH HEIGHT X Y` of the content window | ✓ |
+| `drag.sh FX FY TX TY [STEPS]` | Press, step, release — a real pointer drag for the dnd-kit surfaces (session tabs, project rows). **Content-relative coordinates**, unlike `click.sh` — see below | ✓ project reorder, 2026-08-26 |
 | `kill.sh` | Descends pgrep tree from launcher pid, kills children deepest-first; sweeps stray dev factorai subtrees | ✓ exit 0, no survivors |
 | `_resolve_wid.sh` | Internal helper: picks the right factorai window from `wmctrl -lG` (skips the 10×10 phantom + outer frame) | — |
 | `osc-probe.sh` | Boots a real `claude` in a PTY and prints the OSC sequences it writes — the re-check for F10's status rule | ✓ both modes, macOS 2026-08-18 |
@@ -92,6 +93,8 @@ xdotool mousemove --sync $((CX + X)) $((CY + Y)); xdotool click 1
 ```
 
 To convert a full-window screenshot to those `X`/`Y`: the client area starts at **(48, 72)** in the capture, so subtract that from what you measured.
+
+**`drag.sh` does not have this bug**, deliberately — it resolves its origin from `xwininfo -id <wid>` rather than from `wmctrl -lG`, so its coordinates really are content-relative and the top 73 rows are reachable. It is the shape `click.sh` should take when C7 is settled, and it is worth reading before fixing that one. It also asserts focus by **pid** before pressing, which `click.sh` does not do at all.
 
 **Do not read this as "synthetic input is fine".** It is sharp in a way that has already cost something real: a stale window origin once sent a click into the user's Slack and opened an emoji picker on a live conversation. Before every click, in the same shell invocation:
 

@@ -69,7 +69,11 @@ export const cmd = {
 	/** Folders Claude has worked in, for the import dialog. Read from the store
 	 *  rather than the index — the point is to show what *isn't* indexed. */
 	listImportCandidates: () => invoke<ImportCandidate[]>('list_import_candidates'),
-	pinProject: (id: string, pinned: boolean) => invoke<void>('pin_project', { id, pinned }),
+	/** Write the whole project order at once (F1). **Rejects a stale set** — if
+	 *  `ids` is not exactly the workspace's project ids, nothing is written and
+	 *  this throws, so a drop computed against a list that has since changed
+	 *  cannot be applied. The caller invalidates and refetches on that error. */
+	reorderProjects: (ids: string[]) => invoke<void>('reorder_projects', { ids }),
 	listSessions: (projectId: string) => invoke<SessionSummary[]>('list_sessions', { projectId }),
 	getSessionTail: (sessionId: string, limit?: number) =>
 		invoke<SessionPage>('get_session_tail', { sessionId, limit }),
@@ -500,7 +504,8 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				displayName: path.split('/').filter(Boolean).pop() ?? path,
 				lastSessionAt: candidate?.lastActivityAt ?? null,
 				sessionCount: candidate?.sessionCount ?? 0,
-				pinned: false,
+				// The top of the list, as `add_project`'s `MIN(sort_order) - 1` does.
+				sortOrder: Math.min(0, ...existing.map((p) => p.sortOrder)) - 1,
 				missing: candidate?.missing ?? false,
 			};
 			// Write it back into the fixture so the next `list_projects` returns it,
@@ -691,13 +696,25 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;
-		case 'pin_project': {
+		case 'reorder_projects': {
 			// Mutates the fixture so the renderer's next `list_projects` reflects
-			// it — a no-op mock would make the pinned group untestable.
-			const id = String(args?.id ?? '');
-			const pinned = args?.pinned === true;
-			const project = fx?.projects?.find((p) => p.id === id);
-			if (project) project.pinned = pinned;
+			// it — a no-op mock would make the reorder untestable, since the whole
+			// point of the smoke test is that the new order survives a refetch.
+			const ids = Array.isArray(args?.ids) ? args.ids.map(String) : [];
+			const projects = fx?.projects ?? [];
+			// The real command's strict check, mirrored: a stale set writes nothing
+			// and throws, so a test can exercise the renderer's rollback path.
+			const known = new Set(projects.map((p) => p.id));
+			if (ids.length !== projects.length || new Set(ids).size !== ids.length) {
+				throw new Error(`reorder_projects: got ${ids.length} ids for ${projects.length} projects`);
+			}
+			for (const id of ids) {
+				if (!known.has(id)) throw new Error(`reorder_projects: no such project ${id}`);
+			}
+			for (const [index, id] of ids.entries()) {
+				const project = projects.find((p) => p.id === id);
+				if (project) project.sortOrder = index;
+			}
 			return undefined as unknown as T;
 		}
 		case 'get_setting': {
