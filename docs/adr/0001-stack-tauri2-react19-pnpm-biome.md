@@ -4,12 +4,11 @@
 
 ## Context
 
-We're rebuilding a Claude-Code-session manager on a fresh
-stack. The reference implementation (the prior app) uses Electron
-41 with vanilla JS/HTML/CSS and better-sqlite3 + node-pty. It works but:
+We are building a Claude-Code-session manager, and the obvious shape for
+it — Electron with a vanilla JS renderer, `better-sqlite3` and
+`node-pty` — is one we do not want:
 
-- The renderer is an unstructured DOM-mutation app — refactors are
-  costly.
+- An unstructured DOM-mutation renderer makes refactors costly.
 - Electron's binary size and security model are heavier than we need.
 - We already have a sibling project (factorai-v0) on a tighter stack
   with tooling and ergonomics we want to standardise on.

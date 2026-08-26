@@ -15,11 +15,9 @@ ship for it. Saves a class of PTY behavior + path encoding edge cases.
 
 ---
 
-## Q2 — Claude binary discovery → **three-tier probe, modeled on the reference app**
+## Q2 — Claude binary discovery → **three-tier probe**
 
-**Decision.** Port the discovery pattern from
-[the reference app's claude_cli.rs](https://github.com/example/repo).
-Three tiers, in order:
+**Decision.** Probe in three tiers, in order:
 
 1. `which claude` in the inherited process PATH.
 2. User's login shell — `$SHELL -lc 'command -v claude'`, then

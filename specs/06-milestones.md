@@ -166,8 +166,7 @@ toolchain wired up.
 
 1. ~~**MCP/IDE emulator.**~~ **Graduated 2026-08-15** into `roadmap/TODO.md`
    item 19, and **designed 2026-08-19** — see `05-features.md` F20 and
-   ADR-0017; the code is still to come. Re-implement the prior app's
-   WebSocket MCP server so Claude routes
+   ADR-0017; the code is still to come. A WebSocket MCP server so Claude routes
    file opens and diff approvals through factorai instead of an external
    editor, including the "accept / reject hunk" UI we skipped. It moved
    because the ADE operating model (`00-overview.md`) makes it the *push* half

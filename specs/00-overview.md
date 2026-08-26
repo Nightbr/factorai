@@ -44,13 +44,6 @@ built so far reads `~/.claude/`, and nothing about the ADE framing on its own
 justifies widening that — but the two will have to be reconciled eventually,
 and pretending they already agree would hide the decision.
 
-## Where this started
-
-Modeled originally on [the prior app](https://github.com/example/repo),
-rebuilt on a modern Rust + TypeScript stack (Tauri 2, React 19, Biome,
-Turborepo, pnpm). That lineage explains the shape of the session browser and
-little else; the comparison table below is kept as history, not as a target.
-
 ## Identity
 
 | Field          | Value                          |
@@ -60,9 +53,6 @@ little else; the comparison table below is kept as history, not as a target.
 | Window title   | `factorai` (`factorai DEV` in a debug build) |
 | pnpm scope     | `@factorai/*`                  |
 | Rust crate     | `factorai` (lib `factorai_lib`)|
-
-We deliberately **do not** brand this as "the prior app" — it is its own product
-that happens to start from the same problem space.
 
 **The version fields in the repo all say `0.1.0` and that is not drift.** The
 git tag is the single source of truth: `release.yml` rewrites
@@ -89,8 +79,8 @@ off the tags — `git tag --sort=-v:refname | head -1` — not off the tree.
 
 ## Explicitly dropped from MVP
 
-These are the "trickiest" pieces from the prior app. Each gets a stub in
-`07-open-questions.md` for a possible follow-up.
+These are the trickiest pieces, cut to keep the MVP finishable. Each gets a
+stub in `07-open-questions.md` for a possible follow-up.
 
 | Dropped                          | Why                                                          |
 | -------------------------------- | ------------------------------------------------------------ |
@@ -103,26 +93,10 @@ These are the "trickiest" pieces from the prior app. Each gets a stub in
 | Launch-in-external-terminal      | Embedded xterm is the only path for MVP. External terminal action is a deferred feature. |
 | Windows support                  | macOS and Linux only for v1. Drops a class of PTY/path-encoding edge cases from the critical path. |
 
-## Source vs rebuild — quick diff
-
-| Layer        | the prior app            | factorai                                                   |
-| ------------ | ---------------------- | ---------------------------------------------------------- |
-| Shell        | Electron 41            | Tauri 2 (Rust)                                             |
-| Renderer     | Vanilla HTML/CSS/JS    | React 19 + TanStack Router (hash) + TanStack Query         |
-| Styling      | Hand-rolled CSS        | Tailwind v4 + shadcn-style primitives in `@factorai/ui`    |
-| State        | DOM + ad-hoc modules   | Zustand stores                                             |
-| Lang         | JavaScript             | TypeScript strict, Biome (lint + format)                   |
-| DB           | better-sqlite3         | rusqlite (bundled, with FTS5)                              |
-| PTY          | node-pty               | `portable-pty` (Rust) — works on macOS/Linux/Windows       |
-| Editor       | CodeMirror 6 (bundled) | Monaco via npm in renderer (ADR-0007)                      |
-| IPC          | Electron preload bridge| Tauri commands + events                                    |
-| Build        | electron-builder       | `tauri build` via `pnpm` + Turborepo                       |
-| Tooling      | npm + esbuild          | pnpm 10 + Turbo 2 + Biome 1.9 + syncpack + knip + mise     |
-
 ## Non-goals
 
-- We are **not** trying to maintain feature compatibility with the prior app
-  releases. Where the prior app made a UX choice we'd undo, we undo it.
+- We are **not** trying to be a drop-in replacement for any existing session
+  manager. Where prior art made a UX choice we'd undo, we undo it.
 - We are **not** building a Claude alternative or a multi-provider session
   manager. This is specifically for the official `claude` CLI session files.
   (See the tension named under "The operating model" — this holds until it is

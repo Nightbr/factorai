@@ -522,9 +522,9 @@ because the filesystem can't lag the way the index can.
 
 ### `find_claude_binary()` — three-tier discovery
 
-Lifted from
-[the reference app's claude_cli.rs](https://github.com/example/repo).
-The same pattern is proven in production for the same problem.
+Three tiers because no single one is sufficient: the inherited `PATH` misses
+GUI launches, a login shell misses nothing but is slow and can fail, and a
+candidate list misses anything installed somewhere new.
 
 ```rust
 pub fn find_claude_binary() -> Result<PathBuf, AppError> {
@@ -544,8 +544,7 @@ pub fn find_claude_binary() -> Result<PathBuf, AppError> {
 }
 ```
 
-Known candidates (Linux + macOS only — Windows entries dropped from the
-the reference app list):
+Known candidates (Linux + macOS only — no Windows support, Q1):
 
 ```
 $HOME/.local/bin/claude

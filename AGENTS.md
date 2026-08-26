@@ -457,8 +457,8 @@ cargo test
 - `specs/roadmap/TODO.md` — the agreed next steps, in priority order.
   Read it before re-deriving a plan; `specs/roadmap/DONE.md` is the
   dated log of what landed and the gotchas found on the way.
-- `specs/annex-A-cli-agent-patterns.md` — proven Tauri + CLI-agent
-  patterns, with file:line references.
+- `specs/annex-A-cli-agent-patterns.md` — Tauri + CLI-agent plumbing
+  patterns: binary discovery, streaming events, file watching, mock bridge.
 
 ---
 

@@ -1,7 +1,7 @@
 # `scripts/qa/` — agent-driven verification
 
-Inspired by the reference app's `~/.local/share/qa-scripts/` (macOS
-osascript wrappers), ported to Linux/X11 + GNOME.
+Shell wrappers for driving the running app from an agent session, on
+Linux/X11 + GNOME.
 
 ## What works
 

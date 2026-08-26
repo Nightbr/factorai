@@ -4,16 +4,15 @@
 
 ## Context
 
-The prior app launches `claude` inside an in-app xterm.js terminal backed
-by `node-pty`. Alternatives we considered:
+`claude` is an interactive TUI, so the app has to give it a terminal.
+Alternatives we considered:
 
 1. **Embedded PTY** (chosen) — `portable-pty` in Rust → xterm.js in
    webview, output streamed via Tauri events as base64 bytes.
 2. **External terminal launcher only** — spawn the user's terminal
    emulator (`open -a Terminal …`, `xdg-open …`) with the right `claude`
    argv. App becomes a session browser only.
-3. **Both: embedded by default, external as an opt-in** — what
-   the prior app ends up doing.
+3. **Both: embedded by default, external as an opt-in.**
 
 ## Decision
 

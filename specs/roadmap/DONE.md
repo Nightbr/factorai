@@ -718,9 +718,9 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   heuristics on a 200ms tick that did not exist. So the state everyone assumed was there had no
   source, and choosing one was the whole job.
 
-  **The mechanism came from reading the prior app and then verifying it, and verifying overturned
-  it.** One of their two busy signals matches braille spinner frames in the `OSC 0` title, and
-  Claude Code 2.1.234 contains no braille codepoint at all — so that check is dead code. Booting the
+  **The mechanism came from reading prior art and then verifying it, and verifying overturned
+  it.** The documented approach matches braille spinner frames in the `OSC 0` title, and
+  Claude Code 2.1.234 contains no braille codepoint at all — so that check is dead. Booting the
   CLI in a PTY and capturing raw bytes found what does work: the title carries the state in its
   first character, `✳` when idle and an animating `◐ ◑` while working. It needs no configuration, no
   settings file, no env changes and no hooks.
@@ -730,14 +730,11 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   progress is their other source and it works, so the braille check is redundant rather than
   load-bearing. The correction makes the argument stronger rather than weaker: a glyph list went
   stale and *nothing reported it*, because a second source covered for it. We chose to have one
-  source, so it has to be the one that cannot go stale. F10 now carries the full four-signal
-  breakdown of how they determine running / idle / finished, which is worth reading before anyone
-  reaches for a second source here. (Their "noise-filtered output" fallback genuinely is a comment
-  with no code under it — `setActivity` has exactly two call sites, both OSC-driven.)
+  source, so it has to be the one that cannot go stale.
 
   **So the rule enumerates the *idle* marker and treats everything else as working**, which is the
   half that survives version drift — any spinner glyph the CLI adopts later still reads correctly,
-  and a spinner list is the thing that went stale in the prior app without anyone noticing. An
+  and an enumerated spinner list is exactly the thing that goes stale without anyone noticing. An
   unrecognised title holds the previous state, so the worst a future Claude can do is stop this
   improving the dot; it cannot make the dot lie.
 
@@ -1750,7 +1747,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
 - **Session view became terminal-only; the JSONL viewer was removed** — 2026-05-28 (`c6374d6`).
   M1's `EventLog` / `EventCard` mounted 100+ stateful React components in a single paint and froze
   the WebKitGTK webview on Linux — tail-first loading with show-earlier paging bought time but not
-  a fix. The session view is now terminal-first: terminal filling the pane under a thin header.
+  a fix. The session view is now terminal-first: the terminal fills the pane under a thin header.
   The only surface that renders session *content* is search results, whose `snippet()` excerpts are
   cheap and bounded. In the same performance pass the **WebGL addon was dropped** and PTY output
   batched into ~16ms windows. `get_session` / `get_session_tail` survived the removal and are now

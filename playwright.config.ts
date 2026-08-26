@@ -5,7 +5,7 @@ const BASE_URL = `http://localhost:${PORT}`;
 
 /**
  * Playwright runs against the renderer in browser-only mode (`pnpm vite:dev`),
- * not against the Tauri shell. This is the same pattern the reference app uses.
+ * not against the Tauri shell.
  *
  * The renderer detects browser-only mode via `isTauri()` in `lib/tauri.ts`
  * and falls back to `mockInvoke()`. Tests can install richer mock data via

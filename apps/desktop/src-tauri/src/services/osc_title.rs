@@ -14,13 +14,11 @@
 //! the CLI adopts later still reads correctly, and only [`IDLE_MARKER`] is
 //! load-bearing.
 //!
-//! Enumerating the *spinner* is the alternative, and the prior app shows what it
-//! costs: it matches braille frames (U+2800–U+28FF), which 2.1.234 does not
-//! contain a single codepoint of, so that check is dead code. Their indicator
-//! still works — they have a second busy source in `OSC 9;4` progress, which
-//! covered for it — and that is the actual lesson. A glyph list went stale
-//! silently and nothing reported it. This module has **one** source, so it has
-//! to be the one that cannot go stale.
+//! Enumerating the *spinner* is the alternative, and it is dead on arrival: the
+//! frames it would match are braille (U+2800–U+28FF), which 2.1.234 does not
+//! contain a single codepoint of. A glyph list also goes stale silently —
+//! nothing reports that it stopped matching — and this module has **one**
+//! source, so it has to be the one that cannot go stale.
 //!
 //! Note there are two different spinners in play. The title animates `◐ ◑`
 //! (U+25D0/U+25D1); the TUI *body* spinner is `· ✢ ✳ ✶ ✻ ✽`, which contains

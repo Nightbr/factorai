@@ -8,15 +8,15 @@ We need to:
 
 1. List ~100 projects × ~5 sessions each = ~500 sessions, sorted by
    recency. Should be instant.
-2. Full-text search across all sessions by message body. The prior app
-   does this in JS over loaded JSON — fine for small corpora, but it
-   breaks down at 10k+ sessions or large session files.
+2. Full-text search across all sessions by message body. Doing this in
+   JS over loaded JSON is fine for small corpora, but it breaks down at
+   10k+ sessions or large session files.
 
 Options considered:
 
 | Option              | Notes                                                  |
 | ------------------- | ------------------------------------------------------ |
-| Re-parse JSONL each query | The prior app's current approach. Doesn't scale. |
+| Re-parse JSONL each query | Simplest. Doesn't scale.                       |
 | JSON file cache     | Faster than re-parsing but FTS is still JS-side.       |
 | SQLite + FTS5       | Native, fast, well-understood. Chosen.                 |
 | Tantivy / Lucene    | Overkill. Would need a separate index process.         |

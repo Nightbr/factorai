@@ -1,20 +1,17 @@
-# Annex A — Patterns lifted from the reference app
+# Annex A — Tauri + CLI-agent patterns
 
-Curated findings from a deep dive into
-[the reference app](https://github.com/example/repo), a
-production Tauri 2 + React 19 app that integrates with Claude Code CLI
-(among other AI agents). The reference app solves a different product problem
-(markdown knowledge bases) but its **plumbing** for CLI-based AI agents
-is directly applicable to factorai.
+Plumbing patterns for driving a CLI agent from a Tauri 2 + React app:
+binary discovery, streaming events across the IPC boundary, file
+watching, and a renderer that runs without the shell. Each entry states
+what the pattern is, why it matters, and how factorai uses it.
 
-The reference app is dual-licensed and public. Reuse is OK; attribution in code
-comments is a courtesy and a useful breadcrumb for ourselves.
+This annex is reference material, not a contract — the contracts are the
+numbered specs. Where a pattern is already implemented, the spec that
+owns it is named.
 
 ---
 
 ## A.1 — `find_claude_binary` (three-tier discovery)
-
-**Source.** `src-tauri/src/claude_cli.rs` (lines ~57–150).
 
 **What it does.**
 
@@ -31,17 +28,14 @@ comments is a courtesy and a useful breadcrumb for ourselves.
 
 **Why it matters.** Without (2), users who installed `claude` via
 homebrew on macOS hit "command not found" 100% of the time when launching
-factorai from the dock. This is the most important pattern to lift.
+factorai from the dock. This is the single most important pattern here.
 
-**Reuse for factorai.** Already wired into `03-backend-rust.md`
-§ `find_claude_binary()`. Strip Windows entries; keep the rest.
+**In factorai.** Wired into `03-backend-rust.md`
+§ `find_claude_binary()`, no Windows entries (Q1).
 
 ---
 
 ## A.2 — Streaming event enum + emit/listen
-
-**Source.** `src-tauri/src/claude_cli.rs` ll. 14–43, JS side
-`src/utils/ai-chat.ts`.
 
 ```rust
 #[derive(Debug, Serialize, Clone)]
@@ -87,9 +81,6 @@ pub enum TerminalEvent {
 
 ## A.3 — Tagged streaming command macro
 
-**Source.** `src-tauri/src/commands/ai.rs` — `define_desktop_stream_command!`
-macro.
-
 ```rust
 macro_rules! define_desktop_stream_command {
     ($name:ident, $request:ty, $event_name:literal, $runner:path) => {
@@ -127,14 +118,12 @@ where
 command, and centralises the `spawn_blocking` + emit wiring so emit
 errors can never silently break a stream.
 
-**Reuse for factorai.** Drop in directly. Our streaming commands will
-register via this macro: `terminal_spawn`, etc.
+**In factorai.** Streaming commands register via this macro:
+`terminal_spawn`, etc.
 
 ---
 
 ## A.4 — Multi-agent dispatch with parallel availability probing
-
-**Source.** `src-tauri/src/ai_agents.rs`.
 
 ```rust
 pub async fn get_ai_agents_status() -> AiAgentsStatus {
@@ -148,23 +137,23 @@ pub async fn get_ai_agents_status() -> AiAgentsStatus {
 **Why it matters.** Probing several CLIs in serial costs seconds on cold
 launches. `spawn_blocking` + `tokio::join!` parallelizes binary lookup.
 
-**Reuse for factorai.** MVP only ships Claude Code. Don't pull this in
-yet — but keep the shape in mind so adding Codex later is a small
+**In factorai.** MVP only ships Claude Code, so this is not wired in —
+but keep the shape in mind so adding Codex later is a small
 diff (rename `check_cli` to `check_claude_cli`; later add
 `check_codex_cli` next to it; expose as `get_agents_status()`).
 
 ---
 
-## A.5 — JSONL session parsing — **what the reference app does NOT do**
+## A.5 — JSONL session parsing — **the one with no prior art**
 
-The reference app parses Claude's **streaming** stdout (`-p` mode with
-`--output-format stream-json`), not the persisted
-`~/.claude/projects/**/*.jsonl` history files. That's the novel surface
-for factorai.
+The patterns above all concern Claude's **streaming** stdout (`-p` mode
+with `--output-format stream-json`). factorai reads something else: the
+persisted `~/.claude/projects/**/*.jsonl` history files, which nothing
+else parses and Anthropic does not document.
 
-Implication: there is no upstream reference parser for what we want to
-build. Our `02-data-model.md` schema is the closest thing to documented
-truth, and we should treat parsing as **defensive-first**:
+So there is no reference parser for the surface that matters most here.
+Our `02-data-model.md` schema is the closest thing to documented truth,
+and parsing has to be **defensive-first**:
 
 - `serde_json::Value` at the boundary.
 - Narrow into typed structs that `#[serde(flatten)]` unknown fields.
@@ -177,21 +166,17 @@ truth, and we should treat parsing as **defensive-first**:
 
 ## A.6 — File-watching pattern
 
-**Source.** `src-tauri/src/vault_watcher.rs`.
-
 Uses `notify = "6"` with a `tokio::sync::mpsc` channel. Watcher runs in
 a dedicated thread; events get coalesced over a short window before
 firing.
 
-**Reuse for factorai.** Same crate, same pattern. Our debounce window is
-1s (per `Q5` in `07-open-questions.md`). The coalescing detail worth
-copying: keep a `HashSet<PathBuf>` of dirty paths, flush on timer.
+**In factorai.** Same crate. Our debounce window is 1s (per `Q5` in
+`07-open-questions.md`). The coalescing detail that matters: keep a
+`HashSet<PathBuf>` of dirty paths, flush on timer.
 
 ---
 
 ## A.7 — Frontend invoke wrapper with mock fallback
-
-**Source.** `src/utils/ai-chat.ts` and a `mock-tauri.ts` shim.
 
 ```ts
 function tauriCall<T>(command: string, args?: object): Promise<T> {
@@ -203,21 +188,20 @@ function tauriCall<T>(command: string, args?: object): Promise<T> {
 (without `tauri dev`) for fast UI iteration, with the Rust calls
 stubbed. Also useful for Playwright-style tests.
 
-**Reuse for factorai.** Add early. Pure-renderer dev loop is much
-faster than full Tauri rebuilds, and the mock layer naturally
+**In factorai.** Worth having from the start: a pure-renderer dev loop is
+much faster than full Tauri rebuilds, and the mock layer naturally
 documents what each command is supposed to return.
 
 ---
 
 ## A.8 — ADR-driven docs
 
-The reference app has `docs/adr/` numbered ADRs (`0001-…`, `0058-…`). One ADR per
-architectural decision (storage strategy, dependency choice,
-platform-level pattern). Created in the **same commit** as the code
-that implements the decision. Existing ADRs are never edited —
-superseding ones are created.
+Numbered ADRs under `docs/adr/`, one per architectural decision
+(storage strategy, dependency choice, platform-level pattern), created
+in the **same commit** as the code that implements it. Existing ADRs are
+never edited — superseding ones are created.
 
-**Reuse for factorai.** Start `docs/adr/` from day one. Seed:
+**In factorai.** `docs/adr/` from day one. Seed:
 
 | #     | Title                                                       |
 | ----- | ----------------------------------------------------------- |
@@ -227,43 +211,27 @@ superseding ones are created.
 | 0004  | `~/.claude/projects/` is read-only ground truth             |
 | 0005  | Kill-on-quit, non-optional confirm dialog (Q10)             |
 
-We don't enforce CodeScene / Codacy / coverage gates like the reference app does.
-We do enforce ADRs for the categories above.
+We enforce ADRs for the categories above, and no third-party quality
+gates (AGENTS.md § 8).
 
 ---
 
 ## A.9 — AGENTS.md as the source-of-truth, CLAUDE.md as shim
 
-The reference app's `CLAUDE.md` is one line: `@AGENTS.md`. All the actual
-guidance lives in `AGENTS.md`. We do the same, but with a real symlink
-(`CLAUDE.md -> AGENTS.md`) so the two files literally cannot drift.
+All agent guidance lives in `AGENTS.md`, with `CLAUDE.md` a real symlink
+to it (`CLAUDE.md -> AGENTS.md`) rather than a one-line `@AGENTS.md`
+include, so the two files literally cannot drift.
 
 ---
 
-## Top 5 to lift verbatim into factorai
+## The five that matter most
 
-1. **`find_claude_binary` three-tier discovery** — copy with Windows
-   entries stripped (Annex A.1).
+1. **`find_claude_binary` three-tier discovery** — no Windows entries
+   (Annex A.1).
 2. **`#[serde(tag = "kind")]` event enum shape** — for our
    `TerminalEvent` (A.2).
 3. **`define_desktop_stream_command!` macro + `run_desktop_stream`** —
-   one of the highest-leverage patterns in the repo (A.3).
+   the highest-leverage of them (A.3).
 4. **`tauriCall` + `isTauri()` mock shim** on the renderer — enables
    browser-only dev loop (A.7).
 5. **`docs/adr/` discipline** — start it from M0 (A.8).
-
-## Anti-patterns from the reference app — do NOT copy
-
-- **CodeScene / Codacy hard gates.** Useful at the reference app's scale; over the
-  top for a solo dev tool. We use Biome + `tsc --noEmit` + `cargo
-  clippy` as the floor, no third-party gating.
-- **PostHog instrumentation.** No telemetry for MVP.
-- **Localization via `lara.yaml`.** Single-locale (EN) for MVP.
-- **Vault-specific code paths.** The reference app's whole domain is markdown
-  knowledge bases. None of `vault/`, frontmatter, wikilinks, or git
-  sync is relevant.
-- **MCP vault bridge.** Their `mcp/` module wires an MCP server for
-  Claude to call vault tools. We're deferring our own MCP IDE emulator;
-  do not blindly copy theirs.
-- **Six-agent fan-out (Gemini, Pi, Kiro…)** — over-engineering for our
-  scope. Claude Code only for v1; Codex *maybe* in v2.

@@ -1,8 +1,6 @@
 # Features
 
 For each feature: behavior, UI, backend touchpoints, edge cases.
-"The prior app ref" points at the file in the source repo this was derived
-from, for cross-checking.
 
 ---
 
@@ -224,9 +222,6 @@ change whenever the indexer runs, and a stale count is worse than a join.
   error. The empty state points at "Add project", since that is the way out of
   it, and at installing Claude Code.
 
-**The prior app ref.** `sidebar.js`, `derive-project-path.js`,
-`folder-index-state.js`.
-
 ---
 
 ## F2 — Session list
@@ -295,8 +290,6 @@ rows live.
 **Edge cases.**
 - Session file is huge (>100MB) → still index, just lazily.
 
-**The prior app ref.** `sidebar.js`, `session-cache.js`.
-
 ---
 
 ## F3 — Session view (terminal-first)
@@ -355,8 +348,8 @@ v1 event viewer:
 > **History note.** M1 shipped a full JSONL event viewer (`EventLog` /
 > `EventCard`). It was removed in `c6374d6`: mounting 100+ stateful React
 > components in a single paint froze the WebKitGTK webview on Linux even
-> with tail-pagination. The session view is now terminal-first
-> (terminal-first). The only surfaces that render session content are
+> with tail-pagination. The session view is now terminal-first. The only
+> surfaces that render session content are
 > search results (F4), which show short `snippet()` excerpts, and the
 > sub-agent transcript view — both cheap to render and bounded.
 
@@ -374,9 +367,6 @@ in its signature, not this one restored.
 
 **Edge cases.**
 - Malformed line in JSONL → skip and log during indexing; never fatal.
-
-**The prior app ref.** `main.js` terminal-first layout. (The old
-`jsonl-viewer.js` port is retired.)
 
 ---
 
@@ -432,9 +422,6 @@ workspace.
   stray `"` or `*` can't error the match.
 - Index not yet built (cold start) → results are simply empty until the
   initial scan completes; the sidebar already surfaces `indexer:progress`.
-
-**The prior app ref.** none — the prior app searches in JS over JSON; we
-upgrade this to SQL FTS.
 
 ---
 
@@ -584,9 +571,6 @@ marks up URLs and never paths, so paths are matched by a link provider over the
 buffer. Same modifier gate, different destination — the viewer rather than the
 shell. F19 owns that rule; this section owns the two URL paths.
 
-**The prior app ref.** `main.js` (PTY spawning), `terminal-manager.js`,
-`session-transitions.js`.
-
 ---
 
 ## F6 — Resume & new session
@@ -667,8 +651,6 @@ rely on a poll to notice: the tab strip has none.
 `terminal_spawn({ sessionId, projectId, cwd })`. The `--resume` vs
 `--session-id` choice is the backend's, made by probing for the transcript —
 see `specs/03-backend-rust.md` § "Session ids".
-
-**The prior app ref.** `main.js` (resume path).
 
 ---
 
@@ -1011,9 +993,6 @@ how, what counts as a change — and it is in `roadmap/TODO.md`, not here.
 - Empty file → "This file is empty." rather than a blank editor that looks
   broken.
 
-**The prior app ref.** `file-panel.js`, `viewer-panel.js`,
-`viewer-toolbar.js` (its `codemirror-setup.js` no longer applies).
-
 ---
 
 ## F8 — Diff viewer
@@ -1047,9 +1026,6 @@ the two strings.
 - Very large file → both sides obey `read_file`'s 5MB cap and its `truncated`
   flag; a truncated diff says so rather than lying by omission.
 
-**The prior app ref.** `viewer-panel.js` (its `codemirror-setup.js` no longer
-applies — ADR-0007).
-
 ---
 
 ## F9 — CLAUDE.md & plans
@@ -1073,8 +1049,6 @@ Edits to CLAUDE.md trigger an explicit Save action with a dirty indicator.
 - No CLAUDE.md → "Create CLAUDE.md" button writes a stub.
 - File changed on disk while we have a dirty buffer → diff modal asks the
   user to merge or overwrite.
-
-**The prior app ref.** `plans-memory-view.js`.
 
 ---
 
@@ -1131,20 +1105,12 @@ So the rule, in `TerminalManager`'s reader as bytes arrive — no polling, no ti
 
 **The rule is inverted on purpose: enumerate the idle marker, treat everything
 else as working.** Only `✳` is load-bearing, so any spinner glyph — present or
-future — reads correctly. The alternative is to enumerate the *spinner*, and
-the prior app shows what that costs: it matches braille frames (U+2800–U+28FF),
-which Claude Code no longer emits — against 2.1.234 not one braille codepoint
-exists in the binary — so **that check is dead code today**.
-
-**Corrected 2026-08-18**, and the correction is the more useful half. This
-section first said their busy state was therefore dead. It is not: they have a
-second source for it, `OSC 9;4` progress, so the dead braille check is redundant
-rather than load-bearing and their indicator still works. What their design
-actually demonstrates is the cost of the choice, not a failure — one of their two
-busy sources silently stopped working and nothing told them, because the other
-one covered for it. A single enumerated glyph set with no second source would
-simply have broken. Hence the inversion here: we have one source, so it must be
-the one that cannot go stale.
+future — reads correctly. The alternative is to enumerate the *spinner*,
+and that is dead on arrival: the frames an enumeration would match are braille
+(U+2800–U+28FF), and against 2.1.234 not one braille codepoint exists in the
+binary. An enumerated glyph set also goes stale silently — nothing announces
+that the set stopped matching — and we have exactly one source for this state,
+so it has to be the one that cannot go stale.
 
 **Two spinners exist and they are different.** The title animates `◐ ◑`
 (U+25D0/U+25D1); the TUI *body* spinner is `· ✢ ✳ ✶ ✻ ✽`. Note that `✳` appears
@@ -1262,28 +1228,6 @@ Kept because each is a thing the next reader will otherwise investigate again.
   `updated_at`) — the third thing the feedback asked for. Deferred: it is durable
   state and a migration, orthogonal to the live PTY states here, and it is what a
   `finished` state would need to mean anything.
-
-**The prior app ref**, read properly on 2026-08-18 because the README's "actively
-running, idle, or finished" is worth knowing the mechanism behind. It is **four
-signals, not one**, and only two of them are about Claude at all:
-
-| Their state | Where it comes from |
-| --- | --- |
-| running / stopped | `get-active-sessions` IPC over the main process's `activeSessions` map, polled every 3s while any PTY lives and every 30s otherwise (`main.js:870`, `app.js:559`). Purely "a PTY exists" — the same thing our dot meant before F10 |
-| busy | `OSC 9;4` progress, level 1/2/3 (`main.js:1201`) — plus a dead braille-title check at `main.js:1172` |
-| idle | the `OSC 0` title's first char being `✳` (`main.js:1173`), gated on having been busy first |
-| finished | `responseReadySessions` (`app.js:112`) — the busy→idle edge, recorded **only when that session is not the one you are looking at**, and cleared when you click it |
-
-Two things worth taking from that. **Their "finished" is our deferred unread
-axis**, not a process state: it is sticky until you look, which is exactly why a
-`finished` state needs `viewed_at` to mean anything. And **`OSC 9;4` costs them
-the `TERM_PROGRAM=iTerm.app` spoof** (`main.js:1128`, commented as being for
-OSC 9) — the CLI emits no progress otherwise, which is what we measured
-independently and why we took the title instead.
-
-Also note the "noise-filtered terminal output" fallback its comments describe
-(`app.js:104`) **does not exist in the code**: `setActivity` has exactly two call
-sites, both OSC-driven.
 
 ---
 

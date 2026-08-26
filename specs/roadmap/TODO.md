@@ -462,10 +462,9 @@ What is left:
 The original entry, kept because it is the argument for doing it at all:
 
 
-**Graduated from `06-milestones.md` § Deferred (was #1) on 2026-08-15.** Re-implement
-the prior app's WebSocket MCP server so the `claude` CLI treats factorai as its editor: file opens
-land in our viewer, and diff approvals happen in our UI — including the **accept / reject hunk**
-surface the MVP skipped.
+**Graduated from `06-milestones.md` § Deferred (was #1) on 2026-08-15.** A WebSocket MCP server
+so the `claude` CLI treats factorai as its editor: file opens land in our viewer, and diff
+approvals happen in our UI — including the **accept / reject hunk** surface the MVP skipped.
 
 **Why it graduated.** Under `00-overview.md` § "The operating model" this stops being a nicety
 and becomes the mechanism for two of the four verbs. Everything the app does today is
@@ -500,9 +499,10 @@ that says so.
 
 **Open questions, roughly in blocking order.**
 
-- What does the current `claude` CLI actually speak? The prior app's implementation is the
-  reference, but the protocol has moved; the emulator has to match today's CLI, and that is a
-  research task before it is a build task.
+- What does the current `claude` CLI actually speak? The emulator has to match today's CLI, and
+  reading its behaviour directly is the only reliable source — older third-party emulators were
+  written against a protocol that has since moved. That is a research task before it is a build
+  task.
 - Scope of the emulation: file open only (small, immediately useful, no writes) versus the full
   diff-approval loop (the valuable half, and the one that writes). These are separable and the
   first is a genuine milestone on its own.
@@ -924,10 +924,10 @@ reintroduce the CLI's notification channel for this; it is slower than the signa
 ## 36. A Homebrew cask, because the macOS build will stay unsigned
 
 **Filed 2026-08-20**, out of the question "how complex is signing for macOS, and I don't want an
-Apple developer account". The answer to the first half is *not very* — the reference app does it in about
-thirty lines of YAML (`release-build-artifacts.yml`: import a `.p12` into a temporary keychain,
-then hand Tauri `APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` and let
-it notarize and staple; its `bundle.macOS` is `{}`). The answer to the second half is that the
+Apple developer account". The answer to the first half is *not very* — it is about
+thirty lines of workflow YAML: import a `.p12` into a temporary keychain, then hand Tauri
+`APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` and let it notarize and
+staple, with `bundle.macOS` left as `{}`. The answer to the second half is that the
 certificate has to be a **Developer ID Application** one, which Apple issues only to paid
 Developer Program members — a policy wall, not a technical one. A free Apple ID's Personal Team
 signs for local development and cannot produce one.
@@ -1037,8 +1037,8 @@ a separate decision, and none of them are the same size:
 **Do one second harness end to end before generalising to four.** A trait derived from one
 implementor is a guess; from two it is a fact; from four written simultaneously it is a rewrite
 with three untested branches. Codex is the natural first, because
-`annex-A-cli-agent-patterns.md` § A.1 already carries the shape of its CLI probe from the reference app and
-notes exactly this progression, and ADR-0011 already thought about what a codex session means for
+`annex-A-cli-agent-patterns.md` § A.1 already carries the shape of its CLI probe and notes exactly
+this progression, and ADR-0011 already thought about what a codex session means for
 a project's identity.
 
 **And grade the capabilities, rather than requiring all of them.** A harness that can only be

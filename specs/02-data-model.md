@@ -40,9 +40,8 @@ project is a folder you added, keyed by a uuid (ADR-0011); the encoding is how
 we find *Claude's* directory for a folder, and how a second agent's adapter
 would differ.
 
-`the prior app's encode-project-path.js` and `derive-project-path.js` perform an
-invertible mapping from a filesystem path → directory name. We need both
-directions.
+The mapping from a filesystem path → directory name is invertible, and we need
+both directions.
 
 Encoding rule observed from existing claude folders:
 
@@ -66,7 +65,7 @@ tool result, or meta event (rename, summary).
 
 > **Important caveat.** Anthropic does **not** publish a stable schema for
 > these files. Everything below is reverse-engineered from a corpus of
-> real sessions and from how the prior app reads them. Treat fields as
+> real sessions. Treat fields as
 > additive: tolerate new ones, never refuse a record because it has
 > extra keys, and render unknown event types as collapsed JSON.
 
@@ -101,9 +100,9 @@ varies by event type; only `type`, `uuid`, and `timestamp` are reliable.
 We **do not** assume `tool_use` / `tool_result` are top-level event
 types. In current Claude Code, tool use is encoded as content blocks
 **inside** a `user` or `assistant` `message.content` array (see below).
-Older the prior app code mentions a `rename` event; we have not observed
-it in current corpora, but we still check `message.content[0].text` and
-the top-level `title` field for a `/rename` payload as a fallback.
+A `rename` event type is documented in older third-party notes; we have not
+observed it in current corpora, but we still check `message.content[0].text`
+and the top-level `title` field for a `/rename` payload as a fallback.
 
 #### `message.content` shape
 
@@ -181,7 +180,7 @@ renderer is the only place that cares about block shape, and TS handles
 - **`updated_at`** comes from the last event's `timestamp`.
 - **`title`** is derived in priority order:
   1. last event whose `message.content` is `[{type:'text', text:"#rename: ..."}]`
-     (legacy fallback from the prior app)
+     (legacy fallback)
   2. last event with a top-level `title` field
   3. first user-text content, trimmed to 60 chars
   4. session UUID's first 8 chars (last-resort)
@@ -475,7 +474,7 @@ struct TerminalHandle {
 }
 ```
 
-Status transitions are heuristic, ported from `the prior app's session-transitions.js`:
+Status transitions are heuristic:
 
 - **Running** → bytes flowing in last 200ms.
 - **WaitingInput** → output settled and last frame contains a known prompt

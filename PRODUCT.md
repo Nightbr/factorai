@@ -134,9 +134,6 @@ Binding, and recorded in `specs/09-branding.md`:
   rather than heights derived from their tallest child, and icon buttons that
   paint no background — their hover state is the icon taking colour.
 
-The product is named `factorai` (`dev.factorai`), deliberately not branded as
-the prior app, the project it was originally modelled on.
-
 ## Evidence on Hand
 
 - `specs/` — nine numbered specs plus two annexes; the design source of truth for

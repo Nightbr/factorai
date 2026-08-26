@@ -60,23 +60,11 @@ The rule is stated so that the *idle marker* is the only enumerated value:
 
 **Enumerating the idle marker rather than the spinner is the load-bearing half
 of this decision.** Any spinner glyph the CLI adopts, now or later, falls into
-"working" without a change here. The inverse — enumerating spinner frames — is
-what the prior app does, against braille codepoints that Claude Code no longer
-emits: there is not one braille codepoint left in the binary, so that check is
-dead code.
-
-> **Factual correction, 2026-08-18** (same day, before anything was built on it).
-> This paragraph originally continued "their busy state is dead on current
-> versions". **That is wrong**, and the record should not carry it: the prior app
-> has a *second* busy source, `OSC 9;4` progress (`main.js:1201`), so the dead
-> braille check is redundant rather than load-bearing and their indicator works
-> fine. Corrected in place rather than by a superseding ADR because the decision
-> below is unchanged — only my description of someone else's code was wrong, and
-> leaving a known-false claim in an evidence-based record is worse than a visible
-> correction. The evidence still supports the decision, and arguably better: what
-> their design shows is that one of two busy sources went stale silently, with the
-> other covering for it. We have **one** source, so it has to be the one that
-> cannot go stale. See `05-features.md` § F10 for the full mechanism.
+"working" without a change here. The inverse — enumerating spinner frames —
+would match braille codepoints that Claude Code no longer emits: there is not
+one braille codepoint left in the binary, so such a check is dead on arrival.
+An enumerated set also goes stale silently, and we have **one** source for this
+state, so it has to be the one that cannot go stale. See `05-features.md` § F10.
 
 Rejected, with the reason each one costs more than it returns:
 

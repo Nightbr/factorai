@@ -2,8 +2,8 @@
  * Helpers for installing a settable mock Tauri bridge into the renderer
  * before the page loads.
  *
- * The reference app-style: install via `page.addInitScript` so the global lands on
- * `window` before any module runs. The renderer's `lib/tauri.ts`
+ * Installed via `page.addInitScript` so the global lands on `window` before
+ * any module runs. The renderer's `lib/tauri.ts`
  * mockInvoke() reads from `window.__FACTORAI_TEST__`.
  */
 

@@ -1,8 +1,7 @@
 //! Locating the `claude` CLI binary on disk.
 //!
-//! Three-tier discovery, ported from
-//! [the reference app's claude_cli.rs](https://github.com/example/repo).
-//! See specs/annex-A-cli-agent-patterns.md § A.1 for the rationale.
+//! Three-tier discovery — see specs/annex-A-cli-agent-patterns.md § A.1 for
+//! the rationale.
 //!
 //! Order of attempts:
 //!   0. The user's override, when the caller passes one (F11).
@@ -18,7 +17,7 @@
 //! reaching the finder on its own is how the settings page would come to report
 //! "not installed" for the binary sessions are actually spawning from.
 //!
-//! Windows entries from the reference app's list are dropped (Q1: no Windows support).
+//! The candidate list carries no Windows entries (Q1: no Windows support).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
