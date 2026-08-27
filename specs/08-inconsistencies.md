@@ -29,6 +29,12 @@ than by reading it.
 (roadmap item 28). Seven left. Same shape as C5 and C7: found by writing code
 against the doc, not by reading the docs against each other.
 
+**Status 2026-08-27:** **C9** added while building project groups — the design
+sidecar and the menu primitives disagree about what a hovered menu row looks
+like. Eight left. Found by looking at a screenshot of a menu I had just extended,
+which is the third time in this file that *using* the thing beat reading about
+it.
+
 Worth noting what those two have in common: **both were found by reading the code a
 spec described, not by reading specs against each other.** C5 and C6 are each a
 claim that was true when written and quietly stopped being true, and neither would
@@ -37,7 +43,7 @@ during feature work rather than in scheduled passes.
 
 ---
 
-## Still open — seven decisions
+## Still open — eight decisions
 
 Everything else compiled on 2026-08-15 has been resolved and deleted, per the
 rule above. What remains needs a call rather than an edit.
@@ -125,6 +131,29 @@ which case `shadow-lg` needs adding to the vocabulary and the Lifted-Row Rule
 needs narrowing to say where it applies. Not settled here because it is a change
 to a shipped surface that item 28 had no reason to touch, and changing it
 untested would trade a documented inconsistency for an undocumented one.
+
+---
+
+**C9 — `.impeccable/design.json` says a hovered menu row is `secondary`; every
+menu in the app uses `accent`.** The sidecar's `ds-menu` component CSS carries
+`.ds-menu-item:hover { background: var(--secondary) }` — the 22% tonal step. The
+shipped primitives do not: `DropdownMenuItem`, `ContextMenuItem`, and both
+`SubTrigger`s all use `focus:bg-accent`, and `--accent` in `globals.css` is
+`oklch(81.3% 0.165 75)` — the same amber as `--primary`. So a hovered menu row is
+a full amber fill with dark text, not a quiet tonal step.
+
+Neither is obviously wrong, which is why this needs a decision rather than an
+edit. The amber is consistent across every menu in the app and reads clearly as
+"this is what Enter will do", which matters more in a menu than in a list. The
+sidecar's version is what `DESIGN.md`'s Elevation section would predict, and it is
+what the rest of the app's hover states do.
+
+Found on 2026-08-27 by screenshotting the new `Move to group ▸` submenu in the
+real window and thinking its open-state fill looked too loud — then discovering it
+was simply matching what the app has always done. **The primitive is not the
+thing to change here**: whichever way this goes, one file is right and the other
+has been wrong for a while, and the fix is a palette decision plus a sidecar
+regeneration, not a class swap on one component.
 
 ---
 

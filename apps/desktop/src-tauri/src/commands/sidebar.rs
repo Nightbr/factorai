@@ -37,8 +37,16 @@ pub const DEFAULT_GROUP_NAME: &str = "New group";
 /// in order and nothing else. Accepting the same struct it renders would mean
 /// accepting names and project payloads on a command whose whole job is
 /// ordering, and then deciding whether to trust them.
+///
+/// **`tag = "kind"` and `rename_all_fields` are both load-bearing.** Without the
+/// tag serde uses its *externally tagged* representation — `{"Project":{…}}` —
+/// so every call from the renderer, which sends `{"kind":"project","rowId":…}`,
+/// failed to deserialize and the command never ran. And `rename_all` on an enum
+/// renames only the variants, so the fields would have stayed `row_id`. Both
+/// were wrong on the way in and neither was visible from the TS side; see
+/// `tests/wire_shape.rs`.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum SidebarOrder {
 	/// A project at the top level, addressed by its row id.
 	Project { row_id: String },

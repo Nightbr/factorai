@@ -75,8 +75,14 @@ What was actually done with plain `xdotool`, in one session: clicked the sidebar
 | Script | Status |
 | --- | --- |
 | `click.sh X Y` | ✓ reaches React — but its origin is **not** the content area, see below |
-| `key.sh KEYS` | ✓ — but focus the window first (`wmctrl -ia`) and send **without** `--window`. `xdotool key --window <id>` uses XSendEvent, which *is* filtered; plain `xdotool key` uses XTest, which isn't. That distinction is probably what the original claim was really about. |
-| `type.sh "text"` | ✓ same rule as `key.sh` |
+| `key.sh KEYS` | ✓ — sends through XTest after activating the window, and asserts by **pid** that factorai actually holds focus before sending |
+| `type.sh "text"` | ✓ same as `key.sh` |
+
+**Both of those scripts used `--window` until 2026-08-27**, which is the XSendEvent path this section says is filtered — so for months neither could put a character into the WebView, while the table above marked them ✓. Found by trying to rename a sidebar group: the inline editor kept its selected default text and never saw a keystroke. They now activate the window and send through XTest, and they refuse to send at all if the focused window belongs to another pid.
+
+**A popup dismisses itself if you activate the window before clicking it.** `click.sh` and `drag.sh` both call `xdotool windowactivate --sync`, which is right for the first click of a sequence and wrong for the second: activating while a Radix menu is open closes the menu, so the click lands on whatever was behind it. For a click *inside* an already-open menu, skip the activation and click by absolute coordinate — the window is already focused, and the pid assertion still holds. The same applies to `screenshot.sh`: `gnome-screenshot` takes focus, so a capture between opening an inline editor and typing into it will blur the editor.
+
+**`--window` is filtered, `windowactivate` + XTest is not.** That is the whole of the rule, and it is why the two paragraphs above exist.
 
 **`click.sh`'s coordinates are frame-relative, not content-relative** (measured 2026-08-17). Its doc comment says "relative to the top-left of the factorai content area". That is wrong: `_resolve_wid.sh` reports the origin `wmctrl -lG` gives for the **decoration** window, while `xwininfo -id <wid>` reports the client area, and on X11 + Mutter here those differ by **(47, 73)**. Two consequences:
 

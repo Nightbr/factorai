@@ -32,11 +32,22 @@ pub struct Project {
 /// would be a number it must not do arithmetic with. What the renderer sends
 /// back is ids in order, and `reorder_sidebar` assigns the numbers.
 ///
-/// A tagged union on the TS side: `#[serde(tag = "kind", rename_all =
-/// "camelCase")]` gives `{ kind: 'project', … }` / `{ kind: 'group', … }`,
-/// which is the same discriminated shape `AppError` uses.
+/// A tagged union on the TS side: `{ kind: 'project', … }` / `{ kind: 'group',
+/// … }`, the same discriminated shape `AppError` uses.
+///
+/// **`rename_all_fields` is not optional, and its absence is invisible.** On an
+/// enum, `rename_all` renames the *variants* — it does nothing to the fields
+/// inside them, so this type shipped emitting `row_id` while `@factorai/types`
+/// declared `rowId`. Nothing caught it: `tsc` cannot see across the boundary, and
+/// the smoke tests fabricate camelCase in `mockInvoke` rather than going through
+/// serde. What it cost was every write command silently addressing `undefined` —
+/// see `tests/wire_shape.rs`, which now pins the emitted JSON.
+///
+/// Note how the drift was *asymmetric*, which is what made it hard to see:
+/// [`SidebarChild`] is a struct, where `rename_all` does apply to fields, so a
+/// group's children arrived correctly while the rows holding them did not.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum SidebarRow {
 	/// A project sitting at the top level.
 	Project {

@@ -314,7 +314,10 @@ export function SidebarProject({
 						{dwelling ? (
 							<span
 								data-testid="new-group-hint"
-								className="shrink-0 pr-1 font-medium text-primary text-xs uppercase tracking-wider"
+								// `pl-2` so the label does not sit flush against the name it just
+								// truncated — measured in the real window, where "zack-health-…"
+								// and "NEW GROUP" ran together into one string.
+								className="shrink-0 pr-1 pl-2 font-medium text-primary text-xs uppercase tracking-wider"
 							>
 								New group
 							</span>
