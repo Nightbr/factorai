@@ -105,7 +105,7 @@ A thin `apps/desktop/src/lib/tauri.ts` re-exports typed wrappers around
 
 | Command            | Effect                                                          |
 | ------------------ | --------------------------------------------------------------- |
-| `pnpm dev`         | `turbo dev --filter=@factorai/desktop` → `tauri dev`            |
+| `pnpm dev`         | `turbo dev --filter=@factorai/desktop` → `tauri dev --config src-tauri/tauri.dev.conf.json` |
 | `pnpm build`       | `turbo build` (vite build → tauri build)                        |
 | `pnpm lint`        | `turbo lint` (Biome over all packages)                          |
 | `pnpm format`      | `turbo format`                                                  |
@@ -115,7 +115,10 @@ A thin `apps/desktop/src/lib/tauri.ts` re-exports typed wrappers around
 | `mise install`     | Pin node 24, pnpm 10, rust stable                               |
 
 `tauri dev` runs `pnpm vite:dev` (port 1420, strict) and reloads the Rust
-binary on `src-tauri/**` changes.
+binary on `src-tauri/**` changes. The `--config` file holds one field,
+`identifier` — that is what gives a dev build its own data directory, and the
+CLI's merge replaces arrays wholesale, so nothing else belongs in it (ADR-0024).
+`tauri build` does not read it.
 
 ## Build targets
 
@@ -145,5 +148,13 @@ action.
   equivalent on mac/win via `app_data_dir`): session index, FTS, derived
   metadata — and the `settings` table, which holds **the settings Rust reads**
   (F11). "Who reads this?" is what decides between the two.
+- **Both of those live under `app_data_dir()`, and a dev build resolves a
+  different one.** `app_data_dir()` is derived from `identifier`, so
+  `tauri dev` — which merges `src-tauri/tauri.dev.conf.json` over the config —
+  reads and writes `~/.local/share/dev.factorai-dev/` instead, `localStorage`
+  included. It is one field rather than a code path because a migration run in
+  dev is otherwise free to leave the installed release unable to open its own
+  database: 0011 dropping `projects.pinned` did exactly that. See
+  [ADR-0024](../docs/adr/0024-a-dev-build-runs-under-its-own-identifier.md).
 - **Read-only mirrors of `~/.claude/`**: never written to. CLAUDE.md edits
   are an explicit exception (see `05-features.md`).

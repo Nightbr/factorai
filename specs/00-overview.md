@@ -49,7 +49,7 @@ and pretending they already agree would hide the decision.
 | Field          | Value                          |
 | -------------- | ------------------------------ |
 | Product name   | `factorai`                     |
-| App identifier | `dev.factorai`                 |
+| App identifier | `dev.factorai` (`dev.factorai-dev` in a dev build — ADR-0024) |
 | Window title   | `factorai` (`factorai DEV` in a debug build) |
 | pnpm scope     | `@factorai/*`                  |
 | Rust crate     | `factorai` (lib `factorai_lib`)|

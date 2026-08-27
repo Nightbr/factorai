@@ -908,8 +908,10 @@ struct AppState {
 }
 ```
 
-Constructed in `setup()` after `app.path().app_data_dir()` resolves. The
-indexer kicks off its first scan from `setup()` (`tokio::spawn`).
+Constructed in `setup()` after `app.path().app_data_dir()` resolves — which is
+derived from `identifier`, so a dev build lands in `dev.factorai-dev` rather
+than beside the installed release (ADR-0024). The indexer kicks off its first
+scan from `setup()` (`tokio::spawn`).
 
 ## Errors
 

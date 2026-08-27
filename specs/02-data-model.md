@@ -196,6 +196,15 @@ memory, and stream summary metadata to the UI.
 Tables created on first launch and migrated forward by ordered SQL files in
 `apps/desktop/src-tauri/src/db/migrations/`.
 
+**A dev build opens a different file** —
+`~/.local/share/dev.factorai-dev/factorai.db`, from its own `identifier`
+(ADR-0024). Migrations are forward-only, so sharing one file meant a dev run
+could migrate the installed release out of its own schema; it does not any
+more. A dev database starts empty and rebuilds `sessions` from
+`~/.claude/projects` on the first scan — `projects` and `settings` are the rows
+worth copying across, and copying means SQLite's backup API rather than `cp`,
+since the other file's WAL is not checkpointed.
+
 Two tables carry the project model, and **which one owns which fact is the
 design** (ADR-0011). `projects` records decisions you made; `discovered_projects`
 records what an agent's store contains. The scan never writes the first; user

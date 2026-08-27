@@ -3,6 +3,30 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A dev build runs under its own app identifier — ADR-0024** — 2026-08-27, user ask, after a
+  dev run broke the installed release. `tauri dev` merges
+  `apps/desktop/src-tauri/tauri.dev.conf.json`, whose only field is
+  `identifier: dev.factorai-dev`, so `app_data_dir()` resolves to
+  `~/.local/share/dev.factorai-dev/` — database and WebKit `localStorage` both.
+
+  **What it fixes is not a folder collision, it is a migration.** Both builds opened one
+  `factorai.db`, and 0011 dropped `projects.pinned` from it while the installed release still ran
+  the `PROJECT_SELECT` that names that column: `list_projects` returned `db: no such column:
+  p.pinned` and the sidebar sat on `Loading…` — with no bad code in the release and nothing
+  recoverable short of rebuilding it. Migrations are forward-only, so every future one had the same
+  reach.
+
+  One field, not a code path, and the reasons are in the ADR: `FACTORAI_DATA_DIR` read in `setup()`
+  moves the database and leaves the webview storage behind, and so does a `#[cfg(debug_assertions)]`
+  suffix — Tauri resolves that directory from the identifier before our code runs. The `--config`
+  file stays at one key because the CLI merges with RFC 7386 semantics, which **replace** arrays
+  rather than merging them; `app.windows` in there would silently drop the window's dimensions.
+
+  A dev database starts empty and the indexer rebuilds `sessions` from `~/.claude/projects`;
+  `projects` and `settings` are what a copy is for, via SQLite's backup API rather than `cp`, since
+  the release's WAL is not checkpointed. `scripts/qa/launch.sh` needed no change — it shells out to
+  `pnpm run dev` — and `tauri build` never reads the file.
+
 - **Order every project by hand — spec `05-features.md` F1, ADR-0023** — 2026-08-26, user ask,
   after a `clarify-needs` interview. Pinning is gone; `projects.sort_order` (migration 0011) is
   where a project sits, written by dragging the row. The sort control **survives and grows a
