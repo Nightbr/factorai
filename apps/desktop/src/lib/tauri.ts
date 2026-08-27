@@ -72,7 +72,7 @@ export const cmd = {
 	 *  rather than the index — the point is to show what *isn't* indexed. */
 	listImportCandidates: () => invoke<ImportCandidate[]>('list_import_candidates'),
 	/** The sidebar's tree — groups and the projects in them, already ordered
-	 *  (F1, ADR-0024). Separate from `listProjects`, which stays flat for the tab
+	 *  (F1, ADR-0025). Separate from `listProjects`, which stays flat for the tab
 	 *  strip, the project route, the import dialog and search. */
 	listSidebar: () => invoke<SidebarRow[]>('list_sidebar'),
 	/** Write the whole sidebar structure at once. **Rejects a stale set** — if
@@ -424,7 +424,7 @@ function mockUuid(seed: string): string {
 
 interface TestFixture {
 	projects?: Project[];
-	/** The sidebar's tree (F1, ADR-0024). **Optional, and usually omitted**: when
+	/** The sidebar's tree (F1, ADR-0025). **Optional, and usually omitted**: when
 	 *  a fixture declares only `projects`, the mock synthesises one top-level
 	 *  project row per project in that array's order, so every fixture written
 	 *  before groups existed keeps working unchanged. Declare it only to set up a
@@ -525,7 +525,7 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 	}
 	switch (name) {
 		case 'list_projects':
-			// Alphabetical, as the real command is since ADR-0024 — the order the
+			// Alphabetical, as the real command is since ADR-0025 — the order the
 			// user arranged lives on the sidebar's rows, not here.
 			return [...(fx?.projects ?? [])].sort((a, b) =>
 				a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }),

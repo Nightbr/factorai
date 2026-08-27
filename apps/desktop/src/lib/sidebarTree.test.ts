@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * The sidebar's tree rules, tested without a render — which is the whole reason
- * they are pure and exported (F1, ADR-0024). `viewRows` decides what the list
+ * they are pure and exported (F1, ADR-0025). `viewRows` decides what the list
  * looks like in each sort mode; `moveRow` decides what a drop means, and the
  * pointer drag, the keyboard nudge and the menu all go through it.
  *

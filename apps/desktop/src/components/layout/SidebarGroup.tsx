@@ -46,7 +46,7 @@ interface SidebarGroupProps {
 }
 
 /**
- * A group: a row that holds projects (specs/05-features.md F1, ADR-0024).
+ * A group: a row that holds projects (specs/05-features.md F1, ADR-0025).
  *
  * **Row anatomy mirrors a project row** — same height, same chevron, same hover
  * behaviour — so the sidebar reads as one list where some rows expand, rather

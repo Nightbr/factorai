@@ -226,7 +226,7 @@ they change whenever the indexer runs, and a stale count is worse than a join.
 
 **A project has no position of its own.** It has a sidebar row, and the row has
 one — see `sidebar_rows` below. There was a `pinned INTEGER` column here until
-migration 0011, and a `sort_order INTEGER` until 0012; ADR-0023 and ADR-0024
+migration 0011, and a `sort_order INTEGER` until 0012; ADR-0023 and ADR-0025
 record why each went.
 
 ### `sidebar_rows` — the sidebar's tree

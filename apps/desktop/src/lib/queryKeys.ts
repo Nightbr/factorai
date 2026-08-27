@@ -2,7 +2,7 @@ import type { SettingKey } from '@factorai/types';
 
 export const queryKeys = {
 	projects: () => ['projects'] as const,
-	/** The sidebar's tree — groups and the projects in them, in order (ADR-0024).
+	/** The sidebar's tree — groups and the projects in them, in order (ADR-0025).
 	 *  Its own key rather than a `projects` variant: this one is the *arrangement*
 	 *  and only the sidebar reads it, while `projects` is the flat membership list
 	 *  that four other surfaces poll. Writing the arrangement invalidates this and

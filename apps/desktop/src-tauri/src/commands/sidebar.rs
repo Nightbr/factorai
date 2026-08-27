@@ -1,5 +1,5 @@
 //! The sidebar's tree: what order the rows are in, and which group holds which
-//! project. See specs/05-features.md F1 and ADR-0024.
+//! project. See specs/05-features.md F1 and ADR-0025.
 //!
 //! **One command writes the whole tree.** `reorder_sidebar` receives the entire
 //! structure and rejects anything that is not exactly the current set of rows.

@@ -21,7 +21,7 @@ export interface Project {
 }
 
 /**
- * One row of the sidebar's tree (F1, ADR-0024).
+ * One row of the sidebar's tree (F1, ADR-0025).
  *
  * **The order is the array's order**, and a group's contents are the array order
  * of `children` — neither carries its ordinal across the boundary.

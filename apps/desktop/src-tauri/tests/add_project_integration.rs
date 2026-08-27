@@ -42,7 +42,7 @@ fn write_claude_session(claude_dir: &Path, cwd: &Path, session_id: &str) {
 }
 
 /// The sidebar top-level rows by name, which is what the order is actually
-/// about now that a project has no ordinal of its own (ADR-0024).
+/// about now that a project has no ordinal of its own (ADR-0025).
 fn sidebar_names(db: &Db) -> Vec<String> {
 	db.with(list_sidebar_in)
 		.expect("list sidebar")
@@ -263,7 +263,7 @@ fn each_new_project_lands_above_the_last() {
 }
 
 /// Removing a project takes its sidebar row with it — `ON DELETE CASCADE`, so a
-/// row can never be left pointing at a project that is gone (ADR-0024).
+/// row can never be left pointing at a project that is gone (ADR-0025).
 #[test]
 fn removing_a_project_retires_its_sidebar_row() {
 	let tmp = TempDir::new().unwrap();

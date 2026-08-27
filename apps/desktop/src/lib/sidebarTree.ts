@@ -2,7 +2,7 @@ import type { Project, SidebarChild, SidebarOrder, SidebarRow } from '@factorai/
 import type { ProjectSort } from '@store/sidebarStore';
 
 /**
- * The sidebar's tree rules (specs/05-features.md F1, ADR-0024).
+ * The sidebar's tree rules (specs/05-features.md F1, ADR-0025).
  *
  * Pure and exported, which is the whole point: the part with actual rules —
  * what order the rows are in, what a drop means, what a mode switch shows — is

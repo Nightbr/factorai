@@ -27,6 +27,97 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   the release's WAL is not checkpointed. `scripts/qa/launch.sh` needed no change — it shells out to
   `pnpm run dev` — and `tauri build` never reads the file.
 
+- **Project groups — spec `05-features.md` F1, ADR-0025** — 2026-08-27, user ask, after a
+  `clarify-needs` interview. A group is a row that holds projects; you make one from the header
+  menu or by **holding one project over another for ~800ms**. Shipped as three commits — the tree,
+  the interface, the gesture — because the dwell is the part most likely to want tuning on its own.
+
+  **The storage moved, one day after item 28 put it on the project row.** `sidebar_rows` (migration
+  0012) owns the structure, and `projects.sort_order` is dropped. Groups make the sidebar two
+  levels, and an ordinal on the project row cannot express that: it would mean "position at the top
+  level" or "position inside my group" depending on a *different* column, and order split across two
+  tables cannot interleave a group row with a loose project — which reinstates the two-tier list
+  item 28 had just flattened. So **ADR-0025 supersedes ADR-0023**, which is the mirror of the call
+  made the day before: there the prior decisions were extended and got links, here one is replaced
+  and gets a supersede. The test is the same in both directions — is a shipped decision being
+  revised, or built on?
+
+  A group *is* a row: no `project_groups` table, because a group has no attributes beyond its name
+  and a second table would buy a join plus the possibility of a group with no row.
+  `reorder_sidebar(rows)` replaces `reorder_projects(ids)` and takes the whole tree, which is what
+  makes moving a project between groups one atomic write; it keeps the stale-set rejection and now
+  also catches a row named at two levels at once, which a per-scope check cannot see. No sub-groups,
+  enforced by `CHECK (kind = 'project' OR parent_id IS NULL)` in the schema rather than only in the
+  commands.
+
+  **The interview overturned four things the roadmap entry had assumed**, all recorded in ADR-0025:
+  the normalised table over `group_id`, no `project_groups`, `Name`/`Recent` **dissolving** the
+  groups into one flat list rather than sorting within them, and the ADR situation above. The dwell
+  was asked for at 2000ms and shipped at 800 — creating a group is reversible, two seconds of
+  holding a button reads as the app having hung, and what prevents accidents is the pending action
+  being *visible* before it commits, which is what the filling ring is for.
+
+  **The bug that matters, and how it survived everything.** All three commits went in green — 440
+  unit tests, 196 Playwright tests, clippy, the lot — and in the real app **no write ever landed**.
+  Two serde mistakes:
+
+  - `SidebarRow` emitted `row_id` while `@factorai/types` declared `rowId`. On an **enum**,
+    `rename_all` renames the *variants* and does nothing to the fields inside them; that needs
+    `rename_all_fields`. The drift was **asymmetric**, which is what hid it: `SidebarChild` is a
+    struct, where `rename_all` does apply, so a group's children arrived correctly while the rows
+    holding them did not.
+  - `SidebarOrder` had no `tag`, so serde used its **externally tagged** form — `{"Project":{…}}` —
+    and could not parse `{"kind":"project","rowId":…}` at all. Every `reorder_sidebar` call was
+    refused before the command body ran.
+
+  Neither mechanism that looks like it would catch this does. `tsc` checks the renderer against
+  `@factorai/types` and `@factorai/types` against nothing. The Playwright suite goes through
+  `mockInvoke`, which **fabricates camelCase in TypeScript** and never asks serde what it would
+  emit. `tests/wire_shape.rs` now pins the literal JSON, and the rule going forward is that **any
+  tagged enum crossing the boundary belongs in that file** — plain structs are far less treacherous,
+  because there `rename_all` does what it looks like.
+
+  This is § 4's "if the two sides drift, that's a bug we want to catch in review, not at runtime",
+  and it went to runtime anyway. Worth knowing *why* review missed it: both sides read correctly in
+  isolation. `#[serde(tag = "kind", rename_all = "camelCase")]` looks exactly like the thing that
+  produces `{ kind: 'project', rowId: … }`.
+
+  **Three more things found only by using it**, each fixed at its cause:
+
+  - Radix returns focus to the menu trigger as the menu closes, which lands *after* `onSelect` has
+    mounted the inline editor — and an editor that commits on blur closes itself instantly.
+    `onCloseAutoFocus` is prevented on all three menus. One focus on mount is still not enough from
+    a menu (the focus scope tears down afterwards, leaving `activeElement` on `BODY` — measured), so
+    `InlineEdit` takes focus again on the next frame.
+  - `InlineEdit`'s focus/select cannot live in the `ref` callback: an inline callback is a new
+    function every render, so React reattaches it and re-runs `select()` before every keystroke.
+    Typing "Pro" left "o".
+  - A keyboard **nudge** is not a **drag**, and they cannot share a rule. A drag aims at a target,
+    so dropping on a group's header means "the top of this group". A nudge walks the list, and the
+    slot above a group's first child is the top level. Routing the nudge through `moveRow` made
+    `Alt`+ArrowUp on a first child a permanent no-op; `nudgeRow` is separate and states the boundary
+    cases as its own rules.
+
+  **`scripts/qa/` gained a fix and two rules**, all three of which cost time here. `key.sh` and
+  `type.sh` had used `xdotool --window` — the XSendEvent path this repo's own README documents as
+  filtered by WebKitGTK — so for months neither could put a character into the WebView while the
+  README's table marked them ✓. They now activate the window, send through XTest, and refuse if
+  another pid holds focus. And the two rules: **activating the window dismisses an open popup**
+  before your click lands (so a click *inside* a menu must skip the activation `click.sh` does), and
+  **`gnome-screenshot` takes focus** — a capture between opening an inline editor and typing into it
+  blurs the editor, which sent this QA pass chasing a rename bug that did not exist alongside one
+  that did.
+
+  **Verified in the dev app against the live database**: 0012 carried the existing hand order
+  forward with all 13 project links and 150 sessions intact; the group created, renamed and
+  persisted; a project dragged in; an intra-group reorder; the dwell producing a group holding the
+  drop target then the held row, with the amber ring and `NEW GROUP` label visible mid-hold; and a
+  collapsed group springing open and accepting the drop inside.
+
+  **Left open as C9**: the design sidecar says a hovered menu row is `secondary`, while every menu
+  primitive uses `accent` — noticed because the new `Move to group ▸` submenu's open state looked
+  loud, and it turned out to be matching what the app has always done.
+
 - **Order every project by hand — spec `05-features.md` F1, ADR-0023** — 2026-08-26, user ask,
   after a `clarify-needs` interview. Pinning is gone; `projects.sort_order` (migration 0011) is
   where a project sits, written by dragging the row. The sort control **survives and grows a

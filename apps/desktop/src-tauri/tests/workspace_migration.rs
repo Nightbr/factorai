@@ -92,7 +92,7 @@ fn every_resolved_project_survives_the_migration() {
 
 	let db = Db::open(&data_dir).expect("migrate");
 
-	// `list_projects` is flat and alphabetical since ADR-0024 — the sidebar's order
+	// `list_projects` is flat and alphabetical since ADR-0025 — the sidebar's order
 	// moved to `sidebar_rows`, so there is nothing here for a caller to sort by
 	// except the name. The order the *user* sees is asserted below.
 	let projects = db.with(factorai_lib::commands::projects::list_projects_in).expect("list");

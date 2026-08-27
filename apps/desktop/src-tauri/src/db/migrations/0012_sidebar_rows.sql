@@ -5,7 +5,7 @@
 -- Groups make it two levels, and the shape 0011 implies — a `group_id` column
 -- plus an ordinal that means "position at the top level" or "position inside my
 -- group" depending on whether that column is set — is one column carrying two
--- facts. See ADR-0024, which supersedes ADR-0023 for this reason.
+-- facts. See ADR-0025, which supersedes ADR-0023 for this reason.
 --
 -- After this migration the order lives in one place and means one thing:
 -- `sidebar_rows.sort_order`, scoped to `parent_id`.

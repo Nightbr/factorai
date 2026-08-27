@@ -22,7 +22,7 @@ pub struct Project {
 	pub missing: bool,
 }
 
-/// One row of the sidebar's tree (F1, ADR-0024). Mirrors `@factorai/types`
+/// One row of the sidebar's tree (F1, ADR-0025). Mirrors `@factorai/types`
 /// `SidebarRow`.
 ///
 /// **The order is the array's order**, and a group's contents are the array

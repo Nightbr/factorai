@@ -20,7 +20,7 @@ back.
 
 **Behavior.** On launch, show the workspace **in the order the user put it in** —
 one ordered list of rows, where a row is either a project or a **group** holding
-projects, and a group expands (ADR-0024).
+projects, and a group expands (ADR-0025).
 A folder Claude has never run in is an ordinary project with no sessions yet; a
 folder Claude has worked in that you never added does not appear at all, and
 nothing announces it.
@@ -42,7 +42,7 @@ scan a sidebar for.
 
 **Every project sits where you dragged it.** A project has no position of its
 own: it has a **row** in `sidebar_rows`, and the row has a `sort_order` scoped to
-its parent (ADR-0024, which supersedes ADR-0023 for this). Written by
+its parent (ADR-0025, which supersedes ADR-0023 for this). Written by
 `reorder_sidebar` — not a client preference, so it is per-machine and survives
 reindexing (the indexer writes `discovered_projects`, never these tables, guarded
 by a test).

@@ -4,7 +4,7 @@
 //! Nothing here writes `discovered_projects.agent`/`key`/`real_path` — those
 //! belong to the scan. What these commands own is membership: which folders are
 //! in the workspace and the `project_id` link that follows from it. Where a
-//! project *sits* is `commands/sidebar.rs`'s business now (ADR-0024).
+//! project *sits* is `commands/sidebar.rs`'s business now (ADR-0025).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -56,7 +56,7 @@ pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
 /// `list_sidebar`, which returns the tree; this one answers "which projects are
 /// in the workspace" for the four surfaces that want exactly that — the tab
 /// strip, the project route, the import dialog and the search route. Since
-/// ADR-0024 the order lives on `sidebar_rows`, so there is nothing here for a
+/// ADR-0025 the order lives on `sidebar_rows`, so there is nothing here for a
 /// caller to sort by except the name, and a stable alphabetical order beats
 /// whatever SQLite would otherwise hand back.
 pub fn list_projects_in(conn: &Connection) -> AppResult<Vec<Project>> {
@@ -148,7 +148,7 @@ pub fn add_project_in(db: &Db, path: &str) -> AppResult<Project> {
 			params![id, real_path, display_name, missing as i64, now],
 		)?;
 		// **A new project lands at the top of the sidebar**, which is where its
-		// row comes from: since ADR-0024 a project has no position of its own,
+		// row comes from: since ADR-0025 a project has no position of its own,
 		// only a row that has one. Idempotent, because `add_project` is — see
 		// `ensure_project_row`.
 		let row_project_id: String = tx.query_row(

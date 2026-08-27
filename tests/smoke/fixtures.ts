@@ -34,7 +34,7 @@ import type { Page } from '@playwright/test';
 
 export interface TestFixture {
 	projects?: Project[];
-	/** The sidebar's tree (F1, ADR-0024). **Optional, and usually omitted**: a
+	/** The sidebar's tree (F1, ADR-0025). **Optional, and usually omitted**: a
 	 *  fixture that declares only `projects` gets one top-level project row per
 	 *  project, in that array's order, synthesised by the mock — which is how
 	 *  every fixture written before groups existed keeps working unchanged.
@@ -1237,7 +1237,7 @@ export function fixtureRootCommit(): TestFixture {
  *
  * Built on top of `fixtureTwoProjectsManySessions` so every session, status and
  * count in that fixture still applies — what this adds is only the *arrangement*
- * (F1, ADR-0024). Declaring `sidebar` is the opt-in: a fixture that omits it gets
+ * (F1, ADR-0025). Declaring `sidebar` is the opt-in: a fixture that omits it gets
  * one top-level project row per project, synthesised by the mock, which is how
  * every fixture written before groups existed keeps working.
  *

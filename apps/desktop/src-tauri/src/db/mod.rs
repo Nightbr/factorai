@@ -44,7 +44,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	("0011_project_sort_order", include_str!("migrations/0011_project_sort_order.sql")),
 	// Groups make the sidebar two levels, and 0011's per-project ordinal cannot
 	// express that without meaning two things at once. The order moves into a
-	// tree of rows. ADR-0024 supersedes ADR-0023 for this.
+	// tree of rows. ADR-0025 supersedes ADR-0023 for this.
 	("0012_sidebar_rows", include_str!("migrations/0012_sidebar_rows.sql")),
 ];
 

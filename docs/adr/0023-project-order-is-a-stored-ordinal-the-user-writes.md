@@ -1,7 +1,14 @@
 # ADR-0023 — Project order is a stored ordinal the user writes
 
 **Date:** 2026-08-26
-**Status:** Accepted
+**Status:** Superseded by
+[ADR-0025 — the sidebar is a tree of rows](0025-the-sidebar-is-a-tree-of-rows.md)
+
+*The decision below — that the order is a column on the project row — was
+replaced the next day, when groups made the sidebar two levels. What survives is
+everything else: the user writes the order, the derived orders are views over it,
+and there is no pinned flag. Only this one line is added here; the record itself
+is not edited (§ 5).*
 
 Related, and **neither superseded**:
 [ADR-0011 — a project is a folder in the workspace](0011-a-project-is-a-folder-in-the-workspace.md) ·

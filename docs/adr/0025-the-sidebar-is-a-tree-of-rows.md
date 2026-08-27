@@ -1,4 +1,4 @@
-# ADR-0024 — The sidebar is a tree of rows
+# ADR-0025 — The sidebar is a tree of rows
 
 **Date:** 2026-08-27
 **Status:** Accepted

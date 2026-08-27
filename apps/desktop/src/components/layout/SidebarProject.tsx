@@ -81,7 +81,7 @@ export function orderSessions(
 
 interface SidebarProjectProps {
 	/** The **sidebar row's** id, not the project's. What the drag and the nudge
-	 *  address, because since ADR-0024 a project's position belongs to its row —
+	 *  address, because since ADR-0025 a project's position belongs to its row —
 	 *  the same project would have a different row if it were filed into a group. */
 	rowId: string;
 	project: Project;

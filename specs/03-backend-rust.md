@@ -88,7 +88,7 @@ remove_project(id: String) -> ()
 list_import_candidates() -> Vec<ImportCandidate>
 resolve_project_path(id: String) -> Option<String>
 
-// sidebar — the tree (F1, ADR-0024)
+// sidebar — the tree (F1, ADR-0025)
 // The rows already ordered: groups with their children, loose projects inline.
 // Carries **no ordinals** — the order is the array's order, because
 // `sidebar_rows.sort_order` is sparse and must not be arithmetic the renderer

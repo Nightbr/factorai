@@ -1,4 +1,4 @@
-//! `reorder_sidebar` and the group commands — the sidebar's tree (F1, ADR-0024).
+//! `reorder_sidebar` and the group commands — the sidebar's tree (F1, ADR-0025).
 //!
 //! The interesting property is not that it reorders. It is that it **refuses**
 //! to: the sidebar polls every 2s and the renderer sends back the whole tree it
