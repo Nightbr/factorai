@@ -157,6 +157,17 @@ seconds. Heavier tests go in a future `tests/regression/` lane.
 `pnpm e2e:ui` opens the Playwright UI runner — useful for iterating
 on a flaky test.
 
+**`pnpm e2e` and `pnpm dev` both want port 1420**, and `webServer.reuseExistingServer`
+is on outside CI — so running the suite while the app is open makes Playwright
+attach to the *app's* vite, and every test times out at 30s. Twenty-four unrelated
+specs "failing" is the tell. Set `PLAYWRIGHT_PORT=1421` to run alongside a dev
+app; the config reads it and starts its own server.
+
+**dnd-kit reports `over` one move behind** — it collides against rects measured on
+the previous frame. A real drag never notices, but a test that jumps once per aim
+names the row the pointer just *left*. Move twice, a pixel apart, per aim. The
+helpers in `tests/smoke/sidebar.spec.ts` do this and say why.
+
 **Driving Playwright from this conversation.** The repo ships
 `.mcp.json` configuring `@playwright/mcp@latest`. If `playwright` MCP
 tools aren't yet listed in the available tools, restart Claude Code

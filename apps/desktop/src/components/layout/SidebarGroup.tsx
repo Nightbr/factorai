@@ -102,7 +102,6 @@ export function SidebarGroup({
 
 	return (
 		<li
-			ref={setNodeRef}
 			// **No transform while dragging.** The motion belongs to the overlay's
 			// chip now; the row stays where it is so the rows around it — and the
 			// affordances drawn on them — stay put and stay visible. `transform` is
@@ -114,7 +113,15 @@ export function SidebarGroup({
 		>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
+					{/* **`setNodeRef` is on the row, not the `<li>`.** For an expanded row the
+					    `<li>` is the header *plus its children* — a group with three projects,
+					    or a project with ten sessions — so the droppable rect was several
+					    rows tall and the drop-zone fractions were measured against a box the
+					    user is not aiming at: the bottom quarter of a group *header* is only
+					    a fifth of the way down that rect, which put "into" and "after" out of
+					    reach entirely. Measured while six drag tests failed together. */}
 					<div
+						ref={setNodeRef}
 						{...(editing ? {} : listeners)}
 						onKeyDown={
 							canReorder && !editing
@@ -241,7 +248,11 @@ export function SidebarGroup({
 							canReorder={canReorder}
 							onNudge={onNudge}
 							indicator={
-								childIndicator && childIndicator.rowId === child.rowId ? childIndicator : null
+								childIndicator &&
+								childIndicator.kind !== 'end' &&
+								childIndicator.rowId === child.rowId
+									? childIndicator
+									: null
 							}
 							parentGroupRowId={row.rowId}
 							groups={groups}

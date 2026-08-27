@@ -173,82 +173,6 @@ function extract(
 }
 
 /**
- * Move a row to where `overId` currently sits, and return the new tree.
- *
- * `arrayMove` semantics — lift the row out, then insert it at the index the drop
- * landed on — which is what `terminalStore.reorder` does for the tab strip, so
- * every drag in the app agrees about what a drop means.
- *
- * **The target decides the level**, which is what makes one gesture cover both
- * reordering and filing:
- *
- * - dropped on a top-level row → the moved row joins the top level there;
- * - dropped on a row inside a group → it joins that group there;
- * - dropped on a group row → it goes to the **start** of that group, which is
- *   what dropping onto the group's own header should mean.
- *
- * A **group** being dragged only ever moves among the top-level rows: dropping
- * one onto a row inside a group would be nesting, which the schema forbids, so
- * it lands beside that group instead.
- *
- * Returns the same array identity when nothing moves, so a click that grazed the
- * activation distance costs no render and no write.
- */
-export function moveRow(rows: SidebarRow[], activeId: string, overId: string): SidebarRow[] {
-	if (activeId === overId) return rows;
-	const from = locate(rows, activeId);
-	const to = locate(rows, overId);
-	if (!from || !to) return rows;
-
-	const active = rows.find((r) => r.rowId === activeId);
-	if (active?.kind === 'group') {
-		// A group moves among groups and loose projects, never into one. If the
-		// drop landed inside a group, use that group's own slot.
-		const target = to.parent ? locate(rows, to.parent) : to;
-		if (!target || target.index === from.index) return rows;
-		const next = rows.filter((r) => r.rowId !== activeId);
-		next.splice(target.index, 0, active);
-		return next;
-	}
-
-	const pulled = extract(rows, activeId);
-	if (!pulled) return rows;
-	const { child, rest } = pulled;
-
-	const overRow = rows.find((r) => r.rowId === overId);
-	if (overRow?.kind === 'group') {
-		// Dropped on the group's own header: the top of its list.
-		return rest.map((r) =>
-			r.kind === 'group' && r.rowId === overId ? { ...r, children: [child, ...r.children] } : r,
-		);
-	}
-
-	// **The index comes from the original tree, not from `rest`.** That is what
-	// makes this `arrayMove` rather than "insert before the target": remove first,
-	// then insert at the position the target held *before* the removal, so
-	// dragging downwards lands after the target and dragging upwards lands before
-	// it. Recomputing against `rest` instead shifts every downward move one short —
-	// `[a, b, c]` with a dropped on c would give `[b, a, c]`. The tab strip and the
-	// flat version this grew from both do it this way.
-	if (to.parent) {
-		return rest.map((r) => {
-			if (r.kind !== 'group' || r.rowId !== to.parent) return r;
-			const children = [...r.children];
-			children.splice(Math.min(to.index, children.length), 0, child);
-			return { ...r, children };
-		});
-	}
-
-	const next = [...rest];
-	next.splice(Math.min(to.index, next.length), 0, {
-		kind: 'project',
-		rowId: child.rowId,
-		project: child.project,
-	});
-	return next;
-}
-
-/**
  * Step a row one slot up or down the sidebar as it is drawn — the keyboard path.
  *
  * **Not `moveRow` with a neighbour's id**, and the difference is the whole
@@ -338,53 +262,170 @@ export function nudgeRow(
 }
 
 /**
- * Where a drop will land, for the indicator the sidebar draws.
+ * Where a drop will land — computed once, then used for **both** the line the
+ * user sees and the tree the drop writes.
  *
- * **This exists because the sidebar no longer displaces rows to show the gap.**
- * dnd-kit's `verticalListSortingStrategy` translates every other row to open a
- * space, which assumes a flat list of equal-height siblings — and this list is
- * neither: a group's children live inside its `<li>`, and a group row with three
- * children is four times a project row's height. The result was rows drawn on top
- * of each other and a dragged row overflowing into the group below. Worse for the
- * gesture: hovering a project *moved it away*, which is exactly the row you are
- * trying to hold still over to make a group.
+ * **This replaced a rule that inferred the position from the drag's direction.**
+ * That rule had two failures the user hit immediately. Dropping on a group row
+ * always meant *into* the group, so there was no way to put a project between two
+ * groups or beside one — the only thing near a group you could target was its
+ * inside. And nothing addressed the space after the last row, so a project could
+ * not be moved to the bottom of the list at all.
  *
- * So nothing moves, and a line says where the drop goes instead. The rule has to
- * agree with [`moveRow`] exactly or the line lies:
- *
- * - over a **group row**, dragging a project → into that group, at its top;
- * - over a **group row**, dragging a group → beside it, since groups do not nest;
- * - otherwise → the edge of the target the moved row will end up on, which
- *   follows `moveRow`'s `arrayMove` semantics: dragging *down* lands after the
- *   target, dragging *up* lands before it.
+ * Now the pointer's position **within** the row decides, which is how every tree
+ * with drag-and-drop does it: a container row has three zones and an ordinary row
+ * has two. One descriptor, so the line cannot disagree with the outcome — they are
+ * read from the same value.
  */
-export type DropIndicator =
-	| { kind: 'edge'; rowId: string; edge: 'above' | 'below' }
+export type DropTarget =
+	/** Immediately before or after `rowId`, **in `rowId`'s own scope** — inside a
+	 *  group if that is where `rowId` lives. */
+	| { kind: 'before' | 'after'; rowId: string }
+	/** Into the group `rowId`, at the end of it. */
 	| { kind: 'into'; rowId: string }
+	/** The end of the top level. What the area below the last row means. */
+	| { kind: 'end' }
 	| null;
 
-export function dropIndicator(
+/** How much of a group row's height, at each end, means "beside" rather than
+ *  "into". A quarter each: the middle half is the group itself, which is the
+ *  common intent, and the edges are wide enough to hit without care. */
+const GROUP_EDGE_ZONE = 0.25;
+
+/**
+ * Decide the drop from the row under the pointer and how far down it the pointer
+ * sits (`fraction`, 0 at the row's top edge and 1 at its bottom).
+ *
+ * A **group** row gets three zones — before / into / after — because it is both a
+ * position and a container. An ordinary row gets two. A **group being dragged**
+ * never gets `into` from anything, since groups do not nest; dropped on a row
+ * inside a group it lands beside that group, at the top level.
+ */
+export function dropTarget(
 	rows: SidebarRow[],
 	activeId: string,
 	overId: string,
-	expanded: Set<string>,
-): DropIndicator {
+	fraction: number,
+): DropTarget {
 	if (activeId === overId) return null;
-	const order = visibleRowIds(rows, expanded);
-	const from = order.indexOf(activeId);
-	const to = order.indexOf(overId);
-	if (from < 0 || to < 0) return null;
+	const overRow = rowFor(rows, overId);
+	const activeRow = rowFor(rows, activeId);
+	if (!overRow || !activeRow) return null;
 
-	const overRow = rows.find((r) => r.rowId === overId);
-	const activeRow = rows.find((r) => r.rowId === activeId);
-	if (overRow?.kind === 'group') {
-		// A group being dragged goes beside the target, never inside it.
-		if (activeRow?.kind === 'group') {
-			return { kind: 'edge', rowId: overId, edge: from < to ? 'below' : 'above' };
+	const draggingAGroup = activeRow.kind === 'group';
+
+	if (overRow.kind === 'group') {
+		// Its own children are not a target while it is the thing under the pointer.
+		if (draggingAGroup || fraction < GROUP_EDGE_ZONE) {
+			return { kind: fraction < 0.5 ? 'before' : 'after', rowId: overId };
 		}
+		if (fraction > 1 - GROUP_EDGE_ZONE) return { kind: 'after', rowId: overId };
 		return { kind: 'into', rowId: overId };
 	}
-	return { kind: 'edge', rowId: overId, edge: from < to ? 'below' : 'above' };
+
+	// A project row. If a *group* is being dragged onto a project that lives
+	// inside a group, the group cannot go there — it lands beside the group that
+	// holds the target instead.
+	if (draggingAGroup) {
+		const parent = parentOf(rows, overId);
+		if (parent) return { kind: fraction < 0.5 ? 'before' : 'after', rowId: parent };
+	}
+	return { kind: fraction < 0.5 ? 'before' : 'after', rowId: overId };
+}
+
+/** What the sidebar draws for a target: a line on an edge, or a ring on a group. */
+export type DropIndicator =
+	| { kind: 'edge'; rowId: string; edge: 'above' | 'below' }
+	| { kind: 'into'; rowId: string }
+	| { kind: 'end' }
+	| null;
+
+export function indicatorFor(target: DropTarget): DropIndicator {
+	if (!target) return null;
+	if (target.kind === 'end') return { kind: 'end' };
+	if (target.kind === 'into') return { kind: 'into', rowId: target.rowId };
+	return {
+		kind: 'edge',
+		rowId: target.rowId,
+		edge: target.kind === 'before' ? 'above' : 'below',
+	};
+}
+
+/**
+ * Apply a drop, returning the new tree.
+ *
+ * Insert-before / insert-after semantics, **not** `arrayMove`: the line said
+ * "here", so the row goes exactly there. `arrayMove` was the old model and it made
+ * the outcome depend on which way you had come from, which is impossible to draw
+ * honestly and surprising to use.
+ *
+ * Returns the same array identity when nothing would change, so a click that
+ * grazed the activation distance costs no render and no write.
+ */
+export function applyDrop(rows: SidebarRow[], activeId: string, target: DropTarget): SidebarRow[] {
+	if (!target) return rows;
+	const pulled = extract(rows, activeId);
+
+	// A group being moved: only ever among the top-level rows.
+	const activeRow = rows.find((r) => r.rowId === activeId);
+	if (activeRow?.kind === 'group') {
+		if (target.kind === 'into') return rows;
+		const rest = rows.filter((r) => r.rowId !== activeId);
+		if (target.kind === 'end') return [...rest, activeRow];
+		const index = rest.findIndex((r) => r.rowId === target.rowId);
+		if (index < 0) return rows;
+		const next = [...rest];
+		next.splice(target.kind === 'before' ? index : index + 1, 0, activeRow);
+		return sameOrder(rows, next) ? rows : next;
+	}
+
+	if (!pulled) return rows;
+	const { child, rest } = pulled;
+	const asRow: SidebarRow = { kind: 'project', rowId: child.rowId, project: child.project };
+
+	if (target.kind === 'end') {
+		const next = [...rest, asRow];
+		return sameOrder(rows, next) ? rows : next;
+	}
+
+	if (target.kind === 'into') {
+		const next = rest.map((r) =>
+			r.kind === 'group' && r.rowId === target.rowId
+				? { ...r, children: [...r.children, child] }
+				: r,
+		);
+		return sameOrder(rows, next) ? rows : next;
+	}
+
+	// Before or after a sibling, in that sibling's own scope.
+	const parent = parentOf(rest, target.rowId);
+	if (parent) {
+		const next = rest.map((r) => {
+			if (r.kind !== 'group' || r.rowId !== parent) return r;
+			const index = r.children.findIndex((c) => c.rowId === target.rowId);
+			if (index < 0) return r;
+			const children = [...r.children];
+			children.splice(target.kind === 'before' ? index : index + 1, 0, child);
+			return { ...r, children };
+		});
+		return sameOrder(rows, next) ? rows : next;
+	}
+	const index = rest.findIndex((r) => r.rowId === target.rowId);
+	if (index < 0) return rows;
+	const next = [...rest];
+	next.splice(target.kind === 'before' ? index : index + 1, 0, asRow);
+	return sameOrder(rows, next) ? rows : next;
+}
+
+/** Do these two trees list the same rows in the same places? Used only to return
+ *  the original array when a drop changes nothing, which is what lets the caller
+ *  skip the optimistic write and the command. */
+function sameOrder(a: SidebarRow[], b: SidebarRow[]): boolean {
+	const flat = (rows: SidebarRow[]) =>
+		rows
+			.map((r) => (r.kind === 'group' ? `${r.rowId}(${r.children.map((c) => c.rowId)})` : r.rowId))
+			.join(',');
+	return flat(a) === flat(b);
 }
 
 /** Move a project row into a group, at the end of it. The menu's path. */

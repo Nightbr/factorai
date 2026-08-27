@@ -384,6 +384,11 @@
         "section": "components"
       },
       {
+        "name": "The Three-Zone Rule",
+        "body": "A row that is also a container is three drop targets: top quarter before it, bottom quarter after it, the half between into it. A container meaning only “into” leaves the positions beside it unreachable. An ordinary row is two zones split at the middle, and the space below the last row is its own target meaning the end of the list. The position comes from where the pointer is, never from which direction it travelled — a direction-inferred rule cannot be drawn honestly.",
+        "section": "components"
+      },
+      {
         "name": "The Nothing-Moves Rule",
         "body": "A list does not rearrange itself to show where a drop will land: a 2px accent line on the target's edge says it and the rest holds still. Displacing every row assumes a flat list of equal-height siblings — which a tree of expandable rows is not — and it moves the row you are aiming at, which is fatal when aiming means resting on a row long enough to mean something. What you carry rides in an overlay as a compact chip, narrower than a row, so it never covers the target.",
         "section": "components"

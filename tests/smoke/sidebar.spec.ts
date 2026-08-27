@@ -524,7 +524,12 @@ test.describe('hold a project over another to group them', () => {
 		await page.mouse.down();
 		// Past the 4px activation distance first, or dnd-kit never starts tracking.
 		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
+		await page.waitForTimeout(80);
+		// Two moves, one pixel apart: dnd-kit reports `over` one move behind, so a
+		// single discrete jump names the row the pointer just left. See `aim` in the
+		// drag-visuals block for the measurement.
 		await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2);
+		await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 + 1);
 		await page.waitForTimeout(holdMs);
 	}
 
@@ -601,22 +606,27 @@ test.describe('hold a project over another to group them', () => {
 		await page.mouse.up();
 	});
 
-	test('@smoke holding over a collapsed group springs it open', async ({ page }) => {
+	test('@smoke a collapsed group takes the drop without opening', async ({ page }) => {
+		// **This replaced spring-open.** Holding over a collapsed group used to expand
+		// it on the same timer as the group offer, which put the same filling ring on
+		// the one row where a group will *not* be created. The three-zone rule made it
+		// unnecessary: the middle of a collapsed group row already means "into", so
+		// the drop lands without expanding anything, and no ring appears.
 		await installMockBridge(page, fixtureGroupedProjects());
 		await page.goto('/');
 
-		// Perso is collapsed and empty, so there is nothing inside to aim at until
-		// it opens — which is the whole reason the spring-open exists.
-		await expect(page.getByTestId(`group-empty-${PERSO_GROUP_ID}`)).toHaveCount(0);
-
-		const zulu = await topLevel(page).nth(1).boundingBox();
-		const perso = await topLevel(page).nth(2).boundingBox();
+		const rows = page.getByTestId('projects').locator('> li > div');
+		const zulu = await rows.nth(1).boundingBox();
+		const perso = await rows.nth(2).boundingBox();
 		if (!zulu || !perso) throw new Error('no geometry');
 
 		await holdOver(page, zulu, perso, GROUP_DWELL_MS + 250);
-
-		await expect(page.getByTestId(`group-empty-${PERSO_GROUP_ID}`)).toBeVisible();
+		await expect(page.getByTestId('dwell-ring')).toHaveCount(0);
 		await page.mouse.up();
+
+		// Filed in, and Perso is still collapsed — its count is what says so.
+		await expect(page.getByTestId(`group-${PERSO_GROUP_ID}`)).toContainText('1');
+		await expect(page.getByTestId(`group-children-${PERSO_GROUP_ID}`)).toHaveCount(0);
 	});
 
 	test('@smoke no offer over a project that is already in a group', async ({ page }) => {
@@ -668,6 +678,45 @@ test.describe('what the drag looks like while it happens', () => {
 		return page.getByTestId('projects').locator('> li > div');
 	}
 
+	/**
+	 * Press on a box's centre and get the drag properly started.
+	 *
+	 * **The settle is not padding.** dnd-kit needs one move past the 4px activation
+	 * distance before it tracks anything, and the move *immediately* after that one
+	 * lands while it is still measuring — so the first aim is silently dropped and
+	 * an assertion right after it sees no indicator at all. Measured while chasing
+	 * six failures that were all this.
+	 */
+	async function grab(
+		page: import('@playwright/test').Page,
+		box: { x: number; y: number; width: number; height: number },
+	) {
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 8);
+		await page.waitForTimeout(80);
+	}
+
+	/**
+	 * Aim at a fraction of the way down a box, and let the move register.
+	 *
+	 * **Two moves, one pixel apart.** dnd-kit reports `over` one move behind — it
+	 * collides against rects measured on the previous frame — so a single discrete
+	 * jump reports the row the pointer *left*. A real drag never notices, because
+	 * moves arrive continuously; a test that jumps once per aim sees the wrong row
+	 * every time. Measured, after three wrong hypotheses.
+	 */
+	async function aim(
+		page: import('@playwright/test').Page,
+		box: { x: number; y: number; width: number; height: number },
+		fraction: number,
+	) {
+		const y = box.y + box.height * fraction;
+		await page.mouse.move(box.x + box.width / 2, y);
+		await page.mouse.move(box.x + box.width / 2, y + 1);
+		await page.waitForTimeout(100);
+	}
+
 	test('@smoke the row under the pointer does not move', async ({ page }) => {
 		// **The regression that made the group gesture hard to perform.** dnd-kit's
 		// vertical-list strategy displaced every other row to open a gap, so the
@@ -681,10 +730,10 @@ test.describe('what the drag looks like while it happens', () => {
 		const source = await topLevel(page).nth(0).boundingBox();
 		if (!before || !source) throw new Error('no geometry');
 
-		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2 + 8);
-		await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+		await grab(page, source);
+		// Three quarters down, not the exact midpoint — at 0.5 the zone boundary is a
+		// coin flip and the assertion would be flaky by construction.
+		await aim(page, before, 0.75);
 
 		const during = await target.boundingBox();
 		expect(during?.y).toBeCloseTo(before.y, 0);
@@ -693,9 +742,13 @@ test.describe('what the drag looks like while it happens', () => {
 		await page.mouse.up();
 	});
 
-	test('@smoke the line flips to the other edge when dragging upward', async ({ page }) => {
-		// `moveRow` is arrayMove: down lands after the target, up lands before it.
-		// The line has to say the same thing or it lies about the outcome.
+	test('@smoke the edge follows where in the row the pointer is, not the direction', async ({
+		page,
+	}) => {
+		// **Position, not direction.** The old rule inferred "after" from "you came
+		// from above", which cannot be drawn honestly — the mark has to be chosen
+		// before the drop, and the direction is not visible in it. So the top half of
+		// a row means before it whichever way you arrived.
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
 
@@ -703,13 +756,85 @@ test.describe('what the drag looks like while it happens', () => {
 		const second = await topLevel(page).nth(1).boundingBox();
 		if (!first || !second) throw new Error('no geometry');
 
-		await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2 - 8);
-		await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
-
+		await grab(page, second);
+		await aim(page, first, 0.15);
 		await expect(page.getByTestId('drop-line-above')).toBeVisible();
+
+		// Lower quarter of the same row, still travelling upward overall.
+		await aim(page, first, 0.85);
+		await expect(page.getByTestId('drop-line-below')).toBeVisible();
 		await page.mouse.up();
+	});
+
+	test('@smoke a project can be dropped between two groups', async ({ page }) => {
+		// **The report.** A group row used to mean only "into", so there was nothing
+		// near a group to aim at except its inside — a project could not be placed
+		// between two groups. Its bottom quarter means "after it" now.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		// Pro, zulu, Perso — drop zulu after Perso's *predecessor* by aiming at the
+		// bottom edge of Pro, which puts it between the two groups.
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		const pro = await topLevel(page).nth(0).boundingBox();
+		if (!zulu || !pro) throw new Error('no geometry');
+
+		await grab(page, zulu);
+		await aim(page, pro, 0.9);
+
+		// A line, not a ring: the bottom quarter of a group row is a position beside
+		// it rather than its inside.
+		await expect(page.getByTestId('drop-line-below')).toBeVisible();
+		await page.mouse.up();
+
+		// Still at the top level, still three rows, now second.
+		await expect(topLevel(page)).toHaveCount(3);
+		await expect(topLevel(page).nth(1)).toContainText('zulu');
+	});
+
+	test('@smoke a project can be dropped at the end of the list', async ({ page }) => {
+		// The other half: collision detection always resolves to some row, so without
+		// a droppable for the space below the list every drop near the bottom snapped
+		// into whichever container happened to be last.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		const end = await page.getByTestId('sidebar-end-zone').boundingBox();
+		if (!zulu || !end) throw new Error('no geometry');
+
+		await grab(page, zulu);
+		await aim(page, { ...end, height: Math.min(80, end.height) }, 0.5);
+
+		await expect(page.getByTestId('drop-line-end')).toBeVisible();
+		await page.mouse.up();
+
+		// Last row, and at the *top level* rather than inside Perso, which is last.
+		await expect(topLevel(page)).toHaveCount(3);
+		await expect(topLevel(page).nth(2)).toContainText('zulu');
+	});
+
+	test('@smoke no dwell ring over a group row', async ({ page }) => {
+		// The dwell means one thing — create a group — and a group row is the one row
+		// where that will not happen. It used to spring the group open on the same
+		// timer, wearing the same ring, which read as a promise the drop would break.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		const perso = await topLevel(page).nth(2).boundingBox();
+		if (!zulu || !perso) throw new Error('no geometry');
+
+		await grab(page, zulu);
+		await aim(page, perso, 0.5);
+		await page.waitForTimeout(GROUP_DWELL_MS + 250);
+
+		await expect(page.getByTestId('dwell-ring')).toHaveCount(0);
+		await expect(page.getByTestId('new-group-hint')).toHaveCount(0);
+		await page.mouse.up();
+
+		// And the drop still files it in, which is what made spring-open unnecessary.
+		await expect(page.getByTestId(`group-${PERSO_GROUP_ID}`)).toContainText('1');
 	});
 
 	test('@smoke dragging a group collapses it for the duration', async ({ page }) => {
@@ -725,10 +850,8 @@ test.describe('what the drag looks like while it happens', () => {
 		const zulu = await topLevel(page).nth(1).boundingBox();
 		if (!pro || !zulu) throw new Error('no geometry');
 
-		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2 + 8);
-		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2);
+		await grab(page, pro);
+		await aim(page, zulu, 0.5);
 
 		await expect(page.getByTestId(`group-children-${PRO_GROUP_ID}`)).toHaveCount(0);
 		await page.mouse.up();
@@ -751,10 +874,8 @@ test.describe('what the drag looks like while it happens', () => {
 		const zulu = await topLevel(page).nth(1).boundingBox();
 		if (!pro || !zulu) throw new Error('no geometry');
 
-		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2 + 8);
-		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2);
+		await grab(page, pro);
+		await aim(page, zulu, 0.5);
 		await page.waitForTimeout(GROUP_DWELL_MS + 250);
 
 		await expect(page.getByTestId('new-group-hint')).toHaveCount(0);
@@ -775,10 +896,8 @@ test.describe('what the drag looks like while it happens', () => {
 		const perso = await topLevel(page).nth(2).boundingBox();
 		if (!zulu || !perso) throw new Error('no geometry');
 
-		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2 + 8);
-		await page.mouse.move(perso.x + perso.width / 2, perso.y + perso.height / 2);
+		await grab(page, zulu);
+		await aim(page, perso, 0.5);
 
 		await expect(page.getByTestId('drop-line-above')).toHaveCount(0);
 		await expect(page.getByTestId('drop-line-below')).toHaveCount(0);

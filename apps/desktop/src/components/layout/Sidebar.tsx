@@ -7,11 +7,14 @@ import { ZoomControls } from '@components/layout/ZoomControls';
 import {
 	DndContext,
 	DragOverlay,
+	useDroppable,
+	type CollisionDetection,
 	type DragEndEvent,
-	type DragOverEvent,
+	type DragMoveEvent,
 	type DragStartEvent,
 	PointerSensor,
 	closestCenter,
+	pointerWithin,
 	useSensor,
 	useSensors,
 } from '@dnd-kit/core';
@@ -19,23 +22,6 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableContext } from '@dnd-kit/sortable';
 import type { SidebarRow } from '@factorai/types';
 
-/** A group row, narrowed once so the dialog and the handlers can name it. */
-type GroupRow = Extract<SidebarRow, { kind: 'group' }>;
-
-/**
- * A `SortingStrategy` that displaces nothing.
- *
- * dnd-kit still tracks the drag and still gives the *active* item its transform —
- * a strategy only decides what happens to the others, and here the answer is
- * nothing. See the note at the `SortableContext` for why this list cannot use the
- * vertical-list strategy.
- */
-const noDisplacement = () => null;
-
-/** The indicator, but only if it belongs to this row. */
-function indicatorFor(indicator: DropIndicator, rowId: string): DropIndicator {
-	return indicator && indicator.rowId === rowId ? indicator : null;
-}
 import {
 	Button,
 	Dialog,
@@ -64,12 +50,14 @@ import { queryKeys } from '@lib/queryKeys';
 import { projectStatus } from '@lib/sessionGroups';
 import {
 	type DropIndicator,
-	dropIndicator,
+	type DropTarget,
+	applyDrop,
+	dropTarget,
 	fileIntoGroup,
 	groupsOf,
+	indicatorFor as toIndicator,
 	parentOf,
 	rowFor,
-	moveRow,
 	nudgeRow,
 	toOrder,
 	unfile,
@@ -83,6 +71,87 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { AlertTriangle, ArrowUpDown, FolderPlus, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+/** A group row, narrowed once so the dialog and the handlers can name it. */
+type GroupRow = Extract<SidebarRow, { kind: 'group' }>;
+
+/**
+ * A `SortingStrategy` that displaces nothing.
+ *
+ * dnd-kit still tracks the drag and still gives the *active* item its transform —
+ * a strategy only decides what happens to the others, and here the answer is
+ * nothing. See the note at the `SortableContext` for why this list cannot use the
+ * vertical-list strategy.
+ */
+const noDisplacement = () => null;
+
+/** The indicator, but only if it belongs to this row. */
+function forRow(indicator: DropIndicator, rowId: string): DropIndicator {
+	return indicator && indicator.kind !== 'end' && indicator.rowId === rowId ? indicator : null;
+}
+
+/** The droppable filling the space below the last row. Its own id rather than a
+ *  row's, because it means a position no row can express: the end of the top
+ *  level. */
+const SIDEBAR_END_ID = 'sidebar-end';
+
+/**
+ * How far down the row under the pointer the pointer sits — 0 at its top edge, 1
+ * at its bottom. This is what picks the drop zone.
+ *
+ * **From the pointer, not the dragged row's rect.** The rect was tried first and
+ * is wrong for a rule stated as "where the pointer is": a row's rect is as tall as
+ * the row, so its centre saturates near the middle and the top and bottom
+ * quarters of a same-height target are unreachable. The pointer is also what the
+ * `pointerWithin` collision detection uses, so the zone and the target are read
+ * from the same place.
+ *
+ * The activator event holds where the press began; `delta` is how far it has
+ * moved since.
+ */
+function fractionWithin(event: DragMoveEvent | DragEndEvent): number {
+	const over = event.over?.rect;
+	if (!over || over.height === 0) return 0.5;
+	const activator = event.activatorEvent;
+	const startY =
+		activator instanceof PointerEvent || activator instanceof MouseEvent ? activator.clientY : null;
+	if (startY === null) return 0.5;
+	const pointerY = startY + event.delta.y;
+	return Math.max(0, Math.min(1, (pointerY - over.top) / over.height));
+}
+
+/**
+ * Where the drop would go, by pointer first.
+ *
+ * `pointerWithin` before `closestCenter`, because the sidebar's droppables are
+ * wildly different sizes: the end zone claims whatever height the list leaves, so
+ * its *centre* can be hundreds of pixels from the pointer and `closestCenter`
+ * alone never chooses it — which is precisely why a project could not be dropped
+ * at the end of the list. `closestCenter` stays as the fallback for the gaps
+ * between rows, where the pointer is inside nothing.
+ */
+/**
+ * The drop target for an event, or null when the pointer is over nothing this
+ * sidebar owns. Shared by the move handler (which draws the line) and the drop
+ * handler (which writes the tree), so the two cannot disagree.
+ */
+function dropTargetFrom(event: DragMoveEvent | DragEndEvent, rows: SidebarRow[]): DropTarget {
+	const activeId = String(event.active.id);
+	const rawId = event.over ? String(event.over.id) : null;
+	if (!rawId || rawId === activeId) return null;
+	if (rawId === SIDEBAR_END_ID) return { kind: 'end' };
+	const overId = rawId.replace(/^empty:/, '');
+	if (overId === activeId) return null;
+	// The placeholder inside an empty group stands in for the group: there is no
+	// position to choose there, only the container.
+	if (rawId !== overId) return { kind: 'into', rowId: overId };
+	return dropTarget(rows, activeId, overId, fractionWithin(event));
+}
+
+const collisionDetection: CollisionDetection = (args) => {
+	const within = pointerWithin(args);
+	return within.length > 0 ? within : closestCenter(args);
+};
 
 /**
  * How far the pointer must travel before a press on a row becomes a drag.
@@ -199,11 +268,9 @@ export function Sidebar() {
 	// springs the group open so you can drop inside. One timer and one filling
 	// ring for both, so there is one thing to learn (F1).
 	const dwell = useDragDwell();
-	// Groups this drag sprang open, so they can be closed again if the user drags
-	// away without dropping — springing one open should not silently rearrange
-	// what the user had collapsed.
-	const sprungOpen = useRef<Set<string>>(new Set());
-	// And the mirror: a group collapsed *because* it is the thing being dragged.
+	// A group collapsed *because* it is the thing being dragged, so it can be
+	// re-opened after. (There used to be a mirror of this for groups the dwell
+	// sprang open; spring-open is gone — see `onDragOver`.)
 	const collapsedForDrag = useRef<Set<string>>(new Set());
 
 	/** Collapse an expanded group as its own drag begins.
@@ -255,47 +322,37 @@ export function Sidebar() {
 		[sidebarQ.data],
 	);
 
-	// Where the drop will land, drawn as a line rather than shown by displacing
-	// every other row — see `dropIndicator` for why.
-	const [indicator, setIndicator] = useState<DropIndicator>(null);
+	// Where the drop will land. **One value for the line and the write**, so the
+	// mark cannot disagree with the outcome — see `dropTarget`.
+	const [target, setTarget] = useState<DropTarget>(null);
+	const indicator = useMemo(() => toIndicator(target), [target]);
 	const [activeRow, setActiveRow] = useState<SidebarRow | null>(null);
 
-	const onDragOver = useCallback(
-		(event: DragOverEvent) => {
+	const onDragMove = useCallback(
+		(event: DragMoveEvent) => {
 			const { active, over } = event;
+			const activeId = String(active.id);
 			const overId = over ? String(over.id).replace(/^empty:/, '') : null;
-			if (!overId || overId === String(active.id)) {
-				dwell.track(null);
-				setIndicator(null);
-				return;
-			}
-			setIndicator(dropIndicator(sidebarQ.data ?? [], String(active.id), overId, expandedSet));
-			const tree = sidebarQ.data ?? [];
-			const overRow = tree.find((r) => r.rowId === overId);
-			const isCollapsedGroup = overRow?.kind === 'group' && !expandedSet.has(overRow.rowId);
-			// Only time a hold where the hold would do something.
-			dwell.track(isCollapsedGroup || canOfferGroup(String(active.id), overId) ? overId : null);
+			const next = dropTargetFrom(event, sidebarQ.data ?? []);
+			setTarget(next);
+			// **The dwell only ever offers to create a group**, so it is timed only
+			// where that is what a hold would do. It used to also spring a collapsed
+			// group open, which meant the same filling ring appeared over a group and
+			// read as "about to create a group" on the one row where that is exactly
+			// what will not happen. The three-zone rule made spring-open unnecessary:
+			// the middle of a collapsed group row is already "into", and the drop
+			// works without expanding anything.
+			dwell.track(
+				overId !== null && next?.kind !== 'into' && canOfferGroup(activeId, overId) ? overId : null,
+			);
 		},
-		[canOfferGroup, dwell, expandedSet, sidebarQ.data],
+		[canOfferGroup, dwell, sidebarQ.data],
 	);
-
-	// Spring a collapsed group open once its dwell completes. In an effect rather
-	// than in `onDragOver` because it is a *consequence* of the timer finishing,
-	// and dnd-kit has to re-measure the newly revealed children before they can be
-	// dropped on — which it does on the render this triggers.
-	useEffect(() => {
-		if (!dwell.dwellingOn) return;
-		const tree = sidebarQ.data ?? [];
-		const row = tree.find((r) => r.rowId === dwell.dwellingOn);
-		if (row?.kind !== 'group' || expandedSet.has(row.rowId)) return;
-		sprungOpen.current.add(row.rowId);
-		expand(row.rowId);
-	}, [dwell.dwellingOn, expand, expandedSet, sidebarQ.data]);
 
 	const endDrag = useCallback(() => {
 		setDragging(false);
 		dwell.track(null);
-		setIndicator(null);
+		setTarget(null);
 		setActiveRow(null);
 		// **Re-open whatever the drag collapsed.** A group is collapsed for the
 		// duration of its own drag so the thing being flung around is one row rather
@@ -303,40 +360,48 @@ export function Sidebar() {
 		// silently close a group the user had open.
 		for (const rowId of collapsedForDrag.current) expand(rowId);
 		collapsedForDrag.current.clear();
-		sprungOpen.current.clear();
 	}, [dwell, expand]);
 
 	const onDragEnd = useCallback(
 		(event: DragEndEvent) => {
-			const { active, over } = event;
-			const activeId = String(active.id);
-			// An empty group's hint row is a droppable under `empty:<rowId>` — see
-			// `EmptyGroupHint`. Stripping the prefix here is what makes dropping on
-			// it resolve to the same `moveRow` call as dropping on the group's own
-			// header, rather than a second rule that has to stay in step.
-			const overId = over ? String(over.id).replace(/^empty:/, '') : null;
+			const activeId = String(event.active.id);
+			const overId = event.over ? String(event.over.id).replace(/^empty:/, '') : null;
 			// **The dwell decides what the drop means**, and it is read before the
 			// state is cleared. Held long enough over another project: the drop makes
-			// a group of the two rather than inserting beside it.
+			// a group of the two rather than placing it beside.
 			const grouping =
 				overId !== null && dwell.dwellingOn === overId && canOfferGroup(activeId, overId);
+			// **Recomputed from the drop event, not read off the last move.** dnd-kit
+			// reports `over` one move behind — it collides against rects measured on
+			// the previous frame — which a continuous drag never notices but a fast
+			// release does: move and let go in the same breath and the stored target
+			// describes where the pointer was, not where it is. Measured: a test doing
+			// single discrete jumps saw the *previous* row every time. The stored value
+			// stays as the fallback for a drop with no `over` at all.
+			const dropped = dropTargetFrom(event, sidebarQ.data ?? []) ?? target;
 			endDrag();
-			if (!overId || activeId === overId) return;
-			if (grouping) {
+			if (grouping && overId) {
 				void groupFromDrop(activeId, overId);
 				return;
 			}
-			applyTree(rows, (tree) => moveRow(tree, activeId, overId));
+			if (!dropped) return;
+			applyTree(rows, (tree) => applyDrop(tree, activeId, dropped));
 		},
-		[applyTree, canOfferGroup, dwell.dwellingOn, endDrag, groupFromDrop, rows],
+		[
+			applyTree,
+			canOfferGroup,
+			dwell.dwellingOn,
+			endDrag,
+			groupFromDrop,
+			rows,
+			sidebarQ.data,
+			target,
+		],
 	);
 
-	const onDragCancel = useCallback(() => {
-		// Re-collapse anything this drag sprang open: the user changed their mind,
-		// and their collapsed groups should be as they left them.
-		for (const rowId of sprungOpen.current) collapseOne(rowId);
-		endDrag();
-	}, [collapseOne, endDrag]);
+	// Cancelling and dropping tidy up the same way — `endDrag` re-opens whatever
+	// the drag collapsed either way.
+	const onDragCancel = endDrag;
 
 	/** One slot up or down, because a drag-only reorder is unreachable without a
 	 *  mouse. **`nudgeRow`, not `moveRow` with the neighbour's id** — see that
@@ -543,7 +608,7 @@ export function Sidebar() {
 				</div>
 			)}
 
-			<nav className="min-h-0 flex-1 overflow-y-auto pr-2 pb-3">
+			<nav className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-2 pb-3">
 				{sidebarQ.isLoading && (
 					<div className="px-4 py-2 text-muted-foreground text-xs">Loading…</div>
 				)}
@@ -592,10 +657,10 @@ export function Sidebar() {
 				    overflows, so dragging to its edge scrolls it. */}
 				<DndContext
 					sensors={sensors}
-					collisionDetection={closestCenter}
+					collisionDetection={collisionDetection}
 					modifiers={[restrictToVerticalAxis]}
 					onDragStart={onDragStart}
-					onDragOver={onDragOver}
+					onDragMove={onDragMove}
 					onDragCancel={onDragCancel}
 					onDragEnd={onDragEnd}
 				>
@@ -624,7 +689,7 @@ export function Sidebar() {
 										onNudge={nudge}
 										dwellProgress={dwell.over === row.rowId ? dwell.progress : 0}
 										dwelling={dwell.dwellingOn === row.rowId}
-										indicator={indicatorFor(indicator, row.rowId)}
+										indicator={forRow(indicator, row.rowId)}
 										childIndicator={indicator}
 										groups={groups}
 										onMoveToGroup={moveToGroup}
@@ -654,7 +719,7 @@ export function Sidebar() {
 										onNudge={nudge}
 										dwellProgress={dwell.over === row.rowId ? dwell.progress : 0}
 										dwelling={dwell.dwellingOn === row.rowId}
-										indicator={indicatorFor(indicator, row.rowId)}
+										indicator={forRow(indicator, row.rowId)}
 										groups={groups}
 										onMoveToGroup={moveToGroup}
 									/>
@@ -662,6 +727,13 @@ export function Sidebar() {
 							)}
 						</ul>
 					</SortableContext>
+					{/* The space below the last row, and what it means. Without it there
+					    is no way to express "the end of the top level": the collision
+					    detection always resolves to some row, and if the last row is a
+					    group — or a project inside one — every drop near the bottom lands
+					    inside that group. `flex-1` so it claims whatever height the list
+					    leaves, and a floor so it is reachable on a full list. */}
+					<SidebarEndZone active={indicator?.kind === 'end'} />
 					{/* **The thing in your hand is a chip, not the row.** With rows no
 					    longer displacing, a translated full-width row sat exactly on top
 					    of the row it was hovering and hid the drop line, the accent ring
@@ -838,4 +910,32 @@ function useGroupWrites(): {
 	);
 
 	return { create, rename, remove };
+}
+
+/**
+ * The drop zone below the last row: "the end of the top level".
+ *
+ * Its own droppable because that position belongs to no row. dnd-kit's collision
+ * detection always resolves to *some* registered target, so without this a drop
+ * anywhere under the list snapped to the last row — and when that row was a group,
+ * or a project inside one, the project went into the group. Which is exactly the
+ * report: a project could not be moved to the bottom, or between groups.
+ *
+ * `flex-1` so it takes the space the list leaves, plus a floor so it is still
+ * reachable when the list fills the pane.
+ */
+function SidebarEndZone({ active }: { active: boolean }) {
+	const { setNodeRef } = useDroppable({ id: SIDEBAR_END_ID });
+
+	return (
+		<div ref={setNodeRef} data-testid="sidebar-end-zone" className="relative min-h-6 flex-1">
+			{active && (
+				<span
+					aria-hidden="true"
+					data-testid="drop-line-end"
+					className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary"
+				/>
+			)}
+		</div>
+	);
 }

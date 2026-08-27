@@ -1,10 +1,11 @@
 import type { Project, SidebarRow } from '@factorai/types';
 import {
-	dropIndicator,
+	applyDrop,
+	dropTarget,
 	fileIntoGroup,
 	flattenProjects,
 	groupsOf,
-	moveRow,
+	indicatorFor,
 	nudgeRow,
 	parentOf,
 	rowFor,
@@ -155,81 +156,6 @@ describe('visibleRowIds', () => {
 			'r-limova',
 			'r-factorai',
 		]);
-	});
-});
-
-describe('moveRow', () => {
-	it('reorders two top-level projects', () => {
-		const rows = [projectRow('a'), projectRow('b'), projectRow('c')];
-
-		expect(shape(moveRow(rows, 'r-a', 'r-c'))).toEqual(['b', 'c', 'a']);
-	});
-
-	it('reorders within a group', () => {
-		const rows = [groupRow('Pro', ['a', 'b', 'c'])];
-
-		expect(shape(moveRow(rows, 'r-a', 'r-c'))).toEqual(['Pro', '> b', '> c', '> a']);
-	});
-
-	it('files a top-level project into a group when dropped on a row inside it', () => {
-		// The target decides the level — that is what makes one gesture cover both
-		// reordering and filing.
-		const rows = [groupRow('Pro', ['a']), projectRow('loose')];
-
-		expect(shape(moveRow(rows, 'r-loose', 'r-a'))).toEqual(['Pro', '> loose', '> a']);
-	});
-
-	it('files into the top of a group when dropped on the group’s own row', () => {
-		const rows = [groupRow('Pro', ['a', 'b']), projectRow('loose')];
-
-		expect(shape(moveRow(rows, 'r-loose', 'g-Pro'))).toEqual(['Pro', '> loose', '> a', '> b']);
-	});
-
-	it('pulls a project out of a group when dropped on a top-level row', () => {
-		const rows = [groupRow('Pro', ['a', 'b']), projectRow('loose')];
-
-		expect(shape(moveRow(rows, 'r-a', 'r-loose'))).toEqual(['Pro', '> b', 'a', 'loose']);
-	});
-
-	it('moves a project straight from one group to another', () => {
-		const rows = [groupRow('Pro', ['a', 'b']), groupRow('Perso', ['c'])];
-
-		expect(shape(moveRow(rows, 'r-b', 'r-c'))).toEqual(['Pro', '> a', 'Perso', '> b', '> c']);
-	});
-
-	it('never nests a group, even when dropped inside one', () => {
-		// The schema forbids it (`CHECK (kind = 'project' OR parent_id IS NULL)`),
-		// so the drag must not be able to ask for it: the group lands beside the
-		// group it was dropped into.
-		const rows = [projectRow('loose'), groupRow('Pro', ['a']), groupRow('Perso', [])];
-
-		const moved = moveRow(rows, 'g-Perso', 'r-a');
-
-		expect(shape(moved)).toEqual(['loose', 'Perso', 'Pro', '> a']);
-		expect(moved.every((r) => r.kind !== 'group' || r.children.every(() => true))).toBe(true);
-	});
-
-	it('returns the same array when nothing moves, so a grazed click writes nothing', () => {
-		const rows = [projectRow('a'), projectRow('b')];
-
-		expect(moveRow(rows, 'r-a', 'r-a')).toBe(rows);
-	});
-
-	it('returns the same array for a row it does not know', () => {
-		// A row removed between the render and the drop. The caller treats identity
-		// as "no change" and skips the mutation entirely.
-		const rows = [projectRow('a'), projectRow('b')];
-
-		expect(moveRow(rows, 'r-a', 'r-gone')).toBe(rows);
-		expect(moveRow(rows, 'r-gone', 'r-a')).toBe(rows);
-	});
-
-	it('does not mutate the tree it was given', () => {
-		const rows = [groupRow('Pro', ['a', 'b']), projectRow('loose')];
-
-		moveRow(rows, 'r-a', 'r-loose');
-
-		expect(shape(rows)).toEqual(['Pro', '> a', '> b', 'loose']);
 	});
 });
 
@@ -407,62 +333,6 @@ describe('nudgeRow', () => {
 	});
 });
 
-describe('dropIndicator', () => {
-	const tree = () => [groupRow('Pro', ['a', 'b']), projectRow('loose'), groupRow('Perso', [])];
-	const open = () => new Set(['g-Pro', 'g-Perso']);
-
-	it('says nothing when the row is over itself', () => {
-		expect(dropIndicator(tree(), 'r-a', 'r-a', open())).toBe(null);
-	});
-
-	it('marks the lower edge when dragging down, matching moveRow', () => {
-		// `moveRow` is arrayMove: dragging down lands *after* the target. The line
-		// must say the same thing or it lies about where the drop goes.
-		expect(dropIndicator(tree(), 'r-a', 'r-b', open())).toEqual({
-			kind: 'edge',
-			rowId: 'r-b',
-			edge: 'below',
-		});
-		expect(shape(moveRow(tree(), 'r-a', 'r-b'))).toEqual(['Pro', '> b', '> a', 'loose', 'Perso']);
-	});
-
-	it('marks the upper edge when dragging up, matching moveRow', () => {
-		expect(dropIndicator(tree(), 'r-loose', 'r-a', open())).toEqual({
-			kind: 'edge',
-			rowId: 'r-a',
-			edge: 'above',
-		});
-		expect(shape(moveRow(tree(), 'r-loose', 'r-a'))).toEqual([
-			'Pro',
-			'> loose',
-			'> a',
-			'> b',
-			'Perso',
-		]);
-	});
-
-	it('says "into" for a project dropped on a group row', () => {
-		expect(dropIndicator(tree(), 'r-loose', 'g-Perso', open())).toEqual({
-			kind: 'into',
-			rowId: 'g-Perso',
-		});
-	});
-
-	it('says "edge" for a group dropped on a group row, because groups do not nest', () => {
-		expect(dropIndicator(tree(), 'g-Perso', 'g-Pro', open())).toEqual({
-			kind: 'edge',
-			rowId: 'g-Pro',
-			edge: 'above',
-		});
-	});
-
-	it('says nothing about a row that is not visible', () => {
-		// A collapsed group's children are not drop targets, so there is no edge to
-		// draw against them.
-		expect(dropIndicator(tree(), 'r-loose', 'r-a', new Set())).toBe(null);
-	});
-});
-
 describe('rowFor', () => {
 	const rows = () => [groupRow('Pro', ['a']), projectRow('loose')];
 
@@ -483,5 +353,177 @@ describe('rowFor', () => {
 
 	it('returns null for a row it does not know', () => {
 		expect(rowFor(rows(), 'r-nope')).toBe(null);
+	});
+});
+
+describe('dropTarget', () => {
+	const tree = () => [groupRow('Pro', ['a', 'b']), projectRow('loose'), groupRow('Perso', [])];
+
+	it('splits an ordinary row in two: top half before, bottom half after', () => {
+		expect(dropTarget(tree(), 'r-loose', 'r-a', 0.2)).toEqual({ kind: 'before', rowId: 'r-a' });
+		expect(dropTarget(tree(), 'r-loose', 'r-a', 0.8)).toEqual({ kind: 'after', rowId: 'r-a' });
+	});
+
+	it('gives a group row three zones, so it is a position as well as a container', () => {
+		// **The report this exists for**: a group row used to mean only "into", so
+		// there was no way to put a project between two groups or beside one.
+		expect(dropTarget(tree(), 'r-loose', 'g-Pro', 0.1)).toEqual({
+			kind: 'before',
+			rowId: 'g-Pro',
+		});
+		expect(dropTarget(tree(), 'r-loose', 'g-Pro', 0.5)).toEqual({ kind: 'into', rowId: 'g-Pro' });
+		expect(dropTarget(tree(), 'r-loose', 'g-Pro', 0.9)).toEqual({
+			kind: 'after',
+			rowId: 'g-Pro',
+		});
+	});
+
+	it('never offers "into" for a group being dragged, at any position', () => {
+		for (const fraction of [0.1, 0.5, 0.9]) {
+			const target = dropTarget(tree(), 'g-Perso', 'g-Pro', fraction);
+			expect(target?.kind).not.toBe('into');
+		}
+	});
+
+	it('sends a dragged group beside the group holding the row it was dropped on', () => {
+		// Dropping a group onto a project inside a group cannot nest it, so it lands
+		// beside the group instead — which is the nearest thing the user can have.
+		expect(dropTarget(tree(), 'g-Perso', 'r-a', 0.8)).toEqual({ kind: 'after', rowId: 'g-Pro' });
+	});
+
+	it('says nothing when the row is over itself', () => {
+		expect(dropTarget(tree(), 'r-a', 'r-a', 0.5)).toBe(null);
+	});
+});
+
+describe('indicatorFor', () => {
+	it('turns each target into the mark that says it', () => {
+		expect(indicatorFor({ kind: 'before', rowId: 'r-a' })).toEqual({
+			kind: 'edge',
+			rowId: 'r-a',
+			edge: 'above',
+		});
+		expect(indicatorFor({ kind: 'after', rowId: 'r-a' })).toEqual({
+			kind: 'edge',
+			rowId: 'r-a',
+			edge: 'below',
+		});
+		// A containment is not a position, so it is a ring rather than a line.
+		expect(indicatorFor({ kind: 'into', rowId: 'g-Pro' })).toEqual({
+			kind: 'into',
+			rowId: 'g-Pro',
+		});
+		expect(indicatorFor({ kind: 'end' })).toEqual({ kind: 'end' });
+		expect(indicatorFor(null)).toBe(null);
+	});
+});
+
+describe('applyDrop', () => {
+	const tree = () => [groupRow('Pro', ['a', 'b']), projectRow('loose'), groupRow('Perso', [])];
+
+	it('places a project before a top-level row', () => {
+		expect(shape(applyDrop(tree(), 'r-loose', { kind: 'before', rowId: 'g-Pro' }))).toEqual([
+			'loose',
+			'Pro',
+			'> a',
+			'> b',
+			'Perso',
+		]);
+	});
+
+	it('places a project between two groups', () => {
+		// The other half of the report: "after Pro" is a real position now.
+		expect(shape(applyDrop(tree(), 'r-loose', { kind: 'after', rowId: 'g-Pro' }))).toEqual([
+			'Pro',
+			'> a',
+			'> b',
+			'loose',
+			'Perso',
+		]);
+	});
+
+	it('places a project at the end of the top level', () => {
+		expect(shape(applyDrop(tree(), 'r-a', { kind: 'end' }))).toEqual([
+			'Pro',
+			'> b',
+			'loose',
+			'Perso',
+			'a',
+		]);
+	});
+
+	it('files a project into a group, at the end', () => {
+		expect(shape(applyDrop(tree(), 'r-loose', { kind: 'into', rowId: 'g-Pro' }))).toEqual([
+			'Pro',
+			'> a',
+			'> b',
+			'> loose',
+			'Perso',
+		]);
+	});
+
+	it('places a project inside the group that holds the target', () => {
+		expect(shape(applyDrop(tree(), 'r-loose', { kind: 'before', rowId: 'r-b' }))).toEqual([
+			'Pro',
+			'> a',
+			'> loose',
+			'> b',
+			'Perso',
+		]);
+	});
+
+	it('reorders inside a group without leaving it', () => {
+		expect(shape(applyDrop(tree(), 'r-a', { kind: 'after', rowId: 'r-b' }))).toEqual([
+			'Pro',
+			'> b',
+			'> a',
+			'loose',
+			'Perso',
+		]);
+	});
+
+	it('is insert-before/after, not arrayMove — direction does not change the result', () => {
+		// The old rule inferred the position from which way you had come, which
+		// cannot be drawn honestly. The same target now gives the same tree whether
+		// the row travelled up or down to reach it.
+		const fromAbove = applyDrop(tree(), 'r-a', { kind: 'after', rowId: 'r-loose' });
+		const fromBelow = applyDrop(
+			[groupRow('Pro', ['b']), projectRow('loose'), projectRow('a'), groupRow('Perso', [])],
+			'r-a',
+			{ kind: 'after', rowId: 'r-loose' },
+		);
+		expect(shape(fromAbove)).toEqual(shape(fromBelow));
+	});
+
+	it('moves a group among the top-level rows', () => {
+		expect(shape(applyDrop(tree(), 'g-Perso', { kind: 'before', rowId: 'g-Pro' }))).toEqual([
+			'Perso',
+			'Pro',
+			'> a',
+			'> b',
+			'loose',
+		]);
+	});
+
+	it('refuses to nest a group', () => {
+		const rows = tree();
+
+		expect(applyDrop(rows, 'g-Perso', { kind: 'into', rowId: 'g-Pro' })).toBe(rows);
+	});
+
+	it('returns the same array when the drop changes nothing', () => {
+		const rows = tree();
+
+		// `loose` is already immediately after Pro.
+		expect(applyDrop(rows, 'r-loose', { kind: 'after', rowId: 'g-Pro' })).toBe(rows);
+		expect(applyDrop(rows, 'r-loose', null)).toBe(rows);
+	});
+
+	it('does not mutate the tree it was given', () => {
+		const rows = tree();
+
+		applyDrop(rows, 'r-a', { kind: 'end' });
+
+		expect(shape(rows)).toEqual(['Pro', '> a', '> b', 'loose', 'Perso']);
 	});
 });

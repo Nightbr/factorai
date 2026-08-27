@@ -171,12 +171,29 @@ long. Moving off the row cancels. The ask was 2000ms; 800 was chosen because
 creating a group is reversible and two seconds of holding a button reads as the
 app having hung.
 
-The **same hold over a collapsed group springs it open**, so you can drop inside
-one you had closed — one timed gesture with two meanings decided by what is under
-the cursor, and one ring for both. A group sprung open this way re-collapses if
-the drag is abandoned. Over a project that is **already in a group** there is no
-offer at all: grouping them would need nesting, and the drop simply files the held
-project into that group, which is the useful outcome.
+There is **no offer over a group row**, and none when either the row in hand or
+the row under it is already inside a group: grouping those would need nesting. In
+each of those cases the drop does the useful thing instead — files into the group,
+or places beside the row.
+
+**A group row is three drop zones, and the space below the list is a fourth.**
+Its top quarter means *before the group*, its bottom quarter *after it*, and the
+middle half *into it*; an ordinary row is two zones split at the middle. The
+position comes from where the pointer sits within the row, not from which
+direction the drag came — so the line drawn before the drop and the tree written
+after it are the same value. A group row that only ever meant "into" left every
+position near a group unreachable: a project could not be put between two groups
+or after the last one. And the area below the last row is its own droppable
+meaning **the end of the top level**, because dnd-kit's collision detection always
+resolves to some row — so without it a drop near the bottom snapped into whichever
+container happened to be last.
+
+**The dwell means one thing: create a group.** It is timed only where a hold would
+do that — over a loose project, with a loose project in hand. It used to also
+spring a collapsed group open, which put the same filling ring over the one row
+where a group will *not* be created. Spring-open is gone and is not missed: the
+middle of a collapsed group row is already "into", so the drop works without
+expanding anything.
 
 **Nothing displaces, and the drag is carried by an overlay.** The list does not
 rearrange itself to open a gap — a 2px accent line on the target's edge says where

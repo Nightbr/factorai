@@ -350,6 +350,21 @@ no action button where there is no single object to act on. Its count is shown
 **only when collapsed** — open, it repeats what the eye can already see while
 competing with the name for a 180px row.
 
+**The Three-Zone Rule.** A row that is also a **container** is three drop targets,
+not one: its top quarter means *before it*, its bottom quarter *after it*, and the
+half between them *into it*. A container that only ever meant "into" leaves the
+positions beside it unreachable — there is nothing else near a group to aim at, so
+a project could not be placed between two groups or after the last one. An
+ordinary row is two zones, split at the middle. And the space **below the last
+row** is a target in its own right, meaning the end of the list: collision
+detection always resolves to some row, so without it every drop near the bottom
+snaps into whatever container happens to be last.
+
+The position must come from where the pointer *is*, never from which direction it
+travelled: a rule that infers "after" from "you came from above" cannot be drawn
+honestly, because the mark has to be chosen before the drop and the direction is
+not visible in it.
+
 **The Nothing-Moves Rule.** A list does not rearrange itself to show where a drop
 will land. A 2px accent line on the target's edge says it, and the rest of the
 list holds still. Displacing every other row to open a gap is the library's
@@ -367,7 +382,12 @@ with the elevation model rather than a new colour. An empty container with prose
 but no target is a container the gesture cannot reach.
 
 **The Dwell Rule.** A gesture that depends on *time* must show the time passing,
-and must show it only where the time counts. A drag resting on a row draws a
+and must show it only where the time counts — and it must mean exactly one thing.
+A timed hold that meant "create a group" over a project and "open this" over a
+group wore the same filling ring for both, so the ring appeared over the one row
+where a group would *not* be created and read as a promise the drop would break.
+One meaning per indicator: if a second timed behaviour is wanted, it needs its own
+mark or it does not belong on a timer. A drag resting on a row draws a
 filling ring in that row's own trailing slot — taking a slot rather than adding
 one, so the row does not change width mid-gesture — and nothing at all for the
 first third of the wait, so a row crossed on the way somewhere else stays quiet.

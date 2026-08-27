@@ -191,7 +191,6 @@ export function SidebarProject({
 		// element itself, so on rows of different heights that scale is pure
 		// distortion. Learnt on the tab strip, where it read as a tab that zoomed.
 		<li
-			ref={setNodeRef}
 			// **No transform while dragging.** The motion belongs to the overlay's
 			// chip now; the row stays where it is so the rows around it — and the
 			// affordances drawn on them — stay put and stay visible. `transform` is
@@ -217,7 +216,15 @@ export function SidebarProject({
 					    called this row "reading as a toolbar" at five elements, and a
 					    sixth to grab would be worse than the gesture is good. The 4px
 					    activation distance is what keeps a press a click. */}
+					{/* **`setNodeRef` is on the row, not the `<li>`.** For an expanded row the
+					    `<li>` is the header *plus its children* — a group with three projects,
+					    or a project with ten sessions — so the droppable rect was several
+					    rows tall and the drop-zone fractions were measured against a box the
+					    user is not aiming at: the bottom quarter of a group *header* is only
+					    a fifth of the way down that rect, which put "into" and "after" out of
+					    reach entirely. Measured while six drag tests failed together. */}
 					<div
+						ref={setNodeRef}
 						{...listeners}
 						// `Alt`+arrows rather than dnd-kit's `KeyboardSensor`: that sensor
 						// takes the space bar to lift, and space on a project row means
