@@ -15,14 +15,64 @@ export interface Project {
 	displayName: string;
 	lastSessionAt: number | null;
 	sessionCount: number;
-	/** Where the user dragged this project. A stored decision, not a derived
-	 *  order (migration 0011). The `manual` sort reads it; `name` and `recent`
-	 *  are views over the same list that ignore it. */
-	sortOrder: number;
 	/** The folder is gone from disk. Set by the indexer's scan, not computed per
 	 *  `list_projects` call — that query is polled every 2s. */
 	missing: boolean;
 }
+
+/**
+ * One row of the sidebar's tree (F1, ADR-0024).
+ *
+ * **The order is the array's order**, and a group's contents are the array order
+ * of `children` — neither carries its ordinal across the boundary.
+ * `sidebar_rows.sort_order` is sparse by design (a new row gets
+ * `MIN(sort_order) - 1` so it lands on top without renumbering), so an ordinal
+ * the renderer could see would be a number it must not do arithmetic with. What
+ * goes back is `SidebarOrder` — ids in order — and `reorder_sidebar` assigns the
+ * numbers.
+ *
+ * A discriminated union on `kind`, matching Rust's
+ * `#[serde(tag = "kind", rename_all = "camelCase")]`.
+ */
+export type SidebarRow =
+	| {
+			kind: 'project';
+			/** The **row's** id, not the project's. Durable, and what
+			 *  `reorderSidebar` addresses. A project has exactly one row. */
+			rowId: string;
+			project: Project;
+	  }
+	| {
+			kind: 'group';
+			rowId: string;
+			name: string;
+			/** Possibly empty — a group you made and have not filled yet is a
+			 *  container you made on purpose (F1). */
+			children: SidebarChild[];
+	  };
+
+/**
+ * A project inside a group.
+ *
+ * Its own type rather than a reused `SidebarRow` because a group cannot contain a
+ * group: the schema's `CHECK (kind = 'project' OR parent_id IS NULL)` says so,
+ * and this makes the same statement in the type the renderer reads.
+ */
+export interface SidebarChild {
+	rowId: string;
+	project: Project;
+}
+
+/**
+ * The order the renderer is asking for — what `reorderSidebar` sends back.
+ *
+ * Deliberately not `SidebarRow`: this carries ids and nothing else. Sending the
+ * rendered shape would mean sending names and project payloads to a command
+ * whose only job is ordering, and then deciding whether to trust them.
+ */
+export type SidebarOrder =
+	| { kind: 'project'; rowId: string }
+	| { kind: 'group'; rowId: string; children: string[] };
 
 /**
  * A folder an agent has worked in that isn't in the workspace yet — one row in

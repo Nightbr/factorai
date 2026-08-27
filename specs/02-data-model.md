@@ -217,7 +217,6 @@ actions never write the second.
 | id               | TEXT PK   | uuid v4. Not derived from the path                      |
 | real_path        | TEXT      | canonical absolute path, **NOT NULL UNIQUE**            |
 | display_name     | TEXT      | last path component                                     |
-| sort_order       | INTEGER   | where the user dragged it (ADR-0023)                    |
 | missing          | INTEGER   | 0/1 — the folder is gone from disk                      |
 | opened_at        | INTEGER   | unix ms                                                 |
 
@@ -225,12 +224,37 @@ actions never write the second.
 per query from the sessions of every discovered directory linked to the folder:
 they change whenever the indexer runs, and a stale count is worse than a join.
 
-`sort_order` is **not a permutation of `0..n-1`**. `add_project` writes
-`MIN(sort_order) - 1` so a new project lands on top without an UPDATE over every
-row, and `remove_project` leaves a hole; `list_projects` tie-breaks on
-`display_name` so the order stays deterministic anyway, and `reorder_projects`
-renumbers densely from zero. There was a `pinned INTEGER` column here until
-migration 0011 — see ADR-0023 for why an ordinal replaced it.
+**A project has no position of its own.** It has a sidebar row, and the row has
+one — see `sidebar_rows` below. There was a `pinned INTEGER` column here until
+migration 0011, and a `sort_order INTEGER` until 0012; ADR-0023 and ADR-0024
+record why each went.
+
+### `sidebar_rows` — the sidebar's tree
+
+| col        | type      | notes                                                        |
+| ---------- | --------- | ------------------------------------------------------------ |
+| id         | TEXT PK   | uuid v4. Durable — survives a rename, and `expanded` keys on it |
+| kind       | TEXT      | `'group'` or `'project'`                                     |
+| parent_id  | TEXT      | the group holding this row; NULL is the top level            |
+| sort_order | INTEGER   | position **among siblings**                                  |
+| project_id | TEXT      | set on a project row, `ON DELETE CASCADE`                    |
+| name        | TEXT     | set on a group row. **A group is a row** — there is no `project_groups` table |
+
+Two CHECK constraints carry the rules: `kind = 'project' OR parent_id IS NULL`
+**forbids sub-groups** in the schema rather than only in the commands, and the
+second enforces exactly one payload per kind. Group rows and loose project rows
+share the top-level sequence, which is what lets them interleave.
+
+`sort_order` is **not a permutation of `0..n-1`**. `add_project` and
+`create_group` write `MIN(sort_order) - 1` so a new row lands on top without an
+UPDATE over every sibling, and `remove_project` leaves a hole; `list_sidebar`
+tie-breaks on the project's `display_name` so the order stays deterministic
+anyway, and only `reorder_sidebar` renumbers densely from zero.
+
+`ON DELETE SET NULL` on `parent_id` is a **safety net, not the mechanism**:
+`remove_group` splices its children into the group's own position, keeping their
+internal order. The cascade alone would drop them at the top level still carrying
+intra-group ordinals that collide with whatever is there.
 
 ### `discovered_projects` — what the agents' stores hold
 

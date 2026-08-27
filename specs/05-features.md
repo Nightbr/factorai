@@ -18,8 +18,9 @@ scan writes it. Everything else in this section falls out of that split, most of
 all the fact that **removing a project sticks** — the scan has nothing to put
 back.
 
-**Behavior.** On launch, show the folders in the workspace **in the order the
-user put them in** — the stored `sort_order` on each row, written by dragging.
+**Behavior.** On launch, show the workspace **in the order the user put it in** —
+one ordered list of rows, where a row is either a project or a **group** holding
+projects, and a group expands (ADR-0024).
 A folder Claude has never run in is an ordinary project with no sessions yet; a
 folder Claude has worked in that you never added does not appear at all, and
 nothing announces it.
@@ -39,10 +40,18 @@ scan a sidebar for.
 
 ### Ordering
 
-**Every project sits where you dragged it.** The order is a stored per-project
-ordinal, `projects.sort_order`, written by `reorder_projects` — not a client
-preference, so it is per-machine and survives reindexing (the indexer writes
-`discovered_projects`, never this table, guarded by a test).
+**Every project sits where you dragged it.** A project has no position of its
+own: it has a **row** in `sidebar_rows`, and the row has a `sort_order` scoped to
+its parent (ADR-0024, which supersedes ADR-0023 for this). Written by
+`reorder_sidebar` — not a client preference, so it is per-machine and survives
+reindexing (the indexer writes `discovered_projects`, never these tables, guarded
+by a test).
+
+`projects.sort_order` held this until migration 0012. It could not survive groups:
+an ordinal on the project row means "position at the top level" or "position
+inside my group" depending on a *different* column, and order split across two
+tables cannot interleave a group row with a loose project — which would have
+reinstated the two-tier list this section had just flattened.
 
 **This replaced pinning**, which stood here until 2026-08-26 as a hover icon plus
 a context-menu row, floating a block of projects to the top above a headerless
@@ -86,25 +95,108 @@ lift, and space on a project row means *open this project*. `SessionTabs` made
 the same call first (F16). `Move up` / `Move down` in the context menu are the
 discoverable form of the same move and go through the same code.
 
-**The write is one command for the whole list**, and it **rejects a stale set**:
-if the ids it is handed are not exactly the workspace's project ids, nothing is
-written and it errors, so an order computed against a list that has since changed
-cannot be applied. The renderer writes optimistically — including the cached
-`sortOrder` values, not just the array positions — and restores its snapshot on
-that error. It also **pauses the 2s poll for the duration of the drag**, so no row
-can move, appear or vanish under the pointer mid-gesture.
+**The write is one command for the whole tree**, and it **rejects a stale set**:
+the row ids it is handed must be exactly the sidebar's rows, each once, or nothing
+is written and it errors — so an arrangement computed against a tree that has
+since changed cannot be applied. Extended to two levels, that check also catches a
+row named at two levels at once, which a per-scope check cannot see. One command
+rather than a scoped pair is what makes moving a project *between* groups a single
+atomic write. The renderer writes optimistically and restores its snapshot on that
+error, and it **pauses the 2s poll for the duration of the drag**, so no row can
+move, appear or vanish under the pointer mid-gesture.
 
-**A newly added project lands at the top**, via `MIN(sort_order) - 1` rather than
-renumbering the table. F1 already navigates to the project you just added, and
-sending you to a row below the fold is the wrong end of the list. Ordinals
-therefore go sparse; `list_projects` tie-breaks on `display_name` so the order
-stays deterministic, and the next drag renumbers densely from zero.
+**A newly added project lands at the top** of the top level, via
+`MIN(sort_order) - 1` rather than renumbering. F1 already navigates to the project
+you just added, and sending you to a row below the fold is the wrong end of the
+list. Ordinals therefore go sparse; `list_sidebar` tie-breaks on `display_name` so
+the order stays deterministic, and only `reorder_sidebar` renumbers densely from
+zero. `add_project` is idempotent by path, so it must not give a re-added folder a
+second row either.
+
+**Two commands read the workspace, and they answer different questions.**
+`list_sidebar` returns the tree and is the sidebar's; `list_projects` stays flat
+and alphabetical for the tab strip, the project route, the import dialog and
+search, which all want a list of projects rather than an arrangement. The tree
+carries **no ordinals** across the boundary — the order is the array's order,
+because the stored numbers are sparse and must not become arithmetic the renderer
+does.
 
 Neither the `+` nor the chevron wears button chrome: a filled hover background
 behind a 14px glyph in a dense row reads as a widget when all it is is an
 affordance. Both sit muted at rest and take full colour only under the cursor. On
 the **selected** project the `+` stays visible without hovering — that is the row
 you start work in, so the affordance shouldn't need hunting for.
+
+### Groups
+
+**A group is a row that holds projects** — Pro, Perso, Side projects. It is where
+the pinned block went: a group you named is a better answer to "these three
+matter" than a boolean was, and unlike a pin it says *why* they are together.
+
+**Ungrouped projects are not a group.** They stay at the top level, interleaved
+with the group rows, so the sidebar is one ordered list where some rows expand. A
+synthetic "Ungrouped" container was the alternative and it makes a fresh workspace
+display a group nobody created.
+
+**The row**: a chevron, the name, and a count **only when collapsed** — where it
+is the one thing that can say what is inside; expanded it would repeat what you
+can see while competing with the name at 180px. No avatar, because `ProjectIcon`
+hashes its hue from a path and a group has none. No `+`, because there is no cwd
+to start a session in and a button that had to pick one of the group's projects
+for you is worse than no button. The name is set in the header's 12px uppercase,
+so a group reads as a quiet heading over the project names it contains rather than
+competing with them.
+
+**An empty expanded group renders one muted "Drop a project here" row, and that
+row is the drop target.** The placeholder and the affordance are the same thing.
+It has to be its own droppable — the group's `<li>` is already a sortable under
+the group's row id, and dnd-kit cannot share an id — so it registers as
+`empty:<rowId>` and the sidebar strips the prefix, which makes dropping there
+resolve to exactly the same move as dropping on the group's header. Without it an
+empty group would be unreachable by drag, since `SortableContext` has no item
+inside it to collide with. An empty group **stays**: you made the container on
+purpose.
+
+**No sub-groups**, and it is the schema that says so —
+`CHECK (kind = 'project' OR parent_id IS NULL)`. In the database rather than only
+in the commands, so nesting cannot be written whichever command has a bug.
+
+**One gesture files and reorders, because the drop target decides the level.**
+Dropped on a top-level row, the moved row joins the top level there; dropped on a
+row inside a group, it joins that group; dropped on a group's own header, it goes
+to the top of that group. A **group** being dragged only ever moves among the
+top-level rows.
+
+**The keyboard is a different operation, deliberately.** `Alt`+arrows *walks* the
+list rather than aiming at a target, so it has its own rule: up from a group's
+first child leaves the group, landing just above it; down from its last child
+leaves below it; stepping into an **expanded** group above or below enters it at
+the near end; a **collapsed** group is stepped over, for the same reason its
+children are not drop targets. Routing the nudge through the drag's rule made
+`Alt`+ArrowUp on a first child a permanent no-op — the row above a first child is
+the group's header, and dropping there means the top of the group it was already
+at the top of.
+
+**Removing a group returns its projects to the top level in the group's own
+position**, keeping the order they had inside it, so the list looks like the
+group's box was erased rather than like its contents were flung to one end. It
+un-files; it never deletes. Silent when the group is empty and confirmed when it
+holds projects — exactly `remove_project`'s rule: a dialog only where something
+real is at stake.
+
+**Groups dissolve under `Name` and `Recent`.** Those modes show every project in
+one derived list, the ones inside collapsed groups included. A group row is part
+of the arrangement, and these two are a way to *find* a row rather than a way to
+view the arrangement — sorting within and among groups instead would make the
+control mean one thing at the top level and another inside, which is the
+criticism this section already makes of the old pinned block. Switching mode
+therefore changes the sidebar's shape, which is the cost.
+
+**Expansion joins `sidebarStore.expanded`**, one shared array, no version bump:
+projects stay keyed by **project** id and groups are keyed by **row** id. Keying
+uniformly by row id would invalidate every persisted project id and collapse
+everyone's sidebar once, for no benefit, since a project has exactly one row.
+`expandAll` / `collapseAll` mean projects *and* groups.
 
 The scrolling list reserves a right-hand gutter so those hover buttons never
 sit under the scrollbar.

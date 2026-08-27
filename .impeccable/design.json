@@ -379,6 +379,16 @@
         "section": "elevation"
       },
       {
+        "name": "The Group Row Rule",
+        "body": "A container in a list is named in the 12px uppercase tracked style the section header uses, not the 14px its children use — a group is a heading over its contents, and matching their weight makes the list read as one flat sequence with a stray label in it. A container does not borrow its children's affordances: no avatar where there is no identity to hash, no action button where there is no single object to act on. Its count shows only when collapsed.",
+        "section": "components"
+      },
+      {
+        "name": "The Drop-Target Rule",
+        "body": "A container that can accept a drop must have something to aim at even when empty. The placeholder saying it is empty is that target — one muted row that takes the lifted row's secondary ground and hairline ring while the pointer is over it, so “this will accept the drop” is said with the elevation model rather than a new colour.",
+        "section": "components"
+      },
+      {
         "name": "The Lifted-Row Rule",
         "body": "An element being dragged says so with the model's own two devices — the secondary tonal step and a hairline ring — and not with a shadow. A dragged row is still part of the list it is in: it is going to land there, not be dismissed, so a shadow would claim the wrong thing. Tone alone is not enough, because the selected row it may pass over already carries it, which is what the ring is for.",
         "section": "elevation"

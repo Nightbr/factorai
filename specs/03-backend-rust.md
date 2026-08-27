@@ -10,8 +10,9 @@ error.rs              # AppError (thiserror + Serialize), the command boundary
 commands/
   mod.rs
   projects.rs         # list_projects, add_project, remove_project,
-                      #   list_import_candidates, resolve_project_path,
-                      #   reorder_projects
+                      #   list_import_candidates, resolve_project_path
+  sidebar.rs          # list_sidebar, reorder_sidebar,
+                      #   create_group, rename_group, remove_group
   sessions.rs         # list_sessions, get_session_tail, search_sessions
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
@@ -86,11 +87,24 @@ remove_project(id: String) -> ()
 // covers the workspace, and the point is to show what isn't in it.
 list_import_candidates() -> Vec<ImportCandidate>
 resolve_project_path(id: String) -> Option<String>
-// Writes the whole sidebar order in one transaction (F1). **Rejects a stale
-// set**: if `ids` is not exactly the workspace's project ids, nothing is written
-// and this is an InvalidInput — an order computed against a list that has since
-// changed must not be applied to the list that exists now.
-reorder_projects(ids: Vec<String>) -> ()
+
+// sidebar — the tree (F1, ADR-0024)
+// The rows already ordered: groups with their children, loose projects inline.
+// Carries **no ordinals** — the order is the array's order, because
+// `sidebar_rows.sort_order` is sparse and must not be arithmetic the renderer
+// does. `list_projects` above stays flat for everyone else.
+list_sidebar() -> Vec<SidebarRow>
+// Writes the whole structure in one transaction. **Rejects a stale set**: the row
+// ids must be exactly the sidebar's rows, each once, or nothing is written and
+// this is an InvalidInput. One command rather than a scoped pair, so moving a
+// project between groups is atomic.
+reorder_sidebar(rows: Vec<SidebarOrder>) -> ()
+// An empty group at the top of the sidebar. `name` defaults to "New group".
+create_group(name: Option<String>) -> SidebarRow
+rename_group(row_id: String, name: String) -> ()
+// Its projects return to the top level **in the group's own position**, keeping
+// the order they had inside it. Nothing is deleted.
+remove_group(row_id: String) -> ()
 
 // sessions
 // Joins through discovered_projects: a project's sessions are those of every

@@ -30,6 +30,8 @@ import type {
 	TerminalStatusDto,
 	TerminalStatusEvent,
 	UiSnapshot,
+	SidebarOrder,
+	SidebarRow,
 } from '@factorai/types';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { type UnlistenFn, listen as tauriListen } from '@tauri-apps/api/event';
@@ -69,11 +71,23 @@ export const cmd = {
 	/** Folders Claude has worked in, for the import dialog. Read from the store
 	 *  rather than the index — the point is to show what *isn't* indexed. */
 	listImportCandidates: () => invoke<ImportCandidate[]>('list_import_candidates'),
-	/** Write the whole project order at once (F1). **Rejects a stale set** — if
-	 *  `ids` is not exactly the workspace's project ids, nothing is written and
-	 *  this throws, so a drop computed against a list that has since changed
-	 *  cannot be applied. The caller invalidates and refetches on that error. */
-	reorderProjects: (ids: string[]) => invoke<void>('reorder_projects', { ids }),
+	/** The sidebar's tree — groups and the projects in them, already ordered
+	 *  (F1, ADR-0024). Separate from `listProjects`, which stays flat for the tab
+	 *  strip, the project route, the import dialog and search. */
+	listSidebar: () => invoke<SidebarRow[]>('list_sidebar'),
+	/** Write the whole sidebar structure at once. **Rejects a stale set** — if
+	 *  `rows` is not exactly the sidebar's rows, each once, nothing is written and
+	 *  this throws, so an arrangement computed against a tree that has since
+	 *  changed cannot be applied. The caller invalidates and refetches on that
+	 *  error. One call, so moving a project between groups is atomic. */
+	reorderSidebar: (rows: SidebarOrder[]) => invoke<void>('reorder_sidebar', { rows }),
+	/** A new empty group at the top of the sidebar. `name` defaults to
+	 *  "New group", which the renderer then opens for editing. */
+	createGroup: (name?: string) => invoke<SidebarRow>('create_group', { name }),
+	renameGroup: (rowId: string, name: string) => invoke<void>('rename_group', { rowId, name }),
+	/** Remove a group. Its projects return to the top level **in the group's own
+	 *  position**, keeping the order they had inside it. Nothing is deleted. */
+	removeGroup: (rowId: string) => invoke<void>('remove_group', { rowId }),
 	listSessions: (projectId: string) => invoke<SessionSummary[]>('list_sessions', { projectId }),
 	getSessionTail: (sessionId: string, limit?: number) =>
 		invoke<SessionPage>('get_session_tail', { sessionId, limit }),
@@ -382,6 +396,23 @@ export const events = {
  * genuine v4 — nothing in the renderer may depend on the id's *content*, only
  * on its stability, which is exactly what this preserves.
  */
+/**
+ * The fixture's sidebar, synthesised from `projects` when it has none.
+ *
+ * This is what lets every fixture written before groups existed keep working: a
+ * flat list of projects *is* a sidebar of top-level project rows, and deriving
+ * it here beats editing forty fixtures. Row ids are derived from the project id
+ * so they are stable across calls — a fresh id each time would break `reorder`.
+ */
+function mockSidebar(fx: TestFixture | undefined): SidebarRow[] {
+	if (fx?.sidebar) return fx.sidebar;
+	return (fx?.projects ?? []).map((project) => ({
+		kind: 'project' as const,
+		rowId: `row-${project.id}`,
+		project,
+	}));
+}
+
 function mockUuid(seed: string): string {
 	let h = 0x811c9dc5;
 	for (let i = 0; i < seed.length; i++) {
@@ -393,6 +424,12 @@ function mockUuid(seed: string): string {
 
 interface TestFixture {
 	projects?: Project[];
+	/** The sidebar's tree (F1, ADR-0024). **Optional, and usually omitted**: when
+	 *  a fixture declares only `projects`, the mock synthesises one top-level
+	 *  project row per project in that array's order, so every fixture written
+	 *  before groups existed keeps working unchanged. Declare it only to set up a
+	 *  group. */
+	sidebar?: SidebarRow[];
 	/** Rows the import dialog offers (F1). Also what `add_project` reads a
 	 *  session count off, so importing a candidate looks like importing. */
 	importCandidates?: ImportCandidate[];
@@ -488,7 +525,105 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 	}
 	switch (name) {
 		case 'list_projects':
-			return (fx?.projects ?? []) as unknown as T;
+			// Alphabetical, as the real command is since ADR-0024 — the order the
+			// user arranged lives on the sidebar's rows, not here.
+			return [...(fx?.projects ?? [])].sort((a, b) =>
+				a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }),
+			) as unknown as T;
+		case 'list_sidebar':
+			return mockSidebar(fx) as unknown as T;
+		case 'reorder_sidebar': {
+			// Mutates the fixture so the renderer's next `list_sidebar` reflects it —
+			// a no-op mock would make the whole feature untestable, since the point
+			// of the smoke tests is that an arrangement survives a refetch.
+			const order = (Array.isArray(args?.rows) ? args.rows : []) as SidebarOrder[];
+			const rows = mockSidebar(fx);
+			const byId = new Map<string, SidebarRow>();
+			for (const row of rows) {
+				byId.set(row.rowId, row);
+				if (row.kind === 'group') {
+					for (const child of row.children) byId.set(child.rowId, child as never);
+				}
+			}
+			// The real command's strict check, mirrored, so a test can exercise the
+			// renderer's rollback path.
+			const seen = order.flatMap((r) =>
+				r.kind === 'group' ? [r.rowId, ...r.children] : [r.rowId],
+			);
+			if (new Set(seen).size !== seen.length || seen.length !== byId.size) {
+				throw new Error(`reorder_sidebar: got ${seen.length} rows for ${byId.size} in the sidebar`);
+			}
+			for (const id of seen) {
+				if (!byId.has(id)) throw new Error(`reorder_sidebar: no such row ${id}`);
+			}
+			const next: SidebarRow[] = order.map((entry) => {
+				if (entry.kind === 'project') {
+					const row = byId.get(entry.rowId);
+					if (!row || row.kind === 'group') {
+						throw new Error(`reorder_sidebar: row ${entry.rowId} is a group, not a project`);
+					}
+					return row;
+				}
+				const row = byId.get(entry.rowId);
+				if (!row || row.kind !== 'group') {
+					throw new Error(`reorder_sidebar: row ${entry.rowId} is not a group`);
+				}
+				return {
+					...row,
+					children: entry.children.map((childId) => {
+						const child = byId.get(childId);
+						if (!child || child.kind === 'group') {
+							throw new Error(`reorder_sidebar: ${childId} is a group and groups do not nest`);
+						}
+						return { rowId: child.rowId, project: child.project };
+					}),
+				};
+			});
+			if (fx) fx.sidebar = next;
+			return undefined as unknown as T;
+		}
+		case 'create_group': {
+			const name =
+				typeof args?.name === 'string' && args.name.trim() ? args.name.trim() : 'New group';
+			const row: SidebarRow = {
+				kind: 'group',
+				rowId: mockUuid(`group:${name}:${Date.now()}`),
+				name,
+				children: [],
+			};
+			// On top, as the real command does.
+			if (fx) fx.sidebar = [row, ...mockSidebar(fx)];
+			return row as unknown as T;
+		}
+		case 'rename_group': {
+			const rowId = String(args?.rowId ?? '');
+			const name = String(args?.name ?? '').trim();
+			if (!name) throw new Error('a group needs a name');
+			const rows = mockSidebar(fx);
+			const target = rows.find((r) => r.rowId === rowId && r.kind === 'group');
+			if (!target) throw new Error(`group ${rowId}`);
+			if (fx) {
+				fx.sidebar = rows.map((r) =>
+					r.rowId === rowId && r.kind === 'group' ? { ...r, name } : r,
+				);
+			}
+			return undefined as unknown as T;
+		}
+		case 'remove_group': {
+			const rowId = String(args?.rowId ?? '');
+			const rows = mockSidebar(fx);
+			const index = rows.findIndex((r) => r.rowId === rowId && r.kind === 'group');
+			if (index < 0) throw new Error(`group ${rowId}`);
+			const group = rows[index];
+			// **Spliced into the group's own position**, keeping the order they had
+			// inside it — the same rule the real command implements.
+			const freed: SidebarRow[] =
+				group.kind === 'group'
+					? group.children.map((c) => ({ kind: 'project', rowId: c.rowId, project: c.project }))
+					: [];
+			if (fx) fx.sidebar = [...rows.slice(0, index), ...freed, ...rows.slice(index + 1)];
+			return undefined as unknown as T;
+		}
 		case 'add_project': {
 			const path = String(args?.path ?? '');
 			// Idempotent **by path**, not by id — that is the real command's rule
@@ -504,8 +639,6 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				displayName: path.split('/').filter(Boolean).pop() ?? path,
 				lastSessionAt: candidate?.lastActivityAt ?? null,
 				sessionCount: candidate?.sessionCount ?? 0,
-				// The top of the list, as `add_project`'s `MIN(sort_order) - 1` does.
-				sortOrder: Math.min(0, ...existing.map((p) => p.sortOrder)) - 1,
 				missing: candidate?.missing ?? false,
 			};
 			// Write it back into the fixture so the next `list_projects` returns it,
@@ -696,27 +829,6 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;
-		case 'reorder_projects': {
-			// Mutates the fixture so the renderer's next `list_projects` reflects
-			// it — a no-op mock would make the reorder untestable, since the whole
-			// point of the smoke test is that the new order survives a refetch.
-			const ids = Array.isArray(args?.ids) ? args.ids.map(String) : [];
-			const projects = fx?.projects ?? [];
-			// The real command's strict check, mirrored: a stale set writes nothing
-			// and throws, so a test can exercise the renderer's rollback path.
-			const known = new Set(projects.map((p) => p.id));
-			if (ids.length !== projects.length || new Set(ids).size !== ids.length) {
-				throw new Error(`reorder_projects: got ${ids.length} ids for ${projects.length} projects`);
-			}
-			for (const id of ids) {
-				if (!known.has(id)) throw new Error(`reorder_projects: no such project ${id}`);
-			}
-			for (const [index, id] of ids.entries()) {
-				const project = projects.find((p) => p.id === id);
-				if (project) project.sortOrder = index;
-			}
-			return undefined as unknown as T;
-		}
 		case 'get_setting': {
 			const key = String(args?.key ?? '') as SettingKey;
 			// Absent is a real answer — it is what "no override, keep probing"

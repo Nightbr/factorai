@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use factorai_lib::commands::projects::{add_project_in, list_projects_in, remove_project_in};
+use factorai_lib::commands::sidebar::list_sidebar_in;
 use factorai_lib::db::Db;
+use factorai_lib::models::SidebarRow;
 use factorai_lib::services::indexer::Indexer;
 use rusqlite::params;
 use tempfile::TempDir;
@@ -37,6 +39,19 @@ fn write_claude_session(claude_dir: &Path, cwd: &Path, session_id: &str) {
 		),
 	)
 	.expect("write session");
+}
+
+/// The sidebar top-level rows by name, which is what the order is actually
+/// about now that a project has no ordinal of its own (ADR-0024).
+fn sidebar_names(db: &Db) -> Vec<String> {
+	db.with(list_sidebar_in)
+		.expect("list sidebar")
+		.into_iter()
+		.map(|row| match row {
+			SidebarRow::Project { project, .. } => project.display_name,
+			SidebarRow::Group { name, .. } => name,
+		})
+		.collect()
 }
 
 fn project_count(db: &Db) -> i64 {
@@ -66,10 +81,6 @@ fn adds_a_folder_claude_has_never_run_in() {
 	assert_eq!(project.display_name, "brand-new");
 	assert_eq!(project.session_count, 0);
 	assert_eq!(project.last_session_at, None);
-	// The top of an empty list. `MIN(sort_order) - 1` over no rows is -1, which is
-	// as good a first ordinal as 0 — `reorder_projects` renumbers from zero the
-	// first time anything is dragged.
-	assert_eq!(project.sort_order, -1);
 	// The path is what a session spawn will use as its cwd, and what the
 	// transcript directory is derived from, so it has to be the real one.
 	assert_eq!(project.real_path, dir.canonicalize().unwrap().to_str().unwrap());
@@ -201,7 +212,10 @@ fn adding_twice_is_idempotent_and_keeps_its_place() {
 
 	let first = add_project_in(&db, dir.to_str().unwrap()).expect("add");
 	db.with_mut(|conn| {
-		conn.execute("UPDATE projects SET sort_order = 7 WHERE id = ?1", params![first.id])?;
+		conn.execute(
+			"UPDATE sidebar_rows SET sort_order = 7 WHERE project_id = ?1",
+			params![first.id],
+		)?;
 		Ok(())
 	})
 	.expect("place it");
@@ -212,8 +226,20 @@ fn adding_twice_is_idempotent_and_keeps_its_place() {
 	assert_eq!(second.id, first.id);
 	// Where a project sits is a decision you made by dragging it. Re-adding the
 	// same folder — from the picker or from the import dialog — must not quietly
-	// move it back to the top.
-	assert_eq!(second.sort_order, 7);
+	// move it back to the top, and must not give it a **second row**: the UNIQUE
+	// index on `project_id` would catch that, and `ensure_project_row` returning
+	// early is what stops it becoming an error for doing something reasonable.
+	let (rows, ordinal) = db
+		.with(|conn| {
+			Ok(conn.query_row(
+				"SELECT COUNT(*), MIN(sort_order) FROM sidebar_rows WHERE project_id = ?1",
+				params![second.id],
+				|r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+			)?)
+		})
+		.expect("row");
+	assert_eq!(rows, 1, "one project, one sidebar row");
+	assert_eq!(ordinal, 7);
 }
 
 /// A project you just added is the one you are about to work in, so it goes to
@@ -230,11 +256,28 @@ fn each_new_project_lands_above_the_last() {
 		added.push(add_project_in(&db, dir.to_str().unwrap()).expect("add").display_name);
 	}
 
-	let ordered: Vec<String> =
-		db.with(list_projects_in).expect("list").into_iter().map(|p| p.display_name).collect();
+	let ordered = sidebar_names(&db);
 
 	added.reverse();
 	assert_eq!(ordered, added, "newest first, without renumbering the table");
+}
+
+/// Removing a project takes its sidebar row with it — `ON DELETE CASCADE`, so a
+/// row can never be left pointing at a project that is gone (ADR-0024).
+#[test]
+fn removing_a_project_retires_its_sidebar_row() {
+	let tmp = TempDir::new().unwrap();
+	let dir = tmp.path().join("code").join("foo");
+	std::fs::create_dir_all(&dir).unwrap();
+	let db = open_db(tmp.path());
+
+	let project = add_project_in(&db, dir.to_str().unwrap()).expect("add");
+	remove_project_in(&db, &project.id).expect("remove");
+
+	let rows: i64 = db
+		.with(|conn| Ok(conn.query_row("SELECT COUNT(*) FROM sidebar_rows", [], |r| r.get(0))?))
+		.expect("count");
+	assert_eq!(rows, 0);
 }
 
 #[test]

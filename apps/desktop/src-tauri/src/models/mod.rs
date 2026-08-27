@@ -17,13 +17,53 @@ pub struct Project {
 	/// whenever the indexer runs, and a stale count is worse than a join.
 	pub last_session_at: Option<i64>,
 	pub session_count: i64,
-	/// Where the user dragged this project. A stored decision, not a derived
-	/// order — see migration 0011. `Manual` sort reads it; `Name` and `Recent`
-	/// are views over the same list that ignore it.
-	pub sort_order: i64,
 	/// The folder is gone from disk. Set by the scan, not computed per
 	/// `list_projects` — that query is polled every 2s (F1).
 	pub missing: bool,
+}
+
+/// One row of the sidebar's tree (F1, ADR-0024). Mirrors `@factorai/types`
+/// `SidebarRow`.
+///
+/// **The order is the array's order**, and a group's contents are the array
+/// order of `children` — neither carries its ordinal across the boundary.
+/// `sidebar_rows.sort_order` is sparse by design (`MIN(sort_order) - 1` puts a
+/// new row on top without renumbering), so an ordinal the renderer could see
+/// would be a number it must not do arithmetic with. What the renderer sends
+/// back is ids in order, and `reorder_sidebar` assigns the numbers.
+///
+/// A tagged union on the TS side: `#[serde(tag = "kind", rename_all =
+/// "camelCase")]` gives `{ kind: 'project', … }` / `{ kind: 'group', … }`,
+/// which is the same discriminated shape `AppError` uses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SidebarRow {
+	/// A project sitting at the top level.
+	Project {
+		/// The row's own id, not the project's. Durable, and what
+		/// `reorder_sidebar` is addressed by.
+		row_id: String,
+		project: Project,
+	},
+	/// A group, and the projects filed into it.
+	Group {
+		row_id: String,
+		name: String,
+		/// Possibly empty — a group you made and have not filled yet is a
+		/// container you made on purpose (F1).
+		children: Vec<SidebarChild>,
+	},
+}
+
+/// A project inside a group. Its own type rather than a reused [`SidebarRow`]
+/// because a group cannot contain a group — the schema's
+/// `CHECK (kind = 'project' OR parent_id IS NULL)` says so, and this makes the
+/// same statement in the type the renderer reads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidebarChild {
+	pub row_id: String,
+	pub project: Project,
 }
 
 /// One folder an agent has worked in that isn't in the workspace yet — a row in

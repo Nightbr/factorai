@@ -92,25 +92,82 @@ fn every_resolved_project_survives_the_migration() {
 
 	let db = Db::open(&data_dir).expect("migrate");
 
+	// `list_projects` is flat and alphabetical since ADR-0024 — the sidebar's order
+	// moved to `sidebar_rows`, so there is nothing here for a caller to sort by
+	// except the name. The order the *user* sees is asserted below.
 	let projects = db.with(factorai_lib::commands::projects::list_projects_in).expect("list");
 	let names: Vec<&str> = projects.iter().map(|p| p.display_name.as_str()).collect();
-	assert_eq!(names, vec!["foo", "bar"], "both resolved projects are in the workspace");
+	assert_eq!(names, vec!["bar", "foo"], "both resolved projects are in the workspace");
 
-	// The pin itself is gone (0011), but the decision behind it is not thrown
-	// away: 0011 seeds `sort_order` from `pinned DESC, display_name ASC`, so a
-	// project someone had marked as mattering still comes out on top. That is
-	// what makes `foo` — pinned, and alphabetically second — project[0] here.
-	let foo = &projects[0];
-	assert_eq!(foo.sort_order, 0, "a pin was a decision and the seed honours it");
+	let foo = projects.iter().find(|p| p.display_name == "foo").expect("foo");
 	assert_eq!(foo.real_path, "/home/me/code/foo");
 	assert_eq!(foo.session_count, 2);
 	assert_eq!(foo.last_session_at, Some(900));
 	assert_eq!(foo.id.len(), 36, "reissued as a uuid, got {}", foo.id);
 
-	let bar = &projects[1];
-	assert_eq!(bar.sort_order, 1);
+	let bar = projects.iter().find(|p| p.display_name == "bar").expect("bar");
 	assert!(bar.missing, "the missing flag carries over rather than resetting");
 	assert_eq!(bar.session_count, 1);
+}
+
+/// **The whole chain of ordering decisions survives, across two migrations.**
+///
+/// The seeded database predates all of this: it has a `pinned` column and no
+/// ordinal at all. 0011 turned the pin into a position (`pinned DESC,
+/// display_name ASC`), and 0012 moved that position onto a `sidebar_rows` row.
+/// So `foo` — pinned, and alphabetically *second* — must still come out first,
+/// which is a fact no single migration's test can state.
+#[test]
+fn the_sidebar_order_survives_both_migrations() {
+	let tmp = TempDir::new().unwrap();
+	let data_dir = tmp.path().join("data");
+	seed_old_database(&data_dir);
+
+	let db = Db::open(&data_dir).expect("migrate");
+
+	let rows = db.with(factorai_lib::commands::sidebar::list_sidebar_in).expect("list sidebar");
+	let labels: Vec<String> = rows
+		.iter()
+		.map(|row| match row {
+			factorai_lib::models::SidebarRow::Project { project, .. } => {
+				project.display_name.clone()
+			}
+			factorai_lib::models::SidebarRow::Group { name, .. } => name.clone(),
+		})
+		.collect();
+	assert_eq!(labels, vec!["foo", "bar"], "a pin was a decision and both migrations honour it");
+
+	// One row per project, all at the top level, and no groups — a database that
+	// has never seen this feature must not come out of it with structure nobody
+	// created.
+	db.with(|conn| {
+		let rows: i64 = conn.query_row("SELECT COUNT(*) FROM sidebar_rows", [], |r| r.get(0))?;
+		let groups: i64 =
+			conn.query_row("SELECT COUNT(*) FROM sidebar_rows WHERE kind = 'group'", [], |r| {
+				r.get(0)
+			})?;
+		let parented: i64 = conn.query_row(
+			"SELECT COUNT(*) FROM sidebar_rows WHERE parent_id IS NOT NULL",
+			[],
+			|r| r.get(0),
+		)?;
+		assert_eq!(rows, 2);
+		assert_eq!(groups, 0, "no group is invented on upgrade");
+		assert_eq!(parented, 0);
+		Ok(())
+	})
+	.expect("counts");
+
+	// And 0011's column is gone, rather than lingering as a second source of truth.
+	let columns: Vec<String> = db
+		.with(|conn| {
+			let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('projects')")?;
+			let names = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+			Ok(names)
+		})
+		.expect("columns");
+	assert!(!columns.contains(&"sort_order".to_string()), "0012 drops it: {columns:?}");
+	assert!(!columns.contains(&"pinned".to_string()), "0011 dropped it: {columns:?}");
 }
 
 #[test]

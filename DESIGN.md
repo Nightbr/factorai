@@ -341,6 +341,22 @@ decoration.
 hairline. A surface that appears over the app and will be dismissed gets a
 shadow. Nothing gets both a shadow and a tonal step to say the same thing twice.
 
+**The Group Row Rule.** A container in a list is named in the **12px uppercase
+tracked style the section header uses**, not in the 14px the rows inside it use. A
+group is a heading over its contents, and matching its children's weight makes the
+list read as one flat sequence with a stray label in it. A container also does not
+borrow its children's affordances: no avatar where there is no identity to hash,
+no action button where there is no single object to act on. Its count is shown
+**only when collapsed** — open, it repeats what the eye can already see while
+competing with the name for a 180px row.
+
+**The Drop-Target Rule.** A container that can accept a drop must have something
+to aim at even when it is empty. The placeholder that says the container is empty
+*is* that target — one muted row, taking the lifted row's `secondary` ground and
+hairline ring while the pointer is over it, so "this will accept the drop" is said
+with the elevation model rather than a new colour. An empty container with prose
+but no target is a container the gesture cannot reach.
+
 **The Lifted-Row Rule.** An element being dragged says so with the model's own
 two devices — the `secondary` tonal step and a hairline `ring` — and **not** with
 a shadow. A dragged row is still part of the list it is in; it is going to land
@@ -489,7 +505,8 @@ agent session.
 - Reordering is pointer-based (dnd-kit) with a 4px activation distance so a click
   stays a click, and every drag ships a keyboard path beside it — `Alt`+arrows,
   never a lift-and-drop mode, since space and Enter both activate the thing being
-  dragged. The sidebar's project rows are the other surface with this gesture.
+  dragged. The sidebar's project and group rows are the other surface with this
+  gesture.
 
 ### Status Dot (signature)
 

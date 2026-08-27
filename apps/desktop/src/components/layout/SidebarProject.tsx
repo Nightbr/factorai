@@ -73,6 +73,10 @@ export function orderSessions(
 }
 
 interface SidebarProjectProps {
+	/** The **sidebar row's** id, not the project's. What the drag and the nudge
+	 *  address, because since ADR-0024 a project's position belongs to its row —
+	 *  the same project would have a different row if it were filed into a group. */
+	rowId: string;
 	project: Project;
 	isActive: boolean;
 	/** Worst-status-wins roll-up of this project's live sessions, or undefined
@@ -81,18 +85,23 @@ interface SidebarProjectProps {
 	liveStatus?: TerminalStatus;
 	/** False under the `name` and `recent` sorts, where the displayed order is
 	 *  derived and a drop has nowhere to land. It switches off the drag, the
-	 *  keyboard nudge and the two menu rows together — a gesture that is only
-	 *  half unavailable is worse than one that is plainly off. */
+	 *  keyboard nudge and the structural menu rows together — a gesture that is
+	 *  only half unavailable is worse than one that is plainly off. */
 	canReorder: boolean;
-	onNudge: (projectId: string, delta: -1 | 1) => void;
+	onNudge: (rowId: string, delta: -1 | 1) => void;
+	/** True for a project sitting inside a group, which indents it and adds
+	 *  `Remove from group` to its menu. */
+	nested?: boolean;
 }
 
 export function SidebarProject({
+	rowId,
 	project,
 	isActive,
 	liveStatus,
 	canReorder,
 	onNudge,
+	nested = false,
 }: SidebarProjectProps) {
 	const expanded = useSidebarStore((s) => s.expanded.includes(project.id));
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
@@ -102,7 +111,7 @@ export function SidebarProject({
 	// every render, and dnd-kit's own switch is what stops it claiming pointer
 	// events under a derived sort.
 	const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
-		id: project.id,
+		id: rowId,
 		disabled: !canReorder,
 	});
 	// Removing is silent when nothing is running: it touches nothing on disk and
@@ -183,7 +192,7 @@ export function SidebarProject({
 								? (e) => {
 										if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
 										e.preventDefault();
-										onNudge(project.id, e.key === 'ArrowUp' ? -1 : 1);
+										onNudge(rowId, e.key === 'ArrowUp' ? -1 : 1);
 									}
 								: undefined
 						}
@@ -204,8 +213,10 @@ export function SidebarProject({
 						// dnd-kit adds neither property; `touch-action` is only the touch
 						// half of the same problem.
 						className={`group flex items-center pr-1 transition-colors ${
-							canReorder ? 'touch-none select-none' : ''
-						} ${
+							// Indented by the chevron's width, so a project inside a group
+							// lines up under the group's name rather than under its chevron.
+							nested ? 'pl-4' : ''
+						} ${canReorder ? 'touch-none select-none' : ''} ${
 							isDragging
 								? 'bg-secondary ring-1 ring-border'
 								: isActive
@@ -294,11 +305,11 @@ export function SidebarProject({
 					    two clicks away in another menu. */}
 					{canReorder && (
 						<>
-							<ContextMenuItem onSelect={() => onNudge(project.id, -1)}>
+							<ContextMenuItem onSelect={() => onNudge(rowId, -1)}>
 								<ArrowUp />
 								Move up
 							</ContextMenuItem>
-							<ContextMenuItem onSelect={() => onNudge(project.id, 1)}>
+							<ContextMenuItem onSelect={() => onNudge(rowId, 1)}>
 								<ArrowDown />
 								Move down
 							</ContextMenuItem>

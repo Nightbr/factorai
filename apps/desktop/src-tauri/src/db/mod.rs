@@ -42,6 +42,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// `pinned` goes with it. Note what the file says about DROP COLUMN and about
 	// why a table rebuild cannot use `PRAGMA foreign_keys` from in here.
 	("0011_project_sort_order", include_str!("migrations/0011_project_sort_order.sql")),
+	// Groups make the sidebar two levels, and 0011's per-project ordinal cannot
+	// express that without meaning two things at once. The order moves into a
+	// tree of rows. ADR-0024 supersedes ADR-0023 for this.
+	("0012_sidebar_rows", include_str!("migrations/0012_sidebar_rows.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

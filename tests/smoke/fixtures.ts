@@ -28,11 +28,18 @@ import type {
 	SessionSummary,
 	SettingKey,
 	TerminalId,
+	SidebarRow,
 } from '@factorai/types';
 import type { Page } from '@playwright/test';
 
 export interface TestFixture {
 	projects?: Project[];
+	/** The sidebar's tree (F1, ADR-0024). **Optional, and usually omitted**: a
+	 *  fixture that declares only `projects` gets one top-level project row per
+	 *  project, in that array's order, synthesised by the mock — which is how
+	 *  every fixture written before groups existed keeps working unchanged.
+	 *  Declare it only to set up a group. */
+	sidebar?: SidebarRow[];
 	/** Rows the import dialog offers (F1). Read from Claude's store rather than
 	 *  the index, so this is deliberately independent of `projects`. */
 	importCandidates?: ImportCandidate[];
@@ -1224,3 +1231,40 @@ export function fixtureRootCommit(): TestFixture {
 		},
 	};
 }
+
+/**
+ * Two projects with one of them filed into a group, plus an empty group.
+ *
+ * Built on top of `fixtureTwoProjectsManySessions` so every session, status and
+ * count in that fixture still applies — what this adds is only the *arrangement*
+ * (F1, ADR-0024). Declaring `sidebar` is the opt-in: a fixture that omits it gets
+ * one top-level project row per project, synthesised by the mock, which is how
+ * every fixture written before groups existed keeps working.
+ *
+ * The shape deliberately covers all three cases in one tree: a group with
+ * children, a loose project interleaved *after* it, and an empty group — which is
+ * the one that needs its placeholder to be a drop target.
+ */
+export function fixtureGroupedProjects(): TestFixture {
+	const base = fixtureTwoProjectsManySessions();
+	const [zulu, alpha] = base.projects ?? [];
+
+	return {
+		...base,
+		sidebar: [
+			{
+				kind: 'group',
+				rowId: PRO_GROUP_ID,
+				name: 'Pro',
+				children: [{ rowId: `row-${alpha.id}`, project: alpha }],
+			},
+			{ kind: 'project', rowId: `row-${zulu.id}`, project: zulu },
+			{ kind: 'group', rowId: PERSO_GROUP_ID, name: 'Perso', children: [] },
+		],
+	};
+}
+
+/** Stable row ids for the group fixtures, so a test can address a group without
+ *  reading it out of the DOM first. */
+export const PRO_GROUP_ID = 'g0000001-0000-4000-8000-000000000001';
+export const PERSO_GROUP_ID = 'g0000002-0000-4000-8000-000000000002';

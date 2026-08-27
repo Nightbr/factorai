@@ -13,8 +13,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use factorai_lib::commands::projects::{add_project_in, list_projects_in};
+use factorai_lib::commands::sidebar::{list_sidebar_in, reorder_sidebar_in, SidebarOrder};
 use factorai_lib::db::Db;
-use factorai_lib::models::SessionsChanged;
+use factorai_lib::models::{SessionsChanged, SidebarRow};
 use factorai_lib::services::indexer::Indexer;
 use rusqlite::params;
 use tempfile::TempDir;
@@ -307,17 +308,29 @@ fn a_hand_ordered_project_keeps_its_place_across_a_rescan() {
 
 	let id = only_project(&db).id;
 	db.with(|conn| {
-		conn.execute("UPDATE projects SET sort_order = 42 WHERE id = ?1", params![&id])?;
+		conn.execute(
+			"UPDATE sidebar_rows SET sort_order = 42 WHERE project_id = ?1",
+			params![&id],
+		)?;
 		Ok(())
 	})
 	.expect("place it");
 
 	indexer.full_scan().expect("second scan");
 
-	assert_eq!(only_project(&db).sort_order, 42, "re-scanning must not reorder the sidebar");
+	let ordinal: i64 = db
+		.with(|conn| {
+			Ok(conn.query_row(
+				"SELECT sort_order FROM sidebar_rows WHERE project_id = ?1",
+				params![&id],
+				|r| r.get(0),
+			)?)
+		})
+		.expect("ordinal");
+	assert_eq!(ordinal, 42, "re-scanning must not reorder the sidebar");
 }
 
-/// `list_projects` returns the hand order, and recency does not enter into it.
+/// `list_sidebar` returns the hand order, and recency does not enter into it.
 ///
 /// This test used to assert the opposite half of the same query — that a pin beat
 /// a fresher session. Both facts are about the same thing: what the sidebar's
@@ -325,14 +338,14 @@ fn a_hand_ordered_project_keeps_its_place_across_a_rescan() {
 /// derived orders (`Name`, `Recent`) are the renderer's, computed from the fields
 /// this command already returns.
 #[test]
-fn list_projects_returns_the_hand_order_not_recency() {
+fn list_sidebar_returns_the_hand_order_not_recency() {
 	let tmp = TempDir::new().unwrap();
 	let db = open_db(tmp.path());
 	let old = make_folder(tmp.path(), "old");
 	let new = make_folder(tmp.path(), "new");
 
 	let old_id = add_project_in(&db, old.to_str().unwrap()).expect("add old").id;
-	let new_id = add_project_in(&db, new.to_str().unwrap()).expect("add new").id;
+	add_project_in(&db, new.to_str().unwrap()).expect("add new");
 
 	// Give each a session, so recency is a real signal that could compete, then
 	// put the staler one first by hand.
@@ -346,13 +359,21 @@ fn list_projects_returns_the_hand_order_not_recency() {
 		Ok(())
 	})
 	.expect("seed");
-	factorai_lib::commands::projects::reorder_projects_in(&db, &[old_id, new_id]).expect("reorder");
+	// Row ids, in the order the user wants them: the stale one first.
+	let rows: Vec<SidebarOrder> = ["old", "new"]
+		.iter()
+		.map(|name| SidebarOrder::Project { row_id: row_id_for(&db, name) })
+		.collect();
+	reorder_sidebar_in(&db, &rows).expect("reorder");
 
 	let ordered: Vec<String> = db
-		.with(factorai_lib::commands::projects::list_projects_in)
+		.with(list_sidebar_in)
 		.expect("list")
 		.into_iter()
-		.map(|p| p.display_name)
+		.map(|row| match row {
+			SidebarRow::Project { project, .. } => project.display_name,
+			SidebarRow::Group { name, .. } => name,
+		})
 		.collect();
 
 	// The stale project the user put first wins over the freshly-used one.
@@ -1017,4 +1038,18 @@ fn the_first_session_in_a_freshly_added_folder_indexes_from_the_watcher() {
 	assert_eq!(emitted.len(), 1);
 	assert_eq!(emitted[0].project_id, project.id);
 	assert_eq!(emitted[0].session_ids, vec![session_id.to_string()]);
+}
+
+/// The sidebar row for the project with this display name.
+fn row_id_for(db: &Db, display_name: &str) -> String {
+	db.with(|conn| {
+		Ok(conn.query_row(
+			"SELECT r.id FROM sidebar_rows r
+			   JOIN projects p ON p.id = r.project_id
+			  WHERE p.display_name = ?1",
+			params![display_name],
+			|r| r.get::<_, String>(0),
+		)?)
+	})
+	.expect("row id")
 }

@@ -4,4 +4,5 @@ pub mod ide;
 pub mod projects;
 pub mod sessions;
 pub mod settings;
+pub mod sidebar;
 pub mod terminal;

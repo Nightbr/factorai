@@ -1074,59 +1074,210 @@ repository's `HEAD`, which may be a checkout nobody is looking at.
 
 ## 41. Project groups — Pro, Perso, Side projects
 
-**User ask, 2026-08-26**, filed alongside item 28's rewrite and deliberately split from it. A flat
-hand-ordered list is still one list; the value in "Pro / Perso / Side projects" is a sidebar that
-shows one part of your life at a time. It is also where the pinned block *went*: a group you named
-is a better answer to "these three matter" than a boolean was.
+**User ask, 2026-08-26**, filed alongside item 28 and deliberately split from it. **Rewritten
+2026-08-27** after the `clarify-needs` interview that settled the questions the first version left
+open — and the answers changed the shape enough that the original bullets would have been
+misleading. A flat hand-ordered list is still one list; the value in "Pro / Perso / Side projects"
+is a sidebar that shows one part of your life at a time. It is also where the pinned block *went*:
+a group you named is a better answer to "these three matter" than a boolean was.
 
-**Depends on item 28.** The ordinal column, `reorder_projects`, and the dnd-kit sortable list are
-all reused. Build it after, not beside.
+**Item 28 shipped** (`DONE.md`, 2026-08-26). This builds on its drag, its 4px activation
+constraint and its `Manual`-only rule — and **replaces its storage**, which is the biggest change
+from the first draft of this entry.
 
-The shape:
+### What the interview changed
 
-- [ ] **A group is a row that holds projects** — a name, a collapse chevron, and a count when
-      collapsed. `project_groups(id TEXT PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT
-      NULL)`, plus `workspace_projects.group_id TEXT REFERENCES project_groups(id) ON DELETE SET
-      NULL`. `SET NULL` is the load-bearing part: deleting a group un-files its projects, it never
-      deletes them.
+Four answers went against what this entry originally assumed. They are listed first because
+someone reading the old bullets would build the wrong thing.
+
+- **The order moves into a `sidebar_rows` table.** This entry proposed
+  `project_groups(id, name, sort_order)` plus a `group_id` column on the project row, leaving
+  `projects.sort_order` to mean two different things depending on whether `group_id` was set. The
+  interview took the normalised model instead: one table of rows, and **`projects.sort_order` is
+  dropped** — the column migration 0011 added the day before. Two columns holding one fact is the
+  bug the model exists to avoid.
+- **There is no `project_groups` table at all.** A group *is* a row. It has no attributes beyond
+  its name today, so a second table would only add a join and the possibility of a group with no
+  row.
+- **`Name` and `Recent` dissolve the groups** into one flat list of every project, rather than
+  sorting within and among them. Stated as a cost below, because it is one.
+- **This needs an ADR that supersedes ADR-0023**, where the original entry said no ADR was needed
+  and that item 28's "supersedes ADR-0011 and ADR-0016". That last claim was wrong twice over:
+  [ADR-0023](../../docs/adr/0023-project-order-is-a-stored-ordinal-the-user-writes.md) supersedes
+  neither, for reasons it records — and it is now itself the thing being superseded, since its
+  decision is literally "a stored **per-project** ordinal" and that column is going away.
+
+### Storage — migration 0012
+
+- [ ] **One table owns the structure.** Check the highest migration on an up-to-date `origin/main`
+      before naming the file (§ 2b, the 0004 collision):
+
+      ```sql
+      CREATE TABLE sidebar_rows (
+        id         TEXT PRIMARY KEY,
+        kind       TEXT NOT NULL CHECK (kind IN ('group','project')),
+        parent_id  TEXT REFERENCES sidebar_rows(id) ON DELETE SET NULL,
+        sort_order INTEGER NOT NULL,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        name       TEXT,
+        CHECK (kind = 'project' OR parent_id IS NULL),
+        CHECK ((kind='group'   AND project_id IS NULL     AND name IS NOT NULL)
+            OR (kind='project' AND project_id IS NOT NULL AND name IS NULL))
+      );
+      ```
+
+- [ ] **`CHECK (kind = 'project' OR parent_id IS NULL)` is what forbids sub-groups**, and it is in
+      the schema rather than only in the command on purpose: nesting then cannot be written
+      whichever command has a bug, and the constraint is documented where the next reader looks.
+      The commands validate too, for a readable error.
+- [ ] **`sort_order` is scoped to `parent_id`** — position among top-level rows when it is NULL,
+      position within the group when it is set. Sparse-tolerant reads as before, ties broken on the
+      project's `display_name`, and `reorder_sidebar` renumbers each scope densely from zero.
+- [ ] **Seed from `projects.sort_order`, then drop that column.** No CHECK on it at all, so the
+      `ALTER TABLE … DROP COLUMN` is simpler than 0011's was. `Project.sortOrder` comes off the IPC
+      type with it (§ 4, both sides).
+- [ ] **`ON DELETE SET NULL` on `parent_id` is a safety net, not the mechanism.** Removing a group
+      **splices its children into the group's own position**, in one transaction, keeping the order
+      they had inside it — the list should look like the group's box was erased. Relying on the
+      cascade alone would drop them at the root carrying intra-group ordinals that collide with
+      whatever is already there.
+- [ ] **`ON DELETE CASCADE` on `project_id`**, so `remove_project` retires the row with the
+      project and cannot leave a row pointing at nothing. `add_project` inserts a project row at
+      the top level with `MIN(sort_order) - 1`, which is where item 28 already puts a new project.
+
+### Commands
+
+- [ ] **`reorder_sidebar(rows)` replaces `reorder_projects`** — it is not kept beside it. It takes
+      the **whole tree**, writes it in one transaction, and rejects anything that is not exactly
+      the current set of projects and rows. That is ADR-0023's guarantee extended to two levels,
+      and it is the only shape where dragging a project *between* groups is one atomic write: a
+      scoped `reorder_projects(ids, group_id)` plus a `reorder_groups(ids)` would make that gesture
+      two calls, either of which can be rejected while the other lands.
+
+      ```
+      reorder_sidebar([
+        { group: "r_pro",   projects: ["p_pearl", "p_limova"] },
+        { project: "p_factorai" },
+        { group: "r_perso", projects: [] },
+      ])
+      ```
+
+- [ ] **`create_group(name) -> SidebarRow`**, landing at the top level in position 0 — same
+      reasoning as `add_project`, and the inline rename that opens immediately has to be on screen
+      for it to mean anything.
+- [ ] **`rename_group(row_id, name)`** and **`remove_group(row_id)`**, the latter doing the splice
+      above.
+- [ ] **`list_sidebar() -> Vec<SidebarRow>`** returns the tree already ordered. `list_projects()`
+      **stays flat and unchanged** (minus `sortOrder`) — the tab strip, the project route, the
+      import dialog and the search route all want a list of projects and should not flatten a tree
+      to get one.
+
+### The sidebar
+
 - [ ] **Ungrouped projects are not a group.** They stay at the top level, interleaved with group
-      rows by `sort_order`, so the sidebar is one ordered list of rows where some rows expand. A
-      synthetic "Ungrouped" container is the alternative and it makes a fresh workspace display a
-      group nobody created.
-- [ ] **Ordering is two levels and one rule** — `sort_order` among top-level rows, `sort_order`
-      within a group. Either `reorder_projects` grows a scope argument or it gains a sibling;
-      decide once rather than ending up with both.
-- [ ] **`Move to group ▸` in the row's context menu ships first.** It is the complete answer for
-      the keyboard, and it is cheap. Drag between groups is the nicer gesture and the harder one:
-      it needs a droppable per group, a **collapsed** group has to accept a drop (spring-open on
-      hover if it's affordable), and `Alt`+arrows only reorders *within* a level — changing level
-      needs its own affordance or the menu row is it.
-- [ ] **Creating, renaming, deleting.** "New Group…" joins the section header's `FolderPlus` menu,
-      beside the two Add doors. Rename is inline — and it is the sidebar's first inline-edit
-      surface, so if **item 17** (rename a session) is anywhere nearby, build the control as a
-      primitive in `@factorai/ui` once rather than twice.
-- [ ] **Expansion joins `sidebarStore.expanded`**, which holds project ids today. A group id is
-      the same kind of durable id, so either a second array or one shared list — and either way
-      `expandAll` / `collapseAll` now have to mean projects *and* groups.
-- [ ] **An empty group stays, and says it is empty.** It is a container you made on purpose;
-      tidying it away for you is worse than a quiet row.
+      rows, so the sidebar is one ordered list of rows where some rows expand. A synthetic
+      "Ungrouped" container is the alternative and it makes a fresh workspace display a group
+      nobody created.
+- [ ] **The group row**: chevron, name, and a count **only when collapsed** — where it is the one
+      thing that can say what is inside. No avatar, because a group is not a folder on disk, and
+      no `+`, because there is no cwd to start a session in. Row anatomy otherwise mirrors a
+      project row so the list reads as one thing.
+- [ ] **An empty expanded group renders one muted "Drop a project here" row, and that row is the
+      drop target.** The placeholder and the affordance are the same thing. An empty group stays —
+      it is a container you made on purpose, and tidying it away for you is worse than a quiet row.
+- [ ] **`Name` and `Recent` dissolve the groups**, showing every project in one flat list including
+      those inside collapsed groups. The drag and every structural menu row (`Move up`,
+      `Move down`, `Move to group ▸`) stay **`Manual`-only** — one rule for the whole menu, and the
+      same rule F1 already states. Rejected: sorting within and among groups, which would make the
+      control mean one thing at the top level and another inside, the exact criticism ADR-0023 made
+      of the old pinned-block compromise.
+- [ ] **Expansion joins `sidebarStore.expanded`, one shared array, no version bump.** Projects stay
+      keyed by **project** id and groups are keyed by **row** id: keying uniformly by row id would
+      invalidate every persisted project id and collapse everyone's sidebar once, for no benefit,
+      since a project has exactly one row. `expandAll` / `collapseAll` now mean projects *and*
+      groups.
+- [ ] **`Move to group ▸`** in the project row's context menu lists each group by name, then
+      `New group…` (which creates a group holding this project — the keyboard's answer to the dwell
+      gesture) and `Remove from group` when it is in one. This is the complete keyboard path for
+      changing level, since `Alt`+arrows only reorders within one. Rejected: `Alt`+Left/Right as
+      outdent/indent, which cannot create or name a group and has no discoverable affordance.
+- [ ] **`ContextMenu` needs `Sub` / `SubTrigger` / `SubContent` added** to
+      `packages/ui/src/components/ui/context-menu.tsx`. Radix supports them; we only ever
+      re-exported the dropdown's. Mirror `dropdown-menu.tsx`, which already has all three.
+- [ ] **`New Group…` joins the header's `FolderPlus` menu below a separator.** The two Add doors
+      stay together above the line — they are one action with two sources (ADR-0011) — and creating
+      a group is a different kind of act. The tooltip and `aria-label` widen to
+      "Add a project or group"; `data-testid="add-project-menu"` is unchanged so the shipped tests
+      that open this menu do not churn.
+- [ ] **Rename is inline, via a new `InlineEdit` primitive in `@factorai/ui`.** This entry
+      originally made that conditional on item 17 (rename a session) being nearby; it is not — item
+      17 is blocked on an ADR-0004 question — but the primitive goes in the package anyway, so the
+      type scale and density metrics come from the one place that owns them.
+- [ ] **Remove is silent when the group is empty and confirmed when it holds projects.** Exactly
+      `remove_project`'s rule (F1): silent normally, a dialog only where something real is at
+      stake. The dialog says the projects move back to the top level and nothing is deleted.
 
-Answer these before building:
+### The dwell gesture — hold a project over another to group them
 
-- **One group per project, or many?** Recommendation: one. Many turns the sidebar into a tag view
-  and the ordering rule into a per-tag ordinal, which is a different feature wearing this one's
-  name.
-- **Nesting?** Recommendation: no. One level.
-- **Does anything outside the sidebar see a group?** Scoping search to one ("search only Pro") is
-  the obvious next ask, and it is the reason `group_id` belongs on the row rather than in a
-  renderer preference. Out of scope here — do not build it, do not preclude it.
+- [ ] **`GROUP_DWELL_MS`, exported, ≈800ms.** The ask was 2000ms; the interview settled on ~800
+      because creating a group is reversible, because 2s of holding a mouse button still reads as
+      the app having hung, and because what actually prevents accidents is the pending action being
+      **visible** before it commits, not the wait being long.
+- [ ] **A ring fills on the target row from ~300ms**, then on completion the insertion line is
+      replaced by a hairline **bracket around both rows labelled "New group"** — so the drop's
+      meaning has visibly changed from "insert here" to "group these". Hairline rather than a new
+      colour, per the elevation model. Moving off the row cancels and restores the insertion line.
+- [ ] **On drop: the group is created holding both projects, with its name editor open and the
+      default text selected.** Type to name it, Enter or blur to commit, Escape to keep the
+      default. No modal interrupting a gesture completed with the mouse, and the group exists
+      either way, so an interrupted rename cannot lose the grouping.
+- [ ] **The same dwell over a collapsed group springs it open**, and the drop then behaves like any
+      drop inside it; dragging away re-collapses it. One timed gesture with two meanings decided by
+      what is under the cursor — a project offers "group these", a collapsed group offers "open me"
+      — and one filling ring for both, so there is one thing to learn.
+- [ ] **Over a project that is already inside a group there is no dwell affordance at all.** The
+      drop simply files the held project into that group at that position, which is the useful
+      outcome. Grouping them would need nesting. Rejected: pulling the target out into a new
+      sibling group, which is a destructive edit triggered by a hover.
 
-**Where it is specified.** A section inside F1 rather than a new `F22`: the project list is one
-surface, and splitting its contract across two features makes the sidebar harder to read than the
-feature is. Same commit as the code, as ever (§ 2a).
+### Tests
 
-**ADR-wise this rides on item 28's**, which supersedes ADR-0011 and ADR-0016 and states the
-ordering model this builds on. A group is one more column and one more table under the same
-decision, so it wants a new ADR only if an answer above goes the other way — many groups per
-project, or nesting, would each be a different storage strategy rather than an extension of that
-one.
+- [ ] **`GROUP_DWELL_MS` is exported and the `@smoke` test holds for it in real time** — about a
+      second of wall-clock in one test, which the suite can afford. A second case holds for *less*
+      than the constant and asserts a plain reorder, which is the regression that matters. Rejected:
+      `page.clock`, because the dwell couples to dnd-kit's own pointer handling and rAF, and a fake
+      clock there produces a test that passes while the gesture is broken.
+- [ ] **`reorder_projects_integration.rs` becomes `reorder_sidebar_integration.rs`**, keeping its
+      stale-set, duplicate and dense-renumber cases and gaining the two-level ones: a project moved
+      between groups, a group removed and its children spliced, and an attempt to nest rejected by
+      the CHECK.
+- [ ] **A migration test for 0012**, in the shape of `workspace_migration.rs`: seed a database with
+      0011's `projects.sort_order`, migrate, and assert the rows come out in the same order with the
+      column gone.
+
+### Documentation, and the commits
+
+**Three commits**, because these are three separable capabilities and the dwell is the one most
+likely to want tuning or reverting on its own:
+
+1. `feat: the sidebar is a tree of rows, not a list` — 0012, the commands, the types, ADR-0024, and
+   F1's storage half.
+2. `feat: group projects in the sidebar` — the rows, expansion, `InlineEdit`, `Move to group ▸`,
+   the header menu, delete.
+3. `feat: hold a project over another to group them` — the dwell and the spring-open.
+
+- **F1 in `specs/05-features.md`** gains a Groups section; its Ordering section is rewritten where
+  it names `projects.sort_order` and `reorder_projects`.
+- **`specs/02-data-model.md`** gains `sidebar_rows` and loses `projects.sort_order`.
+- **`specs/03-backend-rust.md`** gains the four new commands and drops `reorder_projects`.
+- **`DESIGN.md`** gains the group row's metrics, the dwell ring, the bracket affordance and the
+  empty-group hint row, with `.impeccable/design.json` updated alongside.
+- **ADR-0024 supersedes ADR-0023**, links both ways, and leaves ADR-0011 and ADR-0016 untouched as
+  0023 did. Everything else in 0023 survives and is restated: the user writes the order, the
+  derived orders are views over it, there is no pinned flag.
+
+**What this costs.** `Name` and `Recent` no longer show your structure at all — a collapsed group's
+projects appear in the flat list, which is the trade for those modes being a way to *find* a row
+rather than a way to view your arrangement. And the sidebar's search box is still FTS session
+search; scoping search to a group ("search only Pro") is the obvious next ask and is out of scope
+here. `group_id` living on the row rather than in a renderer preference is what keeps it possible.

@@ -2,6 +2,12 @@ import type { SettingKey } from '@factorai/types';
 
 export const queryKeys = {
 	projects: () => ['projects'] as const,
+	/** The sidebar's tree — groups and the projects in them, in order (ADR-0024).
+	 *  Its own key rather than a `projects` variant: this one is the *arrangement*
+	 *  and only the sidebar reads it, while `projects` is the flat membership list
+	 *  that four other surfaces poll. Writing the arrangement invalidates this and
+	 *  leaves those alone. */
+	sidebar: () => ['sidebar'] as const,
 	/** Folders Claude has worked in, for the import dialog. Separate from
 	 *  `projects` because it comes from a different place — a walk of the store,
 	 *  not the workspace table — and is read only while the dialog is open. */
