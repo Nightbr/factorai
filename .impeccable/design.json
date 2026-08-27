@@ -384,6 +384,11 @@
         "section": "components"
       },
       {
+        "name": "The Nothing-Moves Rule",
+        "body": "A list does not rearrange itself to show where a drop will land: a 2px accent line on the target's edge says it and the rest holds still. Displacing every row assumes a flat list of equal-height siblings — which a tree of expandable rows is not — and it moves the row you are aiming at, which is fatal when aiming means resting on a row long enough to mean something. What you carry rides in an overlay as a compact chip, narrower than a row, so it never covers the target.",
+        "section": "components"
+      },
+      {
         "name": "The Drop-Target Rule",
         "body": "A container that can accept a drop must have something to aim at even when empty. The placeholder saying it is empty is that target — one muted row that takes the lifted row's secondary ground and hairline ring while the pointer is over it, so “this will accept the drop” is said with the elevation model rather than a new colour.",
         "section": "components"

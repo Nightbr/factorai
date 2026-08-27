@@ -350,6 +350,15 @@ no action button where there is no single object to act on. Its count is shown
 **only when collapsed** — open, it repeats what the eye can already see while
 competing with the name for a 180px row.
 
+**The Nothing-Moves Rule.** A list does not rearrange itself to show where a drop
+will land. A 2px accent line on the target's edge says it, and the rest of the
+list holds still. Displacing every other row to open a gap is the library's
+default and it fails twice here: it assumes a flat list of equal-height siblings,
+which a tree of expandable rows is not, and it *moves the row you are aiming at* —
+fatal when aiming means resting on a row long enough to mean something. What you
+are carrying rides in an overlay as a **compact chip**, narrower than a row, so it
+never covers the target or the mark drawn on it.
+
 **The Drop-Target Rule.** A container that can accept a drop must have something
 to aim at even when it is empty. The placeholder that says the container is empty
 *is* that target — one muted row, taking the lifted row's `secondary` ground and
@@ -375,6 +384,14 @@ in that list, not be dismissed, so the shadow would be claiming the wrong thing.
 The tone alone is not enough, because the selected row it may be passing over
 already carries it, which is what the ring is for. See
 `specs/08-inconsistencies.md` for the one place that does not yet follow this.
+
+Where the drag is carried by an **overlay** rather than by the row itself — the
+sidebar, per the Nothing-Moves Rule — the two marks split: the *source* row stays
+in place at 40% opacity, a placeholder for where the thing came from and
+deliberately competing with nothing; and the chip in the overlay takes a border
+and the floating shadow, because it genuinely floats above the app and will be
+gone in a moment. That is the one condition the Flat-By-Default Rule allows a
+shadow for.
 
 ## Shapes
 

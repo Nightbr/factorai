@@ -1,3 +1,4 @@
+import { DropLine } from '@components/layout/DropLine';
 import { DwellRing } from '@components/layout/DwellRing';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
@@ -31,6 +32,7 @@ import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
 import { pendingSessions } from '@lib/sessionGroups';
 import { cmd, openExternally } from '@lib/tauri';
+import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
@@ -102,6 +104,9 @@ interface SidebarProjectProps {
 	/** The dwell has completed on this row: the drop now makes a group of the two
 	 *  projects rather than inserting beside this one. */
 	dwelling?: boolean;
+	/** Set when the drop will land on this row's edge — drawn as a line, since
+	 *  nothing displaces to show the gap any more. */
+	indicator?: DropIndicator;
 	/** The row id of the group holding this project, if any. Indents the row, adds
 	 *  `Remove from group` to its menu, and greys that group out in
 	 *  `Move to group ▸` — an enabled row there would be a no-op the user paid a
@@ -125,6 +130,7 @@ export function SidebarProject({
 	onNudge,
 	dwellProgress = 0,
 	dwelling = false,
+	indicator = null,
 	parentGroupRowId,
 	groups = [],
 	onMoveToGroup,
@@ -186,8 +192,13 @@ export function SidebarProject({
 		// distortion. Learnt on the tab strip, where it read as a tab that zoomed.
 		<li
 			ref={setNodeRef}
-			style={{ transform: DndCss.Translate.toString(transform), transition }}
-			className={isDragging ? 'relative z-10' : undefined}
+			// **No transform while dragging.** The motion belongs to the overlay's
+			// chip now; the row stays where it is so the rows around it — and the
+			// affordances drawn on them — stay put and stay visible. `transform` is
+			// still applied when dnd-kit has something to say outside a drag.
+			style={
+				isDragging ? undefined : { transform: DndCss.Translate.toString(transform), transition }
+			}
 		>
 			{/* F1 once rejected a right-click menu here, on the grounds that one
 			    action (pin) didn't justify building the system. That reasoning has
@@ -239,19 +250,23 @@ export function SidebarProject({
 						// row does not move and five rows of grey highlight appear instead.
 						// dnd-kit adds neither property; `touch-action` is only the touch
 						// half of the same problem.
-						className={`group flex items-center pr-1 transition-colors ${
+						className={`group relative flex items-center pr-1 transition-colors ${
 							// Indented by the chevron's width, so a project inside a group
 							// lines up under the group's name rather than under its chevron.
 							parentGroupRowId ? 'pl-4' : ''
 						} ${canReorder ? 'touch-none select-none' : ''} ${
 							isDragging
-								? 'bg-secondary ring-1 ring-border'
+								? // **The source row is a placeholder now, not the lift.** The
+									// chip in the overlay is what is being carried, so this marks
+									// only where it came from — dimmed, no ring, no tone, so it
+									// competes with nothing. It used to carry the tonal step and
+									// hairline ring, which made sense while the row itself was
+									// what you dragged.
+									'opacity-40'
 								: // **The completed dwell changes what the drop means, so it has
 									// to change how the row looks.** An accent ring plus the label
-									// below: the pair of rows then reads as a bracket, which is as
-									// close to the sketched box as siblings in a `<ul>` with no
-									// shared wrapper can get. Tone and a ring, per the elevation
-									// model — no shadow.
+									// below, on the *target* — which is only visible because the
+									// row in your hand is a chip that does not cover it.
 									dwelling
 									? 'bg-secondary ring-1 ring-primary'
 									: isActive
@@ -260,6 +275,7 @@ export function SidebarProject({
 						}`}
 						data-testid={`project-row-${project.id}`}
 					>
+						<DropLine indicator={indicator} />
 						<IconButton
 							aria-label={
 								expanded ? `Collapse ${project.displayName}` : `Expand ${project.displayName}`

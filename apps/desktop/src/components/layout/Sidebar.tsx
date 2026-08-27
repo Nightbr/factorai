@@ -1,23 +1,41 @@
 import { ImportProjects } from '@components/dialog/ImportProjects';
+import { DragChip } from '@components/layout/DragChip';
 import { SidebarGroup } from '@components/layout/SidebarGroup';
 import { SidebarProject } from '@components/layout/SidebarProject';
 import { UpdateBadge } from '@components/layout/UpdateBadge';
 import { ZoomControls } from '@components/layout/ZoomControls';
 import {
 	DndContext,
+	DragOverlay,
 	type DragEndEvent,
 	type DragOverEvent,
+	type DragStartEvent,
 	PointerSensor,
 	closestCenter,
 	useSensor,
 	useSensors,
 } from '@dnd-kit/core';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext } from '@dnd-kit/sortable';
 import type { SidebarRow } from '@factorai/types';
 
 /** A group row, narrowed once so the dialog and the handlers can name it. */
 type GroupRow = Extract<SidebarRow, { kind: 'group' }>;
+
+/**
+ * A `SortingStrategy` that displaces nothing.
+ *
+ * dnd-kit still tracks the drag and still gives the *active* item its transform —
+ * a strategy only decides what happens to the others, and here the answer is
+ * nothing. See the note at the `SortableContext` for why this list cannot use the
+ * vertical-list strategy.
+ */
+const noDisplacement = () => null;
+
+/** The indicator, but only if it belongs to this row. */
+function indicatorFor(indicator: DropIndicator, rowId: string): DropIndicator {
+	return indicator && indicator.rowId === rowId ? indicator : null;
+}
 import {
 	Button,
 	Dialog,
@@ -45,9 +63,12 @@ import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
 import { projectStatus } from '@lib/sessionGroups';
 import {
+	type DropIndicator,
+	dropIndicator,
 	fileIntoGroup,
 	groupsOf,
 	parentOf,
+	rowFor,
 	moveRow,
 	nudgeRow,
 	toOrder,
@@ -182,6 +203,34 @@ export function Sidebar() {
 	// away without dropping — springing one open should not silently rearrange
 	// what the user had collapsed.
 	const sprungOpen = useRef<Set<string>>(new Set());
+	// And the mirror: a group collapsed *because* it is the thing being dragged.
+	const collapsedForDrag = useRef<Set<string>>(new Set());
+
+	/** Collapse an expanded group as its own drag begins.
+	 *
+	 *  An expanded group is a header plus its children, and the sortable node is
+	 *  the whole `<li>` — so dragging one meant hauling a block four rows tall
+	 *  around a list of single rows, which is both hard to aim and what made the
+	 *  neighbouring rows draw on top of each other. Collapsed, every draggable
+	 *  thing in the sidebar is one row. `endDrag` puts it back. */
+	const onDragStart = useCallback(
+		(event: DragStartEvent) => {
+			setDragging(true);
+			const rowId = String(event.active.id);
+			// `rowFor`, not `find` — a group's children are not top-level rows, so a
+			// plain find left the overlay with nothing to draw for any project inside
+			// a group.
+			const row = rowFor(sidebarQ.data ?? [], rowId);
+			// What the overlay renders. Held in state rather than looked up during
+			// render because the tree changes under an optimistic write mid-drag.
+			setActiveRow(row ?? null);
+			if (row?.kind === 'group' && expandedSet.has(rowId)) {
+				collapsedForDrag.current.add(rowId);
+				collapseOne(rowId);
+			}
+		},
+		[collapseOne, expandedSet, sidebarQ.data],
+	);
 
 	/** Can holding over this row offer to group? Only where a new group could
 	 *  actually be made: a loose project, held over another loose project. */
@@ -189,15 +238,27 @@ export function Sidebar() {
 		(activeId: string, overId: string) => {
 			const tree = sidebarQ.data ?? [];
 			const overRow = tree.find((r) => r.rowId === overId);
-			// Not a group row — that case is the spring-open — and not a project
-			// already inside one, which would need nesting. Over a grouped project
-			// the drop just files the held row into that group, which is the useful
-			// outcome (F1).
+			// The row being **dragged** has to be a loose project too. Without this
+			// the guard below passed for a group — groups are always top-level, so
+			// `parentOf` is null for them — and dragging a group over a project
+			// offered to group the two. Dropping then created a group holding only
+			// the project, because `fileIntoGroup` cannot move a group. Found by
+			// dragging a group across the sidebar (2026-08-27).
+			const activeRow = tree.find((r) => r.rowId === activeId);
+			if (!activeRow || activeRow.kind !== 'project') return false;
+			// The target must be a *loose* project: a group row is the spring-open
+			// case, and one already inside a group would need nesting, so the drop
+			// just files the held row into that group instead (F1).
 			if (!overRow || overRow.kind !== 'project') return false;
 			return parentOf(tree, activeId) === null;
 		},
 		[sidebarQ.data],
 	);
+
+	// Where the drop will land, drawn as a line rather than shown by displacing
+	// every other row — see `dropIndicator` for why.
+	const [indicator, setIndicator] = useState<DropIndicator>(null);
+	const [activeRow, setActiveRow] = useState<SidebarRow | null>(null);
 
 	const onDragOver = useCallback(
 		(event: DragOverEvent) => {
@@ -205,8 +266,10 @@ export function Sidebar() {
 			const overId = over ? String(over.id).replace(/^empty:/, '') : null;
 			if (!overId || overId === String(active.id)) {
 				dwell.track(null);
+				setIndicator(null);
 				return;
 			}
+			setIndicator(dropIndicator(sidebarQ.data ?? [], String(active.id), overId, expandedSet));
 			const tree = sidebarQ.data ?? [];
 			const overRow = tree.find((r) => r.rowId === overId);
 			const isCollapsedGroup = overRow?.kind === 'group' && !expandedSet.has(overRow.rowId);
@@ -232,8 +295,16 @@ export function Sidebar() {
 	const endDrag = useCallback(() => {
 		setDragging(false);
 		dwell.track(null);
+		setIndicator(null);
+		setActiveRow(null);
+		// **Re-open whatever the drag collapsed.** A group is collapsed for the
+		// duration of its own drag so the thing being flung around is one row rather
+		// than a four-row block; putting it back is not optional, or a drag would
+		// silently close a group the user had open.
+		for (const rowId of collapsedForDrag.current) expand(rowId);
+		collapsedForDrag.current.clear();
 		sprungOpen.current.clear();
-	}, [dwell]);
+	}, [dwell, expand]);
 
 	const onDragEnd = useCallback(
 		(event: DragEndEvent) => {
@@ -523,12 +594,24 @@ export function Sidebar() {
 					sensors={sensors}
 					collisionDetection={closestCenter}
 					modifiers={[restrictToVerticalAxis]}
-					onDragStart={() => setDragging(true)}
+					onDragStart={onDragStart}
 					onDragOver={onDragOver}
 					onDragCancel={onDragCancel}
 					onDragEnd={onDragEnd}
 				>
-					<SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
+					{/* **No sorting strategy**, which is the deliberate part. dnd-kit's
+					    `verticalListSortingStrategy` translates every other row to open a
+					    gap where the drop will go — sound for a flat list of equal-height
+					    siblings, and this list is neither: a group's children live inside
+					    its `<li>`, and a group row with children is several times a project
+					    row's height. It drew rows on top of each other and let a dragged
+					    row overflow into the group below.
+
+					    It also made the group gesture hard to perform: hovering a project
+					    displaced it, so the row you are trying to hold still over moved
+					    away from under the cursor. Nothing moves now, and `dropIndicator`
+					    draws a line where the drop will land instead. */}
+					<SortableContext items={rowIds} strategy={noDisplacement}>
 						<ul className="space-y-0.5" data-testid="projects">
 							{rows.map((row) =>
 								row.kind === 'group' ? (
@@ -541,6 +624,8 @@ export function Sidebar() {
 										onNudge={nudge}
 										dwellProgress={dwell.over === row.rowId ? dwell.progress : 0}
 										dwelling={dwell.dwellingOn === row.rowId}
+										indicator={indicatorFor(indicator, row.rowId)}
+										childIndicator={indicator}
 										groups={groups}
 										onMoveToGroup={moveToGroup}
 										onRemoveFromGroup={removeFromGroup}
@@ -569,6 +654,7 @@ export function Sidebar() {
 										onNudge={nudge}
 										dwellProgress={dwell.over === row.rowId ? dwell.progress : 0}
 										dwelling={dwell.dwellingOn === row.rowId}
+										indicator={indicatorFor(indicator, row.rowId)}
 										groups={groups}
 										onMoveToGroup={moveToGroup}
 									/>
@@ -576,6 +662,15 @@ export function Sidebar() {
 							)}
 						</ul>
 					</SortableContext>
+					{/* **The thing in your hand is a chip, not the row.** With rows no
+					    longer displacing, a translated full-width row sat exactly on top
+					    of the row it was hovering and hid the drop line, the accent ring
+					    and the "New group" label — all of which are drawn on the target.
+					    The overlay keeps the source row in place, dimmed, and puts a
+					    compact chip under the cursor instead. */}
+					<DragOverlay dropAnimation={null}>
+						{activeRow && <DragChip row={activeRow} />}
+					</DragOverlay>
 				</DndContext>
 			</nav>
 

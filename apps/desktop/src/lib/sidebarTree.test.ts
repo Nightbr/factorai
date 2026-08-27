@@ -1,11 +1,13 @@
 import type { Project, SidebarRow } from '@factorai/types';
 import {
+	dropIndicator,
 	fileIntoGroup,
 	flattenProjects,
 	groupsOf,
 	moveRow,
 	nudgeRow,
 	parentOf,
+	rowFor,
 	sortProjects,
 	toOrder,
 	unfile,
@@ -402,5 +404,84 @@ describe('nudgeRow', () => {
 		nudgeRow(rows, 'r-a', -1, allOpen());
 
 		expect(shape(rows)).toEqual(['Pro', '> a', '> b', 'loose', 'Perso', '> c']);
+	});
+});
+
+describe('dropIndicator', () => {
+	const tree = () => [groupRow('Pro', ['a', 'b']), projectRow('loose'), groupRow('Perso', [])];
+	const open = () => new Set(['g-Pro', 'g-Perso']);
+
+	it('says nothing when the row is over itself', () => {
+		expect(dropIndicator(tree(), 'r-a', 'r-a', open())).toBe(null);
+	});
+
+	it('marks the lower edge when dragging down, matching moveRow', () => {
+		// `moveRow` is arrayMove: dragging down lands *after* the target. The line
+		// must say the same thing or it lies about where the drop goes.
+		expect(dropIndicator(tree(), 'r-a', 'r-b', open())).toEqual({
+			kind: 'edge',
+			rowId: 'r-b',
+			edge: 'below',
+		});
+		expect(shape(moveRow(tree(), 'r-a', 'r-b'))).toEqual(['Pro', '> b', '> a', 'loose', 'Perso']);
+	});
+
+	it('marks the upper edge when dragging up, matching moveRow', () => {
+		expect(dropIndicator(tree(), 'r-loose', 'r-a', open())).toEqual({
+			kind: 'edge',
+			rowId: 'r-a',
+			edge: 'above',
+		});
+		expect(shape(moveRow(tree(), 'r-loose', 'r-a'))).toEqual([
+			'Pro',
+			'> loose',
+			'> a',
+			'> b',
+			'Perso',
+		]);
+	});
+
+	it('says "into" for a project dropped on a group row', () => {
+		expect(dropIndicator(tree(), 'r-loose', 'g-Perso', open())).toEqual({
+			kind: 'into',
+			rowId: 'g-Perso',
+		});
+	});
+
+	it('says "edge" for a group dropped on a group row, because groups do not nest', () => {
+		expect(dropIndicator(tree(), 'g-Perso', 'g-Pro', open())).toEqual({
+			kind: 'edge',
+			rowId: 'g-Pro',
+			edge: 'above',
+		});
+	});
+
+	it('says nothing about a row that is not visible', () => {
+		// A collapsed group's children are not drop targets, so there is no edge to
+		// draw against them.
+		expect(dropIndicator(tree(), 'r-loose', 'r-a', new Set())).toBe(null);
+	});
+});
+
+describe('rowFor', () => {
+	const rows = () => [groupRow('Pro', ['a']), projectRow('loose')];
+
+	it('finds a top-level row', () => {
+		expect(rowFor(rows(), 'r-loose')?.rowId).toBe('r-loose');
+		expect(rowFor(rows(), 'g-Pro')?.kind).toBe('group');
+	});
+
+	it('finds a row inside a group, which a plain find cannot', () => {
+		// The bug: a group's children are `SidebarChild`, not `SidebarRow`, so
+		// `rows.find(...)` sees only the top level — and the drag overlay had nothing
+		// to draw for any project inside a group.
+		const found = rowFor(rows(), 'r-a');
+
+		expect(found?.kind).toBe('project');
+		expect(found?.kind === 'project' && found.project.displayName).toBe('a');
+	});
+
+	it('returns null for a row it does not know', () => {
+		expect(rowFor(rows(), 'r-nope')).toBe(null);
 	});
 });

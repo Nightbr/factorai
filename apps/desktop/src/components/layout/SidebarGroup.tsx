@@ -1,3 +1,4 @@
+import { DropLine } from '@components/layout/DropLine';
 import { DwellRing } from '@components/layout/DwellRing';
 import { SidebarProject } from '@components/layout/SidebarProject';
 import { useDroppable } from '@dnd-kit/core';
@@ -12,6 +13,7 @@ import {
 	ContextMenuTrigger,
 	IconButton,
 } from '@factorai/ui';
+import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
 import { ArrowDown, ArrowUp, ChevronRight, Trash2 } from 'lucide-react';
 
@@ -28,6 +30,13 @@ interface SidebarGroupProps {
 	 *  gesture and it should look like one thing (F1). */
 	dwellProgress?: number;
 	dwelling?: boolean;
+	/** Set when the drop lands on this group row's own edge (another group being
+	 *  reordered past it). Dropping a *project* on a group row is `kind: 'into'`,
+	 *  which the row shows with an accent ring rather than a line. */
+	indicator?: DropIndicator;
+	/** The whole indicator, passed through so the children can find their own —
+	 *  a group renders its own rows, so it has to hand it down. */
+	childIndicator?: DropIndicator;
 	/** Opens the inline name editor. Undefined while the group cannot be renamed
 	 *  — which is only the case under a derived sort, where group rows are not
 	 *  rendered at all, so in practice it is always supplied. */
@@ -71,6 +80,8 @@ export function SidebarGroup({
 	onNudge,
 	dwellProgress = 0,
 	dwelling = false,
+	indicator = null,
+	childIndicator = null,
 	onRename,
 	onRemove,
 	editing = false,
@@ -92,8 +103,13 @@ export function SidebarGroup({
 	return (
 		<li
 			ref={setNodeRef}
-			style={{ transform: DndCss.Translate.toString(transform), transition }}
-			className={isDragging ? 'relative z-10' : undefined}
+			// **No transform while dragging.** The motion belongs to the overlay's
+			// chip now; the row stays where it is so the rows around it — and the
+			// affordances drawn on them — stay put and stay visible. `transform` is
+			// still applied when dnd-kit has something to say outside a drag.
+			style={
+				isDragging ? undefined : { transform: DndCss.Translate.toString(transform), transition }
+			}
 			data-testid={`group-${row.rowId}`}
 		>
 			<ContextMenu>
@@ -112,16 +128,22 @@ export function SidebarGroup({
 						aria-keyshortcuts={canReorder && !editing ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
 						// The same lift as a project row: tonal step plus a hairline ring,
 						// no shadow (DESIGN.md's Lifted-Row Rule).
-						className={`group flex items-center pr-1 transition-colors ${
+						className={`group relative flex items-center pr-1 transition-colors ${
 							canReorder && !editing ? 'touch-none select-none' : ''
 						} ${
 							isDragging
-								? 'bg-secondary ring-1 ring-border'
-								: dwelling
+								? // A placeholder for where the group came from — see the same
+									// branch in `SidebarProject`.
+									'opacity-40'
+								: // A project dropped on a group row lands inside it, which is a
+									// containment rather than a position — so it takes the accent
+									// ring the completed dwell uses, not a line on one edge.
+									dwelling || indicator?.kind === 'into'
 									? 'bg-secondary ring-1 ring-primary'
 									: 'hover:bg-secondary/50'
 						}`}
 					>
+						<DropLine indicator={indicator} />
 						<IconButton
 							aria-label={expanded ? `Collapse ${row.name}` : `Expand ${row.name}`}
 							aria-expanded={expanded}
@@ -218,6 +240,9 @@ export function SidebarGroup({
 							liveStatus={statusByProject.get(child.project.id)}
 							canReorder={canReorder}
 							onNudge={onNudge}
+							indicator={
+								childIndicator && childIndicator.rowId === child.rowId ? childIndicator : null
+							}
 							parentGroupRowId={row.rowId}
 							groups={groups}
 							onMoveToGroup={onMoveToGroup}

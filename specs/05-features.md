@@ -178,6 +178,20 @@ the drag is abandoned. Over a project that is **already in a group** there is no
 offer at all: grouping them would need nesting, and the drop simply files the held
 project into that group, which is the useful outcome.
 
+**Nothing displaces, and the drag is carried by an overlay.** The list does not
+rearrange itself to open a gap — a 2px accent line on the target's edge says where
+the drop lands, and dropping *into* a group marks the group row with an accent
+ring instead of a line. dnd-kit's `verticalListSortingStrategy` was tried first
+and is wrong here twice over: it assumes a flat list of equal-height siblings,
+which a tree whose children live inside their group's `<li>` is not (it drew rows
+on top of each other and let a dragged row overflow into the group below), and it
+*moved the row being aimed at* — fatal for a gesture whose whole point is resting
+on a row. What you are carrying is a **compact chip** in a `DragOverlay`, narrower
+than a row so it never covers the target or the marks drawn on it; the source row
+stays in place at 40% opacity. **A group collapses for the duration of its own
+drag**, so every draggable thing in the sidebar is one row rather than a
+four-row block, and re-opens on drop.
+
 **One gesture files and reorders, because the drop target decides the level.**
 Dropped on a top-level row, the moved row joins the top level there; dropped on a
 row inside a group, it joins that group; dropped on a group's own header, it goes

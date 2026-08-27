@@ -663,6 +663,134 @@ test.describe('hold a project over another to group them', () => {
 	});
 });
 
+test.describe('what the drag looks like while it happens', () => {
+	function topLevel(page: import('@playwright/test').Page) {
+		return page.getByTestId('projects').locator('> li > div');
+	}
+
+	test('@smoke the row under the pointer does not move', async ({ page }) => {
+		// **The regression that made the group gesture hard to perform.** dnd-kit's
+		// vertical-list strategy displaced every other row to open a gap, so the
+		// project you were trying to hold still over slid out from under the cursor.
+		// Nothing displaces now; a line says where the drop goes.
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		const target = topLevel(page).nth(1);
+		const before = await target.boundingBox();
+		const source = await topLevel(page).nth(0).boundingBox();
+		if (!before || !source) throw new Error('no geometry');
+
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2 + 8);
+		await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+
+		const during = await target.boundingBox();
+		expect(during?.y).toBeCloseTo(before.y, 0);
+		// And the line is what tells you where it will land instead.
+		await expect(page.getByTestId('drop-line-below')).toBeVisible();
+		await page.mouse.up();
+	});
+
+	test('@smoke the line flips to the other edge when dragging upward', async ({ page }) => {
+		// `moveRow` is arrayMove: down lands after the target, up lands before it.
+		// The line has to say the same thing or it lies about the outcome.
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		const first = await topLevel(page).nth(0).boundingBox();
+		const second = await topLevel(page).nth(1).boundingBox();
+		if (!first || !second) throw new Error('no geometry');
+
+		await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2 - 8);
+		await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+
+		await expect(page.getByTestId('drop-line-above')).toBeVisible();
+		await page.mouse.up();
+	});
+
+	test('@smoke dragging a group collapses it for the duration', async ({ page }) => {
+		// An expanded group is a header plus its children, and the sortable node is
+		// the whole `<li>` — so dragging one meant hauling a four-row block around a
+		// list of single rows.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand Pro', exact: true }).click();
+		await expect(page.getByTestId(`group-children-${PRO_GROUP_ID}`)).toBeVisible();
+
+		const pro = await topLevel(page).nth(0).boundingBox();
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		if (!pro || !zulu) throw new Error('no geometry');
+
+		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2 + 8);
+		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2);
+
+		await expect(page.getByTestId(`group-children-${PRO_GROUP_ID}`)).toHaveCount(0);
+		await page.mouse.up();
+
+		// And it comes back — a drag must not silently close a group you had open.
+		await expect(page.getByTestId(`group-children-${PRO_GROUP_ID}`)).toBeVisible();
+	});
+
+	test('@smoke a group dragged over a project offers no group, and creates none', async ({
+		page,
+	}) => {
+		// Groups do not nest, and `fileIntoGroup` cannot move a group — so the offer
+		// used to produce a group holding only the *project*, silently. The guard was
+		// missing a check that the dragged row is a project at all: groups are always
+		// top-level, so the `parentOf(...) === null` test passed for them.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		const pro = await topLevel(page).nth(0).boundingBox();
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		if (!pro || !zulu) throw new Error('no geometry');
+
+		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2 + 8);
+		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2);
+		await page.waitForTimeout(GROUP_DWELL_MS + 250);
+
+		await expect(page.getByTestId('new-group-hint')).toHaveCount(0);
+		await expect(page.getByTestId('dwell-ring')).toHaveCount(0);
+		await page.mouse.up();
+
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'create_group')).toBe(false);
+	});
+
+	test('@smoke a project over a group row marks the group, not an edge', async ({ page }) => {
+		// Dropping into a container is a containment, not a position — so the group
+		// takes a ring and no line is drawn.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		const perso = await topLevel(page).nth(2).boundingBox();
+		if (!zulu || !perso) throw new Error('no geometry');
+
+		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2 + 8);
+		await page.mouse.move(perso.x + perso.width / 2, perso.y + perso.height / 2);
+
+		await expect(page.getByTestId('drop-line-above')).toHaveCount(0);
+		await expect(page.getByTestId('drop-line-below')).toHaveCount(0);
+		await page.mouse.up();
+
+		// Perso stays *collapsed* — the dwell that would spring it open never ran, so
+		// it renders no children list. Its count is what says the drop landed.
+		await expect(topLevel(page)).toHaveCount(2);
+		await expect(page.getByTestId(`group-${PERSO_GROUP_ID}`)).toContainText('1');
+	});
+});
+
 test.describe('sidebar resizing', () => {
 	test('@smoke the separator resizes the sidebar and the width persists', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());

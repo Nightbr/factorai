@@ -68,6 +68,26 @@ export function viewRows(rows: SidebarRow[], sort: ProjectSort): SidebarRow[] {
 	}));
 }
 
+/**
+ * The row with this id, wherever it sits — top level or inside a group.
+ *
+ * A group's children are `SidebarChild`, not `SidebarRow`, so a plain
+ * `rows.find(...)` sees only the top level. That is exactly the bug this exists to
+ * stop: `onDragStart` looked a row up that way, so dragging a project *inside* a
+ * group produced no active row and the drag overlay rendered nothing at all.
+ * A child is returned as the project row it is.
+ */
+export function rowFor(rows: SidebarRow[], rowId: string): SidebarRow | null {
+	const top = rows.find((r) => r.rowId === rowId);
+	if (top) return top;
+	for (const row of rows) {
+		if (row.kind !== 'group') continue;
+		const child = row.children.find((c) => c.rowId === rowId);
+		if (child) return { kind: 'project', rowId: child.rowId, project: child.project };
+	}
+	return null;
+}
+
 /** The row id carrying this project, wherever it sits. */
 function rowIdOf(rows: SidebarRow[], projectId: string): string | undefined {
 	for (const row of rows) {
@@ -315,6 +335,56 @@ export function nudgeRow(
 	const next = [...rest];
 	next.splice(neighbourIndex, 0, asRow);
 	return next;
+}
+
+/**
+ * Where a drop will land, for the indicator the sidebar draws.
+ *
+ * **This exists because the sidebar no longer displaces rows to show the gap.**
+ * dnd-kit's `verticalListSortingStrategy` translates every other row to open a
+ * space, which assumes a flat list of equal-height siblings — and this list is
+ * neither: a group's children live inside its `<li>`, and a group row with three
+ * children is four times a project row's height. The result was rows drawn on top
+ * of each other and a dragged row overflowing into the group below. Worse for the
+ * gesture: hovering a project *moved it away*, which is exactly the row you are
+ * trying to hold still over to make a group.
+ *
+ * So nothing moves, and a line says where the drop goes instead. The rule has to
+ * agree with [`moveRow`] exactly or the line lies:
+ *
+ * - over a **group row**, dragging a project → into that group, at its top;
+ * - over a **group row**, dragging a group → beside it, since groups do not nest;
+ * - otherwise → the edge of the target the moved row will end up on, which
+ *   follows `moveRow`'s `arrayMove` semantics: dragging *down* lands after the
+ *   target, dragging *up* lands before it.
+ */
+export type DropIndicator =
+	| { kind: 'edge'; rowId: string; edge: 'above' | 'below' }
+	| { kind: 'into'; rowId: string }
+	| null;
+
+export function dropIndicator(
+	rows: SidebarRow[],
+	activeId: string,
+	overId: string,
+	expanded: Set<string>,
+): DropIndicator {
+	if (activeId === overId) return null;
+	const order = visibleRowIds(rows, expanded);
+	const from = order.indexOf(activeId);
+	const to = order.indexOf(overId);
+	if (from < 0 || to < 0) return null;
+
+	const overRow = rows.find((r) => r.rowId === overId);
+	const activeRow = rows.find((r) => r.rowId === activeId);
+	if (overRow?.kind === 'group') {
+		// A group being dragged goes beside the target, never inside it.
+		if (activeRow?.kind === 'group') {
+			return { kind: 'edge', rowId: overId, edge: from < to ? 'below' : 'above' };
+		}
+		return { kind: 'into', rowId: overId };
+	}
+	return { kind: 'edge', rowId: overId, edge: from < to ? 'below' : 'above' };
 }
 
 /** Move a project row into a group, at the end of it. The menu's path. */
