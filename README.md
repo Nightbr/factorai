@@ -47,17 +47,11 @@ Open sessions become tabs, and the tabs come back when you relaunch.
 
 ### Arrange the sidebar the way you think
 
-Projects sit where you drag them — the order is stored, not derived, so the list
-stays where you put it. File them into groups you name: Pro, Perso, side
-projects. Drop a project on a group to file it, on the edge of one to leave it
-beside, or **hold it over another project for a moment** to make a group of the
-two.
-
-Everything the drag does has a keyboard path — `Alt`+arrows to move a row,
-`Move to group` in its context menu — and `Name` or `Recent` on the sort control
-when you would rather have a rule than an arrangement.
-
-![The sidebar with projects grouped into Pro, Side projects and Perso](docs/images/factorai-sidebar.png)
+Projects sit where you drag them, in groups you name — Pro, Perso, side projects.
+Drop one on a group to file it, on the edge to leave it beside, or hold it over
+another project to group the two. `Alt`+arrows and `Move to group` do the same
+from the keyboard, and `Name` or `Recent` sort when you would rather have a rule
+than an arrangement.
 
 ### Find the conversation you half-remember
 

@@ -1071,3 +1071,46 @@ Then, in order:
 **Worktrees make "the current branch" ambiguous** (item 37, F21). Resolve it against the checkout
 the panel is showing, which is the rule F21 already settled for the file panel — not against the
 repository's `HEAD`, which may be a checkout nobody is looking at.
+
+## 41. A GIF of the sidebar gesture, from fake data
+
+**Filed 2026-08-27, deferred the same day.** The sidebar's drag — file into a
+group, drop beside one, hold over a project to group the two — is the one feature
+in this app that a still image cannot show. It is motion: a line that moves, a
+ring that fills, a row that lands. The README section for it currently has no
+image at all, because the alternatives were worse than none.
+
+**Why a screenshot of the real app was rejected.** Taken 2026-08-27 and reverted
+within the hour. A dev build against the author's own workspace means the sidebar
+is full of client and employer project names, so every one has to be blurred — and
+a picture of four blurred rows and one legible one says nothing about the feature
+while looking like a redacted document. Framing around it (no project selected)
+left 70% of a 1440×900 frame as empty pane. The tooling from that attempt is
+worth keeping and is not the problem: `VITE_FACTORAI_SCREENSHOT=1`,
+`scripts/qa/doc-shot.sh`, `scripts/qa/redact.py`, and the `app-screenshot` skill.
+
+**What this actually needs, and why it is not cheap.** A GIF of the real app has
+the same privacy problem as the screenshot, moving. So the subject has to be
+**fabricated**: a sidebar rendered from invented projects with invented names, in
+isolation, driven through the gesture at a watchable pace. That is a demo harness,
+not a capture — and the pieces are not all there:
+
+- The renderer can already be driven from fake data in a browser
+  (`pnpm vite:dev` + `installMockBridge`, § 2d), and a fixture with plausible
+  names is a few lines. That part is nearly free.
+- What is missing is the **choreography**: dnd-kit is driven by pointer events, so
+  a recording needs a script that presses, moves in small steps, dwells long
+  enough for `GROUP_DWELL_MS` to read on screen, and releases — with pauses a
+  human eye can follow rather than the 40ms steps a test uses.
+- And the **capture**: Playwright records video as WebM, not GIF, so this wants
+  either a WebM in the README (fine on GitHub) or a conversion step and a
+  palette/size budget for a file that ships in the repo.
+
+Worth doing when the sidebar's gesture stops changing — it moved three times on
+2026-08-27 alone. A recording made against a gesture still being tuned is a
+recording to redo.
+
+Sequencing note: the mock-bridge fixture and the pointer choreography would also
+give the smoke suite a way to demonstrate the drag at human speed for debugging,
+which is the second reason to build it once rather than hand-roll a capture.
+
