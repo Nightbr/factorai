@@ -1,6 +1,8 @@
 {
 	"$schema": "https://turbo.build/schema.json",
-	"globalDependencies": ["**/.env.*local"],
+	"globalDependencies": [
+		"**/.env.*local"
+	],
 	"globalPassThroughEnv": [
 		"XDG_DATA_DIRS",
 		"XDG_DATA_HOME",
@@ -12,25 +14,36 @@
 		"XDG_RUNTIME_DIR",
 		"DISPLAY",
 		"WAYLAND_DISPLAY",
-		"DBUS_SESSION_BUS_ADDRESS"
+		"DBUS_SESSION_BUS_ADDRESS",
+		"VITE_FACTORAI_SCREENSHOT"
 	],
 	"tasks": {
 		"build": {
-			"dependsOn": ["^build"],
-			"outputs": ["dist/**"]
+			"dependsOn": [
+				"^build"
+			],
+			"outputs": [
+				"dist/**"
+			]
 		},
 		"dev": {
 			"cache": false,
 			"persistent": true
 		},
 		"lint": {
-			"dependsOn": ["^lint"]
+			"dependsOn": [
+				"^lint"
+			]
 		},
 		"typecheck": {
-			"dependsOn": ["^typecheck"]
+			"dependsOn": [
+				"^typecheck"
+			]
 		},
 		"test": {
-			"dependsOn": ["^build"]
+			"dependsOn": [
+				"^build"
+			]
 		}
 	}
 }

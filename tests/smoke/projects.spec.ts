@@ -16,6 +16,12 @@ test.describe('projects sidebar', () => {
 	// a badge that quietly stopped rendering would make every screenshot
 	// ambiguous. The absent-in-a-release-bundle half is enforced by the
 	// bundler, not by a test.
+	//
+	// This asserts the **default**. `VITE_FACTORAI_SCREENSHOT=1` hides the badge
+	// for documentation images, which are taken from a dev build and should not
+	// show a marker no released build has — see `DevBadge.tsx` and the
+	// `app-screenshot` skill. The suite never sets that variable, so a failure
+	// here means the badge broke rather than that the flag leaked.
 	test('@smoke a dev build marks itself in the header', async ({ page }) => {
 		await installMockBridge(page, { projects: [] });
 		await page.goto('/');

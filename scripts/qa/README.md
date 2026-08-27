@@ -11,6 +11,8 @@ Linux/X11 + GNOME.
 | `focus.sh` | Brings factorai to the front via `wmctrl -a` | ✓ |
 | `screenshot.sh OUT.png` | Captures the active window via `gnome-screenshot` (fallback: `import`, `scrot`) | ✓ |
 | `geometry.sh` | Prints `WIDTH HEIGHT X Y` of the content window | ✓ |
+| `doc-shot.sh OUT.png` | A documentation image: 1440x900 of the client area, no frame, no shadow, no resampling. Launch with `VITE_FACTORAI_SCREENSHOT=1` first so the DEV badge is absent | ✓ README, 2026-08-27 |
+| `redact.py IN OUT X,Y,W,H…` | Blurs regions before an image ships; `--probe` writes a coordinate grid to read the boxes off | ✓ |
 | `drag.sh FX FY TX TY [STEPS]` | Press, step, release — a real pointer drag for the dnd-kit surfaces (session tabs, project rows). **Content-relative coordinates**, unlike `click.sh` — see below | ✓ project reorder, 2026-08-26 |
 | `kill.sh` | Descends pgrep tree from launcher pid, kills children deepest-first; sweeps stray dev factorai subtrees | ✓ exit 0, no survivors |
 | `_resolve_wid.sh` | Internal helper: picks the right factorai window from `wmctrl -lG` (skips the 10×10 phantom + outer frame) | — |
@@ -126,6 +128,24 @@ FACTORAI_DEVTOOLS=1 scripts/qa/launch.sh
 scripts/qa/screenshot.sh /tmp/qa-debug.png
 scripts/qa/kill.sh
 ```
+
+## Documentation images
+
+**`doc-shot.sh` grabs the whole screen and crops, rather than reusing
+`screenshot.sh`.** `gnome-screenshot -w` includes the decoration *and* the
+compositor's drop shadow, and the shadow's width is reported nowhere — so
+cropping the client area out of that capture means guessing a margin, and a wrong
+guess ships a README image with a slice of desktop in it. That is exactly what
+happened on the first attempt. A full-screen grab needs no guess: the client area
+sits at the absolute coordinates `xwininfo` reports. The trade is that it fails
+loudly on a scaled display rather than quietly producing a soft image.
+
+It also resizes the window instead of resampling the capture. The app is 12px and
+14px type throughout, and scaling a screenshot down turns the sidebar to mush.
+
+**An image that ships gets its private names blurred**, and the `app-screenshot`
+skill owns that checklist — what to blur, what to leave legible, and why framing
+the shot to avoid the problem beats blurring it away.
 
 ## Tooling deps
 

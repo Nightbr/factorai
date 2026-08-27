@@ -136,6 +136,19 @@ For UI / behaviour work, also: launch the app (`pnpm dev`) and **use
 the feature** in the actual window. Type checking does not validate
 UX. Screenshots in a commit are great.
 
+**A screenshot that ships — `README.md`, `docs/`, a release note — is not the
+same act as a screenshot in a commit.** It is permanent and public, and the
+window is full of the author's real work: client and employer project names,
+personal repositories, `~/` paths, session titles naming both. Blur those before
+committing; a later edit does not remove them from the history. It also must not
+carry the `DEV` badge, which no released build shows, and it is 1440×900 of the
+client area like every image already in `docs/images/`.
+
+**Use the `app-screenshot` skill** — it owns that checklist, along with
+`VITE_FACTORAI_SCREENSHOT=1` (the supported way to suppress the badge),
+`scripts/qa/doc-shot.sh` for the framing, and `scripts/qa/redact.py` for the
+blurring.
+
 Tests live next to the code: `src/lib/foo.test.ts` next to
 `src/lib/foo.ts` on the TS side; `tests/foo_integration.rs` for cross-
 module Rust tests, `#[cfg(test)] mod tests` for in-module unit tests.
