@@ -1,3 +1,4 @@
+import { DwellRing } from '@components/layout/DwellRing';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
 import { useSortable } from '@dnd-kit/sortable';
@@ -95,6 +96,12 @@ interface SidebarProjectProps {
 	 *  only half unavailable is worse than one that is plainly off. */
 	canReorder: boolean;
 	onNudge: (rowId: string, delta: -1 | 1) => void;
+	/** 0 → 1 while a drag is resting on this row and the group offer is filling.
+	 *  0 for every other row, including while the drag passes over. */
+	dwellProgress?: number;
+	/** The dwell has completed on this row: the drop now makes a group of the two
+	 *  projects rather than inserting beside this one. */
+	dwelling?: boolean;
 	/** The row id of the group holding this project, if any. Indents the row, adds
 	 *  `Remove from group` to its menu, and greys that group out in
 	 *  `Move to group ▸` — an enabled row there would be a no-op the user paid a
@@ -116,6 +123,8 @@ export function SidebarProject({
 	liveStatus,
 	canReorder,
 	onNudge,
+	dwellProgress = 0,
+	dwelling = false,
 	parentGroupRowId,
 	groups = [],
 	onMoveToGroup,
@@ -237,9 +246,17 @@ export function SidebarProject({
 						} ${canReorder ? 'touch-none select-none' : ''} ${
 							isDragging
 								? 'bg-secondary ring-1 ring-border'
-								: isActive
-									? 'bg-secondary'
-									: 'hover:bg-secondary/50'
+								: // **The completed dwell changes what the drop means, so it has
+									// to change how the row looks.** An accent ring plus the label
+									// below: the pair of rows then reads as a bracket, which is as
+									// close to the sketched box as siblings in a `<ul>` with no
+									// shared wrapper can get. Tone and a ring, per the elevation
+									// model — no shadow.
+									dwelling
+									? 'bg-secondary ring-1 ring-primary'
+									: isActive
+										? 'bg-secondary'
+										: 'hover:bg-secondary/50'
 						}`}
 						data-testid={`project-row-${project.id}`}
 					>
@@ -288,7 +305,22 @@ export function SidebarProject({
 
 						{/* The hover pin stood here, with its state-at-rest / action-on-hover
 						    glyph swap. Where a project sits is now the whole answer to what
-						    the pin was asking, so the row is back to four elements. */}
+						    the pin was asking, so the row is back to four elements.
+
+						    What appears here instead is transient: the dwell's ring while a
+						    drag is being timed on this row, then the label once it has
+						    completed. Both take the slot rather than adding one, so the row
+						    does not change width mid-gesture. */}
+						{dwelling ? (
+							<span
+								data-testid="new-group-hint"
+								className="shrink-0 pr-1 font-medium text-primary text-xs uppercase tracking-wider"
+							>
+								New group
+							</span>
+						) : (
+							dwellProgress > 0 && <DwellRing progress={dwellProgress} />
+						)}
 
 						{/* The title lives on the wrapper: a disabled button sets
 						    pointer-events-none, which suppresses a native tooltip on the

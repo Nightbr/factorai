@@ -161,6 +161,23 @@ purpose.
 `CHECK (kind = 'project' OR parent_id IS NULL)`. In the database rather than only
 in the commands, so nesting cannot be written whichever command has a bug.
 
+**Hold a project over another to group them.** Resting a dragged project on
+another one for `GROUP_DWELL_MS` (800ms) changes what the drop means: instead of
+inserting beside it, the drop creates a group holding both, with its name editor
+open. A ring fills on the target row from 300ms, then the row takes an accent
+ring and reads "New group" — so the change of meaning is visible *before* it
+commits, which is what actually prevents accidents rather than the wait being
+long. Moving off the row cancels. The ask was 2000ms; 800 was chosen because
+creating a group is reversible and two seconds of holding a button reads as the
+app having hung.
+
+The **same hold over a collapsed group springs it open**, so you can drop inside
+one you had closed — one timed gesture with two meanings decided by what is under
+the cursor, and one ring for both. A group sprung open this way re-collapses if
+the drag is abandoned. Over a project that is **already in a group** there is no
+offer at all: grouping them would need nesting, and the drop simply files the held
+project into that group, which is the useful outcome.
+
 **One gesture files and reorders, because the drop target decides the level.**
 Dropped on a top-level row, the moved row joins the top level there; dropped on a
 row inside a group, it joins that group; dropped on a group's own header, it goes

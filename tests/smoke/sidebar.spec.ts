@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { GROUP_DWELL_MS } from '../../apps/desktop/src/hooks/useDragDwell';
 import {
 	ALPHA_ID,
 	PERSO_GROUP_ID,
@@ -503,6 +504,162 @@ test.describe('Move to group', () => {
 		// An enabled row there would be a no-op the user paid a click for.
 		await expect(page.getByRole('menuitem', { name: 'Pro', exact: true })).toBeDisabled();
 		await expect(page.getByRole('menuitem', { name: 'Perso', exact: true })).toBeEnabled();
+	});
+});
+
+test.describe('hold a project over another to group them', () => {
+	function topLevel(page: import('@playwright/test').Page) {
+		return page.getByTestId('projects').locator('> li > div');
+	}
+
+	/** Press on `from`, move onto `to`, and hold there for `holdMs`. Leaves the
+	 *  button **down** so the caller decides what the drop means. */
+	async function holdOver(
+		page: import('@playwright/test').Page,
+		from: { x: number; y: number; width: number; height: number },
+		to: { x: number; y: number; width: number; height: number },
+		holdMs: number,
+	) {
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await page.mouse.down();
+		// Past the 4px activation distance first, or dnd-kit never starts tracking.
+		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
+		await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2);
+		await page.waitForTimeout(holdMs);
+	}
+
+	test('@smoke holding past the dwell offers a group, and the drop makes one', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		const zulu = await topLevel(page).nth(0).boundingBox();
+		const alpha = await topLevel(page).nth(1).boundingBox();
+		if (!zulu || !alpha) throw new Error('no geometry');
+
+		// Real time against the exported constant, not a mocked clock: the dwell
+		// couples to dnd-kit's pointer handling and rAF, and a fake clock there
+		// passes while the gesture is broken.
+		await holdOver(page, zulu, alpha, GROUP_DWELL_MS + 250);
+
+		// The drop's meaning has visibly changed before it commits — which is what
+		// actually prevents accidents, rather than the wait being long.
+		await expect(page.getByTestId('new-group-hint')).toBeVisible();
+		await page.mouse.up();
+
+		// A group holding both, named and up for editing.
+		await expect(page.getByRole('textbox', { name: /Rename New group/ })).toBeFocused();
+		await page.keyboard.type('Pro');
+		await page.keyboard.press('Enter');
+
+		await expect(topLevel(page).nth(0)).toContainText('Pro');
+		const children = page.getByTestId('projects').locator('ul[data-testid^="group-children-"]');
+		await expect(children).toContainText('zulu');
+		await expect(children).toContainText('alpha');
+	});
+
+	test('@smoke a shorter hold is still just a reorder', async ({ page }) => {
+		// The regression that matters. Passing over a row on the way somewhere else
+		// must not group anything.
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		const zulu = await topLevel(page).nth(0).boundingBox();
+		const alpha = await topLevel(page).nth(1).boundingBox();
+		if (!zulu || !alpha) throw new Error('no geometry');
+
+		await holdOver(page, zulu, alpha, Math.floor(GROUP_DWELL_MS / 3));
+		await expect(page.getByTestId('new-group-hint')).toHaveCount(0);
+		await page.mouse.up();
+
+		// Reordered, not grouped.
+		await expect(topLevel(page).nth(0)).toContainText('alpha');
+		await expect(topLevel(page)).toHaveCount(2);
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'create_group')).toBe(false);
+	});
+
+	test('@smoke moving off the row cancels the offer', async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		const pro = await topLevel(page).nth(0).boundingBox();
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		const perso = await topLevel(page).nth(2).boundingBox();
+		if (!pro || !zulu || !perso) throw new Error('no geometry');
+
+		// Hold over Perso long enough to start the clock, then move away before it
+		// finishes: nothing may be pending afterwards.
+		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(zulu.x + zulu.width / 2, zulu.y + zulu.height / 2 + 8);
+		await page.mouse.move(perso.x + perso.width / 2, perso.y + perso.height / 2);
+		await page.waitForTimeout(Math.floor(GROUP_DWELL_MS / 2));
+		await page.mouse.move(pro.x + pro.width / 2, pro.y + pro.height / 2);
+		await page.waitForTimeout(120);
+
+		await expect(page.getByTestId('dwell-ring')).toHaveCount(0);
+		await page.mouse.up();
+	});
+
+	test('@smoke holding over a collapsed group springs it open', async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		// Perso is collapsed and empty, so there is nothing inside to aim at until
+		// it opens — which is the whole reason the spring-open exists.
+		await expect(page.getByTestId(`group-empty-${PERSO_GROUP_ID}`)).toHaveCount(0);
+
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		const perso = await topLevel(page).nth(2).boundingBox();
+		if (!zulu || !perso) throw new Error('no geometry');
+
+		await holdOver(page, zulu, perso, GROUP_DWELL_MS + 250);
+
+		await expect(page.getByTestId(`group-empty-${PERSO_GROUP_ID}`)).toBeVisible();
+		await page.mouse.up();
+	});
+
+	test('@smoke no offer over a project that is already in a group', async ({ page }) => {
+		// Grouping them would need nesting, which the schema forbids — so the
+		// gesture is not offered, and the drop just files into that group.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand Pro', exact: true }).click();
+
+		const zulu = await topLevel(page).nth(1).boundingBox();
+		const alpha = await page
+			.getByTestId(`group-children-${PRO_GROUP_ID}`)
+			.locator('> li > div')
+			.boundingBox();
+		if (!zulu || !alpha) throw new Error('no geometry');
+
+		await holdOver(page, zulu, alpha, GROUP_DWELL_MS + 250);
+		await expect(page.getByTestId('new-group-hint')).toHaveCount(0);
+		await page.mouse.up();
+
+		// Filed into Pro rather than grouped with alpha.
+		await expect(page.getByTestId(`group-children-${PRO_GROUP_ID}`)).toContainText('zulu');
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'create_group')).toBe(false);
+	});
+
+	test('@smoke a derived sort offers no dwell at all', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Sort and expand projects' }).click();
+		await page.getByRole('menuitemradio', { name: 'Name' }).click();
+
+		const first = await topLevel(page).nth(0).boundingBox();
+		const second = await topLevel(page).nth(1).boundingBox();
+		if (!first || !second) throw new Error('no geometry');
+
+		await holdOver(page, first, second, GROUP_DWELL_MS + 250);
+		await expect(page.getByTestId('dwell-ring')).toHaveCount(0);
+		await expect(page.getByTestId('new-group-hint')).toHaveCount(0);
+		await page.mouse.up();
+
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'create_group')).toBe(false);
 	});
 });
 

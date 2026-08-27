@@ -6,6 +6,7 @@ import { ZoomControls } from '@components/layout/ZoomControls';
 import {
 	DndContext,
 	type DragEndEvent,
+	type DragOverEvent,
 	PointerSensor,
 	closestCenter,
 	useSensor,
@@ -38,6 +39,7 @@ import {
 	Input,
 } from '@factorai/ui';
 import { useActiveProject } from '@hooks/useActiveProject';
+import { useDragDwell } from '@hooks/useDragDwell';
 import { useOpenSessions } from '@hooks/useOpenSessions';
 import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
@@ -45,6 +47,7 @@ import { projectStatus } from '@lib/sessionGroups';
 import {
 	fileIntoGroup,
 	groupsOf,
+	parentOf,
 	moveRow,
 	nudgeRow,
 	toOrder,
@@ -58,7 +61,7 @@ import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { AlertTriangle, ArrowUpDown, FolderPlus, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
  * How far the pointer must travel before a press on a row becomes a drag.
@@ -128,25 +131,141 @@ export function Sidebar() {
 	// one click away and says what it does.
 	const canReorder = sort === 'manual';
 	const applyTree = useApplyTree();
+
+	const queryClient = useQueryClient();
+	const groups = useMemo(() => groupsOf(sidebarQ.data ?? []), [sidebarQ.data]);
+	// Which group's name is being edited. **Owned here rather than by the row**,
+	// because creating a group has to open the editor on a row that has only just
+	// appeared — the row cannot know it is new.
+	const [editingGroup, setEditingGroup] = useState<string | null>(null);
+	const [removingGroup, setRemovingGroup] = useState<GroupRow | null>(null);
+	const groupWrites = useGroupWrites();
+	const expand = useSidebarStore((s) => s.toggleProject);
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: DRAG_START_PX } }),
 	);
 
+	/** Make a group holding the two projects the gesture named, and open its name
+	 *  editor. The mouse's answer to `Move to group ▸ → New group…`, and it goes
+	 *  through the same `create` + `fileIntoGroup` pair so the two cannot drift. */
+	const groupFromDrop = useCallback(
+		async (activeId: string, overId: string) => {
+			const created = await groupWrites.create();
+			if (created.kind !== 'group') return;
+			expand(created.rowId);
+			const tree = queryClient.getQueryData<SidebarRow[]>(queryKeys.sidebar()) ?? [];
+			// The row dropped **on** goes in first, so the group reads top-to-bottom
+			// in the order the two rows had — the held one landed on it, so it is
+			// second.
+			applyTree(tree, (t) =>
+				fileIntoGroup(fileIntoGroup(t, overId, created.rowId), activeId, created.rowId),
+			);
+			setEditingGroup(created.rowId);
+		},
+		[applyTree, expand, groupWrites, queryClient],
+	);
+
+	/** Collapse one row, whatever its current state — `toggleProject` would open
+	 *  anything already closed. */
+	const collapseOne = useCallback((rowId: string) => {
+		useSidebarStore.setState((state) => ({
+			expanded: state.expanded.filter((id) => id !== rowId),
+		}));
+	}, []);
+
+	// **Holding still over a row means something a pass over it does not.** Over
+	// another project it offers to group the two; over a *collapsed* group it
+	// springs the group open so you can drop inside. One timer and one filling
+	// ring for both, so there is one thing to learn (F1).
+	const dwell = useDragDwell();
+	// Groups this drag sprang open, so they can be closed again if the user drags
+	// away without dropping — springing one open should not silently rearrange
+	// what the user had collapsed.
+	const sprungOpen = useRef<Set<string>>(new Set());
+
+	/** Can holding over this row offer to group? Only where a new group could
+	 *  actually be made: a loose project, held over another loose project. */
+	const canOfferGroup = useCallback(
+		(activeId: string, overId: string) => {
+			const tree = sidebarQ.data ?? [];
+			const overRow = tree.find((r) => r.rowId === overId);
+			// Not a group row — that case is the spring-open — and not a project
+			// already inside one, which would need nesting. Over a grouped project
+			// the drop just files the held row into that group, which is the useful
+			// outcome (F1).
+			if (!overRow || overRow.kind !== 'project') return false;
+			return parentOf(tree, activeId) === null;
+		},
+		[sidebarQ.data],
+	);
+
+	const onDragOver = useCallback(
+		(event: DragOverEvent) => {
+			const { active, over } = event;
+			const overId = over ? String(over.id).replace(/^empty:/, '') : null;
+			if (!overId || overId === String(active.id)) {
+				dwell.track(null);
+				return;
+			}
+			const tree = sidebarQ.data ?? [];
+			const overRow = tree.find((r) => r.rowId === overId);
+			const isCollapsedGroup = overRow?.kind === 'group' && !expandedSet.has(overRow.rowId);
+			// Only time a hold where the hold would do something.
+			dwell.track(isCollapsedGroup || canOfferGroup(String(active.id), overId) ? overId : null);
+		},
+		[canOfferGroup, dwell, expandedSet, sidebarQ.data],
+	);
+
+	// Spring a collapsed group open once its dwell completes. In an effect rather
+	// than in `onDragOver` because it is a *consequence* of the timer finishing,
+	// and dnd-kit has to re-measure the newly revealed children before they can be
+	// dropped on — which it does on the render this triggers.
+	useEffect(() => {
+		if (!dwell.dwellingOn) return;
+		const tree = sidebarQ.data ?? [];
+		const row = tree.find((r) => r.rowId === dwell.dwellingOn);
+		if (row?.kind !== 'group' || expandedSet.has(row.rowId)) return;
+		sprungOpen.current.add(row.rowId);
+		expand(row.rowId);
+	}, [dwell.dwellingOn, expand, expandedSet, sidebarQ.data]);
+
+	const endDrag = useCallback(() => {
+		setDragging(false);
+		dwell.track(null);
+		sprungOpen.current.clear();
+	}, [dwell]);
+
 	const onDragEnd = useCallback(
 		(event: DragEndEvent) => {
-			setDragging(false);
 			const { active, over } = event;
-			if (!over || active.id === over.id) return;
+			const activeId = String(active.id);
 			// An empty group's hint row is a droppable under `empty:<rowId>` — see
 			// `EmptyGroupHint`. Stripping the prefix here is what makes dropping on
 			// it resolve to the same `moveRow` call as dropping on the group's own
 			// header, rather than a second rule that has to stay in step.
-			const overId = String(over.id).replace(/^empty:/, '');
-			if (String(active.id) === overId) return;
-			applyTree(rows, (tree) => moveRow(tree, String(active.id), overId));
+			const overId = over ? String(over.id).replace(/^empty:/, '') : null;
+			// **The dwell decides what the drop means**, and it is read before the
+			// state is cleared. Held long enough over another project: the drop makes
+			// a group of the two rather than inserting beside it.
+			const grouping =
+				overId !== null && dwell.dwellingOn === overId && canOfferGroup(activeId, overId);
+			endDrag();
+			if (!overId || activeId === overId) return;
+			if (grouping) {
+				void groupFromDrop(activeId, overId);
+				return;
+			}
+			applyTree(rows, (tree) => moveRow(tree, activeId, overId));
 		},
-		[applyTree, rows],
+		[applyTree, canOfferGroup, dwell.dwellingOn, endDrag, groupFromDrop, rows],
 	);
+
+	const onDragCancel = useCallback(() => {
+		// Re-collapse anything this drag sprang open: the user changed their mind,
+		// and their collapsed groups should be as they left them.
+		for (const rowId of sprungOpen.current) collapseOne(rowId);
+		endDrag();
+	}, [collapseOne, endDrag]);
 
 	/** One slot up or down, because a drag-only reorder is unreachable without a
 	 *  mouse. **`nudgeRow`, not `moveRow` with the neighbour's id** — see that
@@ -158,16 +277,6 @@ export function Sidebar() {
 		},
 		[applyTree, expandedSet, rows],
 	);
-
-	const queryClient = useQueryClient();
-	const groups = useMemo(() => groupsOf(sidebarQ.data ?? []), [sidebarQ.data]);
-	// Which group's name is being edited. **Owned here rather than by the row**,
-	// because creating a group has to open the editor on a row that has only just
-	// appeared — the row cannot know it is new.
-	const [editingGroup, setEditingGroup] = useState<string | null>(null);
-	const [removingGroup, setRemovingGroup] = useState<GroupRow | null>(null);
-	const groupWrites = useGroupWrites();
-	const expand = useSidebarStore((s) => s.toggleProject);
 
 	/** Create a group and open its name editor. Both entry points come here — the
 	 *  header menu with no project, and `Move to group ▸ → New group…` with one to
@@ -415,7 +524,8 @@ export function Sidebar() {
 					collisionDetection={closestCenter}
 					modifiers={[restrictToVerticalAxis]}
 					onDragStart={() => setDragging(true)}
-					onDragCancel={() => setDragging(false)}
+					onDragOver={onDragOver}
+					onDragCancel={onDragCancel}
 					onDragEnd={onDragEnd}
 				>
 					<SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
@@ -429,6 +539,8 @@ export function Sidebar() {
 										activeProjectId={activeProjectId}
 										statusByProject={statusByProject}
 										onNudge={nudge}
+										dwellProgress={dwell.over === row.rowId ? dwell.progress : 0}
+										dwelling={dwell.dwellingOn === row.rowId}
 										groups={groups}
 										onMoveToGroup={moveToGroup}
 										onRemoveFromGroup={removeFromGroup}
@@ -455,6 +567,8 @@ export function Sidebar() {
 										liveStatus={statusByProject.get(row.project.id)}
 										canReorder={canReorder}
 										onNudge={nudge}
+										dwellProgress={dwell.over === row.rowId ? dwell.progress : 0}
+										dwelling={dwell.dwellingOn === row.rowId}
 										groups={groups}
 										onMoveToGroup={moveToGroup}
 									/>

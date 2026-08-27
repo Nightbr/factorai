@@ -357,6 +357,17 @@ hairline ring while the pointer is over it, so "this will accept the drop" is sa
 with the elevation model rather than a new colour. An empty container with prose
 but no target is a container the gesture cannot reach.
 
+**The Dwell Rule.** A gesture that depends on *time* must show the time passing,
+and must show it only where the time counts. A drag resting on a row draws a
+filling ring in that row's own trailing slot — taking a slot rather than adding
+one, so the row does not change width mid-gesture — and nothing at all for the
+first third of the wait, so a row crossed on the way somewhere else stays quiet.
+When the wait completes, the target takes an **accent** ring and names what the
+drop will now do. A hold with no feedback is a hold nobody performs: there is no
+reason to keep holding. The arc is driven by the measured elapsed fraction, not
+by a CSS keyframe of the same duration — a second clock telling a similar story
+is a clock that drifts from the one that decides the outcome.
+
 **The Lifted-Row Rule.** An element being dragged says so with the model's own
 two devices — the `secondary` tonal step and a hairline `ring` — and **not** with
 a shadow. A dragged row is still part of the list it is in; it is going to land

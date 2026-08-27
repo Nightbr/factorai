@@ -1,3 +1,4 @@
+import { DwellRing } from '@components/layout/DwellRing';
 import { SidebarProject } from '@components/layout/SidebarProject';
 import { useDroppable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
@@ -22,6 +23,11 @@ interface SidebarGroupProps {
 	activeProjectId: string | undefined;
 	statusByProject: Map<string, TerminalStatus | undefined>;
 	onNudge: (rowId: string, delta: -1 | 1) => void;
+	/** 0 → 1 while a drag rests on this collapsed group and the spring-open is
+	 *  filling. The same ring the group offer uses, because there is one timed
+	 *  gesture and it should look like one thing (F1). */
+	dwellProgress?: number;
+	dwelling?: boolean;
 	/** Opens the inline name editor. Undefined while the group cannot be renamed
 	 *  — which is only the case under a derived sort, where group rows are not
 	 *  rendered at all, so in practice it is always supplied. */
@@ -63,6 +69,8 @@ export function SidebarGroup({
 	activeProjectId,
 	statusByProject,
 	onNudge,
+	dwellProgress = 0,
+	dwelling = false,
 	onRename,
 	onRemove,
 	editing = false,
@@ -106,7 +114,13 @@ export function SidebarGroup({
 						// no shadow (DESIGN.md's Lifted-Row Rule).
 						className={`group flex items-center pr-1 transition-colors ${
 							canReorder && !editing ? 'touch-none select-none' : ''
-						} ${isDragging ? 'bg-secondary ring-1 ring-border' : 'hover:bg-secondary/50'}`}
+						} ${
+							isDragging
+								? 'bg-secondary ring-1 ring-border'
+								: dwelling
+									? 'bg-secondary ring-1 ring-primary'
+									: 'hover:bg-secondary/50'
+						}`}
 					>
 						<IconButton
 							aria-label={expanded ? `Collapse ${row.name}` : `Expand ${row.name}`}
@@ -140,10 +154,20 @@ export function SidebarGroup({
 								>
 									<span className="min-w-0 flex-1 truncate">{row.name}</span>
 								</button>
-								{!expanded && row.children.length > 0 && (
-									<span className="shrink-0 pr-1 text-muted-foreground/70 text-xs tabular-nums">
-										{row.children.length}
+								{/* The ring takes the count's slot while a drag is being timed on
+								    this row, so a collapsed group does not change width as it is
+								    about to spring open. */}
+								{dwellProgress > 0 ? (
+									<span className="shrink-0 pr-1">
+										<DwellRing progress={dwellProgress} />
 									</span>
+								) : (
+									!expanded &&
+									row.children.length > 0 && (
+										<span className="shrink-0 pr-1 text-muted-foreground/70 text-xs tabular-nums">
+											{row.children.length}
+										</span>
+									)
 								)}
 							</>
 						)}
