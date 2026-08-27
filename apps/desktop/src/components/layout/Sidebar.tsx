@@ -14,8 +14,17 @@ import {
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { SidebarRow } from '@factorai/types';
+
+/** A group row, narrowed once so the dialog and the handlers can name it. */
+type GroupRow = Extract<SidebarRow, { kind: 'group' }>;
 import {
 	Button,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -25,6 +34,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 	IconButton,
+	InlineEdit,
 	Input,
 } from '@factorai/ui';
 import { useActiveProject } from '@hooks/useActiveProject';
@@ -32,13 +42,22 @@ import { useOpenSessions } from '@hooks/useOpenSessions';
 import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
 import { projectStatus } from '@lib/sessionGroups';
-import { moveRow, nudgeRow, toOrder, viewRows, visibleRowIds } from '@lib/sidebarTree';
+import {
+	fileIntoGroup,
+	groupsOf,
+	moveRow,
+	nudgeRow,
+	toOrder,
+	unfile,
+	viewRows,
+	visibleRowIds,
+} from '@lib/sidebarTree';
 import { cmd, pickFolder } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, FolderPlus, Search } from 'lucide-react';
+import { AlertTriangle, ArrowUpDown, FolderPlus, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 /**
@@ -140,11 +159,70 @@ export function Sidebar() {
 		[applyTree, expandedSet, rows],
 	);
 
+	const queryClient = useQueryClient();
+	const groups = useMemo(() => groupsOf(sidebarQ.data ?? []), [sidebarQ.data]);
+	// Which group's name is being edited. **Owned here rather than by the row**,
+	// because creating a group has to open the editor on a row that has only just
+	// appeared — the row cannot know it is new.
+	const [editingGroup, setEditingGroup] = useState<string | null>(null);
+	const [removingGroup, setRemovingGroup] = useState<GroupRow | null>(null);
+	const groupWrites = useGroupWrites();
+	const expand = useSidebarStore((s) => s.toggleProject);
+
+	/** Create a group and open its name editor. Both entry points come here — the
+	 *  header menu with no project, and `Move to group ▸ → New group…` with one to
+	 *  put in it. */
+	const createGroup = useCallback(
+		async (rowIdToFile?: string) => {
+			const created = await groupWrites.create();
+			if (created.kind !== 'group') return;
+			// Expanded, so a project filed into it is visible rather than landing in
+			// a closed box.
+			expand(created.rowId);
+			if (rowIdToFile) {
+				const tree = queryClient.getQueryData<SidebarRow[]>(queryKeys.sidebar()) ?? [];
+				applyTree(tree, (t) => fileIntoGroup(t, rowIdToFile, created.rowId));
+			}
+			setEditingGroup(created.rowId);
+		},
+		[applyTree, expand, groupWrites, queryClient],
+	);
+
+	const moveToGroup = useCallback(
+		(rowId: string, groupRowId: string | null) => {
+			if (groupRowId === null) {
+				void createGroup(rowId);
+				return;
+			}
+			expand(groupRowId);
+			applyTree(rows, (tree) => fileIntoGroup(tree, rowId, groupRowId));
+		},
+		[applyTree, createGroup, expand, rows],
+	);
+
+	const removeFromGroup = useCallback(
+		(rowId: string) => applyTree(rows, (tree) => unfile(tree, rowId)),
+		[applyTree, rows],
+	);
+
+	/** Silent for an empty group, a dialog for one holding projects — the same
+	 *  rule `remove_project` follows (F1). Nothing on disk is touched either way;
+	 *  what a held group has at stake is the arrangement inside it. */
+	const requestRemoveGroup = useCallback(
+		(row: GroupRow) => {
+			if (row.children.length === 0) {
+				groupWrites.remove(row.rowId);
+				return;
+			}
+			setRemovingGroup(row);
+		},
+		[groupWrites],
+	);
+
 	// Adding a folder to the workspace (F1). Since ADR-0011 this is the *only*
 	// way a project appears — nothing arrives because Claude touched a directory
 	// — so it has two entry points: the picker for a folder you browse to, and
 	// the import dialog for folders Claude already knows.
-	const queryClient = useQueryClient();
 	const [adding, setAdding] = useState(false);
 	const [addError, setAddError] = useState<string | null>(null);
 	const [importOpen, setImportOpen] = useState(false);
@@ -211,20 +289,37 @@ export function Sidebar() {
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<IconButton
-							aria-label="Add project"
-							title="Add a project"
+							aria-label="Add a project or group"
+							title="Add a project or group"
 							data-testid="add-project-menu"
 							disabled={adding}
 						>
 							<FolderPlus />
 						</IconButton>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-52">
+					{/* **`onCloseAutoFocus` prevented, and it is load-bearing.** Radix
+					    returns focus to the trigger as the menu closes, which lands
+					    *after* `New Group…` has mounted the inline name editor — and an
+					    editor that treats blur as commit closes itself instantly. Nothing
+					    in this menu wants focus back on the button: each item either
+					    opens a dialog, a picker, or an editor that focuses itself. */}
+					<DropdownMenuContent
+						align="end"
+						className="w-52"
+						onCloseAutoFocus={(e) => e.preventDefault()}
+					>
 						<DropdownMenuItem data-testid="add-project" onSelect={() => void addProject()}>
 							Add Project…
 						</DropdownMenuItem>
 						<DropdownMenuItem data-testid="open-import" onSelect={() => setImportOpen(true)}>
 							Import from Claude Code…
+						</DropdownMenuItem>
+						{/* Below the separator: the two Add doors above it are one action
+						    with two sources (ADR-0011), and making a group is a different
+						    kind of act rather than a third door onto the same one. */}
+						<DropdownMenuSeparator />
+						<DropdownMenuItem data-testid="new-group" onSelect={() => void createGroup()}>
+							New Group…
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -334,6 +429,22 @@ export function Sidebar() {
 										activeProjectId={activeProjectId}
 										statusByProject={statusByProject}
 										onNudge={nudge}
+										groups={groups}
+										onMoveToGroup={moveToGroup}
+										onRemoveFromGroup={removeFromGroup}
+										onRename={setEditingGroup}
+										onRemove={requestRemoveGroup}
+										editing={editingGroup === row.rowId}
+										renameEditor={
+											<InlineEdit
+												value={row.name}
+												aria-label={`Rename ${row.name}`}
+												data-testid={`rename-group-${row.rowId}`}
+												className="py-2 font-medium text-xs uppercase tracking-wider"
+												onCommit={(name) => groupWrites.rename(row.rowId, name)}
+												onCancel={() => setEditingGroup(null)}
+											/>
+										}
 									/>
 								) : (
 									<SidebarProject
@@ -344,6 +455,8 @@ export function Sidebar() {
 										liveStatus={statusByProject.get(row.project.id)}
 										canReorder={canReorder}
 										onNudge={nudge}
+										groups={groups}
+										onMoveToGroup={moveToGroup}
 									/>
 								),
 							)}
@@ -381,6 +494,45 @@ export function Sidebar() {
 			{/* Mounted here rather than at the app shell: it is the sidebar's
 			    action, and its only two triggers are in this component. */}
 			<ImportProjects open={importOpen} onOpenChange={setImportOpen} />
+
+			{/* Only reached with projects inside. An empty group goes on the click:
+			    it is a container you can remake in two clicks, and a dialog there is
+			    friction on the one thing everybody does with this feature. What a
+			    held group has at stake is the arrangement, not any project — hence
+			    the copy. Same shape as Remove Project's confirm (F1). */}
+			<Dialog
+				open={removingGroup !== null}
+				onOpenChange={(open) => !open && setRemovingGroup(null)}
+			>
+				<DialogContent data-testid="confirm-remove-group">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							<AlertTriangle className="size-5 text-destructive" />
+							Remove {removingGroup?.name}?
+						</DialogTitle>
+						<DialogDescription>
+							Its {removingGroup?.children.length} project
+							{removingGroup?.children.length === 1 ? '' : 's'} move back to the top level, in this
+							group's place. Nothing is deleted.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setRemovingGroup(null)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							data-testid="confirm-remove-group-yes"
+							onClick={() => {
+								if (removingGroup) groupWrites.remove(removingGroup.rowId);
+								setRemovingGroup(null);
+							}}
+						>
+							Remove group
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</>
 	);
 }
@@ -428,4 +580,53 @@ function useApplyTree(): (
 		},
 		[mutation, queryClient],
 	);
+}
+
+/**
+ * Create, rename and remove a group.
+ *
+ * **Not optimistic, unlike the reorder.** Each of these changes the *set* of
+ * rows rather than their order, and `reorder_sidebar` rejects a tree whose row
+ * set does not match the sidebar — so a locally-invented group would make the
+ * very next drag fail until the poll caught up. Awaiting the write and
+ * invalidating is both simpler and the only correct order of operations here.
+ *
+ * `create` returns the row because the caller needs its id immediately: to
+ * expand it, to file a project into it, and to open its name editor.
+ */
+function useGroupWrites(): {
+	create: (name?: string) => Promise<SidebarRow>;
+	rename: (rowId: string, name: string) => void;
+	remove: (rowId: string) => void;
+} {
+	const queryClient = useQueryClient();
+	const invalidate = useCallback(
+		() => queryClient.invalidateQueries({ queryKey: queryKeys.sidebar() }),
+		[queryClient],
+	);
+
+	const create = useCallback(
+		async (name?: string) => {
+			const row = await cmd.createGroup(name);
+			await invalidate();
+			return row;
+		},
+		[invalidate],
+	);
+
+	const rename = useCallback(
+		(rowId: string, name: string) => {
+			void cmd.renameGroup(rowId, name).then(invalidate);
+		},
+		[invalidate],
+	);
+
+	const remove = useCallback(
+		(rowId: string) => {
+			void cmd.removeGroup(rowId).then(invalidate);
+		},
+		[invalidate],
+	);
+
+	return { create, rename, remove };
 }

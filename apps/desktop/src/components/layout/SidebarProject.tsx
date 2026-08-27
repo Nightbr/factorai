@@ -12,6 +12,9 @@ import {
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuSeparator,
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
 	ContextMenuTrigger,
 	Dialog,
 	DialogContent,
@@ -36,7 +39,10 @@ import {
 	ArrowDown,
 	ArrowUp,
 	ChevronRight,
+	FolderInput,
 	FolderOpen,
+	FolderOutput,
+	FolderPlus,
 	Plus,
 	Trash2,
 } from 'lucide-react';
@@ -89,9 +95,18 @@ interface SidebarProjectProps {
 	 *  only half unavailable is worse than one that is plainly off. */
 	canReorder: boolean;
 	onNudge: (rowId: string, delta: -1 | 1) => void;
-	/** True for a project sitting inside a group, which indents it and adds
-	 *  `Remove from group` to its menu. */
-	nested?: boolean;
+	/** The row id of the group holding this project, if any. Indents the row, adds
+	 *  `Remove from group` to its menu, and greys that group out in
+	 *  `Move to group ▸` — an enabled row there would be a no-op the user paid a
+	 *  click for. */
+	parentGroupRowId?: string;
+	/** Every group, for `Move to group ▸`. Empty when there are none, which is
+	 *  what hides the submenu rather than showing an empty one. */
+	groups?: { rowId: string; name: string }[];
+	/** File this row into a group, or — with `null` — into a brand-new one. The
+	 *  `null` case is the keyboard's answer to the dwell gesture. */
+	onMoveToGroup?: (rowId: string, groupRowId: string | null) => void;
+	onRemoveFromGroup?: (rowId: string) => void;
 }
 
 export function SidebarProject({
@@ -101,7 +116,10 @@ export function SidebarProject({
 	liveStatus,
 	canReorder,
 	onNudge,
-	nested = false,
+	parentGroupRowId,
+	groups = [],
+	onMoveToGroup,
+	onRemoveFromGroup,
 }: SidebarProjectProps) {
 	const expanded = useSidebarStore((s) => s.expanded.includes(project.id));
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
@@ -215,7 +233,7 @@ export function SidebarProject({
 						className={`group flex items-center pr-1 transition-colors ${
 							// Indented by the chevron's width, so a project inside a group
 							// lines up under the group's name rather than under its chevron.
-							nested ? 'pl-4' : ''
+							parentGroupRowId ? 'pl-4' : ''
 						} ${canReorder ? 'touch-none select-none' : ''} ${
 							isDragging
 								? 'bg-secondary ring-1 ring-border'
@@ -298,7 +316,10 @@ export function SidebarProject({
 						</span>
 					</div>
 				</ContextMenuTrigger>
-				<ContextMenuContent className="w-56">
+				{/* Same reason as the group row's: `Move to group ▸ → New group…`
+				    mounts an inline editor that focuses itself, and Radix's close-time
+				    refocus would blur it away before you could type. */}
+				<ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
 					{/* Present only where they work. Under a derived sort these are
 					    absent rather than greyed: a disabled row invites you to hunt for
 					    the thing blocking it, and the thing blocking it is a sort mode
@@ -313,6 +334,45 @@ export function SidebarProject({
 								<ArrowDown />
 								Move down
 							</ContextMenuItem>
+							{/* **The complete keyboard path for changing level.** `Alt`+arrows
+							    only walk one slot, so filing into a named group — or making one
+							    — needs a target you can pick rather than step to. `New group…`
+							    here is what the dwell gesture is for the mouse. */}
+							{onMoveToGroup && (
+								<ContextMenuSub>
+									<ContextMenuSubTrigger>
+										<FolderInput />
+										Move to group
+									</ContextMenuSubTrigger>
+									<ContextMenuSubContent>
+										{groups.map((group) => (
+											<ContextMenuItem
+												key={group.rowId}
+												disabled={group.rowId === parentGroupRowId}
+												onSelect={() => onMoveToGroup(rowId, group.rowId)}
+											>
+												{group.name}
+											</ContextMenuItem>
+										))}
+										{groups.length > 0 && <ContextMenuSeparator />}
+										<ContextMenuItem
+											data-testid={`new-group-from-${project.id}`}
+											onSelect={() => onMoveToGroup(rowId, null)}
+										>
+											<FolderPlus />
+											New group…
+										</ContextMenuItem>
+									</ContextMenuSubContent>
+								</ContextMenuSub>
+							)}
+							{/* Only where there is a group to leave. A greyed row would invite
+							    a hunt for what is blocking it, and nothing is. */}
+							{parentGroupRowId && onRemoveFromGroup && (
+								<ContextMenuItem onSelect={() => onRemoveFromGroup(rowId)}>
+									<FolderOutput />
+									Remove from group
+								</ContextMenuItem>
+							)}
 							<ContextMenuSeparator />
 						</>
 					)}

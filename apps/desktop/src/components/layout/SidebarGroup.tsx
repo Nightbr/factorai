@@ -32,6 +32,11 @@ interface SidebarGroupProps {
 	 *  group can open the editor on a row that has only just appeared. */
 	editing?: boolean;
 	renameEditor?: React.ReactNode;
+	/** Passed straight through to the projects inside, which carry the
+	 *  `Move to group ▸` submenu — a group row has no use for them itself. */
+	groups?: { rowId: string; name: string }[];
+	onMoveToGroup?: (rowId: string, groupRowId: string | null) => void;
+	onRemoveFromGroup?: (rowId: string) => void;
 }
 
 /**
@@ -62,6 +67,9 @@ export function SidebarGroup({
 	onRemove,
 	editing = false,
 	renameEditor,
+	groups = [],
+	onMoveToGroup,
+	onRemoveFromGroup,
 }: SidebarGroupProps) {
 	const expanded = useSidebarStore((s) => s.expanded.includes(row.rowId));
 	const toggle = useSidebarStore((s) => s.toggleProject);
@@ -141,7 +149,11 @@ export function SidebarGroup({
 						)}
 					</div>
 				</ContextMenuTrigger>
-				<ContextMenuContent className="w-56">
+				{/* Focus is not returned to the row: `Rename…` mounts an inline editor
+				    that focuses itself, and Radix's close-time refocus would blur it
+				    straight back out (an editor that commits on blur then closes
+				    instantly). Nothing here needs the row focused afterwards. */}
+				<ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
 					{onRename && (
 						<ContextMenuItem onSelect={() => onRename(row.rowId)}>Rename…</ContextMenuItem>
 					)}
@@ -182,7 +194,10 @@ export function SidebarGroup({
 							liveStatus={statusByProject.get(child.project.id)}
 							canReorder={canReorder}
 							onNudge={onNudge}
-							nested
+							parentGroupRowId={row.rowId}
+							groups={groups}
+							onMoveToGroup={onMoveToGroup}
+							onRemoveFromGroup={onRemoveFromGroup}
 						/>
 					))}
 					{/* **An empty group says so, and the row that says it is the drop

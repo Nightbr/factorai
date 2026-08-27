@@ -335,6 +335,177 @@ test.describe('project groups', () => {
 	});
 });
 
+test.describe('creating, renaming and removing a group', () => {
+	function topLevel(page: import('@playwright/test').Page) {
+		return page.getByTestId('projects').locator('> li > div');
+	}
+
+	test('@smoke New Group… creates a group at the top with its name selected', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		await page.getByTestId('add-project-menu').click();
+		await page.getByTestId('new-group').click();
+
+		// Top of the list, like a newly added project — and the editor has to be on
+		// screen for the rename that opens with it to mean anything.
+		const editor = page.getByRole('textbox', { name: /Rename New group/ });
+		await expect(editor).toBeFocused();
+		// Selected, not just focused: every use of this is "here is a default,
+		// replace it", so typing replaces rather than appends.
+		await expect(editor).toHaveValue('New group');
+		await page.keyboard.type('Pro');
+		await page.keyboard.press('Enter');
+
+		await expect(topLevel(page).nth(0)).toContainText('Pro');
+	});
+
+	test('@smoke Escape keeps the default name rather than losing the group', async ({ page }) => {
+		// The group exists either way — that is the whole reason rename is inline
+		// rather than a modal whose Cancel has to decide.
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		await page.getByTestId('add-project-menu').click();
+		await page.getByTestId('new-group').click();
+		await page.keyboard.type('half a name');
+		await page.keyboard.press('Escape');
+
+		await expect(topLevel(page).nth(0)).toContainText('New group');
+	});
+
+	test('@smoke Rename… renames a group, and it survives a refetch', async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		await page.getByTestId(`group-${PRO_GROUP_ID}`).locator('> div').click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Rename…' }).click();
+		await page.keyboard.type('Work');
+		await page.keyboard.press('Enter');
+
+		await expect(page.getByTestId(`group-${PRO_GROUP_ID}`)).toContainText('Work');
+		await page.waitForTimeout(2_500);
+		await expect(page.getByTestId(`group-${PRO_GROUP_ID}`)).toContainText('Work');
+	});
+
+	test('@smoke removing an empty group is silent', async ({ page }) => {
+		// A container you can remake in two clicks. A dialog here is friction on the
+		// one thing everybody does with this feature.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		await page.getByTestId(`group-${PERSO_GROUP_ID}`).locator('> div').click({ button: 'right' });
+		await page.getByTestId(`remove-group-${PERSO_GROUP_ID}`).click();
+
+		await expect(page.getByTestId('confirm-remove-group')).toHaveCount(0);
+		await expect(page.getByTestId(`group-${PERSO_GROUP_ID}`)).toHaveCount(0);
+	});
+
+	test('@smoke removing a group with projects asks, then returns them to the list', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		await page.getByTestId(`group-${PRO_GROUP_ID}`).locator('> div').click({ button: 'right' });
+		await page.getByTestId(`remove-group-${PRO_GROUP_ID}`).click();
+
+		const confirm = page.getByTestId('confirm-remove-group');
+		await expect(confirm).toBeVisible();
+		await expect(confirm).toContainText('1 project');
+		await expect(confirm).toContainText('Nothing is deleted');
+		await page.getByTestId('confirm-remove-group-yes').click();
+
+		// Spliced into the group's own slot — the box is erased, not its contents.
+		await expect(page.getByTestId(`group-${PRO_GROUP_ID}`)).toHaveCount(0);
+		await expect(topLevel(page).nth(0)).toContainText('alpha');
+	});
+
+	test('@smoke Cancel leaves the group alone', async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		await page.getByTestId(`group-${PRO_GROUP_ID}`).locator('> div').click({ button: 'right' });
+		await page.getByTestId(`remove-group-${PRO_GROUP_ID}`).click();
+		await page.getByRole('button', { name: 'Cancel' }).click();
+
+		await expect(page.getByTestId(`group-${PRO_GROUP_ID}`)).toBeVisible();
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.some((c) => c.name === 'remove_group')).toBe(false);
+	});
+});
+
+test.describe('Move to group', () => {
+	function topLevel(page: import('@playwright/test').Page) {
+		return page.getByTestId('projects').locator('> li > div');
+	}
+
+	test('@smoke files a project into a named group from the menu', async ({ page }) => {
+		// The complete keyboard path for changing level: Alt+arrows only walk one
+		// slot, so picking a named group needs a target rather than a step.
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		await topLevel(page).nth(1).click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Move to group' }).hover();
+		await page.getByRole('menuitem', { name: 'Perso', exact: true }).click();
+
+		await expect(page.getByTestId(`group-children-${PERSO_GROUP_ID}`)).toContainText('zulu');
+	});
+
+	test('@smoke New group… makes a group holding that project', async ({ page }) => {
+		// The keyboard's answer to the dwell gesture.
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		await topLevel(page).nth(0).click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Move to group' }).hover();
+		await page.getByRole('menuitem', { name: 'New group…' }).click();
+
+		// Created, holding the project, expanded, with its name up for editing.
+		await expect(page.getByRole('textbox', { name: /Rename New group/ })).toBeFocused();
+		await page.keyboard.type('Pro');
+		await page.keyboard.press('Enter');
+		await expect(topLevel(page).nth(0)).toContainText('Pro');
+		await expect(page.getByTestId('projects')).toContainText('zulu');
+	});
+
+	test('@smoke Remove from group appears only for a project in one', async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand Pro', exact: true }).click();
+
+		// A loose project has nothing to leave, so the row is absent rather than
+		// greyed — nothing is blocking it.
+		await topLevel(page).nth(1).click({ button: 'right' });
+		await expect(page.getByRole('menuitem', { name: 'Remove from group' })).toHaveCount(0);
+		await page.keyboard.press('Escape');
+
+		const alpha = page.getByTestId(`group-children-${PRO_GROUP_ID}`).locator('> li > div');
+		await alpha.click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Remove from group' }).click();
+
+		// `unfile` puts it at the end of the top level, so filter rather than
+		// index — and Pro showing its placeholder is the proof it really left.
+		await expect(topLevel(page).filter({ hasText: 'alpha' })).toHaveCount(1);
+		await expect(page.getByTestId(`group-empty-${PRO_GROUP_ID}`)).toBeVisible();
+	});
+
+	test('@smoke the group a project is already in is greyed out', async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand Pro', exact: true }).click();
+
+		const alpha = page.getByTestId(`group-children-${PRO_GROUP_ID}`).locator('> li > div');
+		await alpha.click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Move to group' }).hover();
+
+		// An enabled row there would be a no-op the user paid a click for.
+		await expect(page.getByRole('menuitem', { name: 'Pro', exact: true })).toBeDisabled();
+		await expect(page.getByRole('menuitem', { name: 'Perso', exact: true })).toBeEnabled();
+	});
+});
+
 test.describe('sidebar resizing', () => {
 	test('@smoke the separator resizes the sidebar and the width persists', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
