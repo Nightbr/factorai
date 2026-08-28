@@ -18,7 +18,7 @@ import {
  */
 async function openSession(page: Page, name: RegExp) {
 	await page.getByRole('link', { name }).click();
-	await expect(page.locator('.xterm')).toBeVisible();
+	await expect(page.locator('.xterm:visible')).toBeVisible();
 }
 
 test.describe('session header', () => {
@@ -47,7 +47,7 @@ test.describe('session header', () => {
 		await page.getByRole('button', { name: /Keep it running/ }).click();
 
 		await expect(page.getByText('Close this session?')).toHaveCount(0);
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 		await expect(page.getByTestId('session-tabs').getByRole('tab')).toHaveCount(1);
 		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
 		expect(calls.some((c) => c.name === 'terminal_kill')).toBe(false);

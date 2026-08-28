@@ -678,6 +678,41 @@ tall glyph should be cut rather than bleed into the row below.
 Each site carries the full reasoning — the two CSS files and the sizing section
 of `Terminal.tsx`.
 
+**One xterm per session, and it never leaves the document** (2026-08-28).
+Terminals are pooled: one xterm instance per session, kept for the app's
+lifetime, so reopening a session shows its scrollback and its output keeps
+arriving while you are looking at something else. What changed is where the
+pooled host *lives*. It used to be appended to the pane on mount and
+`removeChild`'d on unmount; now every host that has been shown stays in the
+pane, stacked, and switching session toggles `visibility`.
+
+The report was **the wheel not scrolling the terminal after a tab switch, on
+macOS** — clicking into the terminal restored it, and Linux could not reproduce
+it. The strip and the session route share one pane element (switching tab
+re-renders `SessionView`, it does not remount it), so the only thing that moved
+was the host: measured in the browser lane, six disconnections from the document
+per switch. WebKit on macOS routes wheel events on its scrolling thread against
+the document's **wheel event region**, built from nodes whose wheel handlers were
+registered while connected; a subtree that leaves the document drops out of it,
+and xterm's wheel listener lives on `.xterm` inside the host. The scrolling
+thread then never hands the event to the page — until a click forces the
+main-thread hit test that rebuilds the region, which is exactly the workaround
+the report describes. WebKitGTK has no scrolling thread and no region, so the
+same DOM churn is invisible on Linux.
+
+Two things were wrong on every platform as well, quietly. A detached element
+measures `offsetHeight` 0, and xterm's `Viewport._innerRefresh` keeps running in
+the background as output arrives: it recorded that 0 as the viewport height, and
+its `scrollTop` write — which a detached element ignores — left
+`_ignoreNextScrollEvent` latched `true`, so the first wheel tick after coming
+back was swallowed. `visibility` rather than `display: none` because a hidden box
+still has layout: the background terminal stays the pane's size and is already
+correct when you switch to it, while being neither hit-testable nor focusable.
+
+The pooled xterm is also `open()`ed on a host that is already in the pane, so its
+first char-size and render-dimension measurements are taken against a real
+layout instead of being corrected by the first fit.
+
 **Backend.** `terminal_spawn`, `terminal_write`, `terminal_resize`,
 `terminal_kill`. `terminal:data` events stream output. The same reader parses
 `OSC 0` titles out of that stream to tell working from waiting-for-input — see

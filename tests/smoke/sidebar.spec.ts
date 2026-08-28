@@ -81,7 +81,7 @@ test.describe('sidebar projects', () => {
 		await page.getByRole('link', { name: /Zulu task 11/ }).click();
 
 		await expect(page).toHaveURL(/sessions\/zulu-session-11$/);
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 	});
 });
 
@@ -941,7 +941,7 @@ test.describe('sidebar resizing', () => {
 		// Open a session so the project has a live PTY.
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
 		await page.getByRole('link', { name: /Zulu task 11/ }).click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		// The dot is inside the avatar, not a sibling in the row.
 		const badgedIcon = page

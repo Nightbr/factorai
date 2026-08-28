@@ -3,6 +3,38 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The wheel scrolls the terminal straight after a tab switch, on macOS — spec `05-features.md`
+  F5** — 2026-08-28, user report: switch session, scroll the mouse wheel over the new session's
+  output, nothing moves; click into the terminal and it works from then on. Not reproducible on
+  Linux, which turned out to be the clue rather than a gap in testing.
+
+  **The pooled xterm host used to leave the document on every switch.** The strip and the session
+  route share one pane element — switching tab re-renders `SessionView` rather than remounting it —
+  so the pane stayed put and only the host moved, `removeChild` on unmount and `appendChild` on
+  mount. Measured in the browser lane: six disconnections per switch. WebKit on macOS routes wheel
+  events on its scrolling thread against the document's **wheel event region**, built from nodes
+  whose wheel handlers were registered while connected; a subtree that leaves the document drops out
+  of it, and xterm's wheel listener sits on `.xterm` inside the host. The scrolling thread then
+  never hands the event to the page, until a click forces the main-thread hit test that rebuilds the
+  region — which is exactly the workaround the report describes. WebKitGTK has neither, so the same
+  DOM churn is invisible on Linux.
+
+  Now every host that has been shown stays in the pane, stacked `absolute inset-0`, and switching
+  toggles `visibility`. Two quieter bugs went with it, on every platform: a detached element
+  measures `offsetHeight` 0, so xterm's `Viewport._innerRefresh` recorded 0 as the viewport height
+  as background output arrived, and its `scrollTop` write — which a detached element ignores — left
+  `_ignoreNextScrollEvent` latched `true`, swallowing the first wheel tick after you came back. The
+  pooled terminal is also `open()`ed on a host that is already in the pane, so xterm's first
+  measurements are taken against a real layout rather than corrected by the first fit.
+
+  `visibility`, not `display: none` or `content-visibility: hidden`: a hidden box keeps its layout,
+  which is what keeps the background terminal the pane's size and its geometry honest. The cost is
+  that a background session's rows are now laid out (never painted) as output arrives. The guard is
+  `tests/smoke/terminal-pool.spec.ts`, which counts disconnections rather than asserting on
+  scrolling — the symptom needs WebKit's scrolling thread and cannot be reproduced in the browser
+  lane at all. **Still unverified on the reporter's machine**; the cause is measured, the macOS half
+  of the mechanism is read off WebKit's design rather than off a debugger.
+
 - **A dev build runs under its own app identifier — ADR-0024** — 2026-08-27, user ask, after a
   dev run broke the installed release. `tauri dev` merges
   `apps/desktop/src-tauri/tauri.dev.conf.json`, whose only field is

@@ -203,13 +203,16 @@ function fitToHost(entry: PooledTerm): void {
 // ── Persistent xterm pool ──────────────────────────────────────────────────
 //
 // One xterm instance per session, kept alive for the app's lifetime (or until
-// `disposeTerminal`). The component reparents the instance's host element into
-// its container on mount and detaches it on unmount — it never disposes the
-// xterm. This is what makes reopening a session show its full scrollback: the
-// terminal keeps its buffer AND keeps consuming PTY output via listeners even
-// while it isn't on screen. Recreating xterm on every navigation (the old
-// approach) showed an empty pane because a fresh terminal can't replay a live
-// PTY's history.
+// `disposeTerminal`). The component never disposes the xterm. This is what
+// makes reopening a session show its full scrollback: the terminal keeps its
+// buffer AND keeps consuming PTY output via listeners even while it isn't on
+// screen. Recreating xterm on every navigation (the old approach) showed an
+// empty pane because a fresh terminal can't replay a live PTY's history.
+//
+// **Every pooled host stays in the document once it has been shown, stacked in
+// the pane; switching session toggles `visibility`, it does not reparent.**
+// That is a bug fix, not a tidy-up — see `showOnly` for the macOS report it
+// came from and for what detaching cost even where the wheel kept working.
 //
 // Terminals are NEVER killed on unmount — they live in `terminalStore` and are
 // torn down only by `kill_all()` on quit (ADR-0005) or an explicit restart.
@@ -231,12 +234,73 @@ function pushSize(terminalId: string, cols: number, rows: number): void {
 	void cmd.terminalResize(terminalId, cols, rows).catch(() => undefined);
 }
 
-function getOrCreateTerm(sessionId: string): PooledTerm {
+/**
+ * Show this session's pooled host and hide every other one in the same pane.
+ *
+ * **The terminal scrolls with the wheel straight after a tab switch, on macOS**
+ * (reported 2026-08-28: the wheel did nothing over the new session's output
+ * until you clicked into it, and Linux could not reproduce it).
+ *
+ * The strip and the session route share one pane element — switching tab
+ * re-renders `SessionView` rather than remounting it — so the only thing that
+ * moved was the xterm host, which the old code `removeChild`'d on unmount and
+ * `appendChild`'d on mount. Measured in the browser lane: six disconnections
+ * from the document per switch, every one of them a subtree that leaves the
+ * document and comes back.
+ *
+ * That is the one thing WebKit-on-macOS treats differently from WebKitGTK.
+ * Wheel events there are routed on the scrolling thread against the document's
+ * *wheel event region*, which is built from the nodes that have wheel handlers
+ * registered while connected; a subtree that leaves the document is dropped
+ * from it. xterm's own wheel listener sits on `.xterm` inside the host, so a
+ * re-inserted terminal is outside the region and the scrolling thread never
+ * hands the event to the page. A click forces the main-thread hit test that
+ * rebuilds it, which is exactly the workaround the report describes. Linux has
+ * no scrolling thread and no region, so the same DOM churn is invisible there.
+ *
+ * Hiding rather than detaching also fixes two things that were wrong on every
+ * platform, quietly. A detached element measures `offsetHeight` 0, and xterm's
+ * `Viewport._innerRefresh` runs while output keeps arriving in the background:
+ * it records that 0 as the viewport height and then tries to set `scrollTop`,
+ * which a detached element ignores — leaving `_ignoreNextScrollEvent` latched
+ * `true`, so the first wheel tick after you come back is swallowed. Both are
+ * gone once the host keeps a real box.
+ *
+ * `visibility` and not `display: none`: a hidden box still has layout, which is
+ * the whole point — the background terminal stays the pane's size, so it is
+ * already correct when you switch to it. It is also not hit-testable and not
+ * focusable, so the hidden terminals underneath cannot take a click or a
+ * keystroke meant for this one.
+ *
+ * That costs something a detached host did not: a background session's rows are
+ * laid out (never painted) as its output arrives, where before they were only
+ * built. `content-visibility: hidden` would skip that work, and is deliberately
+ * not used — it also zeroes descendant geometry, which is the measurement bug
+ * above coming back. Worth revisiting only with a profile of a session count
+ * that actually hurts.
+ */
+function showOnly(container: HTMLElement, active: PooledTerm): void {
+	for (const entry of pool.values()) {
+		if (entry.host.parentElement !== container) continue;
+		entry.host.style.visibility = entry === active ? '' : 'hidden';
+	}
+}
+
+function getOrCreateTerm(sessionId: string, container: HTMLElement): PooledTerm {
 	const existing = pool.get(sessionId);
 	if (existing) return existing;
 
 	const host = document.createElement('div');
-	host.className = 'h-full w-full';
+	// Stacked, so every pooled terminal in this pane is exactly the pane's size
+	// whether or not it is the visible one. `inset-0` of the container rather
+	// than `h-full w-full` of a padded box: the 8px is on the wrapper, so the
+	// geometry `fitToHost` measures is unchanged.
+	host.className = 'absolute inset-0';
+	// Appended *before* `term.open`, so xterm's first measurement — char size,
+	// scrollbar width, the initial render dimensions — is taken on an element
+	// that has a layout. It used to open on a detached div and correct itself
+	// on the first `fitToHost`.
+	container.appendChild(host);
 
 	const term = new XTerm({
 		fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
@@ -523,20 +587,25 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		const container = containerRef.current;
 		if (!container) return;
 
-		const entry = getOrCreateTerm(sessionId);
-		container.appendChild(entry.host);
+		const entry = getOrCreateTerm(sessionId, container);
+		// Only ever true for a terminal built against a *previous* pane — the
+		// session route's pane survives a tab switch, so switching session moves
+		// nothing. Coming back from the project route does, and there is no way
+		// around it: the pane React unmounted took its children with it.
+		if (entry.host.parentElement !== container) container.appendChild(entry.host);
+		showOnly(container, entry);
 		// Size the terminal to its container before the PTY exists, so the spawn
 		// carries the real cols/rows. `fit()` reads layout synchronously, and the
-		// host has just been appended to a laid-out container, so this measures
-		// the final width. If the container has no layout yet (zero-sized during a
-		// route transition) fit() is a no-op and the timer below catches up —
-		// `onResize` then forwards the corrected size to the PTY.
+		// host has a layout by now, so this measures the final width. If the
+		// container has none yet (zero-sized during a route transition) fit() is a
+		// no-op and the timer below catches up — `onResize` then forwards the
+		// corrected size to the PTY.
 		fitToHost(entry);
 		attachPty(entry, sessionId, projectId, projectCwd);
 
 		const focusTimer = setTimeout(() => {
 			fitToHost(entry);
-			// Reattaching a pooled terminal: jump to the latest output (the live
+			// Coming back to a pooled terminal: jump to the latest output (the live
 			// prompt) rather than wherever the buffer was last scrolled.
 			entry.term.scrollToBottom();
 			entry.term.focus();
@@ -550,14 +619,21 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		return () => {
 			clearTimeout(focusTimer);
 			ro.disconnect();
-			// Detach (don't dispose) — the pooled terminal keeps its scrollback
-			// and listeners so reopening this session shows its history.
-			if (container.contains(entry.host)) container.removeChild(entry.host);
+			// Hide, never detach, and never dispose: the pooled terminal keeps its
+			// scrollback and its listeners, and keeping its box in the document is
+			// what keeps the wheel working when you come back (see `showOnly`).
+			entry.host.style.visibility = 'hidden';
 		};
 	}, [sessionId, projectId, projectCwd]);
 
 	// `p-2` is also the slack the rows paint into at a fractional zoom — see the
 	// last-column rule in the desktop app's stylesheet, which is written against
 	// this 8px — and `overflow-hidden` is what keeps that spill inside the pane.
-	return <div ref={containerRef} className="h-full w-full overflow-hidden bg-[#0c0e12] p-2" />;
+	// The inner element is the hosts' positioning parent, so the padding stays in
+	// one place and `fitToHost` measures exactly the box it used to.
+	return (
+		<div className="h-full w-full overflow-hidden bg-[#0c0e12] p-2">
+			<div ref={containerRef} className="relative h-full w-full" />
+		</div>
+	);
 }

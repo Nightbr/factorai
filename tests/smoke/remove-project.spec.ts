@@ -43,7 +43,7 @@ test.describe('remove project', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		await openRowMenu(page);
 		await page.getByTestId(`remove-project-${FOO_ID}`).click();
@@ -76,7 +76,7 @@ test.describe('remove project', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		await openRowMenu(page);
 		await page.getByTestId(`remove-project-${FOO_ID}`).click();

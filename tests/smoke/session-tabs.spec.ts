@@ -15,9 +15,12 @@ import {
  * than by injecting state. The exception is the restore suite at the bottom,
  * which has to seed the persisted list because that is the thing under test.
  */
+/** `:visible`, and every other `.xterm` assertion in the suite says the same:
+ *  a pooled terminal stays in the pane once it has been shown (F5), so with two
+ *  sessions open there are two `.xterm` elements and exactly one on screen. */
 async function openSession(page: Page, name: RegExp) {
 	await page.getByRole('link', { name }).click();
-	await expect(page.locator('.xterm')).toBeVisible();
+	await expect(page.locator('.xterm:visible')).toBeVisible();
 }
 
 /** Drag one tab onto another with the pointer, which is what dnd-kit listens to
@@ -326,7 +329,7 @@ test.describe('restored tabs', () => {
 
 		await tab.click();
 
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 		await expect(tab).toHaveAttribute('aria-selected', 'true');
 		await expect(tab.locator('[title="Stopped"]')).toHaveCount(0);
 	});

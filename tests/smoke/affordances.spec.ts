@@ -85,7 +85,7 @@ test('@smoke only the session header dot animates', async ({ page }) => {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Expand zulu' }).click();
 	await page.getByRole('link', { name: /Zulu task 11/ }).click();
-	await expect(page.locator('.xterm')).toBeVisible();
+	await expect(page.locator('.xterm:visible')).toBeVisible();
 
 	// The one describing what you're looking at pulses…
 	const headerDot = page.locator('main header [title="Working"]');

@@ -12,7 +12,7 @@ import { fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
 async function boxes(page: import('@playwright/test').Page) {
 	await page.getByRole('button', { name: 'Expand zulu' }).click();
 	await page.getByRole('link', { name: /Zulu task 11/ }).click();
-	await expect(page.locator('.xterm')).toBeVisible();
+	await expect(page.locator('.xterm:visible')).toBeVisible();
 
 	const icon = page
 		.locator('aside')

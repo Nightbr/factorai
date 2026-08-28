@@ -21,7 +21,7 @@ async function openSession(page: import('@playwright/test').Page) {
 	await page.goto('/');
 	await page.locator('aside').getByText('foo').click();
 	await page.getByText('Refactor the auth middleware').click();
-	await expect(page.locator('.xterm')).toBeVisible();
+	await expect(page.locator('.xterm:visible')).toBeVisible();
 }
 
 async function emitStatus(
@@ -84,7 +84,7 @@ test('@smoke closing a session that is working asks first', async ({ page }) => 
 	await expect(page.getByText('Close this session?')).toBeVisible();
 
 	// Still live: the question has not been answered.
-	await expect(page.locator('.xterm')).toBeVisible();
+	await expect(page.locator('.xterm:visible')).toBeVisible();
 	await page.getByRole('button', { name: 'Keep it running' }).click();
 	await expect(page.getByText('Close this session?')).toHaveCount(0);
 });

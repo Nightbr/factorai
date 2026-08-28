@@ -69,8 +69,9 @@ test.describe('projects sidebar', () => {
 			'Refactor the auth middleware',
 		);
 		// xterm host renders a div under the terminal panel. xterm injects
-		// the .xterm class on the host element it opens into.
-		await expect(page.locator('.xterm')).toBeVisible();
+		// the .xterm class on the host element it opens into. `:visible` because
+		// pooled terminals stay in the pane once shown — see session-tabs.spec.ts.
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 		// The mock bridge resolves terminal_spawn, so the session registers as
 		// live → the header exposes the close control (running lifecycle).
 		await expect(page.getByRole('button', { name: 'Close session' })).toBeVisible();
@@ -82,7 +83,7 @@ test.describe('projects sidebar', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		await page.getByRole('button', { name: 'Close session' }).click();
 		// Closing kills a running agent, so it asks first (F3).
@@ -108,7 +109,7 @@ test.describe('projects sidebar', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		const spawn = await page.evaluate(
 			() => window.__FACTORAI_TEST_CALLS__?.find((c) => c.name === 'terminal_spawn')?.args,

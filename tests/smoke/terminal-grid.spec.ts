@@ -22,7 +22,7 @@ test.describe('terminal grid', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		const row = page.locator('.xterm-rows > div').first();
 		const box = await row.evaluate((el) => ({

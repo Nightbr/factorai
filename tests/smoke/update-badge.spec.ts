@@ -53,7 +53,7 @@ test.describe('update badge', () => {
 		// unlike a window close it never reaches the quit guard (ADR-0005).
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		await page.getByTestId('update-badge').click();
 
@@ -76,7 +76,7 @@ test.describe('update badge', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		// Spawn leaves a session `working`; this is Claude handing the turn back.
 		await page.evaluate(() => {
@@ -153,7 +153,7 @@ test.describe('update badge', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
 		await page.getByTestId('update-badge').click();
 		await page.getByRole('button', { name: /later/i }).click();

@@ -84,9 +84,10 @@
    padding on an element whose width xterm sets inline would *shrink* the text
    area and clip harder.
 
-   **8px is the terminal's own padding** — the `p-2` on the container in
+   **8px is the terminal's own padding** — the `p-2` on the outer container in
    `Terminal.tsx`, which also carries `overflow-hidden` so this can never paint
-   outside the pane. Worst case measured (1490px pane, zoom 1.5) spends 4.5px of
+   outside the pane. The pooled hosts are `absolute inset-0` of the element
+   inside that padding, so the box measured here is the same one it always was. Worst case measured (1490px pane, zoom 1.5) spends 4.5px of
    it. Past roughly 500 columns the drift would exceed the slack and the glyph
    would clip again, which needs a ~4000px-wide terminal.
 

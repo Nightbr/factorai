@@ -24,7 +24,7 @@ test.describe('full-text search', () => {
 		await page.getByText(/please refactor the auth middleware/i).click();
 		// Header names the session by title; the uuid is on the hover title (F6).
 		await expect(page.locator('header').getByTitle('session-uuid-001')).toBeVisible();
-		await expect(page.locator('.xterm')).toBeVisible();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 	});
 
 	test('@smoke empty query shows the prompt, not a stale list', async ({ page }) => {
