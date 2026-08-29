@@ -173,11 +173,13 @@ toolchain wired up.
    of review — the agent asks and the human decides in place — rather than a
    post-MVP nicety.
 2. ~~**Scheduler.**~~ **Graduated 2026-08-28** into `roadmap/TODO.md` item 42
-   as **Routines**, at high priority — nothing is built or specified yet. A
-   small cron-like runner that can launch a session with a prompt at a given
-   time / interval; it moved because a routine is a stored per-project object
-   the human configures, which makes it the "sets the rules agents run under"
-   verb of `00-overview.md`'s operating model rather than a convenience.
+   as **Routines**, at high priority, and **specified 2026-08-29** as F22 with
+   ADR-0026; the code is still to come. A cron-like runner that launches a
+   session with a prompt at a given time, and — the part that made it a feature
+   rather than a timer — **without opening a tab**. It moved because a routine is
+   a stored per-project object the human configures, which makes it the "sets the
+   rules agents run under" verb of `00-overview.md`'s operating model rather than
+   a convenience.
 3. **Grid overview.** Multi-session live xterm rendering with focused-on-
    click. Requires WebGL addon tuning to keep frame budget sane.
 4. **Activity heatmap.** GitHub-style contribution graph over session

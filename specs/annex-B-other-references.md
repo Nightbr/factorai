@@ -44,12 +44,25 @@ Where it would shine in a future version:
 the deferred list, evaluate honker before writing custom cron logic.
 Link this note from the eventual scheduler ADR.
 
-**It has returned** — `roadmap/TODO.md` item 42 (Routines), 2026-08-28. The
-"not now" above is therefore spent, and this section is now a task: evaluate
-honker against a plain cron crate before the runner is written, and record the
-outcome in that ADR. Note that one reason it didn't fit still holds — factorai
-is single-process and routines only run while the app is open — so the
-cross-process half buys nothing until a daemon exists.
+**It returned, was evaluated, and was declined** — `roadmap/TODO.md` item 42
+(Routines), specified 2026-08-29 as
+[F22](./05-features.md) with
+[ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md) § 6 holding the
+call, as this note asked.
+
+The verdict above is what decided it: routines run in the **single process** that
+owns the database, while its own window is open, so there is no second process to
+notify and no leader to elect. Against a benefit that is zero here, honker is a
+**loadable SQLite extension** — a native artefact to build, ship inside a `.app`
+and an AppImage, and load at runtime — which is a packaging change of the kind
+that costs a release. Cron parsing went to `croner` instead and the runner is
+ours; the execution rules (a concurrency cap, an overlap skip, coalesced
+catch-up) are the project-specific half that no scheduler crate was going to own
+anyway.
+
+**The condition to revisit is unchanged and is the other one B.1 names**: a
+split into a daemon plus a GUI, where indexing and schedules outlive the window.
+That is the version of this feature that stops needing the app to be open.
 
 **Reference.** [russellromney/honker](https://github.com/russellromney/honker)
 

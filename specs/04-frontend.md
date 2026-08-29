@@ -70,7 +70,7 @@ apps/desktop/src/
 | -------------------------- | --------------------- | ------------------------------------------- |
 | `/`                        | redirect              | → `/projects` or empty state                |
 | `/projects`                | ProjectsView          | grid of project cards                       |
-| `/projects/$id`            | ProjectView           | session list, opens last session by default |
+| `/projects/$id`            | ProjectView           | `Sessions \| Routines` tabs; `?tab=routines` selects (F22)  |
 | `/projects/$id/sessions/$sessionId` | SessionView  | terminal-only (header + xterm)              |
 | `/search?q=...`            | SearchView            | global FTS; a hit opens its session         |
 | `/settings`                | SettingsView          | theme, font, paths                          |
@@ -214,10 +214,16 @@ type TerminalState = {
 
 `tabs` is **what you have open**; `bySession` is **what is running**. A tab
 outlives its process — it survives an exit and a quit, and only closing removes
-it — so `tabs` is always a superset of `bySession`'s keys. Nine surfaces read
-`bySession` to mean "running" and go on meaning exactly that; F16 §
-"Where 'open' shows outside the strip" lists which of them moved to the derived
-open record and which did not.
+it. Nine surfaces read `bySession` to mean "running" and go on meaning exactly
+that; F16 § "Where 'open' shows outside the strip" lists which of them moved to
+the derived open record and which did not.
+
+**`tabs` used to be a superset of `bySession`'s keys, and F22 ends that.** A
+routine's session runs with a hidden pooled xterm and **no tab** until a human
+opens one (ADR-0026), so the containment now runs only one way — every tab is a
+session, but not every running session is a tab. Anything that read `bySession`
+as "has a tab" is wrong as of that feature, and nothing in the types will say
+so.
 
 Persisted as `factorai.terminals` v1, `partialize`d down to `tabs` alone. A
 `terminalId` from a previous run names nothing, and a persisted status would be a

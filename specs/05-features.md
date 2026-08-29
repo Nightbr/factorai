@@ -2052,6 +2052,14 @@ The strip still renders nothing at all when nothing is open, so the bar looks
 untouched until the first session — which is now "until the first session ever"
 rather than "until the first one today".
 
+**Amended 2026-08-29 by F22 (routines).** The rule loses its converse: a tab is
+an open session, **and a session may run without one**. `tabs` is no longer a
+superset of `terminalStore.bySession` — a routine's session runs with a hidden
+pooled xterm and no tab until a human opens it, at which point it becomes an
+ordinary tab and everything above applies to it unchanged. What this costs is
+that `bySession` no longer answers "does this have a tab", which several surfaces
+had been entitled to assume; see ADR-0026 § Consequences.
+
 **UI.** Project avatar, session title, and a close button that appears on hover
 or on the active tab; a permanent row of `×` is a row of accidents waiting.
 
@@ -3863,3 +3871,160 @@ different architecture, since the `openFile` inference and the `sessions.cwd`
 default both work without any uptake at all.
 
 **Roadmap.** Item 37.
+
+---
+
+## F22 — Routines: a project's scheduled agent sessions
+
+**Specified 2026-08-29**, from a clarify-needs interview; not built. The two
+decisions everything below rests on are in
+[ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md) — what a fire
+starts, and who decides it is time. Sequencing and the slices are roadmap item
+42.
+
+**A Routine is a per-project object: a name, a schedule, a prompt, an enable
+switch, and a catch-up window.** When it comes due, factorai starts an agent
+session in that project with the prompt as its first message — **and does not
+open a tab**. What it produces is an ordinary session: indexed, resumable,
+searchable, in the sidebar, and tabbed the moment a human opens it.
+
+**It runs only while factorai is open.** No daemon, no launch agent, no systemd
+unit. This is a real limit and it is stated as behaviour rather than buried as a
+caveat: a routine due at 03:00 on a closed laptop runs when you next open the
+app, if its catch-up window still covers it, and otherwise does not run at all.
+
+**Why it is a first-class object rather than a setting.** `00-overview.md` §
+"The operating model" makes the human four things, the fourth being the one who
+sets the rules agents run under. A routine is that verb in its strongest form —
+the rule is written once and then runs without you — which is also why it is the
+first thing in this app that acts unasked, and why the visibility rules below
+are not decoration.
+
+### The fire
+
+1. `RoutineRunner` (Rust) ticks on the wall clock, finds what is due, mints a
+   session id, writes `last_run_at` and `session_routines`, and emits
+   `routine:fire`.
+2. The renderer mounts a pooled `Terminal` for that id whose host is **never
+   shown** and which puts **no entry in `tabs`**.
+3. `claude` starts with the prompt as argv — `--session-id <id> "<prompt>"`, or
+   `--resume <id> "<prompt>"` on the other branch of the existing transcript
+   probe (`03-backend-rust.md` § "Session ids"). Not typed into the PTY: that is
+   a race against the CLI's startup which lands in a trust dialog when it loses.
+
+From there it is a session like any other. Status comes from the same OSC title
+parse (F10), the IDE bridge starts with it (F20), the indexer picks it up when
+Claude writes the transcript.
+
+**F16 is amended by this feature.** Its invariant was *a tab is an open session*,
+with `tabs` a superset of the live map; it becomes **a tab is an open session,
+and a session may run without one**. Everything else in F16 stands: a tab still
+survives an exit and a quit, and still goes only when you close it.
+
+### Being visible without being in your way
+
+The rule this feature has to satisfy: **an agent is never running invisibly.**
+
+- **The sidebar lists routine sessions like any other**, and they feed the
+  project's aggregate status dot. The dot going green while you are elsewhere is
+  the ambient signal that something started.
+- **A small icon marks a session a routine started** — in the sidebar row, in the
+  project list, and beside the avatar in its tab once it has one — with a tooltip
+  naming the routine. Not the `SubAgentBadge` pill: that does not fit a 240px
+  tab, and this needs one treatment in all three places.
+- **No notification when a routine fires.** A notification every weekday at 09:00
+  is training to dismiss the ones that matter. What deserves one is a routine
+  session reaching `waiting_input` or exiting, which is roadmap item 35's
+  trigger — and that item inherits the requirement that its trigger cannot be
+  driven off the tab strip, since these sessions have no tab.
+- **The sidebar does not list routines themselves.** It answers *what is
+  happening*; the project view answers *what is configured*. Sidebar rows stay
+  one kind of thing, which is what keeps the drag, the grouping and the keyboard
+  path (ADR-0025) tractable.
+
+### The project view: `Sessions | Routines`
+
+The project route grows a two-tab strip, selected through a **route search
+param** (`?tab=routines`) so the context menu — and later the MCP tool — can land
+you on it. Same `TabButton` shape as the file panel's strip (Q18), or the
+`tabs.tsx` primitive in `@factorai/ui`.
+
+**The project's context menu gains two items at the top**, above the reorder
+block and separated from it: **`New session`** and **`New routine`**. Those exact
+labels — the project view's header button already says `New session`, and two
+different verbs on two adjacent items reads as a difference that is not there.
+`New routine` navigates to the Routines tab and opens the editor.
+
+**The routines list** is one row per routine: name, the schedule in plain
+language, the next fire, the enable switch, and the last run — including
+`skipped, still running` and `interrupted` when that is what happened.
+
+### The editor
+
+Inline on the Routines tab, not a modal: it holds a name, a schedule, a
+multi-line prompt, a skills list and two switches, and you want to see the other
+routines while writing one.
+
+- **Schedule is a preset picker** — hourly, daily at HH:MM, weekly on DAY at
+  HH:MM, monthly — with **`Custom…`** revealing the raw cron field. **The cron
+  string is what is stored**, whichever wrote it, so the presets, the custom
+  field and the MCP tool all speak one representation.
+- **The next few fire times, in plain local time, under the control**,
+  recomputed as you type. This is the whole defence against a schedule that
+  silently never fires; an expression that cannot be parsed says so here.
+- **The skills list sits beside the prompt field.** Clicking a skill inserts
+  `/name` at the cursor. Sources are the project's `.claude/skills/` and the
+  user's `~/.claude/skills/`, name and description read from each `SKILL.md`
+  frontmatter — a read-only scan, so ADR-0004 is untouched. The descriptions are
+  the point: the question a routine author has is *what can I call from here*,
+  not how to save keystrokes. A `/`-triggered autocomplete inside the textarea
+  is a later improvement, tracked, and deliberately not the first version.
+- **Two switches**: enabled, and catch-up with its window. Catch-up has an
+  **app-wide default in settings** (a `SettingRow` in F11's modal, stored in the
+  SQLite `settings` table because Rust reads it — ADR-0013) which each routine
+  may override, because a nightly digest is worth running four hours late and a
+  "check CI now" is not worth running at all once missed.
+
+### The rules that keep it from misbehaving
+
+- **Overlap: skip, and record the skip.** A routine due while its own previous
+  run is still live does not start a second one. Same instinct as
+  `start_session`'s double-click guard, and the only rule under which an
+  overrunning routine cannot pile up.
+- **A global concurrency cap, with a queue.** At most N routine sessions start at
+  once — ten projects with an hourly routine all fire at `:00` — and the rest
+  queue in due order. N is a settings row. **A queued fire is not a skipped
+  fire**: it runs late, which is what a cron user expects under load.
+- **Catch-up coalesces.** Five missed hourly runs inside the window are **one**
+  run, not five.
+- **A fire counts as run the moment the session starts.** So a run that
+  kill-on-quit (ADR-0005) takes is not eligible for catch-up: re-running an agent
+  that already committed and pushed is worse than skipping it, and nothing can
+  tell those two apart afterwards. The list still shows it as interrupted.
+- **Disabling stops future fires and nothing else.** It never kills a running
+  session — that is not what a switch means.
+- **Deleting asks first, and also leaves the running session alone.** Its origin
+  icon degrades to a tooltip reading *started by a routine that no longer
+  exists*. Killing an agent is never a side effect of editing a schedule.
+
+### Storage
+
+`routines` and `session_routines` — see `02-data-model.md`. Two things about the
+shape matter here: the origin lives in **its own table with no foreign key**,
+because a brand-new session has no `sessions` row and the runner writes at spawn
+(the trap migration 0007 found), and the schedule lives in SQLite rather than a
+renderer store because Rust reads it (ADR-0013).
+
+### Later slices
+
+- **The skills picker** is slice 2. Additive, and it blocks nothing.
+- **Creating routines over MCP** is slice 3: a tool group on the IDE bridge (F20)
+  so an agent can schedule follow-up work in the project it is working in.
+  Decided as **full CRUD** — create, update, enable, delete — **with no off
+  switch and no per-row provenance**, against the recommendation at the time.
+  Recorded here as a decision rather than an oversight: an agent can enable or
+  delete a schedule unattended and leave no trace of having done it. It is also a
+  *write* through the bridge, which is the ADR-0009 / ADR-0017 boundary question
+  again. Revisit before the slice is built.
+
+**Roadmap.** Item 42.

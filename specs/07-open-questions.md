@@ -464,3 +464,32 @@ rejected as already over-full — which turned out to be literally true and a bu
 F14's note on the update badge clipping `ZoomControls`. Settings is app-level chrome
 rather than session or project chrome, and item 6's window controls sit at the
 window's outer edge, so the gear moves once by a fixed offset rather than competing.
+
+## Q25 — What does a routine's schedule mean across DST and sleep? → **wall clock, fixed-time rules, catch-up on wake**
+
+**Decision (2026-08-29, from the F22 interview). Not built** — roadmap item 42.
+A routine's cron expression is **local wall-clock time**, and the two cases that
+break naive schedulers are answered by `croner`'s documented rules rather than by
+whatever falls out of the arithmetic (ADR-0026 § 5):
+
+- **Spring forward, a time that does not exist.** A fixed-time routine (`0 30 2
+  * * *`) runs at the first valid instant after the gap, on the same calendar
+  day. It does not silently skip the day and it does not run twice.
+- **Fall back, a time that happens twice.** A fixed-time routine runs **once**,
+  at the first occurrence in wall-clock time. An interval routine (`*/15 * * * *`)
+  runs on every wall-clock match, including inside the duplicated hour — which is
+  what "every 15 minutes" means and what a fixed daily time does not.
+- **Searching always moves in real time**, never in wall clock, so a next-fire
+  projection cannot hand back a time already past.
+
+**Sleep is not a third case, it is the same one.** Due-ness is `now` against
+`last_run_at`, so a machine that was suspended for six hours has simply not
+fired; the missed fires are caught up at wake inside the routine's window and
+**coalesce** into one run. Nothing counts ticks — a tick counter reads a
+suspended laptop as an idle one, which is the bug this sentence exists to
+prevent.
+
+**What this question does not settle**, and item 42 carries: the default
+concurrency cap, whether a queued fire is visible while it waits, where a failed
+fire surfaces (a `last_error` row, item 7's toast, or both), and whether run
+history grows past one `last_run_at`.

@@ -19,6 +19,8 @@ commands/
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
                       #   (+ git_worktrees — F21, planned)
   ide.rs              # the IDE bridge's command surface (F20)
+  routines.rs         # list/create/update/delete/set_enabled/run_now, list_skills
+                      #   — PLANNED, roadmap item 42 (F22)
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
                       #   — PLANNED, roadmap item 2
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
@@ -42,6 +44,9 @@ services/
   claude_cli.rs       # find_claude_binary + the version probe
   settings.rs         # the settings table, behind the commands
   git.rs              # repository status, blobs, graph (ADR-0009)
+  routines.rs         # RoutineRunner — the wall-clock tick, the cap, catch-up
+                      #   — PLANNED, roadmap item 42 (F22, ADR-0026)
+  skills.rs           # the read-only scan of .claude/skills — PLANNED, F22
   ide/                # the bridge (F20, ADR-0017)
     mod.rs
     lockfile.rs       # ~/.claude/ide/<port>.lock — the one thing we write there
@@ -146,9 +151,29 @@ search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<
 // a row can say which codebase a hit came from and draw the same path-hashed
 // icon the sidebar does.
 
+// routines (F22, ADR-0026)
+// A project's scheduled prompts. `create` and `update` take the cron string —
+// the presets and the `Custom…` field both write that one representation — and
+// reject an expression `croner` cannot parse, so a routine that can never fire
+// cannot be saved.
+list_routines(project_id: String) -> Vec<Routine>
+create_routine(input: RoutineInput) -> Routine
+update_routine(id: String, input: RoutineInput) -> Routine
+// Leaves a running session alone. The caller confirms first; this does not ask.
+delete_routine(id: String) -> ()
+// Stops (or resumes) future fires only — never touches a live session.
+set_routine_enabled(id: String, enabled: bool) -> ()
+// Fires now, through the same path the runner uses, including the overlap skip
+// and the concurrency cap. Returns the session id, or None when it was skipped.
+run_routine_now(id: String) -> Option<SessionId>
+// Name + description per skill, from `<project>/.claude/skills/` and
+// `~/.claude/skills/`. A read-only scan (ADR-0004); the editor's list beside the
+// prompt field is its only caller.
+list_skills(project_id: String) -> Vec<SkillInfo>
+
 // terminal
 start_session(project_id: String) -> SessionId          // see "Session ids" below
-terminal_spawn(opts: SpawnOpts) -> TerminalId           // session_id, project_id, cwd?, cols, rows
+terminal_spawn(opts: SpawnOpts) -> TerminalId           // session_id, project_id, cwd?, cols, rows, initial_prompt?
 terminal_write(id: TerminalId, data: String) -> ()
 terminal_resize(id: TerminalId, cols: u16, rows: u16) -> ()
 terminal_kill(id: TerminalId) -> ()
@@ -226,6 +251,7 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `terminal:status`      | `{ id, status, lastActivity }`       | TerminalManager     |
 | `terminal:exit`        | `{ id, code }`                       | TerminalManager     |
 | `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
+| `routine:fire`         | `{ routineId, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |
 
 `session:worktree` is the one event whose source is the IDE bridge rather than a
 service, and it fires **after** the write to `session_worktrees`, never before:
@@ -489,10 +515,17 @@ backstop so we never leak children on crashes. **No orphan zombies, ever.**
 factorai names its own sessions — see ADR-0008 for why. Two consequences for
 this module.
 
-**`SpawnOpts` carries `{ session_id, project_id, cwd?, cols, rows }`.** There
-is no `resume_session_id` and no mode flag: the caller supplies the id, and
-`session_flag()` decides how it reaches the CLI by probing for
-`<claude_dir>/projects/<project_id>/<session_id>.jsonl`.
+**`SpawnOpts` carries `{ session_id, project_id, cwd?, cols, rows,
+initial_prompt? }`.** There is no `resume_session_id` and no mode flag: the
+caller supplies the id, and `session_flag()` decides how it reaches the CLI by
+probing for `<claude_dir>/projects/<project_id>/<session_id>.jsonl`.
+
+**`initial_prompt` appends one positional argument** to whichever argv the probe
+chose, so a routine's prompt arrives as `claude --session-id <id> "<prompt>"` or
+`claude --resume <id> "<prompt>"` (F22, ADR-0026 § 4). It is `None` for every
+human-started session, which is every caller but the routine runner. Passing it
+as argv rather than writing it into the PTY is what makes the delivery atomic —
+a write races the CLI's own startup and lands in a trust dialog when it loses.
 
 | transcript | argv                          |
 | ---------- | ----------------------------- |
@@ -607,6 +640,34 @@ fn claude_dir() -> PathBuf {
 
 No settings override for the projects dir in MVP. Adding it later is a
 one-line change once the path is read in one place.
+
+### `RoutineRunner`
+
+**Planned — F22, [ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md).**
+The only service that starts agent work nobody asked for at that moment, which
+is why its rules are here rather than left to the caller.
+
+**One task, one wall-clock tick, asking "what is due?"** — never a timer per
+routine and never a tick count. A suspended laptop counts no ticks, so due-ness
+is always `now` against `last_run_at` and `croner`'s `find_next_occurrence`.
+
+- **It mints the session id** and writes `last_run_at`, `last_session_id` and the
+  `session_routines` row *before* emitting `routine:fire`, the same write-then-emit
+  ordering `session:worktree` follows and for the same reason: an event ahead of
+  its row is a fact the next reload disagrees with.
+- **It does not spawn.** The renderer does, into a hidden pooled terminal with no
+  tab (ADR-0026 § 2). So a fire needs a live renderer, which is the same window
+  the schedule already needs open.
+- **Overlap skips.** A routine whose previous session is still live does not fire;
+  the skip is recorded so the list can say so.
+- **A cap with a queue**, `routines.max_concurrent` from `settings`. Ten projects
+  firing at `:00` start N and queue the rest in due order — queued, not skipped.
+- **Catch-up runs at startup**, inside each routine's window (its own
+  `catchup_hours`, else `routines.catchup_hours`), and **coalesces**: five missed
+  hourly fires are one run.
+- **The database is reached by callback**, `Arc<dyn Fn…>`, the same shape
+  `TerminalManager`'s `user_binary` and `session_cwd` use — the runner needs
+  answers from a database it should not hold.
 
 ### `Search`
 
@@ -871,6 +932,8 @@ Keys, as of F11:
 | `SettingKey` | Row key | Read by | Notes |
 | --- | --- | --- | --- |
 | `claudeBinaryPath` | `claude.binary` | `find_claude_binary` | Absolute path. Unset → the three-tier probe |
+| `routinesCatchupHours` | `routines.catchup_hours` | `RoutineRunner` | App-wide catch-up default (F22); a routine may override it in its own row |
+| `routinesMaxConcurrent` | `routines.max_concurrent` | `RoutineRunner` | How many routine sessions may start at once; the rest queue |
 
 **The serde name and the row key differ on purpose.** The dotted namespace is
 what this table was created with and what an operator sees in `sqlite3`; the

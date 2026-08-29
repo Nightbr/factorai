@@ -425,6 +425,61 @@ checkout a session is showing" holds the three-step order.
 and conflating the two is how a resume becomes a new conversation — see F21 §
 "The consequence that is not optional: resume cwd".
 
+### `routines` — a project's scheduled prompts
+
+| col            | type    | notes                                                        |
+| -------------- | ------- | ------------------------------------------------------------ |
+| id             | TEXT PK | uuid, minted by factorai                                     |
+| project_id     | TEXT    | FK → `projects(id)` ON DELETE CASCADE                        |
+| name           | TEXT    | what the list and the origin tooltip say                     |
+| cron           | TEXT    | 5-field expression; **the stored format**, whatever wrote it |
+| prompt         | TEXT    | the session's first message, passed as argv                  |
+| enabled        | INTEGER | 0/1 — stops future fires; never touches a running session    |
+| catchup_hours  | INTEGER | NULL means "use the app-wide default" from `settings`        |
+| last_run_at    | INTEGER | epoch ms, written **when the session starts**                |
+| last_session_id| TEXT    | the session the last fire produced; no FK, see below         |
+| last_error     | TEXT    | why the last fire failed, NULL when it did not               |
+| created_at     | INTEGER | epoch ms                                                     |
+
+**Added by [F22](./05-features.md); see
+[ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md).** Written by the
+routines commands and by `RoutineRunner`; the scan never touches it.
+
+**In SQLite rather than a renderer store because Rust reads it** — ADR-0013's
+rule, and the runner is the reader. The same goes for the app-wide catch-up
+default and the concurrency cap, which are `settings` rows for the same reason.
+
+**`cron` is the only representation.** The preset picker, the `Custom…` field and
+the later MCP tool all write this column, so nothing has to translate between two
+dialects and a routine created by an agent is editable by a human.
+
+**`last_run_at` is a fire, not a completion.** Written at spawn, so a run that
+kill-on-quit takes still counts as having happened — see F22 § "The rules that
+keep it from misbehaving" for why re-running it would be worse.
+
+### `session_routines` — which routine started a session
+
+| col        | type    | notes                                                |
+| ---------- | ------- | ---------------------------------------------------- |
+| session_id | TEXT PK | **no FK**, deliberately — see below                  |
+| routine_id | TEXT    | FK → `routines(id)` ON DELETE SET NULL               |
+| created_at | INTEGER | epoch ms, written at spawn                           |
+
+**The no-FK on `session_id` is not an oversight, it is migration `0007`'s lesson
+applied up front.** A brand-new session has no `sessions` row — that table is
+derived from transcripts, and a row appears only once Claude has written one —
+and the runner writes here at spawn, which is strictly earlier. A foreign key
+would fail on every insert this table exists for. `session_worktrees` shipped
+that constraint and removed it a day later; this table skips the day.
+
+**`ON DELETE SET NULL` on the routine, not CASCADE.** Deleting a routine leaves
+its sessions alone (F22), so the row survives with a null routine and the origin
+icon degrades to *started by a routine that no longer exists*. Cascading here
+would quietly rewrite history to say those sessions were started by hand.
+
+Cleanup of the session side joins `reap_deleted`, which is where sessions are
+actually deleted and which already exempts live ones.
+
 ### Indexes
 
 ```sql
