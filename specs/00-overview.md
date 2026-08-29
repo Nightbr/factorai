@@ -85,7 +85,7 @@ stub in `07-open-questions.md` for a possible follow-up.
 | Dropped                          | Why                                                          |
 | -------------------------------- | ------------------------------------------------------------ |
 | MCP / IDE emulator               | Implementing a WebSocket-based MCP server that impersonates an editor for Claude CLI is a project on its own. Dropped from the MVP, but **no longer deferred** — it graduated into `roadmap/TODO.md` item 19 on 2026-08-15, because the operating model above makes it the *push* half of review. |
-| Scheduler (`schedule-runner`)    | Cron-style session runs add a lot of surface; not core to the browse/manage loop. |
+| Scheduler (`schedule-runner`)    | Cron-style session runs add a lot of surface; not core to the browse/manage loop. **No longer deferred** — it graduated into `roadmap/TODO.md` item 42 on 2026-08-28 as **Routines**, a per-project scheduled object, because the operating model above makes "sets the rules agents run under" a first-class verb. |
 | Grid overview (live multi-PTY)   | Single-session focus is enough for v1. Multi-PTY rendering is expensive in the webview. |
 | Activity heatmap                 | Nice-to-have. Easy to add later from the cached session index. |
 | ~~Auto-updates~~ **shipped**     | Was deferred; landed 2026-08-14 on `tauri-plugin-updater` (F14, ADR-0010). |

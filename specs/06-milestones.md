@@ -172,8 +172,12 @@ toolchain wired up.
    because the ADE operating model (`00-overview.md`) makes it the *push* half
    of review — the agent asks and the human decides in place — rather than a
    post-MVP nicety.
-2. **Scheduler.** A small cron-like runner that can launch a session with
-   a prompt at a given time / interval.
+2. ~~**Scheduler.**~~ **Graduated 2026-08-28** into `roadmap/TODO.md` item 42
+   as **Routines**, at high priority — nothing is built or specified yet. A
+   small cron-like runner that can launch a session with a prompt at a given
+   time / interval; it moved because a routine is a stored per-project object
+   the human configures, which makes it the "sets the rules agents run under"
+   verb of `00-overview.md`'s operating model rather than a convenience.
 3. **Grid overview.** Multi-session live xterm rendering with focused-on-
    click. Requires WebGL addon tuning to keep frame budget sane.
 4. **Activity heatmap.** GitHub-style contribution graph over session

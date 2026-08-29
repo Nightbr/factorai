@@ -44,6 +44,13 @@ Where it would shine in a future version:
 the deferred list, evaluate honker before writing custom cron logic.
 Link this note from the eventual scheduler ADR.
 
+**It has returned** — `roadmap/TODO.md` item 42 (Routines), 2026-08-28. The
+"not now" above is therefore spent, and this section is now a task: evaluate
+honker against a plain cron crate before the runner is written, and record the
+outcome in that ADR. Note that one reason it didn't fit still holds — factorai
+is single-process and routines only run while the app is open — so the
+cross-process half buys nothing until a daemon exists.
+
 **Reference.** [russellromney/honker](https://github.com/russellromney/honker)
 
 ---
