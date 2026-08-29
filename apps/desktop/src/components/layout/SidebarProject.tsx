@@ -2,6 +2,7 @@ import { DropLine } from '@components/layout/DropLine';
 import { DwellRing } from '@components/layout/DwellRing';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { StatusDot } from '@components/layout/StatusDot';
+import { RoutineOrigin } from '@components/routines/RoutineOrigin';
 import { useSortable } from '@dnd-kit/sortable';
 // Aliased for the same reason `SessionTabs` aliases it: dnd-kit's `CSS` helper
 // shadows the global one at module scope, and a file that ever calls
@@ -36,7 +37,7 @@ import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
 	AlertTriangle,
 	ArrowDown,
@@ -47,6 +48,7 @@ import {
 	FolderOutput,
 	FolderPlus,
 	Plus,
+	Repeat,
 	Trash2,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -139,6 +141,7 @@ export function SidebarProject({
 	const expanded = useSidebarStore((s) => s.expanded.includes(project.id));
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
 	const startSession = useStartSession();
+	const navigate = useNavigate();
 	const removeProject = useRemoveProject();
 	// `disabled` rather than a conditional hook: `useSortable` has to be called on
 	// every render, and dnd-kit's own switch is what stops it claiming pointer
@@ -378,6 +381,32 @@ export function SidebarProject({
 				    mounts an inline editor that focuses itself, and Radix's close-time
 				    refocus would blur it away before you could type. */}
 				<ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
+					{/* The two things you come to a project to start (F22), at the top
+					    and away from the arranging below. Both say "New …" because the
+					    project page's own button does — two verbs on two adjacent items
+					    reads as a difference that is not there. */}
+					<ContextMenuItem
+						disabled={project.missing}
+						data-testid={`new-session-${project.id}`}
+						onSelect={() => void startSession(project.id)}
+					>
+						<Plus />
+						New session
+					</ContextMenuItem>
+					<ContextMenuItem
+						data-testid={`new-routine-${project.id}`}
+						onSelect={() =>
+							void navigate({
+								to: '/projects/$id',
+								params: { id: project.id },
+								search: { tab: 'routines', new: true },
+							})
+						}
+					>
+						<Repeat />
+						New routine
+					</ContextMenuItem>
+					<ContextMenuSeparator />
 					{/* Present only where they work. Under a derived sort these are
 					    absent rather than greyed: a disabled row invites you to hunt for
 					    the thing blocking it, and the thing blocking it is a sort mode
@@ -504,6 +533,9 @@ function SessionList({ project }: { project: Project }) {
 	// for it would be a ghost no reindex ever clears (F16).
 	const open = useOpenSessions();
 	const bySession = useTerminalStore((s) => s.bySession);
+	// Which of these a routine started (F22) — from the store, because a routine's
+	// session is live long before the indexer has a row with `routineId` on it.
+	const routineOrigins = useTerminalStore((s) => s.routineBySession);
 
 	// Shares the project route's cache entry, so expanding a project you then
 	// open costs one fetch, not two. `sessions:changed` is what actually keeps
@@ -538,11 +570,20 @@ function SessionList({ project }: { project: Project }) {
 					<Link
 						to="/projects/$projectId/sessions/$sessionId"
 						params={{ projectId: project.id, sessionId: p.sessionId }}
-						title="New session — it takes its title from your first message"
+						title={
+							routineOrigins[p.sessionId]
+								? `Started by routine — ${routineOrigins[p.sessionId].routineName}`
+								: 'New session — it takes its title from your first message'
+						}
 						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
-						<span className="min-w-0 flex-1 truncate">New session</span>
+						{routineOrigins[p.sessionId] && (
+							<RoutineOrigin name={routineOrigins[p.sessionId].routineName} />
+						)}
+						<span className="min-w-0 flex-1 truncate">
+							{routineOrigins[p.sessionId]?.routineName ?? 'New session'}
+						</span>
 						<StatusDot status={p.status} className="size-1.5" />
 					</Link>
 				</li>
@@ -556,6 +597,7 @@ function SessionList({ project }: { project: Project }) {
 						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
+						{session.routineId && <RoutineOrigin name={session.routineName} />}
 						<span className="min-w-0 flex-1 truncate">
 							{session.title.trim() || session.id.slice(0, 8)}
 						</span>

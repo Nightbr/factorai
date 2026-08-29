@@ -141,6 +141,15 @@ pub struct SessionSummary {
 	/// the rest, which is what makes a harvest loose enough to include shell
 	/// commands safe. F21 § "Which checkout a session is showing" has why.
 	pub touched_paths: Vec<String>,
+	/// The routine that started this session, when one did (F22).
+	///
+	/// `routine_id` outlives the routine — `session_routines.routine_id` is
+	/// `ON DELETE SET NULL`, so a deleted routine leaves the session marked with
+	/// a name of `None` rather than pretending a human started it.
+	pub routine_id: Option<String>,
+	/// That routine's name, for the origin icon's tooltip. `None` when the
+	/// routine has been deleted since.
+	pub routine_name: Option<String>,
 }
 
 /// One full-text search result. Mirrors `@factorai/types` `SearchHit`.
@@ -656,6 +665,14 @@ pub enum SettingKey {
 	/// Absolute path to the `claude` binary. Unset → the three-tier probe in
 	/// `services::claude_cli` decides.
 	ClaudeBinaryPath,
+	/// How many hours late a routine may still run when factorai was closed at
+	/// its scheduled time (F22). The app-wide default; a routine's own
+	/// `catchup_hours` overrides it, and `0` means "never run late".
+	RoutinesCatchupHours,
+	/// How many routine sessions may start at once (F22). The rest queue in due
+	/// order and run late — ten projects firing at `:00` must not become ten
+	/// `claude` processes.
+	RoutinesMaxConcurrent,
 }
 
 impl SettingKey {
@@ -668,6 +685,61 @@ impl SettingKey {
 	pub fn column(self) -> &'static str {
 		match self {
 			SettingKey::ClaudeBinaryPath => "claude.binary",
+			SettingKey::RoutinesCatchupHours => "routines.catchup_hours",
+			SettingKey::RoutinesMaxConcurrent => "routines.max_concurrent",
 		}
 	}
+}
+
+/// A project's scheduled prompt (F22, [ADR-0026]). Mirrors `@factorai/types`
+/// `Routine`.
+///
+/// `next_run_at` is **derived**, not stored: it is what `cron` projects from
+/// now, computed per query so a row can never carry a stale one. `None` means
+/// the expression cannot fire again — which for a valid cron is only reachable
+/// by an impossible date, and for an invalid one is caught before it is saved.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Routine {
+	pub id: String,
+	pub project_id: String,
+	pub name: String,
+	/// The 5-field expression. The preset picker and the `Custom…` field both
+	/// write this, so there is one representation of a schedule.
+	pub cron: String,
+	/// The session's first message, passed as argv (ADR-0026 § 4).
+	pub prompt: String,
+	pub enabled: bool,
+	/// `None` inherits the app-wide `routines.catchup_hours`; `0` never runs
+	/// late.
+	pub catchup_hours: Option<i64>,
+	/// The last occurrence the scheduler consumed, run or skipped. The marker
+	/// due-ness is computed against.
+	pub last_fire_at: Option<i64>,
+	/// When a session last actually started — written at spawn, so a run
+	/// kill-on-quit took still counts (F22).
+	pub last_run_at: Option<i64>,
+	pub last_session_id: Option<String>,
+	/// When a fire was last dropped because the previous session was still
+	/// live. What lets the list say "skipped 10:00, still running".
+	pub last_skipped_at: Option<i64>,
+	pub last_error: Option<String>,
+	pub created_at: i64,
+	/// Derived per query from `cron`. Epoch ms.
+	pub next_run_at: Option<i64>,
+}
+
+/// What `create_routine` and `update_routine` accept.
+///
+/// Separate from [`Routine`] because the run state is the runner's to write:
+/// a client that could send `last_run_at` could rewrite whether something ran.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineInput {
+	pub project_id: String,
+	pub name: String,
+	pub cron: String,
+	pub prompt: String,
+	pub enabled: bool,
+	pub catchup_hours: Option<i64>,
 }

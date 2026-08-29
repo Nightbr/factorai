@@ -21,6 +21,8 @@ function session(id: string, subagentOf: string | null = null): SessionSummary {
 		worktree: null,
 		lastCwd: null,
 		touchedPaths: [],
+		routineId: null,
+		routineName: null,
 	};
 }
 

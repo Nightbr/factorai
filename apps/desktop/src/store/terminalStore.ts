@@ -94,7 +94,25 @@ interface TerminalState {
 	 *  SQLite, arriving on `SessionSummary.worktree`. This is only the in-flight
 	 *  value, so a reload falls back to the row rather than to nothing. */
 	worktreeBySession: Record<string, LiveWorktree>;
-	attach: (sessionId: string, terminalId: TerminalId, projectId: string) => void;
+	/** Record a live PTY for a session, and open a tab for it.
+	 *
+	 *  `openTab: false` is a **routine's** session (F22): it runs with a hidden
+	 *  pooled xterm and no tab until a human opens it, which is the one case
+	 *  where a live session is not an open one. */
+	attach: (
+		sessionId: string,
+		terminalId: TerminalId,
+		projectId: string,
+		options?: { openTab?: boolean },
+	) => void;
+	/** Which routine started a session, for the origin icon (F22).
+	 *
+	 *  Not persisted, like `bySession`: the durable copy is `session_routines`
+	 *  in SQLite, arriving on `SessionSummary.routineId`. This is only what the
+	 *  lists need *before* the indexer has seen the transcript — which for a
+	 *  routine's session is most of the time it matters. */
+	routineBySession: Record<string, { routineId: string; routineName: string }>;
+	setRoutineOrigin: (sessionId: string, routineId: string, routineName: string) => void;
 	/** Adopt the PTYs Rust already holds, from `terminal_list` at boot.
 	 *
 	 *  A renderer reload keeps every PTY alive — they live in Rust state, not
@@ -169,6 +187,7 @@ export const useTerminalStore = create<TerminalState>()(
 		(set) => ({
 			bySession: {},
 			tabs: [],
+			routineBySession: {},
 			restartEpoch: {},
 			ideIssues: {},
 			worktreeBySession: {},
@@ -218,27 +237,45 @@ export const useTerminalStore = create<TerminalState>()(
 					return { worktreeBySession: next };
 				}),
 
-			attach: (sessionId, terminalId, projectId) =>
+			attach: (sessionId, terminalId, projectId, options) =>
 				set((s) => ({
 					bySession: {
 						...s.bySession,
 						[sessionId]: { terminalId, projectId, status: 'working' },
 					},
-					tabs: withTab(s.tabs, sessionId, projectId),
+					tabs: options?.openTab === false ? s.tabs : withTab(s.tabs, sessionId, projectId),
 				})),
+
+			setRoutineOrigin: (sessionId, routineId, routineName) =>
+				set((s) => {
+					const current = s.routineBySession[sessionId];
+					if (current?.routineId === routineId) return s;
+					return {
+						routineBySession: {
+							...s.routineBySession,
+							[sessionId]: { routineId, routineName },
+						},
+					};
+				}),
 			adoptLive: (live) =>
 				set((s) => {
 					const bySession = { ...s.bySession };
-					let tabs = s.tabs;
 					for (const t of live) {
 						bySession[t.sessionId] = {
 							terminalId: t.id,
 							projectId: t.projectId,
 							status: t.status,
 						};
-						tabs = withTab(tabs, t.sessionId, t.projectId);
 					}
-					return { bySession, tabs };
+					// **Adopting opens no tabs — changed by F22.** It used to
+					// `withTab` every live PTY, on the reasoning that a live session
+					// was by definition an open one. A routine's session is live and
+					// deliberately has no tab (ADR-0026), and this runs on every
+					// reload, so keeping that line would hand one a tab the human
+					// never asked for. Nothing is lost: `tabs` is the persisted half
+					// and comes back on its own, which is what makes a restored strip
+					// mean anything.
+					return { bySession };
 				}),
 			reorder: (sessionId, toIndex) =>
 				set((s) => {

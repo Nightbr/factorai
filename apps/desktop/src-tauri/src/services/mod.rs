@@ -6,6 +6,7 @@ pub mod ide;
 pub mod indexer;
 pub mod jsonl;
 pub mod osc_title;
+pub mod routines;
 pub mod search;
 pub mod sessions;
 pub mod settings;

@@ -4,6 +4,7 @@ import {
 	DialogContent,
 	DialogTitle,
 	IconButton,
+	Input,
 	SettingRow,
 	Switch,
 } from '@factorai/ui';
@@ -17,6 +18,8 @@ import {
 	binaryOverride,
 	dirtySections,
 	SETTINGS_SECTIONS,
+	CATCHUP,
+	CONCURRENT,
 	type SettingsSection,
 	type SettingsValues,
 } from '@lib/settingsDraft';
@@ -28,6 +31,7 @@ const SECTION_LABELS: Record<SettingsSection, string> = {
 	editor: 'Editor',
 	confirmations: 'Confirmations',
 	sessions: 'Sessions',
+	routines: 'Routines',
 };
 
 interface SettingsModalProps {
@@ -60,9 +64,17 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 
 	// The one saved value that is not in `prefsStore`: Rust reads it, so it lives
 	// in SQLite and arrives asynchronously (ADR-0013).
-	const override = useQuery({
+	// The saved values that are not in `prefsStore`: Rust reads them, so they
+	// live in SQLite and arrive asynchronously (ADR-0013). One query for the
+	// three of them, because the form mounts only once they are all in hand and
+	// three pending states would be three ways to show a default first.
+	const sqlite = useQuery({
 		queryKey: queryKeys.setting('claudeBinaryPath'),
-		queryFn: () => cmd.getSetting('claudeBinaryPath'),
+		queryFn: async () => ({
+			claudeBinary: (await cmd.getSetting('claudeBinaryPath')) ?? '',
+			routinesCatchupHours: (await cmd.getSetting('routinesCatchupHours')) ?? '',
+			routinesMaxConcurrent: (await cmd.getSetting('routinesMaxConcurrent')) ?? '',
+		}),
 		staleTime: Number.POSITIVE_INFINITY,
 		retry: false,
 		enabled: section !== null,
@@ -101,7 +113,7 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 					</IconButton>
 				</header>
 
-				{override.isPending ? (
+				{sqlite.isPending ? (
 					<p className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
 						Loading…
 					</p>
@@ -110,7 +122,13 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 						section={section}
 						onSection={onSection}
 						onClose={onClose}
-						savedOverride={override.data ?? null}
+						savedSqlite={
+							sqlite.data ?? {
+								claudeBinary: '',
+								routinesCatchupHours: '',
+								routinesMaxConcurrent: '',
+							}
+						}
 						dirtyRef={dirtyRef}
 					/>
 				)}
@@ -123,21 +141,21 @@ interface SettingsFormProps {
 	section: SettingsSection;
 	onSection: (section: SettingsSection) => void;
 	onClose: () => void;
-	savedOverride: string | null;
+	savedSqlite: Pick<
+		SettingsValues,
+		'claudeBinary' | 'routinesCatchupHours' | 'routinesMaxConcurrent'
+	>;
 	/** Where the shell reads "is there an edit" from, for its click-outside
 	 *  guard. The form is the only thing that knows. */
 	dirtyRef: RefObject<boolean>;
 }
 
-function SettingsForm({ section, onSection, onClose, savedOverride, dirtyRef }: SettingsFormProps) {
+function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: SettingsFormProps) {
 	// Snapshotted once, on mount: this is what Cancel returns to and what the
 	// dirty dots are measured against. A preference changed behind the modal —
 	// the diff footer's own inline toggle is the only one that can — is picked up
 	// next time it opens rather than moving under an open draft.
-	const [saved] = useState<SettingsValues>(() => ({
-		...currentPrefs(),
-		claudeBinary: savedOverride ?? '',
-	}));
+	const [saved] = useState<SettingsValues>(() => ({ ...currentPrefs(), ...savedSqlite }));
 	const [draft, setDraft] = useState<SettingsValues>(saved);
 	const [probe, setProbe] = useState<BinaryProbe | null>(null);
 	const [saving, setSaving] = useState(false);
@@ -185,8 +203,22 @@ function SettingsForm({ section, onSection, onClose, savedOverride, dirtyRef }: 
 				await cmd.setSetting('claudeBinaryPath', path);
 				// What `claude` resolves to now depends on it.
 				await queryClient.invalidateQueries({ queryKey: queryKeys.claudeCli() });
-				queryClient.setQueryData(queryKeys.setting('claudeBinaryPath'), path);
 			}
+			// The two the routine runner reads (F22). Written the same way and in
+			// the same transaction-shaped order: SQLite first, preferences after.
+			const catchup = CATCHUP(draft.routinesCatchupHours);
+			if (catchup !== CATCHUP(saved.routinesCatchupHours)) {
+				await cmd.setSetting('routinesCatchupHours', catchup);
+			}
+			const concurrent = CONCURRENT(draft.routinesMaxConcurrent);
+			if (concurrent !== CONCURRENT(saved.routinesMaxConcurrent)) {
+				await cmd.setSetting('routinesMaxConcurrent', concurrent);
+			}
+			queryClient.setQueryData(queryKeys.setting('claudeBinaryPath'), {
+				claudeBinary: path ?? '',
+				routinesCatchupHours: catchup ?? '',
+				routinesMaxConcurrent: concurrent ?? '',
+			});
 			applyPrefs(prefsOf(draft));
 			onClose();
 		} catch (e) {
@@ -303,6 +335,48 @@ function SettingsForm({ section, onSection, onClose, savedOverride, dirtyRef }: 
 						</div>
 					)}
 
+					{section === 'routines' && (
+						<div className="divide-y divide-border">
+							<SettingRow
+								label="Run missed routines for up to"
+								htmlFor="settings-routines-catchup"
+								description="How late a routine may still run when factorai was closed at its scheduled time. Missed runs coalesce into one. A routine can override this, and 0 means never run late."
+							>
+								<div className="flex items-center gap-1.5">
+									<Input
+										id="settings-routines-catchup"
+										data-testid="settings-routines-catchup"
+										className="w-16"
+										type="number"
+										min={0}
+										max={168}
+										placeholder="6"
+										value={draft.routinesCatchupHours}
+										onChange={(e) => set('routinesCatchupHours', e.target.value)}
+									/>
+									<span className="text-muted-foreground text-xs">hours</span>
+								</div>
+							</SettingRow>
+							<SettingRow
+								label="Routine sessions at once"
+								htmlFor="settings-routines-concurrent"
+								description="Ten projects with an hourly routine all come due at :00. The rest queue in due order and run late — they are not skipped."
+							>
+								<Input
+									id="settings-routines-concurrent"
+									data-testid="settings-routines-concurrent"
+									className="w-16"
+									type="number"
+									min={1}
+									max={16}
+									placeholder="2"
+									value={draft.routinesMaxConcurrent}
+									onChange={(e) => set('routinesMaxConcurrent', e.target.value)}
+								/>
+							</SettingRow>
+						</div>
+					)}
+
 					{section === 'sessions' && (
 						<div className="divide-y divide-border">
 							<SettingRow
@@ -346,8 +420,14 @@ function SettingsForm({ section, onSection, onClose, savedOverride, dirtyRef }: 
 	);
 }
 
-/** The draft minus the one value that isn't a renderer preference. */
+/** The draft minus the values that aren't renderer preferences — the three
+ *  that live in SQLite because Rust reads them. */
 function prefsOf(values: SettingsValues): Prefs {
-	const { claudeBinary: _sqlite, ...prefs } = values;
+	const {
+		claudeBinary: _binary,
+		routinesCatchupHours: _catchup,
+		routinesMaxConcurrent: _concurrent,
+		...prefs
+	} = values;
 	return prefs;
 }

@@ -132,6 +132,18 @@ pub fn run() {
 					.with_live_ids(Arc::new(move || live.live_session_ids())),
 			);
 
+			// The routine scheduler (F22, ADR-0026). It decides *when*; the
+			// renderer performs the spawn, so this only ever writes rows and
+			// emits `routine:fire`. `live` is asked for rather than held — the
+			// cap and the overlap skip need the live set, and owning the
+			// terminal manager would make the runner the wrong kind of object.
+			let routine_live = terminals.clone();
+			let routines = Arc::new(services::routines::Runner::new(
+				db.clone(),
+				app.handle().clone(),
+				Arc::new(move || routine_live.live_session_ids()),
+			));
+
 			app.manage(AppState {
 				db,
 				indexer: indexer.clone(),
@@ -139,10 +151,15 @@ pub fn run() {
 				claude_dir: cd,
 				data_dir,
 				ui,
+				routines: routines.clone(),
 			});
 
 			spawn_initial_scan(indexer.clone());
 			watcher::spawn(indexer);
+			// Ticking starts with the window, because a routine is scheduled work
+			// in a project you can see — and the first tick is what catches up
+			// what was missed while the app was closed.
+			routines.start();
 
 			// A dev build says so in its title, because that is the only part of
 			// it the window switcher, the dock and `wmctrl -l` can see — and the
@@ -212,6 +229,12 @@ pub fn run() {
 			commands::sidebar::create_group,
 			commands::sidebar::rename_group,
 			commands::sidebar::remove_group,
+			commands::routines::list_routines,
+			commands::routines::create_routine,
+			commands::routines::update_routine,
+			commands::routines::delete_routine,
+			commands::routines::set_routine_enabled,
+			commands::routines::run_routine_now,
 			commands::sessions::list_sessions,
 			commands::sessions::get_session_tail,
 			commands::sessions::search_sessions,

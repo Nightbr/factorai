@@ -46,6 +46,12 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// express that without meaning two things at once. The order moves into a
 	// tree of rows. ADR-0025 supersedes ADR-0023 for this.
 	("0012_sidebar_rows", include_str!("migrations/0012_sidebar_rows.sql")),
+	// Routines (F22, ADR-0026): a project's scheduled prompts, and which routine
+	// started a session. `session_routines` has **no** foreign key to `sessions`,
+	// which is 0007's lesson applied up front rather than found again — the runner
+	// writes at spawn, and the `sessions` row does not exist until Claude has
+	// written a transcript.
+	("0013_routines", include_str!("migrations/0013_routines.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

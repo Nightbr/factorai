@@ -17,6 +17,9 @@ import type {
 	PdfContents,
 	Project,
 	QuitRequestedEvent,
+	Routine,
+	RoutineFireEvent,
+	RoutineInput,
 	SearchHit,
 	SessionPage,
 	SessionSummary,
@@ -188,6 +191,22 @@ export const cmd = {
 	 *  beside a path that does not work. */
 	validateClaudeBinary: (path: string) =>
 		invoke<ClaudeCliStatus>('validate_claude_binary', { path }),
+	/** A project's routines, oldest first (F22). */
+	listRoutines: (projectId: string) => invoke<Routine[]>('list_routines', { projectId }),
+	/** Create one. Rejects a cron expression that cannot be parsed, so a
+	 *  schedule that could never fire cannot be saved. */
+	createRoutine: (input: RoutineInput) => invoke<Routine>('create_routine', { input }),
+	updateRoutine: (id: string, input: RoutineInput) =>
+		invoke<Routine>('update_routine', { id, input }),
+	/** Delete one. **Leaves a running session alone** — killing an agent is
+	 *  never a side effect of editing a schedule. */
+	deleteRoutine: (id: string) => invoke<void>('delete_routine', { id }),
+	/** Stop, or resume, future fires. Never touches a live session. */
+	setRoutineEnabled: (id: string, enabled: boolean) =>
+		invoke<void>('set_routine_enabled', { id, enabled }),
+	/** Fire now, through the runner's own path — the overlap skip and the
+	 *  concurrency cap included. Null when it was skipped or capped. */
+	runRoutineNow: (id: string) => invoke<string | null>('run_routine_now', { id }),
 	/** The session id to open for a "new session" in this project — a fresh
 	 *  uuid, or a live one that has never been messaged. See ADR-0008. */
 	startSession: (projectId: string) => invoke<string>('start_session', { projectId }),
@@ -378,6 +397,11 @@ export const events = {
 	 *  `setWorktree`, or it opened a file in one. */
 	onSessionWorktree: (cb: (p: SessionWorktreeEvent) => void) =>
 		listen<SessionWorktreeEvent>('session:worktree', cb),
+	/** A routine came due and the runner wants a session started (F22). Every
+	 *  row is already written when this arrives, so the renderer is rendering a
+	 *  fact rather than racing one. */
+	onRoutineFire: (cb: (p: RoutineFireEvent) => void) =>
+		listen<RoutineFireEvent>('routine:fire', cb),
 };
 
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
@@ -470,6 +494,9 @@ interface TestFixture {
 	/** Path the folder picker returns for "Add project" (F1). Absent means the
 	 *  picker was cancelled — a native dialog can't be driven from a test. */
 	folderPick?: string;
+	/** Routines per project id (F22). Mutated by the create/update/delete mocks,
+	 *  so a test can add one and see the list it lands in. */
+	routinesByProject?: Record<string, Routine[]>;
 	/** The `settings` table (F11). Mutated by `set_setting`, so a test can Save
 	 *  and then assert on what the next read returns. */
 	settings?: Partial<Record<SettingKey, string>>;
@@ -828,6 +855,73 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return (fx?.gitCommits?.[sha] ?? null) as unknown as T;
 		}
 		case 'resolve_project_path':
+			return null as unknown as T;
+		case 'list_routines': {
+			const projectId = String(args?.projectId ?? '');
+			return (fx?.routinesByProject?.[projectId] ?? []) as unknown as T;
+		}
+		case 'create_routine': {
+			const input = args?.input as RoutineInput;
+			// The real command refuses an expression it cannot parse, and the
+			// editor's error path is the thing worth testing here.
+			if (!/^\S+( \S+){4}$/.test(input.cron.trim())) {
+				throw new Error(`not a cron expression: ${input.cron}`);
+			}
+			const routine: Routine = {
+				id: mockUuid(`routine:${input.projectId}:${input.name}`),
+				projectId: input.projectId,
+				name: input.name,
+				cron: input.cron,
+				prompt: input.prompt,
+				enabled: input.enabled,
+				catchupHours: input.catchupHours,
+				lastFireAt: null,
+				lastRunAt: null,
+				lastSessionId: null,
+				lastSkippedAt: null,
+				lastError: null,
+				createdAt: Date.now(),
+				nextRunAt: null,
+			};
+			if (fx) {
+				fx.routinesByProject ??= {};
+				fx.routinesByProject[input.projectId] = [
+					...(fx.routinesByProject[input.projectId] ?? []),
+					routine,
+				];
+			}
+			return routine as unknown as T;
+		}
+		case 'update_routine': {
+			const id = String(args?.id ?? '');
+			const input = args?.input as RoutineInput;
+			const list = fx?.routinesByProject?.[input.projectId] ?? [];
+			const updated = list.map((r) => (r.id === id ? { ...r, ...input } : r));
+			if (fx?.routinesByProject) fx.routinesByProject[input.projectId] = updated;
+			return (updated.find((r) => r.id === id) ?? null) as unknown as T;
+		}
+		case 'delete_routine': {
+			const id = String(args?.id ?? '');
+			for (const [projectId, list] of Object.entries(fx?.routinesByProject ?? {})) {
+				if (fx?.routinesByProject) {
+					fx.routinesByProject[projectId] = list.filter((r) => r.id !== id);
+				}
+			}
+			return undefined as unknown as T;
+		}
+		case 'set_routine_enabled': {
+			const id = String(args?.id ?? '');
+			const enabled = args?.enabled === true;
+			for (const [projectId, list] of Object.entries(fx?.routinesByProject ?? {})) {
+				if (fx?.routinesByProject) {
+					fx.routinesByProject[projectId] = list.map((r) => (r.id === id ? { ...r, enabled } : r));
+				}
+			}
+			return undefined as unknown as T;
+		}
+		case 'run_routine_now':
+			// Nothing spawns in browser-only mode, and the caller treats null as
+			// "skipped or capped" — which is the honest answer with no runner.
 			return null as unknown as T;
 		case 'get_setting': {
 			const key = String(args?.key ?? '') as SettingKey;

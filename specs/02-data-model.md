@@ -436,8 +436,10 @@ and conflating the two is how a resume becomes a new conversation — see F21 §
 | prompt         | TEXT    | the session's first message, passed as argv                  |
 | enabled        | INTEGER | 0/1 — stops future fires; never touches a running session    |
 | catchup_hours  | INTEGER | NULL means "use the app-wide default" from `settings`        |
+| last_fire_at   | INTEGER | the last occurrence **consumed** — run or skipped            |
 | last_run_at    | INTEGER | epoch ms, written **when the session starts**                |
 | last_session_id| TEXT    | the session the last fire produced; no FK, see below         |
+| last_skipped_at| INTEGER | when a fire was last dropped for an overlap                  |
 | last_error     | TEXT    | why the last fire failed, NULL when it did not               |
 | created_at     | INTEGER | epoch ms                                                     |
 
@@ -452,6 +454,17 @@ default and the concurrency cap, which are `settings` rows for the same reason.
 **`cron` is the only representation.** The preset picker, the `Custom…` field and
 the later MCP tool all write this column, so nothing has to translate between two
 dialects and a routine created by an agent is editable by a human.
+
+**Three "last" columns, because they answer three questions.** `last_fire_at` is
+the occurrence the scheduler consumed and is what due-ness is measured against —
+it moves on a skip too, which is what stops a skipped fire coming back every
+tick for the rest of the day. `last_run_at` is when a session actually started.
+`last_skipped_at` is when one was dropped for an overlap, and is what lets the
+list say *skipped 10:00, still running*. Folding them together loses an answer.
+
+**A routine that has never fired is measured from `created_at`.** Saving one at
+10:00 whose schedule says 10:00 does not immediately fire the occurrence it was
+written a moment too late for.
 
 **`last_run_at` is a fire, not a completion.** Written at spawn, so a run that
 kill-on-quit takes still counts as having happened — see F22 § "The rules that

@@ -3,6 +3,58 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Routines — a project's cron-scheduled agent sessions, slice 1 (TODO item 42, spec
+  `05-features.md` F22, [ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md))** —
+  2026-08-29, asked for the same day and designed in a clarify-needs interview before any code.
+  A **Routine** is a first-class object under a project — name, schedule, prompt, enable switch,
+  catch-up window — that starts an agent session with that prompt when it comes due, **without
+  opening a tab**. What it produces is an ordinary session: indexed, resumable, searchable, in the
+  sidebar, and tabbed the moment a human opens it.
+
+  **Three facts in the existing code made this bigger than it reads**, and they are why there is an
+  ADR: the renderer owned every `terminal_spawn` (so a tabless run is a new spawn path, not a
+  tab-strip tweak); scrollback lives only in the pooled xterm, so a PTY with nothing attached
+  streams into nowhere; and `tabs ⊇ bySession` was a stated F16 invariant. A fire now spawns into a
+  **hidden pooled host** parked off-screen — `getRoutinePane()`, a real box rather than
+  `display: none`, so xterm measures a usable grid instead of being born 80×24 — and the invariant
+  becomes *a tab is an open session; a session may run without one*. `adoptLive` stopped opening
+  tabs with it: it ran on every reload, so keeping that line would have handed a routine's session
+  a tab nobody asked for. The persisted `tabs` is what restores the strip, which is what made
+  dropping it safe.
+
+  **The scheduler is a pure function.** `plan(routines, live, now, …)` returns fires and skips, so
+  the rules that matter — the overlap skip, the concurrency cap and its queue, coalesced catch-up —
+  are tested without a database, a PTY or a Tauri runtime. Catch-up is not a separate mechanism:
+  only the *latest* occurrence is ever considered, so five hourly fires missed while the app was
+  shut are one run, and the first tick at launch is what catches them. `croner` parses and projects
+  the schedule (Q25 has its DST rules); the deciding is ours, because no scheduler crate has
+  anywhere to put a cap, a queue or a skip.
+
+  **Three "last" columns, because they answer three questions**: `last_fire_at` is the occurrence
+  the scheduler consumed — it moves on a skip too, which is what stops a skipped fire coming back
+  every tick — `last_run_at` is when a session actually started, and `last_skipped_at` is what lets
+  the row say *skipped 10:00, still running*. `session_routines` carries the origin with **no
+  foreign key**, which is migration 0007's lesson applied up front rather than found a second time:
+  the runner writes at spawn and the `sessions` row does not exist until Claude writes a transcript.
+  Deleting a routine nulls the link rather than cascading, so a session it started keeps its icon
+  and loses only the name.
+
+  **Two things the manual pass caught that no test did.** The runner was a `tokio::spawn` and
+  `setup()` runs before Tauri's runtime exists — the app panicked with *"there is no reactor
+  running"* before the window appeared; it is a named `std::thread` now, like the indexer's scan and
+  the watcher. And `New routine` in the project's context menu only navigated: reached from a
+  project page already showing that tab, the view does not remount, so the editor's initial state
+  never ran again. Both were invisible to `cargo test` and to Playwright, which mounts fresh every
+  time.
+
+  Shipped with it: `Sessions | Routines` on the project route (in the URL, so the menu and the later
+  MCP tool can land on it), the inline editor with a preset picker, a `Custom…` cron field and the
+  next-three-fires echo in plain local time, `New session` / `New routine` at the top of the project
+  context menu, a `Repeat` origin icon in the sidebar, the project list and the tab, `Run now`
+  through the runner's own path, and two `SettingRow`s for the catch-up default and the concurrency
+  cap. Delete asks first and says the part that is not obvious — a session it started keeps running.
+  **Slices 2 and 3 (the skills picker, and routines over MCP) are still open — see TODO item 42.**
+
 - **The wheel scrolls the terminal straight after a tab switch, on macOS — spec `05-features.md`
   F5** — 2026-08-28, user report: switch session, scroll the mouse wheel over the new session's
   output, nothing moves; click into the terminal and it works from then on. Not reproducible on

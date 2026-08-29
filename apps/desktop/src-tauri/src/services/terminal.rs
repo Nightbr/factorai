@@ -74,6 +74,14 @@ pub struct SpawnOpts {
 	pub cwd: Option<String>,
 	pub cols: u16,
 	pub rows: u16,
+	/// A first message for the agent, appended to argv (F22, ADR-0026 § 4).
+	///
+	/// `None` for every human-started session, which is every caller but a
+	/// routine fire. It is argv rather than a write into the PTY because a write
+	/// races the CLI's own startup and lands in a trust dialog when it loses,
+	/// and bracketed paste makes it a quoting problem as well.
+	#[serde(default)]
+	pub initial_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -631,6 +639,32 @@ impl TerminalManager {
 		self.spawn_with_argv(opts, None)
 	}
 
+	/// The command line for a session: the binary, the flag the transcript probe
+	/// chose, the id, and — for a routine fire — the prompt.
+	///
+	/// Split out from `spawn_with_argv` so the argv is assertable without a PTY,
+	/// which is the only part of a spawn a test can check cheaply and the part
+	/// that decides whether a session resumes or starts over.
+	fn argv_for(&self, opts: &SpawnOpts, cwd_path: &Path) -> AppResult<Vec<String>> {
+		let bin = match &self.binary_override {
+			Some(p) => p.clone(),
+			None => {
+				let configured = self.user_binary.as_ref().and_then(|cb| cb());
+				find_claude_binary(configured.as_deref())?
+			}
+		};
+		let mut v = vec![bin.to_string_lossy().to_string()];
+		v.push(session_flag(&self.claude_dir, cwd_path, &opts.session_id).into());
+		v.push(opts.session_id.clone());
+		// One positional argument, whichever flag the probe chose: the CLI takes a
+		// prompt the same way in both cases, so a routine firing into a session it
+		// has run before resumes *and* says something.
+		if let Some(prompt) = opts.initial_prompt.as_ref().filter(|p| !p.is_empty()) {
+			v.push(prompt.clone());
+		}
+		Ok(v)
+	}
+
 	/// Internal: same as `spawn` but allows overriding argv for tests
 	/// (e.g. invoking `/bin/sh -c "..."` instead of `claude`).
 	fn spawn_with_argv(
@@ -648,19 +682,7 @@ impl TerminalManager {
 
 		let argv = match argv_override {
 			Some(v) => v,
-			None => {
-				let bin = match &self.binary_override {
-					Some(p) => p.clone(),
-					None => {
-						let configured = self.user_binary.as_ref().and_then(|cb| cb());
-						find_claude_binary(configured.as_deref())?
-					}
-				};
-				let mut v = vec![bin.to_string_lossy().to_string()];
-				v.push(session_flag(&self.claude_dir, &cwd_path, &opts.session_id).into());
-				v.push(opts.session_id.clone());
-				v
-			}
+			None => self.argv_for(&opts, &cwd_path)?,
 		};
 
 		let mut cmd = CommandBuilder::new(&argv[0]);
@@ -1078,6 +1100,7 @@ mod tests {
 			cwd: None,
 			cols,
 			rows,
+			initial_prompt: None,
 		}
 	}
 
@@ -1428,6 +1451,29 @@ mod tests {
 		let spawned_in = mgr.terminals.get(&id).map(|h| h.cwd.clone()).unwrap();
 		mgr.kill_all();
 		assert_eq!(spawned_in, work.path().to_path_buf());
+	}
+
+	/// A routine's prompt is one positional argument after the id, on whichever
+	/// branch the transcript probe chose (F22, ADR-0026 § 4).
+	#[test]
+	fn an_initial_prompt_becomes_one_positional_argument() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let (mut mgr, _data, _exit) = make_manager();
+		mgr.set_binary(PathBuf::from("/bin/echo"));
+		let mut o = opts(80, 24);
+		o.cwd = Some(tmp.path().to_string_lossy().to_string());
+		o.initial_prompt = Some("Triage the inbox".into());
+		let argv = mgr.argv_for(&o, tmp.path()).expect("argv");
+		assert_eq!(argv[0], "/bin/echo");
+		assert_eq!(argv[1], "--session-id");
+		assert_eq!(argv[2], o.session_id);
+		assert_eq!(argv[3], "Triage the inbox");
+
+		// An empty prompt is not an argument: it would be an empty first message.
+		o.initial_prompt = Some(String::new());
+		assert_eq!(mgr.argv_for(&o, tmp.path()).unwrap().len(), 3);
+		o.initial_prompt = None;
+		assert_eq!(mgr.argv_for(&o, tmp.path()).unwrap().len(), 3);
 	}
 
 	#[test]

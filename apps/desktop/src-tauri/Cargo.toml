@@ -52,6 +52,13 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 # tokio-tungstenite; named here because we call its traits directly. No default
 # features — `async-await` and the executor helpers are not used.
 futures-util = { version = "0.3.34", default-features = false, features = ["std", "sink"] }
+# Cron parsing for routines (F22, ADR-0026 § 5). Takes the 5-field expressions
+# people write, answers `find_next_occurrence`, and has *documented* DST rules —
+# a fixed-time job runs at the first valid instant after a spring-forward gap and
+# once only in a fall-back overlap (Q25). The scheduling half is ours: a crate
+# that also owns execution has nowhere to put the cap, the queue, the overlap
+# skip or coalesced catch-up.
+croner = "3"
 
 [dev-dependencies]
 regex = "1.13.1"

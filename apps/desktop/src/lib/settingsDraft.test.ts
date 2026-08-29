@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	binaryOverride,
+	CATCHUP,
+	CONCURRENT,
 	dirtySections,
 	isDirty,
 	isSettingsSection,
@@ -11,6 +13,8 @@ import {
 
 const SAVED: SettingsValues = {
 	claudeBinary: '',
+	routinesCatchupHours: '',
+	routinesMaxConcurrent: '',
 	diffInline: false,
 	confirmCloseSession: true,
 	confirmCloseMiddleClick: true,
@@ -53,8 +57,10 @@ describe('dirtySections', () => {
 	it('places every value in exactly one section', () => {
 		for (const key of Object.keys(SECTION_FOR) as (keyof SettingsValues)[]) {
 			const draft: SettingsValues = { ...SAVED };
-			// Flip whatever it is: booleans invert, the path gets a value.
+			// Flip whatever it is: booleans invert, the text fields get a value.
 			if (key === 'claudeBinary') draft.claudeBinary = '/usr/local/bin/claude';
+			else if (key === 'routinesCatchupHours') draft.routinesCatchupHours = '12';
+			else if (key === 'routinesMaxConcurrent') draft.routinesMaxConcurrent = '4';
 			else draft[key] = !SAVED[key];
 			expect(dirtySections(SAVED, draft)).toEqual([SECTION_FOR[key]]);
 		}
@@ -90,5 +96,34 @@ describe('dirtySections', () => {
 	it('sees clearing an override as a change', () => {
 		const saved: SettingsValues = { ...SAVED, claudeBinary: '/usr/local/bin/claude' };
 		expect(dirtySections(saved, { ...saved, claudeBinary: '' })).toEqual(['claude']);
+	});
+});
+
+describe('the routine settings', () => {
+	it('is null for an empty field, which is what deletes the row', () => {
+		expect(CATCHUP('')).toBeNull();
+		expect(CONCURRENT('  ')).toBeNull();
+	});
+
+	it('refuses anything that is not a whole number in range', () => {
+		// A stray keystroke must not reach the runner as a cap of NaN.
+		expect(CONCURRENT('lots')).toBeNull();
+		expect(CONCURRENT('0')).toBeNull();
+		expect(CONCURRENT('2.5')).toBeNull();
+		expect(CATCHUP('-1')).toBeNull();
+		expect(CATCHUP('999')).toBeNull();
+	});
+
+	it('keeps zero hours, which is a real answer', () => {
+		// "Never run late" is a setting, not an absence of one.
+		expect(CATCHUP('0')).toBe('0');
+		expect(CATCHUP(' 6 ')).toBe('6');
+		expect(CONCURRENT('4')).toBe('4');
+	});
+
+	it('does not call whitespace a change', () => {
+		const saved: SettingsValues = { ...SAVED, routinesMaxConcurrent: '3' };
+		expect(isDirty(saved, { ...saved, routinesMaxConcurrent: ' 3 ' })).toBe(false);
+		expect(isDirty(saved, { ...saved, routinesMaxConcurrent: '4' })).toBe(true);
 	});
 });

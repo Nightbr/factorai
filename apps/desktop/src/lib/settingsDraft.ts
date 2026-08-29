@@ -13,7 +13,13 @@ import type { Prefs } from '@store/prefsStore';
 /** The nav, in order. Appearance (theme) and Advanced (release channel) are
  *  deliberately absent until they have content: an empty section reads as a
  *  bug. */
-export const SETTINGS_SECTIONS = ['claude', 'editor', 'confirmations', 'sessions'] as const;
+export const SETTINGS_SECTIONS = [
+	'claude',
+	'editor',
+	'confirmations',
+	'sessions',
+	'routines',
+] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
@@ -32,6 +38,12 @@ export function isSettingsSection(value: unknown): value is SettingsSection {
  */
 export interface SettingsValues extends Prefs {
 	claudeBinary: string;
+	/** Both are SQLite settings for the same reason the binary path is: **Rust**
+	 *  reads them — `RoutineRunner` does, on every tick (F22, ADR-0013). Held as
+	 *  the text of their fields, so a half-typed number is a draft rather than a
+	 *  parse failure, and normalised on the way out. */
+	routinesCatchupHours: string;
+	routinesMaxConcurrent: string;
 }
 
 /** Which section each value belongs to. A `Record` over the keys rather than a
@@ -44,6 +56,8 @@ export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
 	confirmCloseSession: 'confirmations',
 	confirmCloseMiddleClick: 'confirmations',
 	restoreTabs: 'sessions',
+	routinesCatchupHours: 'routines',
+	routinesMaxConcurrent: 'routines',
 };
 
 /**
@@ -57,6 +71,24 @@ export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
 export function binaryOverride(text: string): string | null {
 	const trimmed = text.trim();
 	return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * A numeric settings field on its way to the table: the digits, or `null` for
+ * "unset, use the default".
+ *
+ * Same distinction `binaryOverride` draws and for the same reason — `null` is
+ * what `set_setting` turns into a deleted row, and an empty string would be a
+ * *set* value that parses as nothing. Anything that is not a whole number in
+ * range is treated as unset rather than written, so a stray keystroke cannot
+ * turn the concurrency cap into `NaN`.
+ */
+function numericSetting(text: string, min: number, max: number): string | null {
+	const trimmed = text.trim();
+	if (trimmed === '') return null;
+	const n = Number(trimmed);
+	if (!Number.isInteger(n) || n < min || n > max) return null;
+	return String(n);
 }
 
 /**
@@ -83,6 +115,12 @@ export function isDirty(saved: SettingsValues, draft: SettingsValues): boolean {
 	return dirtySections(saved, draft).length > 0;
 }
 
+/** The two routine settings' bounds, in one place because the modal writes
+ *  them and this file compares them. Zero hours means "never run late"; one is
+ *  the smallest cap that is still a cap. */
+export const CATCHUP = (text: string) => numericSetting(text, 0, 168);
+export const CONCURRENT = (text: string) => numericSetting(text, 1, 16);
+
 function sameValue(
 	saved: SettingsValues,
 	draft: SettingsValues,
@@ -90,6 +128,14 @@ function sameValue(
 ): boolean {
 	if (key === 'claudeBinary') {
 		return binaryOverride(saved.claudeBinary) === binaryOverride(draft.claudeBinary);
+	}
+	// Normalised for the same reason: `6 ` and `6` are the same setting, and a
+	// cursor left in the wrong place must not enable Save.
+	if (key === 'routinesCatchupHours') {
+		return CATCHUP(saved.routinesCatchupHours) === CATCHUP(draft.routinesCatchupHours);
+	}
+	if (key === 'routinesMaxConcurrent') {
+		return CONCURRENT(saved.routinesMaxConcurrent) === CONCURRENT(draft.routinesMaxConcurrent);
 	}
 	return saved[key] === draft[key];
 }

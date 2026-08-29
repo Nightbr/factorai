@@ -1612,6 +1612,15 @@ unit of work in this app is a session and this is where the next per-session
 preference goes; a startup section would describe when a preference applies
 rather than what it applies to.
 
+**Routines.** Two numbers, added by F22 and both in the SQLite table because
+**Rust** reads them — `RoutineRunner` does, on every tick. *Run missed routines
+for up to N hours* is the app-wide catch-up default a routine may override, where
+`0` means never run late; *routine sessions at once* is the concurrency cap, and
+its description says the thing that is not obvious — the rest **queue and run
+late**, they are not skipped. Both are text fields normalised on save the way the
+binary override is: a value that is not a whole number in range is treated as
+unset rather than written, because a cap of `NaN` reaches the scheduler.
+
 **Appearance and Advanced are dropped until they have content.** This heading read
 "three, not four" until Sessions arrived, and the count is not the point — having
 content is. Appearance would hold theme, which is deferred to its own roadmap item
@@ -1635,8 +1644,9 @@ Advanced section.
 ### Backend
 
 `get_setting` / `set_setting`, keyed by a **mirrored `SettingKey` union** — see
-[`03-backend-rust.md`](./03-backend-rust.md) § `settings`. Today's only key is the
-claude binary path; item 31's channel is the second.
+[`03-backend-rust.md`](./03-backend-rust.md) § `settings`. Three keys: the claude
+binary path, and F22's `routines.catchup_hours` and `routines.max_concurrent`.
+Item 31's channel is the fourth.
 
 The override is read by **`find_claude_binary(override)`** rather than
 `TerminalManager`'s existing `binary_override` field. That field is documented for
@@ -3876,8 +3886,11 @@ default both work without any uptake at all.
 
 ## F22 — Routines: a project's scheduled agent sessions
 
-**Specified 2026-08-29**, from a clarify-needs interview; not built. The two
-decisions everything below rests on are in
+**Specified and built 2026-08-29**, from a clarify-needs interview. Slice 1 is
+in: the schema, the runner, the commands, the tabbed project view with its
+editor, the two context-menu items, the origin icon and the tabless spawn. The
+skills picker (slice 2) and the MCP tool (slice 3) are not. The two decisions
+everything below rests on are in
 [ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md) — what a fire
 starts, and who decides it is time. Sequencing and the slices are roadmap item
 42.
@@ -4006,6 +4019,14 @@ routines while writing one.
 - **Deleting asks first, and also leaves the running session alone.** Its origin
   icon degrades to a tooltip reading *started by a routine that no longer
   exists*. Killing an agent is never a side effect of editing a schedule.
+
+### Run now
+
+Every row has one, and it fires **through the runner's own path** — the overlap
+skip and the concurrency cap included. A manual run that ignored those would be a
+second set of rules for the same act, and it is the button most likely to be
+clicked twice. It is disabled for a project whose folder is gone, the same rule
+and the same tooltip the new-session button has.
 
 ### Storage
 

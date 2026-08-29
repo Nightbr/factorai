@@ -16,6 +16,8 @@ function session(id: string, updatedAt: number, subagentOf: string | null = null
 		worktree: null,
 		lastCwd: null,
 		touchedPaths: [],
+		routineId: null,
+		routineName: null,
 	};
 }
 

@@ -13,6 +13,11 @@ export const queryKeys = {
 	 *  not the workspace table — and is read only while the dialog is open. */
 	importCandidates: () => ['import-candidates'] as const,
 	sessions: (projectId: string) => ['sessions', projectId] as const,
+	/** One project's routines (F22). Its own key rather than a `sessions`
+	 *  variant: they are a different object with a different lifetime, and a
+	 *  fire invalidates both for different reasons — the routine's "last run"
+	 *  changed, and the project gained a session. */
+	routines: (projectId: string) => ['routines', projectId] as const,
 	session: (sessionId: string, offset: number, limit: number) =>
 		['session', sessionId, offset, limit] as const,
 	sessionTail: (sessionId: string, limit: number) => ['session-tail', sessionId, limit] as const,

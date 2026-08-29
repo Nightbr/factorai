@@ -135,6 +135,14 @@ export interface SessionSummary {
 	 *  wins and the rest are ignored, which is what lets the harvest behind it be
 	 *  loose enough to read shell commands. */
 	touchedPaths: string[];
+	/** The routine that started this session, when one did (F22).
+	 *
+	 *  Outlives the routine: deleting one nulls the link rather than cascading,
+	 *  so a session it started keeps its origin icon and loses only the name. */
+	routineId: string | null;
+	/** That routine's name, for the origin icon's tooltip. Null when the routine
+	 *  has been deleted since. */
+	routineName: string | null;
 }
 
 export interface SessionPage {
@@ -237,6 +245,11 @@ export interface SpawnOpts {
 	cwd?: string;
 	cols: number;
 	rows: number;
+	/** A first message for the agent, appended to argv (F22, ADR-0026 § 4).
+	 *
+	 *  Only a routine fire sets it. Argv rather than a write into the PTY: a
+	 *  write races the CLI's startup and lands in a trust dialog when it loses. */
+	initialPrompt?: string;
 }
 
 export interface ClaudeCliStatus {
@@ -258,7 +271,7 @@ export interface ClaudeCliStatus {
  * A union rather than a free string for the reason `GitRev` is one: a
  * misspelled key would otherwise read as "unset" with nothing to catch it.
  */
-export type SettingKey = 'claudeBinaryPath';
+export type SettingKey = 'claudeBinaryPath' | 'routinesCatchupHours' | 'routinesMaxConcurrent';
 
 /**
  * Emitted from `CloseRequested` when quitting needs a confirmation — which is
@@ -701,3 +714,62 @@ export type AppError =
 	| { kind: 'NotFound'; message: string }
 	| { kind: 'InvalidInput'; message: string }
 	| { kind: 'Process'; message: string };
+
+/**
+ * A project's scheduled prompt (F22, ADR-0026). Mirrors the Rust `Routine`.
+ *
+ * The three "last" fields answer three different questions and folding them
+ * together loses one: `lastFireAt` is the occurrence the scheduler **consumed**
+ * (run or skipped), `lastRunAt` is when a session actually started, and
+ * `lastSkippedAt` is when a fire was dropped because the previous session was
+ * still live.
+ */
+export interface Routine {
+	id: string;
+	projectId: string;
+	name: string;
+	/** The 5-field expression. The preset picker and the `Custom…` field both
+	 *  write this, so a schedule has one representation. */
+	cron: string;
+	/** The session's first message. */
+	prompt: string;
+	enabled: boolean;
+	/** Null inherits the app-wide `routinesCatchupHours`; 0 never runs late. */
+	catchupHours: number | null;
+	lastFireAt: number | null;
+	/** Written when the session **starts**, so a run kill-on-quit took still
+	 *  counts as having happened (F22). */
+	lastRunAt: number | null;
+	lastSessionId: string | null;
+	lastSkippedAt: number | null;
+	lastError: string | null;
+	createdAt: number;
+	/** Derived per query from `cron`, never stored — epoch ms. */
+	nextRunAt: number | null;
+}
+
+/** What `createRoutine` and `updateRoutine` accept. Run state is the runner's
+ *  to write, so it is not part of this. */
+export interface RoutineInput {
+	projectId: string;
+	name: string;
+	cron: string;
+	prompt: string;
+	enabled: boolean;
+	catchupHours: number | null;
+}
+
+/** `routine:fire` — the runner telling the renderer to start a session (F22).
+ *
+ *  Every row is written before this is emitted, the same write-then-emit
+ *  ordering `session:worktree` follows: an event ahead of its row is a fact the
+ *  next reload disagrees with. */
+export interface RoutineFireEvent {
+	routineId: string;
+	routineName: string;
+	projectId: string;
+	sessionId: string;
+	prompt: string;
+	/** The project's folder, resolved by the runner. */
+	cwd: string;
+}

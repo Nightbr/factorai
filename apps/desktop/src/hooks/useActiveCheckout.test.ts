@@ -42,6 +42,8 @@ function session(over: Partial<SessionSummary> = {}): SessionSummary {
 		worktree: null,
 		lastCwd: PROJECT,
 		touchedPaths: [],
+		routineId: null,
+		routineName: null,
 		...over,
 	};
 }

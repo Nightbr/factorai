@@ -251,7 +251,7 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `terminal:status`      | `{ id, status, lastActivity }`       | TerminalManager     |
 | `terminal:exit`        | `{ id, code }`                       | TerminalManager     |
 | `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
-| `routine:fire`         | `{ routineId, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |
+| `routine:fire`         | `{ routineId, routineName, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |
 
 `session:worktree` is the one event whose source is the IDE bridge rather than a
 service, and it fires **after** the write to `session_worktrees`, never before:
@@ -647,9 +647,15 @@ one-line change once the path is read in one place.
 The only service that starts agent work nobody asked for at that moment, which
 is why its rules are here rather than left to the caller.
 
-**One task, one wall-clock tick, asking "what is due?"** — never a timer per
+**One thread, one wall-clock tick, asking "what is due?"** — never a timer per
 routine and never a tick count. A suspended laptop counts no ticks, so due-ness
-is always `now` against `last_run_at` and `croner`'s `find_next_occurrence`.
+is always `now` against `last_fire_at` and `croner`'s occurrence search.
+
+**A named `std::thread`, like the indexer's scan and the watcher, and not
+`tokio::spawn`.** Found by running it: `setup()` is called before Tauri's runtime
+exists, so a task spawned there panics with *"there is no reactor running"* on the
+main thread before the window appears. The loop blocks on a sleep and does no
+async work, so it wants no runtime at all.
 
 - **It mints the session id** and writes `last_run_at`, `last_session_id` and the
   `session_routines` row *before* emitting `routine:fire`, the same write-then-emit
@@ -664,7 +670,9 @@ is always `now` against `last_run_at` and `croner`'s `find_next_occurrence`.
   firing at `:00` start N and queue the rest in due order — queued, not skipped.
 - **Catch-up runs at startup**, inside each routine's window (its own
   `catchup_hours`, else `routines.catchup_hours`), and **coalesces**: five missed
-  hourly fires are one run.
+  hourly fires are one run. It is not a separate mechanism — the first tick is
+  immediate, and a missed occurrence is simply one whose latest instance is in
+  the past.
 - **The database is reached by callback**, `Arc<dyn Fn…>`, the same shape
   `TerminalManager`'s `user_binary` and `session_cwd` use — the runner needs
   answers from a database it should not hold.

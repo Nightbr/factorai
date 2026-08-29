@@ -371,10 +371,16 @@ impl Indexer {
 				// sessions, which is the same guard the checkout needs.
 				let mut del_wt =
 					tx.prepare("DELETE FROM session_worktrees WHERE session_id = ?1")?;
+				// F22's origin record, here for exactly the same reason and with the
+				// same shape: no foreign key, because the runner writes it at spawn
+				// and the `sessions` row does not exist yet (migration 0013).
+				let mut del_rt =
+					tx.prepare("DELETE FROM session_routines WHERE session_id = ?1")?;
 				let mut del_row = tx.prepare("DELETE FROM sessions WHERE id = ?1")?;
 				for id in &gone {
 					del_fts.execute(params![id])?;
 					del_wt.execute(params![id])?;
+					del_rt.execute(params![id])?;
 					del_row.execute(params![id])?;
 				}
 			}

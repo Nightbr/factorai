@@ -79,66 +79,44 @@ takes the cheaper route it should have anyway —
 also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
 it still describes the tab.
 
-## 42. Routines — a project's cron-scheduled agent sessions
+## 42. Routines — the two slices slice 1 left
 
-**Graduated from `06-milestones.md` § Deferred (was #2, "Scheduler") on 2026-08-28** and placed
-third *on purpose* — the one item here whose position is a priority claim rather than a free slot.
-**Specified 2026-08-29** as [F22](../05-features.md), with
-[ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md) holding the two decisions
-everything rests on, [Q25](../07-open-questions.md) holding DST and sleep, the schema in
-[`02-data-model.md`](../02-data-model.md) and the command surface in
-[`03-backend-rust.md`](../03-backend-rust.md). **Nothing is built.**
-
-A **Routine** is a per-project object — name, schedule, prompt, enable switch, catch-up window —
-that starts an agent session with that prompt when it comes due, **without opening a tab**. Read
-F22 for the behaviour; what stays here is the order to build it in.
-
-**The three things in the code it collides with**, because they are what makes this bigger than it
-reads: the renderer owns every `terminal_spawn`, scrollback lives only in the pooled xterm, and
-`tabs ⊇ bySession` is a stated invariant that this retires. ADR-0026 § Context has the detail.
-
-### Slice 1 — the feature
-
-- [ ] Migrations for `routines` and `session_routines` (**no FK on `session_id`** — 0007's lesson,
-      applied up front). Read the numbering warning in `CLAUDE.md` § 2b before naming them.
-- [ ] `commands/routines.rs` and the `Routine` / `RoutineInput` types in `packages/types`,
-      hand-mirrored (§ 4).
-- [ ] `services/routines.rs` — `RoutineRunner`: the wall-clock tick, the overlap skip, the
-      concurrency cap and queue, catch-up with coalescing. `croner` is the dependency; the
-      execution rules are ours.
-- [ ] `SpawnOpts.initial_prompt` and the argv change on both branches of the transcript probe.
-- [ ] The renderer half: a `routine:fire` listener that mounts a hidden pooled `Terminal` with no
-      tab entry — **and an audit of every `bySession` reader**, which is the part that is easy to
-      under-scope.
-- [ ] `Sessions | Routines` on the project route with `?tab=routines`; the routines list; the
-      inline editor with the preset picker, `Custom…`, the next-fire echo and both switches.
-- [ ] `New session` / `New routine` at the top of the project context menu.
-- [ ] The origin icon in the sidebar row, the project list and the tab, with the routine's name in
-      the tooltip.
-- [ ] Two `SettingRow`s in F11's modal: the catch-up default and the concurrency cap.
+**Slice 1 shipped 2026-08-29** — schema, runner, commands, the tabbed project view and its editor,
+the two context-menu items, the origin icon and the tabless spawn. See
+[`DONE.md`](./DONE.md), [F22](../05-features.md) and
+[ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md). What is left:
 
 ### Slice 2 — the skills picker
 
 - [ ] `commands/routines.rs::list_skills` + `services/skills.rs`: a read-only scan of the project's
-      `.claude/skills/` and the user's `~/.claude/skills/`, name and description from frontmatter.
-- [ ] The list beside the prompt field; clicking inserts `/name`. Blocks nothing in slice 1.
+      `.claude/skills/` and the user's `~/.claude/skills/`, name and description from frontmatter
+      (ADR-0004 is untouched — it is a read).
+- [ ] The list beside the prompt field; clicking inserts `/name` at the cursor. The descriptions
+      are the point: the question a routine's author has is *what can I call from here*.
+- [ ] Later, and deliberately not first: a `/`-triggered autocomplete inside the textarea.
 
 ### Slice 3 — routines over MCP
 
-- [ ] A tool group on the IDE bridge (F20) so an agent can schedule follow-up work. Decided as
-      **full CRUD with no off switch and no provenance**, against the recommendation — F22 records
-      why that is worth revisiting *before* the slice, not during it. It is also a write through
-      the bridge, which is the ADR-0009 / ADR-0017 boundary question again.
+- [ ] A tool group on the IDE bridge (F20) so an agent can schedule follow-up work in the project
+      it is working in. Decided as **full CRUD with no off switch and no provenance**, against the
+      recommendation — F22 § "Later slices" records why that is worth revisiting *before* the slice
+      is built rather than during it. It is also a write through the bridge, which is the
+      ADR-0009 / ADR-0017 boundary question again.
 
-### Still open, and not blocking slice 1
+### Still open, and not blocking either slice
 
-- The default concurrency cap, and whether a queued fire is visible while it waits.
-- Where a failed fire surfaces: `last_error` on the row, item 7's toast, or both. The row is the
-  one that survives being away from the machine, so it is the one that has to exist.
-- Run history — one `last_run_at`, or a table of runs. A table is what makes "why did last
+- The default concurrency cap is **2** and the default catch-up window **6 hours**; neither has
+  been lived with. The cap has no visible queue either — a fire held back for the next tick is
+  invisible until it runs.
+- Where a failed fire surfaces. `last_error` is on the row today, which is the copy that survives
+  being away from the machine; item 7's toast is the other half and is not built.
+- **Run history** — one `last_run_at`, or a table of runs. A table is what makes "why did last
   Tuesday's fail" answerable, and it is the natural home for the interrupted and skipped states
   this design already produces.
-- The `/`-triggered autocomplete in the prompt field, deliberately after the plain list.
+- **A routine session's origin icon before the indexer sees it** comes from `terminalStore`, which
+  is not persisted — so after a renderer reload a routine's session shows in the sidebar as an
+  ordinary pending row until Claude writes its transcript. The durable copy is `session_routines`;
+  nothing reads it for a session with no `sessions` row yet.
 
 **Neighbours.** Item 35 (notifications) has picked up the requirement that its trigger cannot
 assume an open tab. Item 19 (MCP bridge) owns slice 3. Item 7 (toast) is half the error surface.

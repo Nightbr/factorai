@@ -1,4 +1,6 @@
 import { StatusDot } from '@components/layout/StatusDot';
+import { RoutineOrigin } from '@components/routines/RoutineOrigin';
+import { RoutinesView } from '@components/routines/RoutinesView';
 import { Button, IconButton } from '@factorai/ui';
 import type { SessionSummary } from '@factorai/types';
 import { useOpenSessions } from '@hooks/useOpenSessions';
@@ -9,7 +11,7 @@ import { type SessionGroup, groupSessions, pendingSessions } from '@lib/sessionG
 import { cmd } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
-import { Link, createRoute } from '@tanstack/react-router';
+import { Link, createRoute, useNavigate } from '@tanstack/react-router';
 import { Bot, ChevronRight, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { rootRoute } from './__root';
@@ -68,8 +70,15 @@ function RowMeta({ session }: { session: SessionSummary }) {
 	);
 }
 
+/** The two lists a project has (F22). In the URL rather than component state so
+ *  the context menu's `New routine` — and later the MCP tool — can land you on
+ *  the right one. */
+type ProjectTab = 'sessions' | 'routines';
+
 function ProjectView() {
 	const { id } = projectRoute.useParams();
+	const { tab, new: startCreating } = projectRoute.useSearch();
+	const navigate = useNavigate();
 	const sessionsQ = useQuery({
 		queryKey: queryKeys.sessions(id),
 		queryFn: () => cmd.listSessions(id),
@@ -79,6 +88,9 @@ function ProjectView() {
 		queryFn: () => cmd.listProjects(),
 	});
 	const bySession = useTerminalStore((s) => s.bySession);
+	// A routine's session is live before the indexer has ever seen it, and the
+	// only thing that knows it is a routine's is the store (F22).
+	const routineOrigins = useTerminalStore((s) => s.routineBySession);
 	const startSession = useStartSession();
 
 	// Which groups are open, by parent id. Local and unpersisted, the same
@@ -135,29 +147,59 @@ function ProjectView() {
 				</div>
 				{/* See Sidebar for why the title sits on a wrapper rather than the
 				    Button itself. */}
-				<span
-					title={canStart ? undefined : 'No project folder on disk — cannot start a session here'}
-				>
-					<Button
-						size="sm"
-						className="gap-1.5"
-						disabled={!canStart}
-						onClick={() => void startSession(id)}
+				{tab !== 'routines' && (
+					<span
+						title={canStart ? undefined : 'No project folder on disk — cannot start a session here'}
 					>
-						<Plus /> New session
-					</Button>
-				</span>
+						<Button
+							size="sm"
+							className="gap-1.5"
+							disabled={!canStart}
+							onClick={() => void startSession(id)}
+						>
+							<Plus /> New session
+						</Button>
+					</span>
+				)}
 			</header>
 
+			{/* Two tabs, hardcoded for the same reason the panel's three are (Q18):
+			    this is a project's two lists, not a registry. */}
+			<div
+				className="flex shrink-0 items-center gap-0.5 px-6 pb-3"
+				role="tablist"
+				aria-label="Project"
+			>
+				<ProjectTabButton tab="sessions" label="Sessions" current={tab} projectId={id} />
+				<ProjectTabButton tab="routines" label="Routines" current={tab} projectId={id} />
+			</div>
+
 			<div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-				{sessionsQ.isLoading && <p className="text-muted-foreground text-sm">Loading sessions…</p>}
-				{isEmpty && (
+				{tab === 'routines' && (
+					<RoutinesView
+						projectId={id}
+						canRun={canStart}
+						startCreating={startCreating === true}
+						onCreatingOpened={() =>
+							void navigate({
+								to: '/projects/$id',
+								params: { id },
+								search: { tab: 'routines' },
+								replace: true,
+							})
+						}
+					/>
+				)}
+				{tab !== 'routines' && sessionsQ.isLoading && (
+					<p className="text-muted-foreground text-sm">Loading sessions…</p>
+				)}
+				{tab !== 'routines' && isEmpty && (
 					<p className="text-muted-foreground text-sm">
 						No sessions in this project yet — start one with <b>New session</b>.
 					</p>
 				)}
 
-				{(pending.length > 0 || groups.length > 0) && (
+				{tab !== 'routines' && (pending.length > 0 || groups.length > 0) && (
 					<ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
 						{pending.map((p) => (
 							<li key={p.sessionId}>
@@ -170,7 +212,12 @@ function ProjectView() {
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
 											<StatusDot status={p.status} />
-											<span className="truncate font-medium">New session</span>
+											{routineOrigins[p.sessionId] && (
+												<RoutineOrigin name={routineOrigins[p.sessionId].routineName} />
+											)}
+											<span className="truncate font-medium">
+												{routineOrigins[p.sessionId]?.routineName ?? 'New session'}
+											</span>
 										</div>
 										<div className="text-muted-foreground text-xs">
 											Nothing recorded yet — it appears with a title once you send a message.
@@ -248,6 +295,7 @@ function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-2">
 							{live && <StatusDot status={live.status} />}
+							{session.routineId && <RoutineOrigin name={session.routineName} />}
 							<span className="truncate font-medium">{label}</span>
 						</div>
 						<RowMeta session={session} />
@@ -295,8 +343,54 @@ function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 	);
 }
 
+/** The tab strip's button. Same shape as the file panel's, deliberately: two
+ *  tab strips that look different are two mechanisms to learn. */
+function ProjectTabButton({
+	tab,
+	label,
+	current,
+	projectId,
+}: {
+	tab: ProjectTab;
+	label: string;
+	current: ProjectTab | undefined;
+	projectId: string;
+}) {
+	const active = (current ?? 'sessions') === tab;
+	return (
+		<Link
+			to="/projects/$id"
+			params={{ id: projectId }}
+			search={{ tab }}
+			role="tab"
+			aria-selected={active}
+			data-testid={`project-tab-${tab}`}
+			className={`rounded px-1.5 py-0.5 font-medium text-sm transition-colors ${
+				active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+			}`}
+		>
+			{label}
+		</Link>
+	);
+}
+
 export const projectRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: '/projects/$id',
+	// `?tab=routines` selects the Routines list. Anything else — including a
+	// hand-edited URL — is the sessions list, which is the one a project is
+	// mostly about.
+	// **Optional**, so the sidebar's and the tab strip's plain `to="/projects/$id"`
+	// links stay plain: absent means the sessions list, which is what a project
+	// is mostly about. Anything unrecognised — including a hand-edited URL —
+	// falls back to the same place rather than rendering nothing.
+	// `new` is the context menu's `New routine`: it lands on the tab *and* opens
+	// the editor, because the menu item promised a routine rather than a list.
+	// The route clears it as soon as the editor is open, so a reload or a
+	// browser-back does not reopen an editor you cancelled.
+	validateSearch: (search: Record<string, unknown>): { tab?: ProjectTab; new?: true } => ({
+		tab: search.tab === 'routines' ? 'routines' : undefined,
+		new: search.new === true || search.new === 'true' ? true : undefined,
+	}),
 	component: ProjectView,
 });

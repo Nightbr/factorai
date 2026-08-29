@@ -4,6 +4,7 @@ import {
 	needsCloseConfirm,
 } from '@components/dialog/CloseSessionConfirm';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
+import { RoutineOrigin } from '@components/routines/RoutineOrigin';
 import { disposeTerminal, restartSession } from '@components/terminal/Terminal';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -69,6 +70,7 @@ export function SessionTabs() {
 		[confirmCloseSession, confirmCloseMiddleClick],
 	);
 	const openTabs = useTerminalStore((s) => s.tabs);
+	const routineOrigins = useTerminalStore((s) => s.routineBySession);
 	const reorder = useTerminalStore((s) => s.reorder);
 	const detach = useTerminalStore((s) => s.detach);
 	const { sessionId: activeId } = useParams({ strict: false }) as { sessionId?: string };
@@ -272,6 +274,7 @@ export function SessionTabs() {
 								onOpen={openSession}
 								onRequestClose={requestClose}
 								onNudge={nudge}
+								routine={routineOrigins[id]}
 							/>
 						))}
 					</div>
@@ -300,6 +303,10 @@ interface SessionTabProps {
 	onOpen: (sessionId: string, projectId: string) => void;
 	onRequestClose: (sessionId: string, projectId: string, gesture: CloseGesture) => void;
 	onNudge: (sessionId: string, delta: -1 | 1) => void;
+	/** The routine that started this session, when one did (F22). A tabbed
+	 *  routine session is one you opened, and this is what still says where it
+	 *  came from. */
+	routine: { routineName: string } | undefined;
 }
 
 /**
@@ -324,6 +331,7 @@ function SessionTab({
 	onOpen,
 	onRequestClose,
 	onNudge,
+	routine,
 }: SessionTabProps) {
 	const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id });
 
@@ -390,6 +398,9 @@ function SessionTab({
 				size={16}
 				status={status}
 			/>
+			{/* A routine started this one (F22). Beside the avatar rather than in
+			    the title, so it stays visible when a long title truncates. */}
+			{routine && <RoutineOrigin name={routine.routineName} />}
 			<span className="min-w-0 flex-1 truncate">{title}</span>
 			{/* Only where the pointer already is, or on the active tab: a row of
 			    permanent × buttons is a row of accidents waiting. */}

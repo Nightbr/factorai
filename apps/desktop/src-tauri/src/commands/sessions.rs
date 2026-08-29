@@ -37,12 +37,21 @@ pub fn list_sessions_in(
 		// rather than fetched per session: the renderer needs it for every row
 		// it draws — the sidebar's checkout mark — and on first paint, before
 		// any `session:worktree` event has had a reason to fire.
+		// `sr.routine_id` and the routine's name are the origin marker (F22).
+		// Joined for the same reason `w.path` is: every row that draws it needs
+		// it, including on first paint. `LEFT JOIN routines` rather than a
+		// second lookup, and the name can be NULL for a live row — deleting a
+		// routine nulls the link instead of cascading, so a session it started
+		// keeps its icon and loses only the name.
 		"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
-		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.touched_paths
+		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.touched_paths,
+		        sr.routine_id, r.name
 		 FROM sessions s
 		 JOIN discovered_projects d ON d.id = s.discovered_id
 		 LEFT JOIN sessions p ON p.id = s.subagent_of
 		 LEFT JOIN session_worktrees w ON w.session_id = s.id
+		 LEFT JOIN session_routines sr ON sr.session_id = s.id
+		 LEFT JOIN routines r ON r.id = sr.routine_id
 		 WHERE d.project_id = ?1
 		 ORDER BY COALESCE(p.updated_at, s.updated_at) DESC,
 		          (s.subagent_of IS NULL) DESC,
@@ -76,6 +85,8 @@ pub fn list_sessions_in(
 				worktree: row.get(8)?,
 				last_cwd: resolved(row.get(9)?),
 				touched_paths: touched(row.get(10)?),
+				routine_id: row.get(11)?,
+				routine_name: row.get(12)?,
 			})
 		})?
 		.collect::<rusqlite::Result<Vec<_>>>()?;

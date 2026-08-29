@@ -19,11 +19,16 @@ const ids = () => useTerminalStore.getState().tabs.map((t) => t.sessionId);
 describe('adoptLive', () => {
 	beforeEach(reset);
 
-	it('rebuilds the strip from the PTYs Rust is already running', () => {
+	it('colours the strip from the PTYs Rust is already running, and opens no tabs', () => {
+		// **Changed by F22.** Adopting used to open a tab per live PTY, on the
+		// reasoning that a live session was by definition an open one. A routine's
+		// session is live and deliberately tabless (ADR-0026), and this runs on
+		// every reload — so adopting one would hand it a tab nobody asked for.
+		// The tabs themselves are persisted and come back on their own.
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
 
 		const s = useTerminalStore.getState();
-		expect(ids()).toEqual(['a', 'b']);
+		expect(ids()).toEqual([]);
 		expect(s.bySession.a).toEqual({
 			terminalId: 'pty-a',
 			projectId: 'p1',
@@ -46,22 +51,49 @@ describe('adoptLive', () => {
 		useTerminalStore.getState().adoptLive([dto('old')]);
 
 		expect(Object.keys(useTerminalStore.getState().bySession).sort()).toEqual(['new', 'old']);
-		expect(ids()).toEqual(['new', 'old']);
+		// The spawn's own tab stays; adopting adds none of its own.
+		expect(ids()).toEqual(['new']);
 	});
 
 	it('is idempotent, because StrictMode invokes the effect twice', () => {
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
-		expect(ids()).toEqual(['a', 'b']);
+		expect(Object.keys(useTerminalStore.getState().bySession).sort()).toEqual(['a', 'b']);
+		expect(ids()).toEqual([]);
 	});
 
 	it('adopts a PTY onto the tab a previous run left behind, in place', () => {
 		// The reload case: the tabs rehydrate from localStorage in their dragged
 		// order, and the live list arrives after. Adopting must not append a
-		// second entry or move the first.
+		// second entry or move the first — and, since F22, must not add one for
+		// the live session that has no tab, which is what a routine's looks like.
 		useTerminalStore.setState({ tabs: [{ sessionId: 'b', projectId: 'p1' }, ...[]] });
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
-		expect(ids()).toEqual(['b', 'a']);
+		expect(ids()).toEqual(['b']);
+		expect(useTerminalStore.getState().bySession.a.terminalId).toBe('pty-a');
+	});
+});
+
+describe('a routine session runs without a tab (F22)', () => {
+	beforeEach(reset);
+
+	it('attaches the PTY and opens no tab', () => {
+		useTerminalStore.getState().attach('r1', 'pty-r1', 'p1', { openTab: false });
+		expect(useTerminalStore.getState().bySession.r1.terminalId).toBe('pty-r1');
+		expect(ids()).toEqual([]);
+	});
+
+	it('records which routine started it, for the origin icon', () => {
+		useTerminalStore.getState().setRoutineOrigin('r1', 'routine-1', 'Nightly triage');
+		expect(useTerminalStore.getState().routineBySession.r1).toEqual({
+			routineId: 'routine-1',
+			routineName: 'Nightly triage',
+		});
+		// Repeating the same origin is a no-op, so a re-emitted fire costs no
+		// render in the three lists that read this.
+		const before = useTerminalStore.getState().routineBySession;
+		useTerminalStore.getState().setRoutineOrigin('r1', 'routine-1', 'Nightly triage');
+		expect(useTerminalStore.getState().routineBySession).toBe(before);
 	});
 });
 

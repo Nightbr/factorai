@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react';
 import { createFileLinkProvider } from '@components/terminal/fileLinkProvider';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { useRevealInTree } from '@hooks/useRevealInTree';
+import type { RoutineFireEvent } from '@factorai/types';
 import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
 import type { ResolveContext, ResolvedLink } from '@lib/fileLinks';
@@ -398,13 +399,14 @@ function attachPty(
 	sessionId: string,
 	projectId: string,
 	projectCwd: string | null,
+	initialPrompt?: string,
 ): void {
 	if (entry.ptyAttached) return;
 	entry.ptyAttached = true;
 
 	const { term } = entry;
 
-	ensureTerminal(sessionId, projectId, projectCwd, term.cols, term.rows)
+	ensureTerminal(sessionId, projectId, projectCwd, term.cols, term.rows, initialPrompt)
 		.then(async (id) => {
 			// Reconcile once the id is known. The PTY can be out of sync already: it
 			// may predate this terminal (reused across a hot reload or a remount), or
@@ -460,6 +462,53 @@ export function restartSession(sessionId: string): void {
 	useTerminalStore.getState().requestRestart(sessionId);
 }
 
+/**
+ * The pane a routine's terminal lives in until somebody opens it (F22).
+ *
+ * Offscreen rather than `display: none`: xterm measures its host to decide the
+ * grid, and a box with no layout is born 80×24 — so `claude` would render at 80
+ * columns and stay there until the session was opened and resized. A real box
+ * parked off the left edge has a real size and never paints.
+ *
+ * One element for the app's lifetime, and hosts move out of it exactly once,
+ * when the session is first opened. That is the same move the pool already
+ * makes coming back from the project route, which is why it is safe here — see
+ * the note at the `<Terminal>` mount effect.
+ */
+let routinePane: HTMLDivElement | null = null;
+
+function getRoutinePane(): HTMLDivElement {
+	if (routinePane?.isConnected) return routinePane;
+	const pane = document.createElement('div');
+	pane.dataset.testid = 'routine-pane';
+	pane.setAttribute('aria-hidden', 'true');
+	// Sized like a comfortable terminal so the PTY is born with a usable grid,
+	// and pushed out of the viewport rather than hidden, for the reason above.
+	pane.style.cssText =
+		'position:fixed;left:-10000px;top:0;width:900px;height:600px;pointer-events:none;';
+	document.body.appendChild(pane);
+	routinePane = pane;
+	return pane;
+}
+
+/**
+ * Start the session a routine came due for (F22, ADR-0026 § 2).
+ *
+ * The runner decided *when* and wrote every row before emitting; this only
+ * spawns. It is the one spawn in the app that no route asked for, which is why
+ * it lives beside the pool rather than in a component: there is no component.
+ *
+ * Idempotent — a fire for a session that already has a terminal does nothing,
+ * so a re-emitted event cannot start a second `claude`.
+ */
+export function startRoutineSession(fire: RoutineFireEvent): void {
+	if (useTerminalStore.getState().bySession[fire.sessionId]) return;
+	useTerminalStore.getState().setRoutineOrigin(fire.sessionId, fire.routineId, fire.routineName);
+	const entry = getOrCreateTerm(fire.sessionId, getRoutinePane());
+	fitToHost(entry);
+	attachPty(entry, fire.sessionId, fire.projectId, fire.cwd, fire.prompt);
+}
+
 // Memoises the spawn so StrictMode's double-invoke (and any concurrent caller)
 // shares ONE `terminal_spawn` rather than racing two.
 const spawnInFlight = new Map<string, Promise<string>>();
@@ -470,6 +519,7 @@ function ensureTerminal(
 	projectCwd: string | null,
 	cols: number,
 	rows: number,
+	initialPrompt?: string,
 ): Promise<string> {
 	const existing = useTerminalStore.getState().bySession[sessionId];
 	if (existing) return Promise.resolve(existing.terminalId);
@@ -477,9 +527,20 @@ function ensureTerminal(
 	let pending = spawnInFlight.get(sessionId);
 	if (!pending) {
 		pending = cmd
-			.terminalSpawn({ sessionId, projectId, cwd: projectCwd ?? undefined, cols, rows })
+			.terminalSpawn({
+				sessionId,
+				projectId,
+				cwd: projectCwd ?? undefined,
+				cols,
+				rows,
+				initialPrompt,
+			})
 			.then((id) => {
-				useTerminalStore.getState().attach(sessionId, id, projectId);
+				// A prompt means a routine fired this (F22), and a routine's session
+				// gets no tab until a human opens it.
+				useTerminalStore
+					.getState()
+					.attach(sessionId, id, projectId, { openTab: initialPrompt === undefined });
 				spawnInFlight.delete(sessionId);
 				return id;
 			})

@@ -23,6 +23,7 @@ import type {
 	ImportCandidate,
 	PdfContents,
 	Project,
+	Routine,
 	SearchHit,
 	SessionPage,
 	SessionSummary,
@@ -44,6 +45,9 @@ export interface TestFixture {
 	 *  the index, so this is deliberately independent of `projects`. */
 	importCandidates?: ImportCandidate[];
 	sessionsByProject?: Record<string, SessionSummary[]>;
+	/** Routines per project id (F22). The create/update/delete mocks mutate it,
+	 *  so a spec can add one and see the list it lands in. */
+	routinesByProject?: Record<string, Routine[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
 	/** Session id `start_session` hands back for a new-session click (F6). The
@@ -124,6 +128,31 @@ export const FOO_ID = 'p0000001-0000-4000-8000-000000000001';
 export const ZULU_ID = 'p0000002-0000-4000-8000-000000000002';
 export const ALPHA_ID = 'p0000003-0000-4000-8000-000000000003';
 
+/** One routine in `FOO`, with the fields a spec cares about overridable (F22).
+ *
+ *  A factory rather than a literal in the spec, so the spec needs no direct
+ *  dependency on `@factorai/types` — the root workspace does not carry one, and
+ *  every other fixture reaches the shared types through this file. */
+export function routineFixture(over: Partial<Routine> = {}): Routine {
+	return {
+		id: 'routine-0000-4000-8000-000000000001',
+		projectId: FOO_ID,
+		name: 'Nightly triage',
+		cron: '0 2 * * *',
+		prompt: 'Triage anything that failed overnight.',
+		enabled: true,
+		catchupHours: null,
+		lastFireAt: null,
+		lastRunAt: null,
+		lastSessionId: null,
+		lastSkippedAt: null,
+		lastError: null,
+		createdAt: Date.now() - 86_400_000,
+		nextRunAt: null,
+		...over,
+	};
+}
+
 /** Small fixture factory for the common "one project, one session" shape. */
 export function fixtureOneProjectOneSession(): TestFixture {
 	const project: Project = {
@@ -147,6 +176,8 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		worktree: null,
 		lastCwd: null,
 		touchedPaths: [],
+		routineId: null,
+		routineName: null,
 	};
 	return {
 		projects: [project],
@@ -300,6 +331,8 @@ export function fixtureAgentMovedWithoutSaying(): TestFixture {
 							cwd: project.realPath,
 							lastCwd: '/home/alice/code/worktrees/feature-x',
 							touchedPaths: [],
+							routineId: null,
+							routineName: null,
 						}
 					: session,
 			),
@@ -341,6 +374,8 @@ export function fixtureAgentWorkedByAbsolutePath(): TestFixture {
 							cwd: project.realPath,
 							lastCwd: project.realPath,
 							touchedPaths: ['/home/alice/code/worktrees/feature-x/src/switcher.ts', '/dev/null'],
+							routineId: null,
+							routineName: null,
 						}
 					: session,
 			),
@@ -404,6 +439,8 @@ export function fixtureWithSubagents(): TestFixture {
 		worktree: null,
 		lastCwd: null,
 		touchedPaths: [],
+		routineId: null,
+		routineName: null,
 	});
 
 	const agents = [
@@ -829,6 +866,8 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		worktree: null,
 		lastCwd: null,
 		touchedPaths: [],
+		routineId: null,
+		routineName: null,
 	}));
 
 	return {
@@ -848,9 +887,13 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					worktree: null,
 					lastCwd: null,
 					touchedPaths: [],
+					routineId: null,
+					routineName: null,
 					worktree: null,
 					lastCwd: null,
 					touchedPaths: [],
+					routineId: null,
+					routineName: null,
 				},
 			],
 		},
