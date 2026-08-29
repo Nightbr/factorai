@@ -45,7 +45,7 @@ pub fn list_sessions_in(
 		// keeps its icon and loses only the name.
 		"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
 		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.touched_paths,
-		        sr.routine_id, r.name
+		        sr.routine_id, r.name, sr.created_at
 		 FROM sessions s
 		 JOIN discovered_projects d ON d.id = s.discovered_id
 		 LEFT JOIN sessions p ON p.id = s.subagent_of
@@ -87,6 +87,7 @@ pub fn list_sessions_in(
 				touched_paths: touched(row.get(10)?),
 				routine_id: row.get(11)?,
 				routine_name: row.get(12)?,
+				routine_started_at: row.get(13)?,
 			})
 		})?
 		.collect::<rusqlite::Result<Vec<_>>>()?;

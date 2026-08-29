@@ -58,6 +58,16 @@ interface PrefsState {
 	 *  exist yet, so the switch arrives after the behaviour and must not
 	 *  silently change what people already have. */
 	restoreTabs: boolean;
+	/** Show times on a 24-hour clock rather than with AM/PM.
+	 *
+	 *  **A display rule, not a locale.** The browser's own locale decides how
+	 *  `toLocaleString` and a native `<input type="time">` render, and those two
+	 *  disagreed with the app's own 24-hour text — a routine's editor could show
+	 *  `09:00 AM` in the field and `Next: today 9:00` under it. So the app states
+	 *  the rule once and every surface that prints a clock reads it, including
+	 *  the routine editor's time field, which is why that field is ours rather
+	 *  than the native control (F22). */
+	clock24: boolean;
 
 	/** The diff footer's own toggle (F13), which sets the same value the Editor
 	 *  section defaults: flipping it there is a choice about how you read diffs,
@@ -84,6 +94,9 @@ const DEFAULT_PREFS: Prefs = {
 	confirmCloseMiddleClick: true,
 	frontmatterOpen: true,
 	restoreTabs: true,
+	// 24-hour by default: this app is a developer tool, and every timestamp it
+	// already prints beside a clock — a commit, a log line — is unambiguous.
+	clock24: true,
 };
 
 export const usePrefsStore = create<PrefsState>()(
@@ -109,6 +122,7 @@ export const usePrefsStore = create<PrefsState>()(
 				confirmCloseMiddleClick: s.confirmCloseMiddleClick,
 				frontmatterOpen: s.frontmatterOpen,
 				restoreTabs: s.restoreTabs,
+				clock24: s.clock24,
 			}),
 		},
 	),
@@ -124,5 +138,6 @@ export function currentPrefs(): Prefs {
 		confirmCloseMiddleClick: s.confirmCloseMiddleClick,
 		frontmatterOpen: s.frontmatterOpen,
 		restoreTabs: s.restoreTabs,
+		clock24: s.clock24,
 	};
 }

@@ -425,6 +425,14 @@ unbounded list in a narrow column.
 
 **Backend.** `list_sessions(project_id)`.
 
+**The status dot has its own column on the project page, always reserved**
+(2026-08-29, user feedback). It used to sit inline before the title, so a
+running session's name started 16px right of an idle one's and the list read as
+ragged. The disclosure gutter already worked this way for sub-agents; this is
+the same rule one level in. The routine origin icon moved to the right-hand
+badge column for the same reason. The sidebar's rows are unchanged — their dot
+is right-aligned, so the names already line up.
+
 **Title precedence.** A session's name comes from the first of these that
 exists, checked in this order:
 
@@ -1611,6 +1619,14 @@ people already have. The heading is *Sessions* rather than *Startup* because the
 unit of work in this app is a session and this is where the next per-session
 preference goes; a startup section would describe when a preference applies
 rather than what it applies to.
+
+**Appearance.** One switch, added 2026-08-29: **24-hour clock**, on by default.
+Off shows AM/PM. It is what every surface that prints a clock reads — a
+routine's schedule, its next run, the graph's absolute timestamps and the
+routine editor's own time field, which is a hand-built control precisely so it
+can follow this rather than the browser's locale (F22). This is the section
+that was "absent until it has content"; theme joins it when the roadmap's item
+32 lands.
 
 **Routines.** Two numbers, added by F22 and both in the SQLite table because
 **Rust** reads them — `RoutineRunner` does, on every tick. *Run missed routines
@@ -3941,6 +3957,9 @@ The rule this feature has to satisfy: **an agent is never running invisibly.**
 - **The sidebar lists routine sessions like any other**, and they feed the
   project's aggregate status dot. The dot going green while you are elsewhere is
   the ambient signal that something started.
+- **A routine's session is named for its routine *and the time it started***
+  until Claude writes a transcript to take a title from. A daily routine produces
+  a row a day with the same name, and in the sidebar several can be live at once.
 - **A small icon marks a session a routine started** — in the sidebar row, in the
   project list, and beside the avatar in its tab once it has one — with a tooltip
   naming the routine. Not the `SubAgentBadge` pill: that does not fit a 240px
@@ -3962,6 +3981,11 @@ param** (`?tab=routines`) so the context menu — and later the MCP tool — can
 you on it. Same `TabButton` shape as the file panel's strip (Q18), or the
 `tabs.tsx` primitive in `@factorai/ui`.
 
+**`New routine` sits in the page header, where `New session` is** — one action
+in one place, switching with the tab rather than moving to the list below it
+(2026-08-29, user feedback). The empty state carries a second copy, because a
+hero that names an action and does not offer it is a sign, not a state.
+
 **The project's context menu gains two items at the top**, above the reorder
 block and separated from it: **`New session`** and **`New routine`**. Those exact
 labels — the project view's header button already says `New session`, and two
@@ -3970,7 +3994,9 @@ different verbs on two adjacent items reads as a difference that is not there.
 
 **The routines list** is one row per routine: name, the schedule in plain
 language, the next fire, the enable switch, and the last run — including
-`skipped, still running` and `interrupted` when that is what happened.
+`skipped, still running` and `interrupted` when that is what happened. **An
+empty project gets the hero**, not a grey sentence: the mark, a title, the
+sentence explaining what a routine is, and the button.
 
 ### The editor
 
@@ -3985,6 +4011,16 @@ routines while writing one.
 - **The next few fire times, in plain local time, under the control**,
   recomputed as you type. This is the whole defence against a schedule that
   silently never fires; an expression that cannot be parsed says so here.
+- **The time field is ours, not `<input type="time">`.** The native control
+  renders on the *browser's* locale, which the app's own clock setting cannot
+  reach — so the editor showed `09:00 AM` in the field and `Next: today 9:00` in
+  the line directly under it, from one value. `TimeField` is hour, minute and an
+  AM/PM select when the app is on a 12-hour clock; the value crossing its
+  boundary is always 24-hour, so the meridiem is a rendering rather than a second
+  piece of state.
+- **Catch-up shows the app-wide default as its value**, not as a placeholder with
+  "(app default)" beside it — the number in the box is the one that will be used,
+  and editing it is what makes it this routine's own.
 - **The skills list sits beside the prompt field.** Clicking a skill inserts
   `/name` at the cursor. Sources are the project's `.claude/skills/` and the
   user's `~/.claude/skills/`, name and description read from each `SKILL.md`
@@ -4027,6 +4063,15 @@ skip and the concurrency cap included. A manual run that ignored those would be 
 second set of rules for the same act, and it is the button most likely to be
 clicked twice. It is disabled for a project whose folder is gone, the same rule
 and the same tooltip the new-session button has.
+
+**It always says what happened** (2026-08-29, user report: it "failed sometimes
+without any error displayed"). `run_routine_now` returns an outcome —
+`started` with the session id, or `skipped` / `capped` / `failed` with the reason
+in the words the row shows: *its previous session is still running*, *N routine
+sessions are already running, which is the limit in Settings → Routines*, or
+whatever stopped the spawn. The rules that decline a run are the scheduler's, so
+the two paths cannot drift; what a manual run owes on top is an answer, because
+somebody is watching the button.
 
 ### Storage
 

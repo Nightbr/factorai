@@ -150,6 +150,14 @@ pub struct SessionSummary {
 	/// That routine's name, for the origin icon's tooltip. `None` when the
 	/// routine has been deleted since.
 	pub routine_name: Option<String>,
+	/// When the routine started this session — `session_routines.created_at`,
+	/// written at spawn.
+	///
+	/// **The durable half of the label.** A routine's session is shown as its
+	/// routine plus the moment it ran, and until Claude writes a transcript the
+	/// only copy of that moment is in the renderer's memory. This is what keeps
+	/// it once the session has a title of its own, and across a reload.
+	pub routine_started_at: Option<i64>,
 }
 
 /// One full-text search result. Mirrors `@factorai/types` `SearchHit`.

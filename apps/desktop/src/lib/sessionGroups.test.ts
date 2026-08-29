@@ -23,6 +23,7 @@ function session(id: string, subagentOf: string | null = null): SessionSummary {
 		touchedPaths: [],
 		routineId: null,
 		routineName: null,
+		routineStartedAt: null,
 	};
 }
 

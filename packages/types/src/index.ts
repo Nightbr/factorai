@@ -143,6 +143,10 @@ export interface SessionSummary {
 	/** That routine's name, for the origin icon's tooltip. Null when the routine
 	 *  has been deleted since. */
 	routineName: string | null;
+	/** When the routine started this session (`session_routines.created_at`).
+	 *  The durable half of its label: it survives the session gaining a title of
+	 *  its own, and a reload. */
+	routineStartedAt: number | null;
 }
 
 export interface SessionPage {
@@ -757,6 +761,19 @@ export interface RoutineInput {
 	prompt: string;
 	enabled: boolean;
 	catchupHours: number | null;
+}
+
+/** What `runRoutineNow` did, and — when it did nothing — why (F22).
+ *
+ *  A manual run obeys the scheduler's own rules (the overlap skip, the
+ *  concurrency cap), so the two paths cannot drift. What it owes on top is an
+ *  answer: somebody is watching the button. */
+export interface RunNowResult {
+	outcome: 'started' | 'skipped' | 'capped' | 'failed';
+	/** Set only when a session actually started. */
+	sessionId: string | null;
+	/** Why nothing started, in the words the row shows. */
+	message: string | null;
 }
 
 /** `routine:fire` — the runner telling the renderer to start a session (F22).

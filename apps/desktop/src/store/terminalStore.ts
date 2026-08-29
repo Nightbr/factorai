@@ -111,8 +111,19 @@ interface TerminalState {
 	 *  in SQLite, arriving on `SessionSummary.routineId`. This is only what the
 	 *  lists need *before* the indexer has seen the transcript — which for a
 	 *  routine's session is most of the time it matters. */
-	routineBySession: Record<string, { routineId: string; routineName: string }>;
-	setRoutineOrigin: (sessionId: string, routineId: string, routineName: string) => void;
+	routineBySession: Record<string, { routineId: string; routineName: string; startedAt: number }>;
+	setRoutineOrigin: (
+		sessionId: string,
+		routineId: string,
+		routineName: string,
+		startedAt: number,
+	) => void;
+	/** Put a session on the strip because a human opened it (F16, F22).
+	 *
+	 *  Idempotent, and it never moves an existing tab. It exists because a
+	 *  routine's session is live *without* a tab, so `attach` — which is where a
+	 *  tab used to come from — has already run by the time you click the row. */
+	openTab: (sessionId: string, projectId: string) => void;
 	/** Adopt the PTYs Rust already holds, from `terminal_list` at boot.
 	 *
 	 *  A renderer reload keeps every PTY alive — they live in Rust state, not
@@ -246,16 +257,22 @@ export const useTerminalStore = create<TerminalState>()(
 					tabs: options?.openTab === false ? s.tabs : withTab(s.tabs, sessionId, projectId),
 				})),
 
-			setRoutineOrigin: (sessionId, routineId, routineName) =>
+			setRoutineOrigin: (sessionId, routineId, routineName, startedAt) =>
 				set((s) => {
 					const current = s.routineBySession[sessionId];
 					if (current?.routineId === routineId) return s;
 					return {
 						routineBySession: {
 							...s.routineBySession,
-							[sessionId]: { routineId, routineName },
+							[sessionId]: { routineId, routineName, startedAt },
 						},
 					};
+				}),
+
+			openTab: (sessionId, projectId) =>
+				set((s) => {
+					const tabs = withTab(s.tabs, sessionId, projectId);
+					return tabs === s.tabs ? s : { tabs };
 				}),
 			adoptLive: (live) =>
 				set((s) => {

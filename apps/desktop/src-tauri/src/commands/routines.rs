@@ -9,7 +9,7 @@ use tauri::State;
 
 use crate::error::AppResult;
 use crate::models::{Routine, RoutineInput};
-use crate::services::routines;
+use crate::services::routines::{self, RunNowResult};
 use crate::state::AppState;
 
 /// A project's routines, oldest first.
@@ -56,16 +56,12 @@ pub fn set_routine_enabled(state: State<'_, AppState>, id: String, enabled: bool
 /// concurrency cap, because a manual run that ignored those would be a second
 /// set of rules for the same act.
 ///
-/// Returns the session id, or `None` when the fire was skipped or capped. The
-/// renderer spawns on `routine:fire` like any other fire; this returns the id so
-/// the caller can navigate to what it started.
+/// **Always answers.** It returns what happened — `started` with the session id,
+/// or `skipped` / `capped` / `failed` with the reason in the words the row will
+/// show. A manual run that quietly did nothing was the first thing a user hit.
 #[tauri::command]
-pub fn run_routine_now(state: State<'_, AppState>, id: String) -> AppResult<Option<String>> {
+pub fn run_routine_now(state: State<'_, AppState>, id: String) -> AppResult<RunNowResult> {
 	let now = crate::epoch_ms();
-	let before = state.db.with(|conn| routines::get(conn, &id, now))?;
-	state.routines.run_now(&before, now);
-	let after = state.db.with(|conn| routines::get(conn, &id, now))?;
-	// The runner writes `last_session_id` before it emits, so a changed id is
-	// exactly "this call started something".
-	Ok(if after.last_session_id != before.last_session_id { after.last_session_id } else { None })
+	let routine = state.db.with(|conn| routines::get(conn, &id, now))?;
+	Ok(state.routines.run_now(&routine, now))
 }

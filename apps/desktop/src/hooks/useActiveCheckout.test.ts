@@ -44,6 +44,7 @@ function session(over: Partial<SessionSummary> = {}): SessionSummary {
 		touchedPaths: [],
 		routineId: null,
 		routineName: null,
+		routineStartedAt: null,
 		...over,
 	};
 }

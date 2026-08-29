@@ -445,8 +445,8 @@ exactly once.
 - **Primary:** amber ground, near-black text (`{components.button-primary}`),
   12px horizontal padding.
 - **Hover / Focus:** primary and secondary darken their own ground by 10–20%;
-  focus is a 2px amber ring with a 2px offset in the surface colour. Transitions
-  are colour-only.
+  focus is a **1px** amber ring with a 1px offset in the surface colour.
+  Transitions are colour-only.
 - **Secondary / Outline / Ghost / Link:** secondary is a `22%` ground; outline is
   a bordered transparent field; ghost fills with accent on hover; link is amber
   text with an offset underline.
@@ -489,7 +489,10 @@ rather than being patched onto the component.
 
 - **Style:** 32px tall, 6px radius, 1px `input` border, app-ground fill, 14px
   text, muted placeholder.
-- **Focus:** 2px amber ring at a 2px offset — the same ring every control uses.
+- **Focus:** **1px** amber ring at a 1px offset — the same ring every control
+  uses. It was 2px until 2026-08-29, when a user called it heavy: at this
+  density a 2px ring plus a 2px offset is 4px of new geometry around a 32px
+  field, which reads as the control resizing rather than as focus moving.
 - **Disabled:** 50% opacity and a not-allowed cursor.
 
 ### Menus (Dropdown and Context)
@@ -564,6 +567,37 @@ because the dot appears in the sidebar's project rows, its session rows and the
 tab strip at once, and a dozen things breathing at their own rate is a christmas
 tree rather than a signal. The animation is earned in the session header, where
 there is exactly one and it describes what you are looking at.
+
+**In a list, the dot gets a reserved column — it never sits inline before a
+title.** Added 2026-08-29 on user feedback about the project page: a dot printed
+in front of the name moved every titled row 16px right of every untitled one, so
+the column of names read as ragged and could not be scanned down. The slot is
+present whether or not there is a dot to put in it. Where the dot is
+*right*-aligned instead (the sidebar's session rows) the same property already
+holds, and those rows are unchanged.
+
+**That column is 16px — the dot with 4px of air on each side — and it is the
+row's only leading space.** It doubles as the disclosure gutter, because no row
+draws both marks. Four rounds of feedback narrowed it from 72px, and the number
+is small because a reserved column costs the whole list its width whether or not
+a given row uses it.
+
+### Tab Chips
+
+Two or three sibling lists inside one route — the project page's
+`Sessions | Routines` — are **chips**: 12px label, 8px horizontal padding, the
+card's `rounded-md` corner so the control and the box beneath it agree, and a
+1px border on **every** chip — `border` on the selected one, `border/50` on the
+others. The border is on all of them because a chip that only becomes a box when
+selected changes width as you switch, and its label steps sideways. Bare text tabs were tried
+first and read as a heading, because the row sits directly under one.
+
+### Empty Hero
+
+A route's empty state is centred in the pane — a 24px muted glyph, a `text-lg`
+title, one line of `text-sm` muted description, and the action the list is empty
+of. The house original is the "nothing selected" home. **Not a grey sentence in
+the top-left**: that reads as a loading state that never finished.
 
 ### Graph Rail (signature)
 

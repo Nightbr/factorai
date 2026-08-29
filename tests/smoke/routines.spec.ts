@@ -47,12 +47,12 @@ test.describe('the project has two lists', () => {
 		await expect(page.getByTestId('project-tab-routines')).toHaveAttribute('aria-selected', 'true');
 	});
 
-	test('@smoke a project with no routines says so rather than showing an empty box', async ({
-		page,
-	}) => {
+	test('@smoke a project with no routines gets a hero, not a grey sentence', async ({ page }) => {
 		await installMockBridge(page, fixture([]));
 		await page.goto(`/#/projects/${FOO_ID}?tab=routines`);
-		await expect(page.getByText('No routines in this project yet')).toBeVisible();
+		await expect(page.getByText('No routines yet')).toBeVisible();
+		// The hero carries the action it is empty of, as well as the header's.
+		await expect(page.getByTestId('new-routine-empty')).toBeVisible();
 	});
 });
 
@@ -63,10 +63,12 @@ test.describe('the editor', () => {
 		await installMockBridge(page, fixture([]));
 		await page.goto(`/#/projects/${FOO_ID}?tab=routines`);
 
+		// The button is in the page header, where `New session` is.
 		await page.getByTestId('new-routine').click();
 		await page.getByTestId('routine-name').fill('Morning digest');
 		await page.getByTestId('routine-prompt').fill('Summarise what changed overnight.');
-		await page.getByTestId('routine-time').fill('07:30');
+		await page.getByTestId('routine-time').fill('7');
+		await page.getByTestId('routine-time-minute').fill('30');
 		// The echo is the point of the field: it says when this will actually run.
 		await expect(page.getByTestId('routine-next')).toContainText('7:30');
 
@@ -81,7 +83,8 @@ test.describe('the editor', () => {
 		await page.goto(`/#/projects/${FOO_ID}?tab=routines`);
 
 		await page.getByTestId('new-routine').click();
-		await page.getByTestId('routine-time').fill('18:00');
+		await page.getByTestId('routine-time').fill('18');
+		await page.getByTestId('routine-time-minute').fill('0');
 		await page.getByTestId('routine-preset').click();
 		await page.getByRole('option', { name: 'Custom…' }).click();
 		// Starting from what you had rather than from an empty field.
@@ -132,7 +135,7 @@ test.describe('a routine’s controls', () => {
 
 		await page.getByTestId(`routine-delete-${NIGHTLY.id}`).click();
 		await page.getByTestId(`routine-delete-confirm-${NIGHTLY.id}`).click();
-		await expect(page.getByText('No routines in this project yet')).toBeVisible();
+		await expect(page.getByText('No routines yet')).toBeVisible();
 	});
 
 	test('@smoke a failed run says why, on the row', async ({ page }) => {
@@ -172,5 +175,27 @@ test.describe('the project context menu', () => {
 
 		await expect(page).toHaveURL(new RegExp(`projects/${FOO_ID}\\?tab=routines`));
 		await expect(page.getByTestId('project-tab-routines')).toHaveAttribute('aria-selected', 'true');
+	});
+});
+
+test.describe('the clock setting', () => {
+	test('@smoke switching to AM/PM changes the schedule and the editor’s own field', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixture());
+		await page.goto(`/#/projects/${FOO_ID}?tab=routines`);
+		await expect(page.getByText('Every day at 2:00')).toBeVisible();
+
+		// Appearance is the section this setting created; it was empty until it.
+		await page.goto(`/#/projects/${FOO_ID}?tab=routines&settings=appearance`);
+		await page.getByTestId('settings-clock24').click();
+		await page.getByTestId('settings-save').click();
+
+		await expect(page.getByText('Every day at 2:00 AM')).toBeVisible();
+
+		// And the editor's field, which is ours precisely so it can follow this —
+		// a native time input renders on the browser's locale instead.
+		await page.getByTestId('new-routine').click();
+		await expect(page.getByTestId('routine-time-meridiem')).toBeVisible();
 	});
 });

@@ -27,6 +27,7 @@ import { cmd } from '@lib/tauri';
 import { currentPrefs, type Prefs, usePrefsStore } from '@store/prefsStore';
 
 const SECTION_LABELS: Record<SettingsSection, string> = {
+	appearance: 'Appearance',
 	claude: 'Claude',
 	editor: 'Editor',
 	confirmations: 'Confirmations',
@@ -332,6 +333,23 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 								Quitting the app always asks. That dialog is about losing every live session at
 								once, and it is not optional.
 							</p>
+						</div>
+					)}
+
+					{section === 'appearance' && (
+						<div className="divide-y divide-border">
+							<SettingRow
+								label="24-hour clock"
+								htmlFor="settings-clock24"
+								description="Off shows AM/PM. Applies wherever the app prints a time — a routine's schedule, its next run, and the editor's own time field."
+							>
+								<Switch
+									id="settings-clock24"
+									data-testid="settings-clock24"
+									checked={draft.clock24}
+									onCheckedChange={(v) => set('clock24', v)}
+								/>
+							</SettingRow>
 						</div>
 					)}
 

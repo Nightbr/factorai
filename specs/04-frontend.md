@@ -327,6 +327,13 @@ Keys, as shipped with F11:
 - `restoreTabs: boolean` — default `true`, and that default is settled by history
   rather than taste: F16's restore shipped unconditionally, so the switch must not
   change what people already have.
+- `clock24: boolean` — default `true` (2026-08-29). Every surface that prints a
+  clock reads it: a routine's schedule and next run, the graph's absolute
+  timestamps, and the routine editor's own time field. **A display rule, not a
+  locale** — the browser's locale decides how `toLocaleString` and a native
+  `<input type="time">` render, and those disagreed with the app's own 24-hour
+  text on the same screen, which is why that field is a hand-built control
+  (F22).
 
 The store exposes `applyPrefs(next)` — one write for a whole Save, so a
 half-applied save cannot exist — plus `setDiffInline`, because the diff footer's

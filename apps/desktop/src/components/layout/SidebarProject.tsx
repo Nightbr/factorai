@@ -31,10 +31,12 @@ import { useOpenSessions } from '@hooks/useOpenSessions';
 import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
+import { formatStamp, routineSessionLabel } from '@lib/cron';
 import { pendingSessions } from '@lib/sessionGroups';
 import { cmd, openExternally } from '@lib/tauri';
 import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
+import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -47,8 +49,8 @@ import {
 	FolderOpen,
 	FolderOutput,
 	FolderPlus,
+	ClockFading,
 	Plus,
-	Repeat,
 	Trash2,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -403,7 +405,7 @@ export function SidebarProject({
 							})
 						}
 					>
-						<Repeat />
+						<ClockFading />
 						New routine
 					</ContextMenuItem>
 					<ContextMenuSeparator />
@@ -536,6 +538,7 @@ function SessionList({ project }: { project: Project }) {
 	// Which of these a routine started (F22) — from the store, because a routine's
 	// session is live long before the indexer has a row with `routineId` on it.
 	const routineOrigins = useTerminalStore((s) => s.routineBySession);
+	const clock24 = usePrefsStore((s) => s.clock24);
 
 	// Shares the project route's cache entry, so expanding a project you then
 	// open costs one fetch, not two. `sessions:changed` is what actually keeps
@@ -579,10 +582,16 @@ function SessionList({ project }: { project: Project }) {
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						{routineOrigins[p.sessionId] && (
-							<RoutineOrigin name={routineOrigins[p.sessionId].routineName} />
+							<RoutineOrigin
+								name={routineOrigins[p.sessionId].routineName}
+								startedAt={routineOrigins[p.sessionId].startedAt}
+								clock24={clock24}
+							/>
 						)}
 						<span className="min-w-0 flex-1 truncate">
-							{routineOrigins[p.sessionId]?.routineName ?? 'New session'}
+							{routineOrigins[p.sessionId]
+								? routineSessionLabel(routineOrigins[p.sessionId], clock24)
+								: 'New session'}
 						</span>
 						<StatusDot status={p.status} className="size-1.5" />
 					</Link>
@@ -593,13 +602,39 @@ function SessionList({ project }: { project: Project }) {
 					<Link
 						to="/projects/$projectId/sessions/$sessionId"
 						params={{ projectId: project.id, sessionId: session.id }}
-						title={session.title || session.id}
+						// The stamp is in the row too, but a long title truncates it
+						// away — so the tooltip carries it as well (2026-08-29, user
+						// report). Same reason the origin icon's own tooltip does.
+						title={
+							session.routineStartedAt !== null
+								? `${session.title || session.id} · ran ${formatStamp(
+										new Date(session.routineStartedAt),
+										clock24,
+									)}`
+								: session.title || session.id
+						}
 						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
-						{session.routineId && <RoutineOrigin name={session.routineName} />}
+						{session.routineId && (
+							<RoutineOrigin
+								name={session.routineName}
+								startedAt={session.routineStartedAt}
+								clock24={clock24}
+							/>
+						)}
 						<span className="min-w-0 flex-1 truncate">
 							{session.title.trim() || session.id.slice(0, 8)}
+							{/* The moment it ran, kept after Claude has titled the
+							    session: it is the only thing telling two runs of a daily
+							    routine apart, and it used to vanish on the agent's first
+							    answer (2026-08-29, user report). */}
+							{session.routineStartedAt !== null && (
+								<span className="text-muted-foreground/60">
+									{' · '}
+									{formatStamp(new Date(session.routineStartedAt), clock24)}
+								</span>
+							)}
 						</span>
 						{open[session.id] && (
 							// Smaller than the standalone dot: down a column of nested rows the

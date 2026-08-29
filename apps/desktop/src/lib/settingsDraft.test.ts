@@ -15,6 +15,7 @@ const SAVED: SettingsValues = {
 	claudeBinary: '',
 	routinesCatchupHours: '',
 	routinesMaxConcurrent: '',
+	clock24: true,
 	diffInline: false,
 	confirmCloseSession: true,
 	confirmCloseMiddleClick: true,
@@ -28,7 +29,10 @@ describe('isSettingsSection', () => {
 	});
 
 	it('rejects a hand-edited URL asking for something else', () => {
-		expect(isSettingsSection('appearance')).toBe(false);
+		// `appearance` used to be the example here, because it was the section
+		// that did not exist yet. It does now (the clock setting), so the example
+		// moves to one that still doesn't.
+		expect(isSettingsSection('advanced')).toBe(false);
 		expect(isSettingsSection('')).toBe(false);
 		expect(isSettingsSection(undefined)).toBe(false);
 		expect(isSettingsSection(3)).toBe(false);

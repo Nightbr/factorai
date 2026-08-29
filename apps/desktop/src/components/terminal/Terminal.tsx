@@ -503,7 +503,9 @@ function getRoutinePane(): HTMLDivElement {
  */
 export function startRoutineSession(fire: RoutineFireEvent): void {
 	if (useTerminalStore.getState().bySession[fire.sessionId]) return;
-	useTerminalStore.getState().setRoutineOrigin(fire.sessionId, fire.routineId, fire.routineName);
+	useTerminalStore
+		.getState()
+		.setRoutineOrigin(fire.sessionId, fire.routineId, fire.routineName, Date.now());
 	const entry = getOrCreateTerm(fire.sessionId, getRoutinePane());
 	fitToHost(entry);
 	attachPty(entry, fire.sessionId, fire.projectId, fire.cwd, fire.prompt);
@@ -652,9 +654,17 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		// Only ever true for a terminal built against a *previous* pane — the
 		// session route's pane survives a tab switch, so switching session moves
 		// nothing. Coming back from the project route does, and there is no way
-		// around it: the pane React unmounted took its children with it.
-		if (entry.host.parentElement !== container) container.appendChild(entry.host);
+		// around it: the pane React unmounted took its children with it. A
+		// routine's terminal is the third case: it was born in the offscreen pane
+		// and this is the first time anybody has looked at it (F22).
+		const adopted = entry.host.parentElement !== container;
+		if (adopted) container.appendChild(entry.host);
 		showOnly(container, entry);
+		// **Looking at a session is what opens it.** A routine's session is live
+		// with no tab until now (ADR-0026), and `attach` — where a tab otherwise
+		// comes from — ran when it spawned. Without this the strip never gains the
+		// tab and the session you are looking at is unreachable from it.
+		useTerminalStore.getState().openTab(sessionId, projectId);
 		// Size the terminal to its container before the PTY exists, so the spawn
 		// carries the real cols/rows. `fit()` reads layout synchronously, and the
 		// host has a layout by now, so this measures the final width. If the
@@ -663,6 +673,17 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		// corrected size to the PTY.
 		fitToHost(entry);
 		attachPty(entry, sessionId, projectId, projectCwd);
+
+		// An adopted terminal was measured against a different box — the routine
+		// pane's fixed 900×600, or a pane that has since unmounted — so the first
+		// paint in this one is at the old grid until something redraws it. Fit and
+		// force a repaint on the next frame, when the new layout is real.
+		if (adopted) {
+			requestAnimationFrame(() => {
+				fitToHost(entry);
+				entry.term.refresh(0, entry.term.rows - 1);
+			});
+		}
 
 		const focusTimer = setTimeout(() => {
 			fitToHost(entry);

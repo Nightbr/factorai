@@ -20,6 +20,7 @@ import type {
 	Routine,
 	RoutineFireEvent,
 	RoutineInput,
+	RunNowResult,
 	SearchHit,
 	SessionPage,
 	SessionSummary,
@@ -205,8 +206,9 @@ export const cmd = {
 	setRoutineEnabled: (id: string, enabled: boolean) =>
 		invoke<void>('set_routine_enabled', { id, enabled }),
 	/** Fire now, through the runner's own path — the overlap skip and the
-	 *  concurrency cap included. Null when it was skipped or capped. */
-	runRoutineNow: (id: string) => invoke<string | null>('run_routine_now', { id }),
+	 *  concurrency cap included. **Always answers**: `started` with the session
+	 *  id, or why nothing started. */
+	runRoutineNow: (id: string) => invoke<RunNowResult>('run_routine_now', { id }),
 	/** The session id to open for a "new session" in this project — a fresh
 	 *  uuid, or a live one that has never been messaged. See ADR-0008. */
 	startSession: (projectId: string) => invoke<string>('start_session', { projectId }),
@@ -920,9 +922,13 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return undefined as unknown as T;
 		}
 		case 'run_routine_now':
-			// Nothing spawns in browser-only mode, and the caller treats null as
-			// "skipped or capped" — which is the honest answer with no runner.
-			return null as unknown as T;
+			// Nothing spawns in browser-only mode, and there is no runner to ask —
+			// so the honest answer is the one a capped run gives.
+			return {
+				outcome: 'capped',
+				sessionId: null,
+				message: 'no runner in browser-only mode',
+			} as unknown as T;
 		case 'get_setting': {
 			const key = String(args?.key ?? '') as SettingKey;
 			// Absent is a real answer — it is what "no override, keep probing"

@@ -22,7 +22,16 @@ import {
 	presetFromCron,
 	WEEKDAYS,
 } from '@lib/cron';
+import { TimeField } from '@components/routines/TimeField';
+import { queryKeys } from '@lib/queryKeys';
+import { cmd } from '@lib/tauri';
+import { usePrefsStore } from '@store/prefsStore';
+import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
+
+/** The runner's own default, mirrored for the editor's field — kept beside the
+ *  setting it defaults rather than imported from Rust, which cannot export it. */
+const DEFAULT_CATCHUP_HOURS = 6;
 import { useState } from 'react';
 
 /**
@@ -72,6 +81,18 @@ export function RoutineEditor({ projectId, routine, onCancel, onSave, error }: R
 	const [catchup, setCatchup] = useState(routine?.catchupHours ?? null);
 	const [saving, setSaving] = useState(false);
 
+	const clock24 = usePrefsStore((s) => s.clock24);
+	// The app-wide catch-up default, so the field can show the number that will
+	// actually be used rather than an empty box (F11 § Routines). A failed read
+	// is not worth a broken editor — the constant is the same default the runner
+	// falls back to.
+	const defaultCatchup = useQuery({
+		queryKey: queryKeys.setting('routinesCatchupHours'),
+		queryFn: () => cmd.getSetting('routinesCatchupHours'),
+		staleTime: Number.POSITIVE_INFINITY,
+		retry: false,
+	});
+	const defaultCatchupHours = Number(defaultCatchup.data ?? '') || DEFAULT_CATCHUP_HOURS;
 	const cron = preset.kind === 'custom' ? customCron : cronFromPreset(preset);
 	const now = new Date();
 	const upcoming = nextRuns(cron, now, 3);
@@ -105,7 +126,7 @@ export function RoutineEditor({ projectId, routine, onCancel, onSave, error }: R
 	return (
 		<div
 			data-testid="routine-editor"
-			className="flex flex-col gap-3 rounded-md border border-border bg-card p-4"
+			className="flex flex-col gap-5 rounded-md border border-border bg-card p-4"
 		>
 			<div className="flex items-center gap-2">
 				<h3 className="flex-1 font-medium text-sm">{routine ? 'Edit routine' : 'New routine'}</h3>
@@ -189,16 +210,14 @@ export function RoutineEditor({ projectId, routine, onCancel, onSave, error }: R
 					)}
 
 					{(preset.kind === 'daily' || preset.kind === 'weekly' || preset.kind === 'monthly') && (
-						<Input
-							aria-label="Time of day"
+						// Ours rather than `<input type="time">`: the native control
+						// renders on the browser's locale, which the app's own clock
+						// setting cannot reach — see `TimeField`.
+						<TimeField
 							data-testid="routine-time"
-							className="w-28"
-							type="time"
-							value={`${String(preset.hour).padStart(2, '0')}:${String(preset.minute).padStart(2, '0')}`}
-							onChange={(e) => {
-								const [h, m] = e.target.value.split(':');
-								setPreset({ ...preset, hour: clamp(h, 0, 23), minute: clamp(m, 0, 59) });
-							}}
+							hour={preset.hour}
+							minute={preset.minute}
+							onChange={({ hour, minute }) => setPreset({ ...preset, hour, minute })}
 						/>
 					)}
 				</div>
@@ -219,7 +238,7 @@ export function RoutineEditor({ projectId, routine, onCancel, onSave, error }: R
 						? 'Saved routines show their next run in the list.'
 						: upcoming.length === 0
 							? 'This schedule has no run in the next year.'
-							: `Next: ${upcoming.map((d) => formatFireTime(d, now)).join(' · ')}`}
+							: `Next: ${upcoming.map((d) => formatFireTime(d, now, clock24)).join(' · ')}`}
 				</p>
 			</div>
 
@@ -251,11 +270,16 @@ export function RoutineEditor({ projectId, routine, onCancel, onSave, error }: R
 						id="routine-catchup"
 						data-testid="routine-catchup"
 						checked={catchup !== 0}
-						onCheckedChange={(on) => setCatchup(on ? null : 0)}
+						onCheckedChange={(on) => setCatchup(on ? defaultCatchupHours : 0)}
 					/>
 					Run if missed
 					{catchup !== 0 && (
 						<>
+							{/* **The app-wide default is shown as the value, not as a
+							    placeholder.** A field reading "—" with "(app default)"
+							    beside it made you go and look the default up; this is
+							    the number that will actually be used, and editing it is
+							    what makes it this routine's own. */}
 							<Input
 								aria-label="Catch-up window in hours"
 								data-testid="routine-catchup-hours"
@@ -263,15 +287,10 @@ export function RoutineEditor({ projectId, routine, onCancel, onSave, error }: R
 								type="number"
 								min={1}
 								max={168}
-								value={catchup ?? ''}
-								placeholder="—"
-								onChange={(e) =>
-									setCatchup(e.target.value === '' ? null : clamp(e.target.value, 1, 168))
-								}
+								value={catchup ?? defaultCatchupHours}
+								onChange={(e) => setCatchup(clamp(e.target.value, 1, 168))}
 							/>
-							<span className="text-muted-foreground text-xs">
-								hours late{catchup === null ? ' (app default)' : ''}
-							</span>
+							hours late
 						</>
 					)}
 				</label>

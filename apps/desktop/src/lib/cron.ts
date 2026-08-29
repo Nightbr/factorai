@@ -93,10 +93,18 @@ export function presetFromCron(cron: string): Preset {
 	return { ...DEFAULT_PRESET, kind: 'custom' };
 }
 
-/** `9:05`, in the 24-hour clock this file uses throughout — a routine is
- *  configuration, and configuration reads better unambiguous. */
-function formatClock(hour: number, minute: number): string {
-	return `${hour}:${String(minute).padStart(2, '0')}`;
+/** `9:05`, or `9:05 AM` — whichever clock the app is set to (`prefsStore`'s
+ *  `clock24`).
+ *
+ *  Passed in rather than read from the store here, so this file stays a pure
+ *  module its tests can drive without a store — the same rule `lib/` follows
+ *  for `sessionGroups`. */
+function formatClock(hour: number, minute: number, clock24 = true): string {
+	const mm = String(minute).padStart(2, '0');
+	if (clock24) return `${hour}:${mm}`;
+	const suffix = hour < 12 ? 'AM' : 'PM';
+	const h12 = hour % 12 === 0 ? 12 : hour % 12;
+	return `${h12}:${mm} ${suffix}`;
 }
 
 /**
@@ -105,7 +113,7 @@ function formatClock(hour: number, minute: number): string {
  * `custom` gets the expression itself rather than a translation: a cron string
  * nobody can read is honest, and a wrong translation is not.
  */
-export function describeSchedule(cron: string): string {
+export function describeSchedule(cron: string, clock24 = true): string {
 	const preset = presetFromCron(cron);
 	switch (preset.kind) {
 		case 'hourly':
@@ -113,11 +121,11 @@ export function describeSchedule(cron: string): string {
 				? 'Every hour, on the hour'
 				: `Every hour at :${String(preset.minute).padStart(2, '0')}`;
 		case 'daily':
-			return `Every day at ${formatClock(preset.hour, preset.minute)}`;
+			return `Every day at ${formatClock(preset.hour, preset.minute, clock24)}`;
 		case 'weekly':
-			return `Every ${WEEKDAYS[preset.weekday]} at ${formatClock(preset.hour, preset.minute)}`;
+			return `Every ${WEEKDAYS[preset.weekday]} at ${formatClock(preset.hour, preset.minute, clock24)}`;
 		case 'monthly':
-			return `Day ${preset.day} of the month at ${formatClock(preset.hour, preset.minute)}`;
+			return `Day ${preset.day} of the month at ${formatClock(preset.hour, preset.minute, clock24)}`;
 		case 'custom':
 			return cron;
 	}
@@ -174,8 +182,8 @@ export function nextRuns(cron: string, from: Date, count: number): Date[] | null
 
 /** A fire time as the editor shows it: `Today 18:00`, `Tomorrow 18:00`,
  *  `Thu 18:00`, or a date once it is further out than that. */
-export function formatFireTime(when: Date, now: Date): string {
-	const clock = formatClock(when.getHours(), when.getMinutes());
+export function formatFireTime(when: Date, now: Date, clock24 = true): string {
+	const clock = formatClock(when.getHours(), when.getMinutes(), clock24);
 	const days = Math.round(
 		(new Date(when.getFullYear(), when.getMonth(), when.getDate()).getTime() -
 			new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) /
@@ -185,4 +193,38 @@ export function formatFireTime(when: Date, now: Date): string {
 	if (days === 1) return `Tomorrow ${clock}`;
 	if (days < 7) return `${WEEKDAYS[when.getDay()].slice(0, 3)} ${clock}`;
 	return `${when.getDate()}/${when.getMonth() + 1} ${clock}`;
+}
+
+/**
+ * A date and time, absolute and short: `29/08 14:05`, or `29/08 2:05 PM`.
+ *
+ * **Absolute rather than `formatFireTime`'s "Today 2:00"** (2026-08-29, user
+ * feedback). A relative name is fine for the *next* run, which is soon and
+ * about to happen; it is wrong for the label of a session that ran — "Today"
+ * stops being true at midnight, and the label is on a row you scroll past days
+ * later.
+ */
+export function formatStamp(when: Date, clock24: boolean): string {
+	const date = `${String(when.getDate()).padStart(2, '0')}/${String(when.getMonth() + 1).padStart(2, '0')}`;
+	return `${date} ${formatClock(when.getHours(), when.getMinutes(), clock24)}`;
+}
+
+/**
+ * What a routine's session is called before Claude has written a transcript to
+ * take a title from: the routine, and **when this run started**.
+ *
+ * The time is the point (2026-08-29, user request). A daily routine produces a
+ * row a day with the same name, and until the transcript exists there is
+ * nothing else to tell two of them apart — least of all in the sidebar, where
+ * several can be live at once.
+ *
+ * Here rather than beside the two lists that draw it, so neither has to import
+ * the other's route module: doing that once pulled a whole route — and its
+ * `unplugin-icons` virtual imports — into a store test's module graph.
+ */
+export function routineSessionLabel(
+	origin: { routineName: string; startedAt: number },
+	clock24: boolean,
+): string {
+	return `${origin.routineName} · ${formatStamp(new Date(origin.startedAt), clock24)}`;
 }

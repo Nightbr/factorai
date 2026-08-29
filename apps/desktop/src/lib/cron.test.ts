@@ -6,6 +6,7 @@ import {
 	formatFireTime,
 	nextRuns,
 	presetFromCron,
+	routineSessionLabel,
 } from './cron';
 
 describe('presets', () => {
@@ -32,6 +33,18 @@ describe('presets', () => {
 	it('treats a malformed expression as custom rather than throwing', () => {
 		expect(presetFromCron('nonsense').kind).toBe('custom');
 		expect(presetFromCron('').kind).toBe('custom');
+	});
+
+	it('prints the clock the app is set to', () => {
+		// The setting is passed in rather than read from a store: `lib/` stays
+		// free of store imports, and this is the whole of the rule.
+		expect(describeSchedule('30 18 * * *', true)).toBe('Every day at 18:30');
+		expect(describeSchedule('30 18 * * *', false)).toBe('Every day at 6:30 PM');
+		expect(describeSchedule('0 9 * * 1', false)).toBe('Every Monday at 9:00 AM');
+		// Midnight and noon are the two the 12-hour clock gets wrong if you
+		// write `hour % 12` and stop there.
+		expect(describeSchedule('0 0 * * *', false)).toBe('Every day at 12:00 AM');
+		expect(describeSchedule('0 12 * * *', false)).toBe('Every day at 12:00 PM');
 	});
 
 	it('describes a schedule in words, and leaves a custom one as its expression', () => {
@@ -86,10 +99,30 @@ describe('nextRuns', () => {
 describe('formatFireTime', () => {
 	const now = new Date(2026, 7, 29, 10, 15);
 
+	it('follows the clock setting', () => {
+		expect(formatFireTime(new Date(2026, 7, 29, 18, 0), now, false)).toBe('Today 6:00 PM');
+		expect(formatFireTime(new Date(2026, 7, 30, 0, 5), now, false)).toBe('Tomorrow 12:05 AM');
+	});
+
 	it('names today, tomorrow, the weekday, then the date', () => {
 		expect(formatFireTime(new Date(2026, 7, 29, 18, 0), now)).toBe('Today 18:00');
 		expect(formatFireTime(new Date(2026, 7, 30, 18, 5), now)).toBe('Tomorrow 18:05');
 		expect(formatFireTime(new Date(2026, 8, 1, 9, 0), now)).toBe('Tue 9:00');
 		expect(formatFireTime(new Date(2026, 8, 20, 9, 0), now)).toBe('20/9 9:00');
+	});
+});
+
+describe('routineSessionLabel', () => {
+	it('names the routine and when this run started, absolutely', () => {
+		// Two runs of the same daily routine are otherwise identical rows until
+		// Claude writes a transcript to take a title from — and the stamp is
+		// absolute, because "Today" stops being true at midnight on a row you
+		// scroll past days later.
+		const origin = {
+			routineName: 'Nightly triage',
+			startedAt: new Date(2026, 7, 29, 2, 0).getTime(),
+		};
+		expect(routineSessionLabel(origin, true)).toBe('Nightly triage · 29/08 2:00');
+		expect(routineSessionLabel(origin, false)).toBe('Nightly triage · 29/08 2:00 AM');
 	});
 });

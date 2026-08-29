@@ -24,7 +24,7 @@ export function formatRelative(ms: number, now: number = Date.now()): string {
  * Seconds are dropped — no commit is distinguished by them, and they add width to
  * a card that is already the widest thing on screen.
  */
-export function formatAbsolute(ms: number): string {
+export function formatAbsolute(ms: number, clock24 = true): string {
 	if (!Number.isFinite(ms)) return '—';
 	return new Date(ms).toLocaleString(undefined, {
 		year: 'numeric',
@@ -32,6 +32,10 @@ export function formatAbsolute(ms: number): string {
 		day: 'numeric',
 		hour: '2-digit',
 		minute: '2-digit',
+		// The app states its own clock rule (`prefsStore.clock24`) rather than
+		// leaving it to the browser's locale — otherwise this line and the
+		// routine editor's own clock disagree on the same machine.
+		hour12: !clock24,
 	});
 }
 

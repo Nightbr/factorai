@@ -10,10 +10,12 @@ import type { Prefs } from '@store/prefsStore';
  * browser, so the modal keeps the state and this file does the thinking.
  */
 
-/** The nav, in order. Appearance (theme) and Advanced (release channel) are
- *  deliberately absent until they have content: an empty section reads as a
- *  bug. */
+/** The nav, in order. **Appearance arrived 2026-08-29 with the clock setting**,
+ *  which is what the "absent until it has content" rule was waiting for; theme
+ *  joins it when item 32 lands. Advanced (release channel) is still absent for
+ *  the same reason: an empty section reads as a bug. */
 export const SETTINGS_SECTIONS = [
+	'appearance',
 	'claude',
 	'editor',
 	'confirmations',
@@ -58,6 +60,7 @@ export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
 	restoreTabs: 'sessions',
 	routinesCatchupHours: 'routines',
 	routinesMaxConcurrent: 'routines',
+	clock24: 'appearance',
 };
 
 /**

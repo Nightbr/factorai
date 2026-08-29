@@ -44,8 +44,10 @@ test.describe('settings', () => {
 		await expect(page.getByTestId('settings-nav-editor')).toHaveAttribute('aria-current', 'page');
 
 		// A section nobody has built is not a section: the param is validated on
-		// the root route exactly as `?file=`'s diff mode is.
-		await page.goto('/?settings=appearance');
+		// the root route exactly as `?file=`'s diff mode is. `appearance` was the
+		// example until 2026-08-29, when the clock setting gave it content —
+		// `advanced` is the one still waiting for item 31's release channel.
+		await page.goto('/?settings=advanced');
 		await expect(page.getByTestId('settings-modal')).toHaveCount(0);
 	});
 

@@ -84,16 +84,35 @@ describe('a routine session runs without a tab (F22)', () => {
 	});
 
 	it('records which routine started it, for the origin icon', () => {
-		useTerminalStore.getState().setRoutineOrigin('r1', 'routine-1', 'Nightly triage');
+		useTerminalStore.getState().setRoutineOrigin('r1', 'routine-1', 'Nightly triage', 1000);
 		expect(useTerminalStore.getState().routineBySession.r1).toEqual({
 			routineId: 'routine-1',
 			routineName: 'Nightly triage',
+			startedAt: 1000,
 		});
 		// Repeating the same origin is a no-op, so a re-emitted fire costs no
 		// render in the three lists that read this.
 		const before = useTerminalStore.getState().routineBySession;
-		useTerminalStore.getState().setRoutineOrigin('r1', 'routine-1', 'Nightly triage');
+		useTerminalStore.getState().setRoutineOrigin('r1', 'routine-1', 'Nightly triage', 2000);
 		expect(useTerminalStore.getState().routineBySession).toBe(before);
+	});
+});
+
+describe('opening a tabless session puts it on the strip (F22)', () => {
+	beforeEach(reset);
+
+	it('adds the tab, and adding it twice does not move it', () => {
+		useTerminalStore.getState().attach('r1', 'pty-r1', 'p1', { openTab: false });
+		useTerminalStore.getState().attach('b', 'pty-b', 'p1');
+		expect(ids()).toEqual(['b']);
+
+		// Looking at the routine's session is what opens it.
+		useTerminalStore.getState().openTab('r1', 'p1');
+		expect(ids()).toEqual(['b', 'r1']);
+
+		// Idempotent: re-mounting the route must not move a tab you dragged.
+		useTerminalStore.getState().openTab('b', 'p1');
+		expect(ids()).toEqual(['b', 'r1']);
 	});
 });
 

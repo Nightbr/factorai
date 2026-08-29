@@ -18,6 +18,7 @@ function session(id: string, updatedAt: number, subagentOf: string | null = null
 		touchedPaths: [],
 		routineId: null,
 		routineName: null,
+		routineStartedAt: null,
 	};
 }
 

@@ -178,6 +178,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		touchedPaths: [],
 		routineId: null,
 		routineName: null,
+		routineStartedAt: null,
 	};
 	return {
 		projects: [project],
@@ -333,6 +334,7 @@ export function fixtureAgentMovedWithoutSaying(): TestFixture {
 							touchedPaths: [],
 							routineId: null,
 							routineName: null,
+							routineStartedAt: null,
 						}
 					: session,
 			),
@@ -376,6 +378,7 @@ export function fixtureAgentWorkedByAbsolutePath(): TestFixture {
 							touchedPaths: ['/home/alice/code/worktrees/feature-x/src/switcher.ts', '/dev/null'],
 							routineId: null,
 							routineName: null,
+							routineStartedAt: null,
 						}
 					: session,
 			),
@@ -441,6 +444,7 @@ export function fixtureWithSubagents(): TestFixture {
 		touchedPaths: [],
 		routineId: null,
 		routineName: null,
+		routineStartedAt: null,
 	});
 
 	const agents = [
@@ -868,6 +872,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		touchedPaths: [],
 		routineId: null,
 		routineName: null,
+		routineStartedAt: null,
 	}));
 
 	return {
@@ -889,11 +894,13 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					touchedPaths: [],
 					routineId: null,
 					routineName: null,
+					routineStartedAt: null,
 					worktree: null,
 					lastCwd: null,
 					touchedPaths: [],
 					routineId: null,
 					routineName: null,
+					routineStartedAt: null,
 				},
 			],
 		},

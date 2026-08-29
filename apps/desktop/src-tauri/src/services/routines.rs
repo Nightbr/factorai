@@ -18,6 +18,8 @@ use chrono::{Local, TimeZone};
 use croner::Cron;
 use rusqlite::{params, Connection, OptionalExtension};
 
+use serde::Serialize;
+
 use crate::error::{AppError, AppResult};
 use crate::models::{Routine, RoutineInput};
 
@@ -414,6 +416,46 @@ pub struct FireEvent {
 	pub cwd: String,
 }
 
+/// What `Run now` did — **and why, when it did nothing** (2026-08-29, user
+/// report: "play routine failed sometimes without any error displayed").
+///
+/// The rules that can decline a manual run are the scheduler's own, so the two
+/// paths agree; what a manual run additionally owes is an answer, because
+/// somebody is looking at it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunNowResult {
+	pub outcome: RunOutcome,
+	/// Set only when a session actually started.
+	pub session_id: Option<String>,
+	/// Why nothing started, in the words the row will show.
+	pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RunOutcome {
+	Started,
+	Skipped,
+	Capped,
+	Failed,
+}
+
+impl RunNowResult {
+	fn started(session_id: String) -> Self {
+		Self { outcome: RunOutcome::Started, session_id: Some(session_id), message: None }
+	}
+	fn skipped(message: &str) -> Self {
+		Self { outcome: RunOutcome::Skipped, session_id: None, message: Some(message.into()) }
+	}
+	fn capped(message: &str) -> Self {
+		Self { outcome: RunOutcome::Capped, session_id: None, message: Some(message.into()) }
+	}
+	fn failed(message: &str) -> Self {
+		Self { outcome: RunOutcome::Failed, session_id: None, message: Some(message.into()) }
+	}
+}
+
 impl Runner {
 	pub fn new(
 		db: crate::db::Db,
@@ -451,25 +493,36 @@ impl Runner {
 	/// The overlap skip and the cap are not the schedule's rules, they are the
 	/// feature's — a `Run now` that ignored them would be a second set of rules
 	/// for the same act, and the one most likely to be clicked twice.
-	pub fn run_now(&self, routine: &Routine, now_ms: i64) {
+	pub fn run_now(&self, routine: &Routine, now_ms: i64) -> RunNowResult {
 		let live = (self.live)();
 		if routine.last_session_id.as_deref().is_some_and(|id| live.contains(id)) {
 			let _ = self.db.with(|conn| record_skip(conn, &routine.id, now_ms, now_ms));
-			return;
+			return RunNowResult::skipped(
+				"its previous session is still running — close it, or wait for it to finish",
+			);
 		}
-		let capped = self.db.with(|conn| {
-			let cap = numeric_setting(
-				conn,
-				crate::models::SettingKey::RoutinesMaxConcurrent,
-				DEFAULT_MAX_CONCURRENT,
-			)
-			.max(1);
-			Ok(running_count(conn, &live)? >= cap)
-		});
-		if capped.unwrap_or(false) {
-			return;
+		let cap = self
+			.db
+			.with(|conn| {
+				let cap = numeric_setting(
+					conn,
+					crate::models::SettingKey::RoutinesMaxConcurrent,
+					DEFAULT_MAX_CONCURRENT,
+				)
+				.max(1);
+				Ok((running_count(conn, &live)?, cap))
+			})
+			.unwrap_or((0, DEFAULT_MAX_CONCURRENT));
+		if cap.0 >= cap.1 {
+			return RunNowResult::capped(&format!(
+				"{} routine sessions are already running, which is the limit in Settings → Routines",
+				cap.0
+			));
 		}
-		self.fire(routine, now_ms, now_ms);
+		match self.fire(routine, now_ms, now_ms) {
+			Ok(session_id) => RunNowResult::started(session_id),
+			Err(message) => RunNowResult::failed(&message),
+		}
 	}
 
 	/// One pass. Public for the integration test, which drives it with a clock
@@ -514,15 +567,18 @@ impl Runner {
 						"routine skipped: its previous session is still running"
 					);
 				}
-				Action::Fire { occurrence } => self.fire(routine, occurrence, now_ms),
+				Action::Fire { occurrence } => {
+					let _ = self.fire(routine, occurrence, now_ms);
+				}
 			}
 		}
 		Ok(())
 	}
 
 	/// Consume one occurrence: mint the id, write the rows, then tell the
-	/// renderer.
-	fn fire(&self, routine: &Routine, occurrence: i64, now_ms: i64) {
+	/// renderer. `Err` is the reason it could not start, already recorded on the
+	/// row — the caller decides whether anyone is waiting to be told.
+	fn fire(&self, routine: &Routine, occurrence: i64, now_ms: i64) -> Result<String, String> {
 		let folder = match self.project_folder(&routine.project_id) {
 			Ok(Some(path)) => path,
 			// The project is gone from the workspace, or its folder is. Recorded
@@ -530,13 +586,9 @@ impl Runner {
 			// working has to be able to say so from the list, where being away
 			// from the machine cannot lose it.
 			Ok(None) => {
-				self.record_failure(routine, occurrence, "the project folder is gone");
-				return;
+				return Err(self.record_failure(routine, occurrence, "the project folder is gone"))
 			}
-			Err(e) => {
-				self.record_failure(routine, occurrence, &e.to_string());
-				return;
-			}
+			Err(e) => return Err(self.record_failure(routine, occurrence, &e.to_string())),
 		};
 
 		let session_id = uuid::Uuid::new_v4().to_string();
@@ -546,7 +598,7 @@ impl Runner {
 		});
 		if let Err(e) = written {
 			tracing::warn!(error = %e, routine = %routine.name, "could not record a routine fire");
-			return;
+			return Err(e.to_string());
 		}
 
 		use tauri::Emitter;
@@ -556,16 +608,20 @@ impl Runner {
 				routine_id: routine.id.clone(),
 				routine_name: routine.name.clone(),
 				project_id: routine.project_id.clone(),
-				session_id,
+				session_id: session_id.clone(),
 				prompt: routine.prompt.clone(),
 				cwd: folder,
 			},
 		);
+		Ok(session_id)
 	}
 
-	fn record_failure(&self, routine: &Routine, occurrence: i64, message: &str) {
+	/// Record why a fire could not start, and hand the reason back so a caller
+	/// with somebody watching — `Run now` — can say it out loud.
+	fn record_failure(&self, routine: &Routine, occurrence: i64, message: &str) -> String {
 		tracing::warn!(routine = %routine.name, message, "routine could not start");
 		let _ = self.db.with(|conn| record_error(conn, &routine.id, occurrence, message));
+		message.to_string()
 	}
 
 	/// The project's folder, or `None` when there is no usable one — which is

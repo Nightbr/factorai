@@ -1,3 +1,4 @@
+import { EmptyHero } from '@components/layout/EmptyHero';
 import { StatusDot } from '@components/layout/StatusDot';
 import { RoutineOrigin } from '@components/routines/RoutineOrigin';
 import { RoutinesView } from '@components/routines/RoutinesView';
@@ -5,25 +6,37 @@ import { Button, IconButton } from '@factorai/ui';
 import type { SessionSummary } from '@factorai/types';
 import { useOpenSessions } from '@hooks/useOpenSessions';
 import { useStartSession } from '@hooks/useStartSession';
+import { formatStamp, routineSessionLabel } from '@lib/cron';
 import { formatRelative } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
 import { type SessionGroup, groupSessions, pendingSessions } from '@lib/sessionGroups';
 import { cmd } from '@lib/tauri';
+import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute, useNavigate } from '@tanstack/react-router';
-import { Bot, ChevronRight, Plus } from 'lucide-react';
+import { Bot, ChevronRight, MessagesSquare, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { rootRoute } from './__root';
 
 /**
- * Width of the disclosure gutter at the left of every row.
+ * The one leading column on every row: 16px, centring whichever mark the row
+ * has — the disclosure chevron when a session spawned sub-agents, the status
+ * dot otherwise.
  *
- * Reserved on rows that have nothing to disclose too, so the titles line up in
- * one column whether or not a session spawned agents — a gutter that appears
- * only sometimes moves every title beside it.
+ * **Reserved even when there is no mark**, which is the whole point: the titles
+ * line up in one column, and a gutter that appears only sometimes moves every
+ * title beside it.
+ *
+ * **16px is the 8px dot with 4px of air on each side**, and it was arrived at
+ * by narrowing this four times in one afternoon of user feedback: 72px in front
+ * of every title, then 40, then 32, then 20, then back out to 16 when 20 read as
+ * too tight. The step that made it one column merged the dot's own slot into
+ * this one — two reserved columns cost the list the width of both, and no row
+ * draws both marks: a session with sub-agents shows its chevron here, and if it
+ * is also running its dot rides with the badges on the right.
  */
-const GUTTER = 'w-7 shrink-0';
+const GUTTER = 'flex w-4 shrink-0 justify-center';
 
 /** The marker on a sub-agent row: an agent run by a session, readable but
  *  not resumable. Small and quiet — it disambiguates, it doesn't shout.
@@ -60,12 +73,21 @@ function AgentCountBadge({ count }: { count: number }) {
 	);
 }
 
-/** Turn count and recency — the same second line on every row in this list. */
+/** Turn count and recency — the same second line on every row in this list.
+ *
+ *  A routine's session also says **when it ran**, and keeps saying it once
+ *  Claude has given the session a title of its own: that moment is the only
+ *  thing telling two runs of a daily routine apart, and it must not disappear
+ *  the first time the agent answers (2026-08-29, user report). */
 function RowMeta({ session }: { session: SessionSummary }) {
+	const clock24 = usePrefsStore((s) => s.clock24);
 	return (
 		<div className="text-muted-foreground text-xs">
 			{session.turnCount} turn{session.turnCount === 1 ? '' : 's'} ·{' '}
 			{formatRelative(session.updatedAt)}
+			{session.routineStartedAt !== null && (
+				<> · ran {formatStamp(new Date(session.routineStartedAt), clock24)}</>
+			)}
 		</div>
 	);
 }
@@ -91,6 +113,7 @@ function ProjectView() {
 	// A routine's session is live before the indexer has ever seen it, and the
 	// only thing that knows it is a routine's is the store (F22).
 	const routineOrigins = useTerminalStore((s) => s.routineBySession);
+	const clock24 = usePrefsStore((s) => s.clock24);
 	const startSession = useStartSession();
 
 	// Which groups are open, by parent id. Local and unpersisted, the same
@@ -145,9 +168,28 @@ function ProjectView() {
 						</p>
 					)}
 				</div>
-				{/* See Sidebar for why the title sits on a wrapper rather than the
+				{/* **One button, in one place, whichever list you are on.** The action
+				    a project page offers is "make another one of these", so it
+				    follows the tab rather than moving to the list below it.
+				    See Sidebar for why the title sits on a wrapper rather than the
 				    Button itself. */}
-				{tab !== 'routines' && (
+				{tab === 'routines' ? (
+					<Button
+						size="sm"
+						className="gap-1.5"
+						data-testid="new-routine"
+						onClick={() =>
+							void navigate({
+								to: '/projects/$id',
+								params: { id },
+								search: { tab: 'routines', new: true },
+								replace: true,
+							})
+						}
+					>
+						<Plus /> New routine
+					</Button>
+				) : (
 					<span
 						title={canStart ? undefined : 'No project folder on disk — cannot start a session here'}
 					>
@@ -166,7 +208,7 @@ function ProjectView() {
 			{/* Two tabs, hardcoded for the same reason the panel's three are (Q18):
 			    this is a project's two lists, not a registry. */}
 			<div
-				className="flex shrink-0 items-center gap-0.5 px-6 pb-3"
+				className="flex shrink-0 items-center gap-1.5 px-6 pb-3"
 				role="tablist"
 				aria-label="Project"
 			>
@@ -194,9 +236,16 @@ function ProjectView() {
 					<p className="text-muted-foreground text-sm">Loading sessions…</p>
 				)}
 				{tab !== 'routines' && isEmpty && (
-					<p className="text-muted-foreground text-sm">
-						No sessions in this project yet — start one with <b>New session</b>.
-					</p>
+					<EmptyHero
+						icon={<MessagesSquare />}
+						title="No sessions yet"
+						description={
+							<>
+								Start one with <b>New session</b>, and it appears here the moment Claude writes its
+								first message.
+							</>
+						}
+					/>
 				)}
 
 				{tab !== 'routines' && (pending.length > 0 || groups.length > 0) && (
@@ -206,23 +255,26 @@ function ProjectView() {
 								<Link
 									to="/projects/$projectId/sessions/$sessionId"
 									params={{ projectId: id, sessionId: p.sessionId }}
-									className="flex items-center gap-3 py-3 pr-4 pl-4 transition-colors hover:bg-secondary"
+									className="flex items-center gap-3 py-3 pr-4 transition-colors hover:bg-secondary"
 								>
-									<span className={GUTTER} aria-hidden />
+									<span className={GUTTER} aria-hidden>
+										<StatusDot status={p.status} />
+									</span>
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
-											<StatusDot status={p.status} />
-											{routineOrigins[p.sessionId] && (
-												<RoutineOrigin name={routineOrigins[p.sessionId].routineName} />
-											)}
 											<span className="truncate font-medium">
-												{routineOrigins[p.sessionId]?.routineName ?? 'New session'}
+												{routineOrigins[p.sessionId]
+													? routineSessionLabel(routineOrigins[p.sessionId], clock24)
+													: 'New session'}
 											</span>
 										</div>
 										<div className="text-muted-foreground text-xs">
 											Nothing recorded yet — it appears with a title once you send a message.
 										</div>
 									</div>
+									{routineOrigins[p.sessionId] && (
+										<RoutineOrigin name={routineOrigins[p.sessionId].routineName} />
+									)}
 									<ChevronRight className="size-4 text-muted-foreground" />
 								</Link>
 							</li>
@@ -267,13 +319,14 @@ function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 	// same sessions and are read the same way, so a dot that meant different
 	// things in the two panes would be worse than either rule alone (F16).
 	const open = useOpenSessions();
+	const clock24 = usePrefsStore((s) => s.clock24);
 	const live = open[session.id];
 	const hasAgents = agents.length > 0;
 	const label = session.title || session.id.slice(0, 8);
 
 	return (
 		<li>
-			<div className="group flex items-center pl-4 transition-colors hover:bg-secondary">
+			<div className="group flex items-center transition-colors hover:bg-secondary">
 				{hasAgents ? (
 					<IconButton
 						className={GUTTER}
@@ -285,21 +338,43 @@ function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 						<ChevronRight className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
 					</IconButton>
 				) : (
-					<span className={GUTTER} aria-hidden />
+					<span className={GUTTER} aria-hidden>
+						{live && <StatusDot status={live.status} />}
+					</span>
 				)}
 				<Link
 					to="/projects/$projectId/sessions/$sessionId"
 					params={{ projectId, sessionId: session.id }}
+					title={
+						session.routineStartedAt !== null
+							? `${label} · ran ${formatStamp(new Date(session.routineStartedAt), clock24)}`
+							: undefined
+					}
 					className="flex min-w-0 flex-1 items-center gap-3 py-3 pr-4"
 				>
+					{/* **The dot has a column of its own, always reserved.** Inline
+					    before the title it moved every name beside it by 16px, so a
+					    list read as ragged and the eye could not run down the names.
+					    Same reasoning as `GUTTER` above, one level in. */}
 					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-2">
-							{live && <StatusDot status={live.status} />}
-							{session.routineId && <RoutineOrigin name={session.routineName} />}
 							<span className="truncate font-medium">{label}</span>
 						</div>
 						<RowMeta session={session} />
 					</div>
+					{/* The origin icon rides with the badges rather than before the
+					    title, for the same alignment reason the dot moved out of it.
+					    So does the dot itself on the one row that cannot show it on
+					    the left: a session with sub-agents, whose gutter holds the
+					    disclosure chevron. */}
+					{hasAgents && live && <StatusDot status={live.status} />}
+					{session.routineId && (
+						<RoutineOrigin
+							name={session.routineName}
+							startedAt={session.routineStartedAt}
+							clock24={clock24}
+						/>
+					)}
 					{/* Right-aligned and fixed-width-by-content, so the badges and
 					    affordances of every row in the list share one column. */}
 					{session.subagentOf && <SubAgentBadge />}
@@ -324,7 +399,7 @@ function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 								// Indented past where the parent's title starts (the gutter
 								// plus the row's own padding, 44px), not level with it:
 								// nesting you cannot see is not nesting.
-								className="flex items-center gap-3 border-border/50 border-t py-2.5 pr-4 pl-16 transition-colors hover:bg-secondary"
+								className="flex items-center gap-3 border-border/50 border-t py-2.5 pr-4 pl-8 transition-colors hover:bg-secondary"
 							>
 								<div className="min-w-0 flex-1">
 									<span className="block truncate text-sm">
@@ -358,6 +433,10 @@ function ProjectTabButton({
 }) {
 	const active = (current ?? 'sessions') === tab;
 	return (
+		// A chip, not a text tab: two words with nothing around them read as a
+		// heading rather than a control, and this row sits directly under one.
+		// `rounded-md` is the card's radius — the same corner as the box the list
+		// is in, so the two do not disagree at 6px vs 4px.
 		<Link
 			to="/projects/$id"
 			params={{ id: projectId }}
@@ -365,8 +444,10 @@ function ProjectTabButton({
 			role="tab"
 			aria-selected={active}
 			data-testid={`project-tab-${tab}`}
-			className={`rounded px-1.5 py-0.5 font-medium text-sm transition-colors ${
-				active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+			className={`rounded-md border px-2 py-0.5 font-medium text-xs transition-colors ${
+				active
+					? 'border-border bg-secondary text-foreground'
+					: 'border-border/50 text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
 			}`}
 		>
 			{label}
