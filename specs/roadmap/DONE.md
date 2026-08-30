@@ -51,9 +51,23 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   setting says, because that setting is a renderer preference (ADR-0013) the bridge cannot read and
   the reader is a model rather than a person.
 
-  **Still unobserved: a real `claude` calling one of these.** Same gap F20 records for `openFile`.
-  The names are ours so nothing can drift out from under them; what is untested is whether the
-  descriptions are the ones a model acts on.
+  **Corrected the same day, and the correction is the more useful half.** The tools shipped on the
+  IDE bridge, answered every call correctly over its socket, and were invisible to every agent. The
+  CLI registers whatever it finds in `~/.claude/ide/` under the hardcoded key `ide` —
+  `connectToServer("ide", …)` — and then filters that server's tools down to `executeCode` and
+  `getDiagnostics` before the model is offered anything. F20's tools work because **the CLI calls
+  them**; none of them was ever model-facing, and `ideName: "factorai"` in our lockfile names a row
+  in the `/ide` picker rather than the server. So the tools moved to factorai's own MCP server —
+  plain name, plain HTTP, handed to each session through `--mcp-config` at spawn — and reach the
+  agent as `mcp__factorai__*`. [ADR-0029](../../docs/adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
+
+  **The lesson is about the test, not the transport.** Everything green before the fix tested
+  factorai's half: unit tests against the protocol object, and a hand-written client speaking the
+  CLI's own wire protocol at a live bridge. A transport test can only ever prove the transport, and
+  the client's half was assumed. `tests/agent_tools_conformance.rs` now runs the real binary with
+  the real `--mcp-config`, asks it in English to schedule something, and looks in the database —
+  `#[ignore]`, because it costs a model turn. Green against CLI **2.1.251**; record the version with
+  any future pass.
 
 - **Delete a session from the sidebar (spec `05-features.md` F2,
   [ADR-0027](../../docs/adr/0027-deleting-a-session-trashes-its-transcript.md))** — 2026-08-30,

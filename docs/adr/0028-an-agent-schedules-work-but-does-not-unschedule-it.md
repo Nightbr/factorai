@@ -3,7 +3,14 @@
 **Date:** 2026-08-30
 **Status:** Accepted
 
+**Superseded in part by
+[ADR-0029](0029-model-facing-tools-need-a-server-that-is-not-the-ide.md)**: every
+decision below stands, but § 3's tools do not live on the IDE bridge. They could
+not — the CLI caps that server's model-visible tools at two names — and they moved
+to a server of our own.
+
 Related:
+[ADR-0029 — model-facing tools need a server that is not the IDE bridge](0029-model-facing-tools-need-a-server-that-is-not-the-ide.md) ·
 [ADR-0017 — the IDE bridge writes one lockfile into `~/.claude/ide/`](0017-ide-bridge-writes-one-lockfile-into-claude-ide.md) ·
 [ADR-0026 — a routine runs without a tab](0026-a-routine-runs-without-a-tab.md) ·
 [ADR-0013 — preferences storage split](0013-preferences-storage-split.md) ·

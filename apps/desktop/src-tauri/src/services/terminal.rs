@@ -27,6 +27,7 @@ use uuid::Uuid;
 
 use crate::agents::claude;
 use crate::error::{AppError, AppResult};
+use crate::services::agent_tools::{self, AgentTools, AgentToolsServer};
 use crate::services::claude_cli::find_claude_binary;
 use crate::services::ide::protocol::{self, Mcp, Mention};
 use crate::services::ide::scope;
@@ -277,6 +278,15 @@ struct TerminalHandle {
 	/// teardown ADR-0005 already guarantees, rather than on a second one that
 	/// could be forgotten. Carries the reason instead when it failed to start.
 	ide: IdeSlot,
+	/// This session's agent tool server (F22 slice 3, ADR-0029), held for the
+	/// same reason and with the same lifetime: dropping the handle stops the
+	/// listener. `None` when it could not bind — the session then runs without
+	/// factorai's own tools rather than not at all.
+	///
+	/// Never read after the spawn that created it. Its port and token left in
+	/// the child's argv, and its `Drop` is the teardown.
+	#[allow(dead_code)]
+	agent_tools: Option<AgentToolsServer>,
 }
 
 #[derive(Clone)]
@@ -560,6 +570,46 @@ impl TerminalManager {
 		Uuid::new_v4().to_string()
 	}
 
+	/// Stand up this session's **agent tool server** (F22 slice 3, ADR-0029).
+	///
+	/// The sibling of `start_bridge`, and separate from it for a reason that is
+	/// not ours: the CLI registers the bridge under the hardcoded key `ide` and
+	/// caps that server's model-visible tools at two names, so a tool we want an
+	/// agent to call cannot live there. This is a plain MCP server under a plain
+	/// name, handed to the session through `--mcp-config` at spawn.
+	///
+	/// **The project and the author are bound here**, because this is the only
+	/// layer that knows which session and which project the server belongs to.
+	/// Binding them in a closure is what makes it impossible for a tool argument
+	/// to name another project or another author; the store itself takes both as
+	/// parameters and has no opinion.
+	fn start_agent_tools(&self, session_id: &str, project_id: &str) -> AppResult<AgentToolsServer> {
+		let store = self.routine_store.clone();
+		let author = session_id.to_string();
+		let unavailable =
+			|| AppError::InvalidInput("routines are not available for this session".to_string());
+		let list_store = store.clone();
+		let create_store = store.clone();
+		let update_author = author.clone();
+		let routines = agent_tools::Routines {
+			project_id: project_id.to_string(),
+			list: Arc::new(move |project_id| {
+				let s = list_store.as_ref().ok_or_else(unavailable)?;
+				(s.list)(project_id)
+			}),
+			create: Arc::new(move |input| {
+				let s = create_store.as_ref().ok_or_else(unavailable)?;
+				(s.create)(input, &author)
+			}),
+			update: Arc::new(move |id, patch| {
+				let s = store.as_ref().ok_or_else(unavailable)?;
+				(s.update)(id, patch, &update_author)
+			}),
+		};
+		let tools = AgentTools::new(routines);
+		AgentToolsServer::start(Arc::new(move |text| tools.handle(text)))
+	}
+
 	/// Stand up this session's IDE bridge (F20).
 	///
 	/// The two answers that depend on the UI are resolved here rather than in
@@ -567,7 +617,7 @@ impl TerminalManager {
 	/// is: `openFile` on a session that is not in front marks its tab instead of
 	/// taking the window, and `getOpenEditors` reports what the viewer is
 	/// actually showing rather than a stub.
-	fn start_bridge(&self, session_id: &str, project_id: &str, cwd: &Path) -> AppResult<IdeServer> {
+	fn start_bridge(&self, session_id: &str, cwd: &Path) -> AppResult<IdeServer> {
 		let ui_for_open = self.ui.clone();
 		let ui_for_editors = self.ui.clone();
 		let on_open = self.on_ide_open.clone();
@@ -616,37 +666,6 @@ impl TerminalManager {
 			(recorded != current_cwd).then_some(recorded)
 		});
 
-		// **The routine tools' scope and their author, both fixed here** (ADR-0028).
-		// This is the only layer that knows which session and which project the
-		// bridge belongs to, so binding them in a closure is what makes it
-		// impossible for a tool argument to name another project or another
-		// author. The store itself takes both as parameters and has no opinion.
-		let routines = {
-			let store = self.routine_store.clone();
-			let author = session_id.to_string();
-			let unavailable = || {
-				AppError::InvalidInput("routines are not available for this session".to_string())
-			};
-			let list_store = store.clone();
-			let create_store = store.clone();
-			let update_author = author.clone();
-			protocol::Routines {
-				project_id: project_id.to_string(),
-				list: Arc::new(move |project_id| {
-					let s = list_store.as_ref().ok_or_else(unavailable)?;
-					(s.list)(project_id)
-				}),
-				create: Arc::new(move |input| {
-					let s = create_store.as_ref().ok_or_else(unavailable)?;
-					(s.create)(input, &author)
-				}),
-				update: Arc::new(move |id, patch| {
-					let s = store.as_ref().ok_or_else(unavailable)?;
-					(s.update)(id, patch, &update_author)
-				}),
-			}
-		};
-
 		let mcp = Mcp::new(
 			cwd.to_path_buf(),
 			protocol::Worktrees { checkouts, signal, current },
@@ -665,7 +684,6 @@ impl TerminalManager {
 				frontmost
 			}),
 			Arc::new(move || ui_for_editors.open_files()),
-			routines,
 		);
 
 		let on_status = self.on_ide_status.clone();
@@ -725,7 +743,12 @@ impl TerminalManager {
 	/// Split out from `spawn_with_argv` so the argv is assertable without a PTY,
 	/// which is the only part of a spawn a test can check cheaply and the part
 	/// that decides whether a session resumes or starts over.
-	fn argv_for(&self, opts: &SpawnOpts, cwd_path: &Path) -> AppResult<Vec<String>> {
+	fn argv_for(
+		&self,
+		opts: &SpawnOpts,
+		cwd_path: &Path,
+		tools: Option<&AgentToolsServer>,
+	) -> AppResult<Vec<String>> {
 		let bin = match &self.binary_override {
 			Some(p) => p.clone(),
 			None => {
@@ -734,6 +757,17 @@ impl TerminalManager {
 			}
 		};
 		let mut v = vec![bin.to_string_lossy().to_string()];
+		// **factorai's own tools, registered by name** (ADR-0029). Inline JSON
+		// rather than a file, because the config dies with the session and a file
+		// would have to survive a `SIGKILL` to be cleaned up.
+		//
+		// **Never `--strict-mcp-config`**: that would make ours the only MCP
+		// servers this session has, silently dropping every one the user
+		// configured. Merging is the entire point.
+		if let Some(tools) = tools {
+			v.push("--mcp-config".into());
+			v.push(tools.mcp_config_arg());
+		}
 		v.push(session_flag(&self.claude_dir, cwd_path, &opts.session_id).into());
 		v.push(opts.session_id.clone());
 		// One positional argument, whichever flag the probe chose: the CLI takes a
@@ -760,9 +794,22 @@ impl TerminalManager {
 			.or_else(dirs::home_dir)
 			.unwrap_or_else(|| PathBuf::from("/"));
 
+		// **Started before argv, because its port goes into argv.** A failure is
+		// logged and dropped, the same rule the bridge follows: a session without
+		// factorai's own tools is every session before this landed, whereas
+		// refusing to spawn `claude` because a socket would not bind trades the
+		// whole feature for one of its conveniences.
+		let agent_tools = match self.start_agent_tools(&opts.session_id, &opts.project_id) {
+			Ok(server) => Some(server),
+			Err(e) => {
+				warn!(error = %e, "agent tool server did not start; the session runs without it");
+				None
+			}
+		};
+
 		let argv = match argv_override {
 			Some(v) => v,
-			None => self.argv_for(&opts, &cwd_path)?,
+			None => self.argv_for(&opts, &cwd_path, agent_tools.as_ref())?,
 		};
 
 		let mut cmd = CommandBuilder::new(&argv[0]);
@@ -805,7 +852,7 @@ impl TerminalManager {
 		// its auto-connect on, and it pins which lockfile is chosen when a VS Code
 		// is open on the same machine — the CLI otherwise connects only when
 		// exactly one candidate matches.
-		let ide = match self.start_bridge(&opts.session_id, &opts.project_id, &cwd_path) {
+		let ide = match self.start_bridge(&opts.session_id, &cwd_path) {
 			Ok(server) => {
 				cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
 				IdeSlot::Running(server)
@@ -857,6 +904,7 @@ impl TerminalManager {
 			last_activity: AtomicI64::new(now_ms()),
 			cwd: cwd_path.clone(),
 			ide,
+			agent_tools,
 		});
 
 		self.terminals.insert(id.clone(), handle.clone());
@@ -1543,7 +1591,7 @@ mod tests {
 		let mut o = opts(80, 24);
 		o.cwd = Some(tmp.path().to_string_lossy().to_string());
 		o.initial_prompt = Some("Triage the inbox".into());
-		let argv = mgr.argv_for(&o, tmp.path()).expect("argv");
+		let argv = mgr.argv_for(&o, tmp.path(), None).expect("argv");
 		assert_eq!(argv[0], "/bin/echo");
 		assert_eq!(argv[1], "--session-id");
 		assert_eq!(argv[2], o.session_id);
@@ -1551,9 +1599,47 @@ mod tests {
 
 		// An empty prompt is not an argument: it would be an empty first message.
 		o.initial_prompt = Some(String::new());
-		assert_eq!(mgr.argv_for(&o, tmp.path()).unwrap().len(), 3);
+		assert_eq!(mgr.argv_for(&o, tmp.path(), None).unwrap().len(), 3);
 		o.initial_prompt = None;
-		assert_eq!(mgr.argv_for(&o, tmp.path()).unwrap().len(), 3);
+		assert_eq!(mgr.argv_for(&o, tmp.path(), None).unwrap().len(), 3);
+	}
+
+	#[test]
+	fn the_agent_tool_server_is_registered_by_name_in_argv() {
+		// **The whole point of the flag** (ADR-0029): the CLI hardcodes the IDE
+		// bridge's server key to `ide` and shows the model two of its tools, so
+		// factorai's own tools have to arrive under a name of their own. If this
+		// argument stops being passed, every tool in `agent_tools` becomes
+		// invisible to the agent while every unit test in it still passes.
+		let tmp = tempfile::TempDir::new().unwrap();
+		let (mut mgr, _data, _exit) = make_manager();
+		mgr.set_binary(PathBuf::from("/bin/echo"));
+		let o = opts(80, 24);
+		let tools = AgentToolsServer::start(Arc::new(|_| None)).expect("bind");
+
+		let argv = mgr.argv_for(&o, tmp.path(), Some(&tools)).expect("argv");
+		let at = argv.iter().position(|a| a == "--mcp-config").expect("--mcp-config is passed");
+		let config: serde_json::Value = serde_json::from_str(&argv[at + 1]).expect("valid json");
+		let server = &config["mcpServers"][crate::services::agent_tools::SERVER_NAME];
+
+		assert_ne!(
+			crate::services::agent_tools::SERVER_NAME,
+			"ide",
+			"a server named `ide` is the one the CLI caps at two tools"
+		);
+		assert_eq!(server["type"], "http", "ws-ide is refused from --mcp-config");
+		assert!(
+			server["url"].as_str().unwrap().starts_with("http://127.0.0.1:"),
+			"loopback only: {server}"
+		);
+		assert_eq!(
+			server["headers"]["Authorization"],
+			format!("Bearer {}", tools.token()),
+			"the session's own token, not a shared one"
+		);
+		// **Merging, never replacing.** `--strict-mcp-config` would drop every
+		// MCP server the user configured for themselves.
+		assert!(!argv.iter().any(|a| a == "--strict-mcp-config"), "{argv:?}");
 	}
 
 	#[test]

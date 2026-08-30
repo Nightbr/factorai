@@ -99,12 +99,17 @@ What is left:
 
 ### Slice 3 — routines over MCP — **done 2026-08-30**
 
-- [x] Four tools on the IDE bridge: `listRoutines`, `createRoutine`, `updateRoutine`,
-      `setRoutineEnabled`. **The revisit F22 asked for happened and changed two-thirds of the
-      recorded decision** — no `deleteRoutine`, and provenance in two columns, shown on the row.
-      The off switch stayed absent; F11 / item 4 own the bridge-wide one. ADR-0028 has the
-      reasoning, including why "an agent may edit a human's routine" went the other way from the
-      recommendation.
+- [x] Four tools: `listRoutines`, `createRoutine`, `updateRoutine`, `setRoutineEnabled`.
+      **The revisit F22 asked for happened and changed two-thirds of the recorded decision** —
+      no `deleteRoutine`, and provenance in two columns, shown on the row. The off switch stayed
+      absent; F11 / item 4 own the bridge-wide one. ADR-0028 has the reasoning, including why
+      "an agent may edit a human's routine" went the other way from the recommendation.
+- [x] **They are not on the IDE bridge, and the first version was.** The CLI registers that
+      connection under the hardcoded key `ide` and shows the model two of its tools, so the slice
+      shipped correct, fully tested and invisible to every agent. They live on factorai's own MCP
+      server now (`services/agent_tools/`), handed to each session at spawn. ADR-0029.
+- [x] An acceptance test that runs a real `claude`: `tests/agent_tools_conformance.rs`,
+      `#[ignore]`, green against CLI 2.1.251.
 - [x] Migration `0014`: `created_by_session_id`, `last_modified_by_session_id`. NULL means a human.
 - [x] `routines:changed`, emitted by a layer both callers share — the only thing that stops an open
       Routines tab going stale under a bridge write.
@@ -131,10 +136,11 @@ assume an open tab. Item 7 (toast) is half the error surface, and slice 3 added 
 an agent writing a schedule gets a mark on the row rather than a notification, and a transient
 version of that would live there.
 
-**Unobserved, and worth a pass.** Slice 3's tools are exercised end to end by unit tests, but no
-real `claude` has been watched calling one — the same gap F20 records for `openFile`. These names
-are ours rather than the CLI's, so nothing can drift out from under them; what is untested is
-whether the descriptions are the ones a model acts on. Record the CLI version with any pass.
+**Observed 2026-08-30, CLI 2.1.251.** A real `claude` was asked in English to schedule something
+and called `mcp__factorai__createRoutine` to do it. Re-run
+`cargo test --test agent_tools_conformance -- --ignored` after a CLI upgrade and record the version
+— we now depend on two of its behaviours read out of a shipped binary, and nothing in CI can prove
+either still holds.
 
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 

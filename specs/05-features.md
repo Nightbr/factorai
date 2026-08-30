@@ -3224,17 +3224,20 @@ First slice: `ide_connected`, `getWorkspaceFolders`, `openFile`,
 `getOpenEditors`. **F21 appended a fourth tool, `setWorktree`**, and widened
 `getWorkspaceFolders`'s answer — see F21 for both, and note that the new tool is
 advertised unconditionally because `tools/list` is fetched once at connect.
-**F22 slice 3 appended four more** — `listRoutines`, `createRoutine`,
-`updateRoutine`, `setRoutineEnabled` — on the same terms and for the same
-reason; see F22 § "Routines over MCP" and ADR-0028. There is deliberately no
-`deleteRoutine`.
+**Nothing else will be added here, because nothing else can be.** The CLI
+registers this connection under the hardcoded key `ide` and hands the model only
+`executeCode` and `getDiagnostics` from it, so every tool above works for one
+reason: **the CLI calls them, not the model.** A tool meant for an agent goes on
+factorai's own MCP server instead — F22 § "Routines over MCP" and
+[ADR-0029](../docs/adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
+`ideName: "factorai"` in our lockfile names a row in the `/ide` picker and
+nothing more.
 
-**Two of those groups write, and to our own database rather than the working
-tree.** ADR-0017 § 6 put `openDiff` out of scope because it would be the first
-time factorai wrote to a *repository*; our own tables are a different boundary,
-and what holds it is scope rather than the token — a path against the session's
-repository, a routine against the session's project, neither of which the client
-can address.
+**`setWorktree` writes, and to our own database rather than the working tree.**
+ADR-0017 § 6 put `openDiff` out of scope because it would be the first time
+factorai wrote to a *repository*; our own tables are a different boundary, and
+what holds it is scope rather than the token — a path checked against the
+session's repository, which the client cannot address.
 
 **`getDiagnostics` is not registered, on purpose.** We have no diagnostics
 source — that is item 14's LSP question — and advertising the tool while
@@ -4166,11 +4169,22 @@ renderer store because Rust reads it (ADR-0013).
 
 ### Routines over MCP
 
-**Slice 3, built 2026-08-30.** Four tools on the IDE bridge (F20) so an agent can
-schedule follow-up work in the project it is working in — `listRoutines`,
-`createRoutine`, `updateRoutine`, `setRoutineEnabled`. The decisions are
+**Slice 3, built 2026-08-30.** Four tools an agent can call to schedule
+follow-up work in the project it is working in — `listRoutines`,
+`createRoutine`, `updateRoutine`, `setRoutineEnabled`, reaching the agent as
+`mcp__factorai__*`. What an agent may do to a schedule is
 [ADR-0028](../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md);
-this is the behaviour they add up to.
+where the tools live is
+[ADR-0029](../docs/adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
+
+**They are not on the IDE bridge, and the first version of this slice was.** It
+shipped, answered every call correctly over the bridge's socket, and was invisible
+to every agent — because the CLI registers whatever it discovers in
+`~/.claude/ide/` under the hardcoded key `ide` and then offers the model only two
+of that server's tools. F20's tools work because the *CLI* calls them; none of
+them was ever model-facing. So factorai runs a second MCP server under its own
+name, handed to each session at spawn, and that is what these four live on. Full
+reasoning and the evidence are in ADR-0029.
 
 **It reverses two-thirds of what this section used to record.** Slice 3 was
 written down as full CRUD with no provenance and no off switch, against the
@@ -4214,6 +4228,13 @@ the bridge-wide one — and changed the other two.
 **Every routine write emits `routines:changed`**, whichever caller made it. The
 editor invalidates its own query already; this is what makes a schedule an agent
 changed appear in a Routines tab that is open in front of you.
+
+**The acceptance test runs a real `claude`.** `tests/agent_tools_conformance.rs`
+hands the binary the same `--mcp-config` a session gets, asks it in English to
+schedule something, and looks in the database. It is `#[ignore]` because it costs
+a model turn, and it exists because its absence is precisely what let the first
+version of this slice ship broken: every other test proves factorai's half, and
+factorai's half was never the part that was wrong.
 
 ### Later slices
 

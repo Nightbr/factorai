@@ -48,7 +48,13 @@ services/
   routines.rs         # the store, the scheduler, and RoutineRunner — the
                       #   wall-clock tick, the cap, catch-up (F22, ADR-0026)
   skills.rs           # the read-only scan of .claude/skills — PLANNED, F22
-  ide/                # the bridge (F20, ADR-0017)
+  mcp_wire.rs         # JSON-RPC + the MCP envelope, shared by both servers
+  agent_tools/        # factorai's own MCP server — the tools the MODEL calls
+    mod.rs            #   (F22 slice 3, ADR-0029)
+    server.rs         # a streamable-HTTP endpoint per session
+    tools.rs          # listRoutines, createRoutine, updateRoutine,
+                      #   setRoutineEnabled — reaching the agent as mcp__factorai__*
+  ide/                # the bridge (F20, ADR-0017) — the tools the CLI calls
     mod.rs
     lockfile.rs       # ~/.claude/ide/<port>.lock — the one thing we write there
     protocol.rs       # initialize, tools/list, tools/call, two notifications
@@ -726,9 +732,36 @@ one.
   `start_bridge`, which is the only layer that knows which session it is — the
   same place the project scope is bound, and for the same reason.
 
-The bridge reaches all of this through a `RoutineStore` of closures on
+The tool server reaches all of this through a `RoutineStore` of closures on
 `TerminalManager`, exactly as `WorktreeStore` works and for the identical
 reason: the manager needs answers from a database it should not hold.
+
+### Two MCP servers, and why
+
+**`services/ide/` is the CLI-facing one and `services/agent_tools/` is the
+model-facing one**, and the split is not ours to avoid (ADR-0029). The CLI
+registers whatever it discovers in `~/.claude/ide/` under the hardcoded key
+`ide`, then filters that server's tools down to `executeCode` and
+`getDiagnostics` before offering the model anything. So the bridge's tools work
+because **the CLI calls them** — `openFile`, `at_mentioned`, `/ide` — and a tool
+added there for an agent to call would be served correctly and never offered.
+
+|  | `ide` | `agent_tools` |
+| --- | --- | --- |
+| Found by | `~/.claude/ide/<port>.lock` | `--mcp-config` at spawn |
+| Named | `ide` (the CLI's literal) | `factorai` |
+| Transport | `ws-ide` (WebSocket) | `http` |
+| Called by | the CLI | the model |
+
+Both are per session, both are started in `TerminalManager::spawn`, both are held
+on the `TerminalHandle` and stopped by the same `Drop` — one lifetime each, tied
+to the PTY, which is how ADR-0005's teardown covers them without a second
+mechanism. `services/mcp_wire.rs` holds what they share: the JSON-RPC envelope,
+the tool-result-versus-transport-error distinction, and `initialize`.
+
+`--strict-mcp-config` is **never** passed with our `--mcp-config`: it would make
+ours the only MCP servers a session has and silently drop every one the user
+configured. There is a test for that sentence.
 
 ### `Search`
 

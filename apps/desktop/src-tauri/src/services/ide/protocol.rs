@@ -15,32 +15,30 @@
 //! **Nothing here writes to the working tree.** `openDiff` and the
 //! accept/reject-hunk surface are that path, and they remain a separate
 //! decision with a separate ADR (ADR-0017 § 6). ADR-0009's "everything is
-//! read-only" is about a git repository and stands untouched.
+//! read-only" is about a git repository and stands untouched. `setWorktree`
+//! does write to our **own** database, which is a different boundary; what
+//! holds it is not the token — that authenticates a process on this machine,
+//! which is a weaker claim than it looks — but the git-derived scope.
 //!
-//! Two groups do write to our **own** database, which is a different boundary:
-//! `setWorktree` records which checkout a session is in (F21), and the routine
-//! tools schedule work (F22 slice 3, ADR-0028). What holds them is not the token
-//! — that authenticates a process on this machine, which is a weaker claim than
-//! it looks — but scope: a path is checked against the session's repository, and
-//! a routine against the session's project, neither of which the client can
-//! address.
+//! **Every tool here is called by the CLI, never by the model** (ADR-0029). The
+//! CLI registers whatever it discovers in `~/.claude/ide/` under the hardcoded
+//! key `ide`, then filters that server's tools down to `executeCode` and
+//! `getDiagnostics` before offering any of them to the model. So this is not the
+//! place for a tool you want an agent to call: that is
+//! [`crate::services::agent_tools`], a plain MCP server under a plain name for
+//! exactly this reason.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use super::scope::{containing_root, resolve_within_any};
-use crate::error::AppResult;
-use crate::models::{Routine, RoutineInput};
-use crate::services::routines::{next_occurrences, RoutinePatch};
-
-/// JSON-RPC's own codes. Tool *failures* do not use these — see
-/// [`tool_error`] for why.
-const METHOD_NOT_FOUND: i64 = -32601;
-const INVALID_PARAMS: i64 = -32602;
+use crate::services::mcp_wire::{
+	self, tool_error, tool_text, Failure, Incoming, INVALID_PARAMS, METHOD_NOT_FOUND,
+};
 
 /// What the agent asked us to show, once its arguments have been checked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,35 +84,6 @@ pub struct Worktrees {
 	pub current: Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>,
 }
 
-/// The routines this session may read and write (F22 slice 3, ADR-0028).
-///
-/// **The project is baked in, not taken as an argument.** It is resolved at
-/// spawn from the session's own `SpawnOpts`, so there is no `projectId` on any
-/// tool for an agent to point somewhere else — the database analogue of the path
-/// scope in ADR-0017 § 3, and the same reasoning: the token authenticates a
-/// process on this machine, which is a weaker claim than it looks, so the layer
-/// that actually holds is the one the client cannot address.
-///
-/// The author is baked in the same way. Every write records the session that
-/// made it, and the tool has no say in what that says.
-pub struct Routines {
-	/// The project every tool in this group reads and writes.
-	pub project_id: String,
-	pub list: ListRoutines,
-	pub create: CreateRoutine,
-	/// Partial by design — see [`RoutinePatch`]. An agent holds a subset of the
-	/// fields and would otherwise have to echo back the ones it did not
-	/// understand.
-	pub update: UpdateRoutine,
-}
-
-/// One project's routines, by project id.
-pub type ListRoutines = Arc<dyn Fn(&str) -> AppResult<Vec<Routine>> + Send + Sync>;
-/// Write a new routine, recording the session that asked as its author.
-pub type CreateRoutine = Arc<dyn Fn(&RoutineInput) -> AppResult<Routine> + Send + Sync>;
-/// Change part of one, recording the session that asked as the last hand.
-pub type UpdateRoutine = Arc<dyn Fn(&str, &RoutinePatch) -> AppResult<Routine> + Send + Sync>;
-
 /// A file — or a run of lines in one — the human is handing to the agent (F20).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,7 +123,7 @@ pub fn at_mentioned(path: &Path, mention: &Mention) -> String {
 		params["lineStart"] = json!(to_wire_line(start));
 		params["lineEnd"] = json!(to_wire_line(end));
 	}
-	encode(json!({ "jsonrpc": "2.0", "method": "at_mentioned", "params": params }))
+	mcp_wire::encode(json!({ "jsonrpc": "2.0", "method": "at_mentioned", "params": params }))
 }
 
 /// One session's view of the protocol.
@@ -166,7 +135,6 @@ pub struct Mcp {
 	worktrees: Worktrees,
 	open_file: OpenFile,
 	open_editors: OpenEditors,
-	routines: Routines,
 }
 
 impl Mcp {
@@ -175,9 +143,8 @@ impl Mcp {
 		worktrees: Worktrees,
 		open_file: OpenFile,
 		open_editors: OpenEditors,
-		routines: Routines,
 	) -> Self {
-		Self { session_cwd, worktrees, open_file, open_editors, routines }
+		Self { session_cwd, worktrees, open_file, open_editors }
 	}
 
 	/// The path scope: the session's cwd, plus every checkout of its repository.
@@ -212,7 +179,7 @@ impl Mcp {
 		};
 
 		let result = match incoming.method.as_str() {
-			"initialize" => Ok(self.initialize(&params)),
+			"initialize" => Ok(mcp_wire::initialize_result(&params, super::lockfile::IDE_NAME)),
 			"tools/list" => Ok(tools_list()),
 			"tools/call" => self.tools_call(&params),
 			other => {
@@ -221,12 +188,7 @@ impl Mcp {
 			}
 		};
 
-		Some(match result {
-			Ok(value) => encode(json!({ "jsonrpc": "2.0", "id": id, "result": value })),
-			Err(f) => encode(
-				json!({ "jsonrpc": "2.0", "id": id, "error": { "code": f.code, "message": f.message } }),
-			),
-		})
+		Some(mcp_wire::reply(id, result))
 	}
 
 	fn notification(&self, method: &str, params: Value) {
@@ -240,29 +202,6 @@ impl Mcp {
 			"notifications/initialized" => debug!("ide bridge initialised"),
 			other => debug!(method = other, "ide bridge ignored a notification"),
 		}
-	}
-
-	/// **The client's protocol version is echoed back.**
-	///
-	/// Our surface is three tools and no resources, prompts or sampling, and
-	/// none of that has changed shape across MCP revisions — so the honest
-	/// answer to "can you speak this" is yes. Echoing avoids pinning a version
-	/// list we would then have to chase; the conformance pass against a real CLI
-	/// is what would catch it if that ever stops being true.
-	fn initialize(&self, params: &Value) -> Value {
-		let version = params
-			.get("protocolVersion")
-			.and_then(Value::as_str)
-			.unwrap_or("2025-06-18")
-			.to_string();
-		json!({
-			"protocolVersion": version,
-			"capabilities": { "tools": { "listChanged": false } },
-			"serverInfo": {
-				"name": super::lockfile::IDE_NAME,
-				"version": env!("CARGO_PKG_VERSION"),
-			},
-		})
 	}
 
 	fn tools_call(&self, params: &Value) -> Result<Value, Failure> {
@@ -279,10 +218,6 @@ impl Mcp {
 			"getOpenEditors" => {
 				Ok(tool_text(&json!({ "editors": (self.open_editors)() }).to_string()))
 			}
-			"listRoutines" => Ok(self.list_routines()),
-			"createRoutine" => Ok(self.create_routine(&args)),
-			"updateRoutine" => Ok(self.update_routine(&args)),
-			"setRoutineEnabled" => Ok(self.set_routine_enabled(&args)),
 			other => Err(Failure::rpc(METHOD_NOT_FOUND, format!("no such tool: {other}"))),
 		}
 	}
@@ -421,202 +356,6 @@ impl Mcp {
 			))
 		}
 	}
-
-	// ------------------------------------------------- routines (ADR-0028)
-
-	/// This project's schedules, run state included.
-	///
-	/// The run state is here rather than held back because "did the routine I
-	/// wrote yesterday actually work" is the question an agent comes back with,
-	/// and `lastError` is the only thing that answers it.
-	fn list_routines(&self) -> Value {
-		match (self.routines.list)(&self.routines.project_id) {
-			Ok(routines) => {
-				let rows: Vec<Value> = routines.iter().map(describe_routine).collect();
-				tool_text(
-					&json!({
-						"routines": rows,
-						"note": "These are the routines of the project this session is running \
-								 in. A routine starts a new agent session with its prompt as the \
-								 first message, and only while factorai is open.",
-					})
-					.to_string(),
-				)
-			}
-			Err(e) => tool_error(&format!("could not read this project's routines: {e}")),
-		}
-	}
-
-	/// Schedule new work in this session's project.
-	fn create_routine(&self, args: &Value) -> Value {
-		let (Some(name), Some(cron), Some(prompt)) = (
-			args.get("name").and_then(Value::as_str),
-			args.get("cron").and_then(Value::as_str),
-			args.get("prompt").and_then(Value::as_str),
-		) else {
-			return tool_error("createRoutine needs a name, a cron and a prompt");
-		};
-		let input = RoutineInput {
-			project_id: self.routines.project_id.clone(),
-			name: name.to_string(),
-			cron: cron.to_string(),
-			prompt: prompt.to_string(),
-			// Absent means yes: an agent asked to schedule something has asked
-			// for it to run, and a schedule that waits for a human to arm it is
-			// a draft the agent will nonetheless report as scheduled.
-			enabled: args.get("enabled").and_then(Value::as_bool).unwrap_or(true),
-			catchup_hours: args.get("catchupHours").and_then(Value::as_i64),
-		};
-		match (self.routines.create)(&input) {
-			Ok(routine) => {
-				info!(routine = %routine.name, "an agent created a routine");
-				tool_text(&format!(
-					"Created the routine \"{}\" ({}).\n{}",
-					routine.name,
-					routine.id,
-					schedule_answer(&routine)
-				))
-			}
-			Err(e) => tool_error(&format!("{e}")),
-		}
-	}
-
-	/// Change part of a routine in this session's project.
-	fn update_routine(&self, args: &Value) -> Value {
-		let Some(id) = args.get("id").and_then(Value::as_str) else {
-			return tool_error("updateRoutine needs an id — call listRoutines for them");
-		};
-		let patch = RoutinePatch {
-			name: args.get("name").and_then(Value::as_str).map(str::to_string),
-			cron: args.get("cron").and_then(Value::as_str).map(str::to_string),
-			prompt: args.get("prompt").and_then(Value::as_str).map(str::to_string),
-			enabled: args.get("enabled").and_then(Value::as_bool),
-			// Three states, and the wire has all three: the key is absent (leave
-			// it), the key is `null` (put it back on the app-wide default), or the
-			// key is a number. Collapsing the first two would make every partial
-			// update silently reset the window.
-			catchup_hours: args.get("catchupHours").map(|v| v.as_i64()),
-		};
-		self.write_routine(id, &patch, "Updated")
-	}
-
-	/// Stop, or resume, a routine's future fires. Never touches a session it has
-	/// already started — that is not what a switch means (F22).
-	fn set_routine_enabled(&self, args: &Value) -> Value {
-		let Some(id) = args.get("id").and_then(Value::as_str) else {
-			return tool_error("setRoutineEnabled needs an id — call listRoutines for them");
-		};
-		let Some(enabled) = args.get("enabled").and_then(Value::as_bool) else {
-			return tool_error("setRoutineEnabled needs enabled: true or false");
-		};
-		let verb = if enabled { "Enabled" } else { "Disabled" };
-		self.write_routine(id, &RoutinePatch::just_enabled(enabled), verb)
-	}
-
-	/// The half `updateRoutine` and `setRoutineEnabled` share: refuse a routine
-	/// that is not this project's, write, and answer with the schedule.
-	///
-	/// **The scope check is here rather than in the store**, because it is the
-	/// bridge's rule and not the database's: the editor may edit any routine of
-	/// the project it is showing, and this is the caller that has to be held to
-	/// one project. Checked by reading the row through the project-scoped list,
-	/// so an id from another project is indistinguishable from one that does not
-	/// exist — which is the right answer to both.
-	fn write_routine(&self, id: &str, patch: &RoutinePatch, verb: &str) -> Value {
-		match (self.routines.list)(&self.routines.project_id) {
-			Ok(routines) if routines.iter().any(|r| r.id == id) => {}
-			Ok(_) => {
-				warn!(id, "ide bridge refused a routine outside the session's project");
-				return tool_error(&format!(
-					"no routine {id} in this session's project — call listRoutines to see them"
-				));
-			}
-			Err(e) => return tool_error(&format!("could not read this project's routines: {e}")),
-		}
-		match (self.routines.update)(id, patch) {
-			Ok(routine) => {
-				info!(routine = %routine.name, verb, "an agent changed a routine");
-				tool_text(&format!(
-					"{} the routine \"{}\" ({}).\n{}",
-					verb,
-					routine.name,
-					routine.id,
-					schedule_answer(&routine)
-				))
-			}
-			Err(e) => tool_error(&format!("{e}")),
-		}
-	}
-}
-
-/// One routine, as the agent sees it.
-fn describe_routine(routine: &Routine) -> Value {
-	json!({
-		"id": routine.id,
-		"name": routine.name,
-		"cron": routine.cron,
-		"prompt": routine.prompt,
-		"enabled": routine.enabled,
-		"catchupHours": routine.catchup_hours,
-		"nextRun": routine.next_run_at.map(stamp),
-		"lastRun": routine.last_run_at.map(stamp),
-		"lastError": routine.last_error,
-		// Which of the two wrote it, in a word, because "is this mine to change"
-		// is the only thing an agent does with a session id it cannot resolve.
-		"createdBy": author(routine.created_by_session_id.as_deref()),
-		"lastChangedBy": author(routine.last_modified_by_session_id.as_deref()),
-	})
-}
-
-/// `None` means a human wrote it — see migration `0014`, where the absence is
-/// meaningful rather than merely missing.
-fn author(session_id: Option<&str>) -> Value {
-	match session_id {
-		Some(id) => json!({ "who": "agent", "sessionId": id }),
-		None => json!({ "who": "human" }),
-	}
-}
-
-/// When a schedule next fires, spelled out.
-///
-/// **The next few times, not just the next one** (F22): the line under the
-/// editor's schedule control is what stops a human saving an expression that
-/// never fires, and an agent writing one unattended has strictly less to go on.
-/// A cron that cannot fire again is refused before it is stored, so an empty
-/// list here means only that the projection ran out.
-fn schedule_answer(routine: &Routine) -> String {
-	if !routine.enabled {
-		return format!(
-			"Schedule: {} — but it is disabled, so it will not run until it is enabled.",
-			routine.cron
-		);
-	}
-	let next = next_occurrences(&routine.cron, crate::epoch_ms(), 3);
-	if next.is_empty() {
-		return format!("Schedule: {} — no upcoming runs.", routine.cron);
-	}
-	format!(
-		"Schedule: {} — next runs {}. It runs only while factorai is open.",
-		routine.cron,
-		next.iter().map(|at| stamp(*at)).collect::<Vec<_>>().join(", ")
-	)
-}
-
-/// Epoch ms as local wall-clock time, with the offset spelled out.
-///
-/// **24-hour with an explicit offset, whatever the app's clock setting says.**
-/// That setting is a renderer preference (ADR-0013) which the bridge cannot
-/// read, and the reader here is a model rather than a person — for which an
-/// unambiguous stamp beats a familiar one. Local rather than UTC because a cron
-/// expression means local time (Q25), and a projection in another zone would
-/// not match what the routines list shows.
-fn stamp(ms: i64) -> String {
-	use chrono::{Local, TimeZone};
-	Local
-		.timestamp_millis_opt(ms)
-		.single()
-		.map(|dt| dt.format("%Y-%m-%d %H:%M (%:z)").to_string())
-		.unwrap_or_else(|| format!("{ms}"))
 }
 
 /// The four we answer. `getDiagnostics` is absent on purpose — see the module
@@ -679,154 +418,8 @@ fn tools_list() -> Value {
 					"required": ["path"],
 				},
 			},
-			// **The routine group** (F22 slice 3, ADR-0028). Advertised
-			// unconditionally, like `setWorktree` and for the same reason:
-			// `tools/list` is fetched once at connect, so anything gated here is
-			// gated for the life of the session.
-			//
-			// There is no `deleteRoutine`, and its absence is the decision rather
-			// than an omission. The editor's delete asks first; a tool call has
-			// nobody to ask, and disable is the reversible form of the same act.
-			// No `projectId` argument anywhere either — the project is the
-			// session's own, resolved at spawn.
-			{
-				"name": "listRoutines",
-				"description": "The scheduled routines of the project this session is running \
-								in. A routine starts a new agent session on a cron schedule \
-								with its prompt as the first message. Call this before \
-								updating one, for its id and its current schedule.",
-				"inputSchema": { "type": "object", "properties": {} },
-			},
-			{
-				"name": "createRoutine",
-				"description": "Schedule recurring work in this session's project. factorai \
-								will start a new agent session on this schedule with `prompt` \
-								as its first message — so write the prompt for an agent \
-								starting cold, with no memory of this conversation. Routines \
-								run only while factorai is open; one due while it is closed \
-								runs when it next opens, if it is still inside its catch-up \
-								window. Say what you scheduled and when it will run.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"name": {
-							"type": "string",
-							"description": "Short label for the list, e.g. \"Nightly triage\".",
-						},
-						"cron": {
-							"type": "string",
-							"description": "Five-field cron expression in local time — \
-											minute hour day-of-month month day-of-week. \
-											`0 2 * * *` is every day at 02:00.",
-						},
-						"prompt": {
-							"type": "string",
-							"description": "The session's first message. Self-contained: the \
-											agent that receives it starts with no context.",
-						},
-						"enabled": {
-							"type": "boolean",
-							"description": "Defaults to true. False creates it switched off.",
-						},
-						"catchupHours": {
-							"type": "number",
-							"description": "How late a missed run may still start, in hours. \
-											Omit to inherit the app-wide default; 0 never \
-											runs late.",
-						},
-					},
-					"required": ["name", "cron", "prompt"],
-				},
-			},
-			{
-				"name": "updateRoutine",
-				"description": "Change a routine in this session's project. Send only the \
-								fields you are changing; everything else is left alone. \
-								Call listRoutines first for the id.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"id": { "type": "string", "description": "From listRoutines." },
-						"name": { "type": "string" },
-						"cron": {
-							"type": "string",
-							"description": "Five-field cron expression in local time.",
-						},
-						"prompt": { "type": "string" },
-						"enabled": { "type": "boolean" },
-						"catchupHours": {
-							"type": "number",
-							"description": "Null puts it back on the app-wide default.",
-						},
-					},
-					"required": ["id"],
-				},
-			},
-			{
-				"name": "setRoutineEnabled",
-				"description": "Stop or resume a routine's future runs. It never touches a \
-								session the routine has already started. There is no way to \
-								delete a routine from here — disabling is the reversible \
-								form, and deleting one is the human's to do.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"id": { "type": "string", "description": "From listRoutines." },
-						"enabled": { "type": "boolean" },
-					},
-					"required": ["id", "enabled"],
-				},
-			},
 		]
 	})
-}
-
-/// A successful `tools/call` result. MCP wraps every answer in content blocks
-/// rather than returning a bare value.
-fn tool_text(text: &str) -> Value {
-	json!({ "content": [{ "type": "text", "text": text }] })
-}
-
-/// A tool that ran and failed.
-///
-/// **Not a JSON-RPC error.** Those mean "this call was malformed"; this means
-/// "your call was fine and the answer is no". MCP draws that line so a model can
-/// read the failure and react, and collapsing the two would turn "that file is
-/// outside the project" into a transport fault the agent cannot learn from.
-fn tool_error(message: &str) -> Value {
-	json!({ "content": [{ "type": "text", "text": message }], "isError": true })
-}
-
-struct Failure {
-	code: i64,
-	message: String,
-}
-
-impl Failure {
-	fn rpc(code: i64, message: impl Into<String>) -> Self {
-		Self { code, message: message.into() }
-	}
-}
-
-fn encode(value: Value) -> String {
-	// A response we cannot serialise is a bug in the shapes above, not a
-	// runtime condition — but a panic here would take a session's bridge down,
-	// so it degrades to a parse error the client can report.
-	serde_json::to_string(&value).unwrap_or_else(|_| {
-		r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"internal error"}}"#
-			.to_string()
-	})
-}
-
-#[derive(Deserialize)]
-struct Incoming {
-	/// Absent for a notification. Kept as a `Value` because JSON-RPC allows a
-	/// string or a number and it is only ever echoed back.
-	#[serde(default)]
-	id: Option<Value>,
-	method: String,
-	#[serde(default)]
-	params: Option<Value>,
 }
 
 #[cfg(test)]
@@ -845,96 +438,6 @@ mod tests {
 		opened: Arc<Mutex<Vec<OpenFileRequest>>>,
 		/// Every checkout the bridge was told the agent is working in (F21).
 		signalled: Arc<Mutex<Vec<PathBuf>>>,
-		/// The routine table this session's tools write to (ADR-0028).
-		routines: Arc<Mutex<Vec<Routine>>>,
-		/// Every project id the tools asked the store about. The scope claim is
-		/// that this is only ever the session's own, whatever an argument says.
-		asked_for: Arc<Mutex<Vec<String>>>,
-	}
-
-	/// The project every fixture's session runs in.
-	const PROJECT: &str = "p-session";
-
-	fn a_routine(id: &str, project_id: &str, name: &str) -> Routine {
-		Routine {
-			id: id.into(),
-			project_id: project_id.into(),
-			name: name.into(),
-			cron: "0 2 * * *".into(),
-			prompt: "Triage the inbox".into(),
-			enabled: true,
-			catchup_hours: None,
-			last_fire_at: None,
-			last_run_at: None,
-			last_session_id: None,
-			last_skipped_at: None,
-			last_error: None,
-			created_at: 0,
-			created_by_session_id: None,
-			last_modified_by_session_id: None,
-			next_run_at: None,
-		}
-	}
-
-	/// A routine store standing in for the `routines` table, with the author
-	/// baked in the way `start_bridge` bakes it — so a test can assert what got
-	/// recorded without a database.
-	fn routine_store(
-		rows: Arc<Mutex<Vec<Routine>>>,
-		asked_for: Arc<Mutex<Vec<String>>>,
-	) -> Routines {
-		let list_rows = rows.clone();
-		let create_rows = rows.clone();
-		Routines {
-			project_id: PROJECT.to_string(),
-			list: Arc::new(move |project_id| {
-				asked_for.lock().push(project_id.to_string());
-				Ok(list_rows
-					.lock()
-					.iter()
-					.filter(|r| r.project_id == project_id)
-					.cloned()
-					.collect())
-			}),
-			create: Arc::new(move |input| {
-				if input.cron == "not a cron" {
-					return Err(crate::error::AppError::InvalidInput(
-						"not a cron expression: not a cron".into(),
-					));
-				}
-				let mut routine = a_routine("r-new", &input.project_id, &input.name);
-				routine.cron = input.cron.clone();
-				routine.prompt = input.prompt.clone();
-				routine.enabled = input.enabled;
-				routine.catchup_hours = input.catchup_hours;
-				routine.created_by_session_id = Some("s-agent".into());
-				create_rows.lock().push(routine.clone());
-				Ok(routine)
-			}),
-			update: Arc::new(move |id, patch| {
-				let mut rows = rows.lock();
-				let Some(row) = rows.iter_mut().find(|r| r.id == id) else {
-					return Err(crate::error::AppError::NotFound(format!("no routine {id}")));
-				};
-				if let Some(name) = &patch.name {
-					row.name = name.clone();
-				}
-				if let Some(cron) = &patch.cron {
-					row.cron = cron.clone();
-				}
-				if let Some(prompt) = &patch.prompt {
-					row.prompt = prompt.clone();
-				}
-				if let Some(enabled) = patch.enabled {
-					row.enabled = enabled;
-				}
-				if let Some(hours) = patch.catchup_hours {
-					row.catchup_hours = hours;
-				}
-				row.last_modified_by_session_id = Some("s-agent".into());
-				Ok(row.clone())
-			}),
-		}
 	}
 
 	fn fixture(accepts: bool) -> Fixture {
@@ -950,8 +453,6 @@ mod tests {
 		let signalled: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
 		let sink = opened.clone();
 		let signal_sink = signalled.clone();
-		let routines: Arc<Mutex<Vec<Routine>>> = Arc::new(Mutex::new(Vec::new()));
-		let asked_for: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 		let mcp = Mcp::new(
 			project.path().to_path_buf(),
 			Worktrees {
@@ -964,9 +465,8 @@ mod tests {
 				accepts
 			}),
 			Arc::new(|| vec!["/p/open.rs".to_string()]),
-			routine_store(routines.clone(), asked_for.clone()),
 		);
-		Fixture { project, mcp, opened, signalled, routines, asked_for }
+		Fixture { project, mcp, opened, signalled }
 	}
 
 	fn call(mcp: &Mcp, method: &str, params: Value) -> Value {
@@ -1214,7 +714,6 @@ mod tests {
 			},
 			Arc::new(|_| true),
 			Arc::new(Vec::new),
-			routine_store(Arc::new(Mutex::new(Vec::new())), Arc::new(Mutex::new(Vec::new()))),
 		);
 
 		let reply = call(&mcp, "tools/call", json!({ "name": "getWorkspaceFolders" }));
@@ -1234,257 +733,22 @@ mod tests {
 			.map(|t| t["name"].as_str().unwrap())
 			.collect();
 
-		// Appended in the order they were added, so the ones that were here keep
-		// their positions — the same rule the panel's tab strip follows.
-		assert_eq!(
-			names,
-			[
-				"openFile",
-				"getWorkspaceFolders",
-				"getOpenEditors",
-				"setWorktree",
-				"listRoutines",
-				"createRoutine",
-				"updateRoutine",
-				"setRoutineEnabled",
-			]
-		);
+		// `setWorktree` is last: appended so the three that were here keep their
+		// positions, the same rule the panel's tab strip follows.
+		assert_eq!(names, ["openFile", "getWorkspaceFolders", "getOpenEditors", "setWorktree"]);
 		// The omission is a decision, so it gets an assertion. Answering "no
 		// problems" with no diagnostics source is a lie the agent would act on.
 		assert!(!names.contains(&"getDiagnostics"));
 		// The working-tree write path is a separate ADR and must not appear by
 		// accident.
 		assert!(!names.contains(&"openDiff"));
-		// **The one that is absent on purpose** (ADR-0028). The editor's delete
-		// asks first; a tool call has nobody to ask, and disabling is the
-		// reversible form of the same act.
-		assert!(!names.contains(&"deleteRoutine"));
-	}
-
-	// ------------------------------------------------- routines (ADR-0028)
-
-	#[test]
-	fn createroutine_schedules_in_this_sessions_project_and_says_when() {
-		let f = fixture(true);
-		let reply = call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "createRoutine", "arguments": {
-				"name": "Nightly triage",
-				"cron": "0 2 * * *",
-				"prompt": "Triage the inbox",
-			}}),
-		);
-
-		let (text, failed) = tool_result(&reply);
-		assert!(!failed, "{text}");
-		let rows = f.routines.lock();
-		assert_eq!(rows.len(), 1);
-		assert_eq!(rows[0].project_id, PROJECT);
-		// Absent `enabled` means yes: an agent that scheduled something asked for
-		// it to run, and it will report it as scheduled either way.
-		assert!(rows[0].enabled);
-		// The next-fire line is what stops a schedule that silently never runs —
-		// the editor shows it to a human, and this is the agent's copy of it.
-		assert!(text.contains("next runs"), "{text}");
-		assert!(text.contains("only while factorai is open"), "{text}");
-	}
-
-	#[test]
-	fn no_routine_tool_can_name_another_project() {
-		// The scope claim, and the cheapest possible statement of it: `projectId`
-		// is not a parameter, so an agent that sends one is ignored rather than
-		// obeyed. The database analogue of the path scope in ADR-0017 § 3.
-		let f = fixture(true);
-		call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "createRoutine", "arguments": {
-				"name": "Elsewhere",
-				"cron": "0 2 * * *",
-				"prompt": "do a thing",
-				"projectId": "p-somebody-elses",
-			}}),
-		);
-		call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "listRoutines",
-			"arguments": { "projectId": "p-somebody-elses" } }),
-		);
-
-		assert_eq!(f.routines.lock()[0].project_id, PROJECT);
-		assert!(
-			f.asked_for.lock().iter().all(|p| p == PROJECT),
-			"the store was asked about {:?}",
-			f.asked_for.lock()
-		);
-	}
-
-	#[test]
-	fn updateroutine_refuses_a_routine_that_is_not_this_projects() {
-		let f = fixture(true);
-		f.routines.lock().push(a_routine("r-other", "p-somebody-elses", "Theirs"));
-
-		let reply = call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "updateRoutine",
-				"arguments": { "id": "r-other", "cron": "0 5 * * *" } }),
-		);
-
-		let (text, failed) = tool_result(&reply);
-		assert!(failed, "{text}");
-		assert!(text.contains("no routine r-other"), "{text}");
-		// Untouched, which is the half that matters.
-		assert_eq!(f.routines.lock()[0].cron, "0 2 * * *");
-	}
-
-	#[test]
-	fn updateroutine_changes_only_the_fields_it_was_sent() {
-		// The partial merge. An agent holds a subset and would otherwise have to
-		// echo back everything it did not understand — `catchupHours` being the
-		// field a round trip loses, since absent there means *inherit the
-		// app-wide default* rather than *no value*.
-		let f = fixture(true);
-		let mut existing = a_routine("r1", PROJECT, "Nightly triage");
-		existing.catchup_hours = Some(4);
-		f.routines.lock().push(existing);
-
-		let reply = call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "updateRoutine",
-				"arguments": { "id": "r1", "cron": "0 5 * * *" } }),
-		);
-
-		assert!(!tool_result(&reply).1);
-		let rows = f.routines.lock();
-		assert_eq!(rows[0].cron, "0 5 * * *");
-		assert_eq!(rows[0].name, "Nightly triage", "an unsent field is left alone");
-		assert_eq!(rows[0].prompt, "Triage the inbox");
-		assert_eq!(rows[0].catchup_hours, Some(4), "an unsent window is not reset");
-	}
-
-	#[test]
-	fn a_null_catchup_puts_a_routine_back_on_the_app_default() {
-		// The other half of the three states the wire carries: absent leaves it,
-		// `null` clears it, a number pins it. Collapsing the first two would make
-		// every partial update silently reset the window.
-		let f = fixture(true);
-		let mut existing = a_routine("r1", PROJECT, "Nightly triage");
-		existing.catchup_hours = Some(4);
-		f.routines.lock().push(existing);
-
-		call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "updateRoutine",
-				"arguments": { "id": "r1", "catchupHours": Value::Null } }),
-		);
-
-		assert_eq!(f.routines.lock()[0].catchup_hours, None);
-	}
-
-	#[test]
-	fn setroutineenabled_switches_it_off_and_says_it_will_not_run() {
-		let f = fixture(true);
-		f.routines.lock().push(a_routine("r1", PROJECT, "Nightly triage"));
-
-		let reply = call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "setRoutineEnabled",
-				"arguments": { "id": "r1", "enabled": false } }),
-		);
-
-		let (text, failed) = tool_result(&reply);
-		assert!(!failed, "{text}");
-		assert!(!f.routines.lock()[0].enabled);
-		// A disabled routine gets no next-fire list, because it has none — saying
-		// "next runs 02:00" about something switched off is the confident
-		// falsehood `getDiagnostics` is kept out of the list to avoid.
-		assert!(text.contains("it is disabled"), "{text}");
-		assert!(!text.contains("next runs"), "{text}");
-	}
-
-	#[test]
-	fn a_write_records_the_session_that_made_it() {
-		// The provenance F22 originally recorded as absent, and asked to revisit
-		// before this slice was built (ADR-0028). The author is bound at the
-		// bridge, so no tool argument can claim to be somebody else.
-		let f = fixture(true);
-		f.routines.lock().push(a_routine("r1", PROJECT, "Written by a human"));
-
-		call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "createRoutine", "arguments": {
-				"name": "Written by an agent", "cron": "0 2 * * *", "prompt": "go" }}),
-		);
-		call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "setRoutineEnabled",
-				"arguments": { "id": "r1", "enabled": false } }),
-		);
-
-		let rows = f.routines.lock();
-		// An agent amending a human's routine is the case one column cannot
-		// record: the row would still read as untouched.
-		assert_eq!(rows[0].created_by_session_id, None);
-		assert_eq!(rows[0].last_modified_by_session_id.as_deref(), Some("s-agent"));
-		assert_eq!(rows[1].created_by_session_id.as_deref(), Some("s-agent"));
-	}
-
-	#[test]
-	fn listroutines_says_which_of_the_two_wrote_each_one() {
-		let f = fixture(true);
-		f.routines.lock().push(a_routine("r1", PROJECT, "Theirs"));
-		let mut mine = a_routine("r2", PROJECT, "Mine");
-		mine.created_by_session_id = Some("s-agent".into());
-		f.routines.lock().push(mine);
-
-		let reply = call(&f.mcp, "tools/call", json!({ "name": "listRoutines" }));
-		let body: Value = serde_json::from_str(&tool_result(&reply).0).unwrap();
-
-		assert_eq!(body["routines"][0]["createdBy"]["who"], "human");
-		assert_eq!(body["routines"][1]["createdBy"]["who"], "agent");
-		assert_eq!(body["routines"][1]["createdBy"]["sessionId"], "s-agent");
-	}
-
-	#[test]
-	fn a_schedule_the_store_refuses_comes_back_as_a_tool_error() {
-		// A refusal is a tool error, not a transport error: the call was
-		// well-formed and the answer is no, which is the distinction that lets a
-		// model read the failure and fix its own expression.
-		let f = fixture(true);
-		let reply = call(
-			&f.mcp,
-			"tools/call",
-			json!({ "name": "createRoutine", "arguments": {
-				"name": "Broken", "cron": "not a cron", "prompt": "go" }}),
-		);
-
-		let (text, failed) = tool_result(&reply);
-		assert!(failed, "{text}");
-		assert!(text.contains("not a cron expression"), "{text}");
-		assert!(reply["error"].is_null(), "a refusal is not a JSON-RPC error");
-		assert!(f.routines.lock().is_empty());
-	}
-
-	#[test]
-	fn a_routine_tool_missing_its_arguments_says_which() {
-		let f = fixture(true);
-		for (name, args, wanted) in [
-			("createRoutine", json!({ "name": "x" }), "needs a name, a cron and a prompt"),
-			("updateRoutine", json!({ "cron": "0 2 * * *" }), "needs an id"),
-			("setRoutineEnabled", json!({ "id": "r1" }), "needs enabled"),
-		] {
-			let reply = call(&f.mcp, "tools/call", json!({ "name": name, "arguments": args }));
-			let (text, failed) = tool_result(&reply);
-			assert!(failed, "{name}: {text}");
-			assert!(text.contains(wanted), "{name}: {text}");
+		// **Nothing model-facing belongs here** (ADR-0029). The CLI registers this
+		// server under the hardcoded key `ide` and shows the model two of its
+		// tools, so a tool added here to be called by an agent would be served
+		// correctly, pass every test in this file, and never be offered to anyone.
+		// `crate::services::agent_tools` is where such a tool goes.
+		for absent in ["listRoutines", "createRoutine", "updateRoutine", "setRoutineEnabled"] {
+			assert!(!names.contains(&absent), "{absent} belongs to the agent tool server");
 		}
 	}
 
