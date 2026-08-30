@@ -45,6 +45,28 @@ Open sessions become tabs, and the tabs come back when you relaunch.
 
 ![factorai running a live session, with the sidebar showing session status](docs/images/factorai-sessions.png)
 
+### Put an agent on a schedule
+
+A **routine** is a saved prompt with a cron behind it, kept per project: a
+nightly triage, a dependency sweep, a lint gate on the hour. When one comes due,
+factorai starts a session with that prompt as its first message — **without
+opening a tab**, so a project's scheduled work does not take the window away
+from what you are doing. Its dot is blue while it runs in the background, and
+opening it makes it an ordinary session with an ordinary tab.
+
+Pick the schedule from presets or write the cron yourself; either way the editor
+shows the next few runs in plain language, because a schedule that silently
+never fires is the one thing this feature cannot explain afterwards. Miss a run
+with the app closed and it is caught up at launch, inside a window you set —
+five missed hourly runs are one run, not five. A routine whose last session is
+still going skips rather than piling up, and a cap keeps ten projects coming due
+at `:00` from starting ten agents at once.
+
+Routines run while factorai is open. There is no daemon, and the app says so
+rather than implying otherwise.
+
+![A project's Routines tab: three routines with their schedules, next runs and enable switches](docs/images/factorai-routines.png)
+
 ### Arrange the sidebar the way you think
 
 Projects sit where you drag them, in groups you name — Pro, Perso, side projects.
