@@ -28,15 +28,16 @@ import { rootRoute } from './__root';
  * line up in one column, and a gutter that appears only sometimes moves every
  * title beside it.
  *
- * **16px is the 8px dot with 4px of air on each side**, and it was arrived at
- * by narrowing this four times in one afternoon of user feedback: 72px in front
- * of every title, then 40, then 32, then 20, then back out to 16 when 20 read as
- * too tight. The step that made it one column merged the dot's own slot into
- * this one — two reserved columns cost the list the width of both, and no row
+ * **24px: the 8px dot with 8px of air on each side.** The width was narrowed
+ * four times in one afternoon of user feedback — 72px in front of every title,
+ * then 40, 32, 20, 16 — and widened once after that, because 16 measured as a
+ * true 4px a side and still read as cramped between the card's border and the
+ * title. The step that made it one column merged the dot's own slot into this
+ * one — two reserved columns cost the list the width of both, and no row
  * draws both marks: a session with sub-agents shows its chevron here, and if it
  * is also running its dot rides with the badges on the right.
  */
-const GUTTER = 'flex w-4 shrink-0 justify-center';
+const GUTTER = 'flex w-6 shrink-0 justify-center';
 
 /** The marker on a sub-agent row: an agent run by a session, readable but
  *  not resumable. Small and quiet — it disambiguates, it doesn't shout.
@@ -252,31 +253,41 @@ function ProjectView() {
 					<ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
 						{pending.map((p) => (
 							<li key={p.sessionId}>
-								<Link
-									to="/projects/$projectId/sessions/$sessionId"
-									params={{ projectId: id, sessionId: p.sessionId }}
-									className="flex items-center gap-3 py-3 pr-4 transition-colors hover:bg-secondary"
-								>
+								{/* The gutter sits *outside* the link, exactly as it does on an
+								    indexed row. Inside it, the link's `gap-3` landed on the dot's
+								    right and nothing on its left, so the mark was off-centre in
+								    its own column and the two row kinds did not agree. */}
+								<div className="flex items-center transition-colors hover:bg-secondary">
 									<span className={GUTTER} aria-hidden>
 										<StatusDot status={p.status} />
 									</span>
-									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-2">
-											<span className="truncate font-medium">
-												{routineOrigins[p.sessionId]
-													? routineSessionLabel(routineOrigins[p.sessionId], clock24)
-													: 'New session'}
-											</span>
+									<Link
+										to="/projects/$projectId/sessions/$sessionId"
+										params={{ projectId: id, sessionId: p.sessionId }}
+										className="flex min-w-0 flex-1 items-center gap-3 py-3 pr-4"
+									>
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center gap-2">
+												<span className="truncate font-medium">
+													{routineOrigins[p.sessionId]
+														? routineSessionLabel(routineOrigins[p.sessionId], clock24)
+														: 'New session'}
+												</span>
+											</div>
+											<div className="text-muted-foreground text-xs">
+												Nothing recorded yet — it appears with a title once you send a message.
+											</div>
 										</div>
-										<div className="text-muted-foreground text-xs">
-											Nothing recorded yet — it appears with a title once you send a message.
-										</div>
-									</div>
-									{routineOrigins[p.sessionId] && (
-										<RoutineOrigin name={routineOrigins[p.sessionId].routineName} />
-									)}
-									<ChevronRight className="size-4 text-muted-foreground" />
-								</Link>
+										{routineOrigins[p.sessionId] && (
+											<RoutineOrigin
+												name={routineOrigins[p.sessionId].routineName}
+												startedAt={routineOrigins[p.sessionId].startedAt}
+												clock24={clock24}
+											/>
+										)}
+										<ChevronRight className="size-4 text-muted-foreground" />
+									</Link>
+								</div>
 							</li>
 						))}
 						{groups.map((group) => (

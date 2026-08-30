@@ -576,11 +576,18 @@ present whether or not there is a dot to put in it. Where the dot is
 *right*-aligned instead (the sidebar's session rows) the same property already
 holds, and those rows are unchanged.
 
-**That column is 16px — the dot with 4px of air on each side — and it is the
+**That column is 24px — the 8px dot with 8px of air on each side — and it is the
 row's only leading space.** It doubles as the disclosure gutter, because no row
-draws both marks. Four rounds of feedback narrowed it from 72px, and the number
-is small because a reserved column costs the whole list its width whether or not
-a given row uses it.
+draws both marks. Four rounds of feedback narrowed it from 72px to 16, and a
+fifth widened it to 24: 16 measured as a true 4px a side and still read as
+cramped between the card's border and the title, which is the lesson worth
+keeping — a reserved column is judged by how the mark *sits* in it, not by the
+number.
+
+**Nothing else may add space on that side.** A `gap` on the row put 12px on the
+dot's right and none on its left, so the mark was off-centre in its own column;
+the gutter is a sibling of the row's link rather than its first child for that
+reason.
 
 ### Tab Chips
 

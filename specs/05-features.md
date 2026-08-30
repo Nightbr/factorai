@@ -425,8 +425,9 @@ unbounded list in a narrow column.
 
 **Backend.** `list_sessions(project_id)`.
 
-**The status dot has its own column on the project page, always reserved**
-(2026-08-29, user feedback). It used to sit inline before the title, so a
+**The status dot has its own 24px column on the project page, always reserved**
+(2026-08-29, user feedback, narrowed and then widened across several rounds —
+`DESIGN.md` § Status Dot has the metric and why). It used to sit inline before the title, so a
 running session's name started 16px right of an idle one's and the list read as
 ragged. The disclosure gutter already worked this way for sub-agents; this is
 the same rule one level in. The routine origin icon moved to the right-hand
