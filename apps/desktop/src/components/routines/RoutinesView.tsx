@@ -1,4 +1,5 @@
 import { EmptyHero } from '@components/layout/EmptyHero';
+import { AgentTouched } from '@components/routines/AgentTouched';
 import { RoutineEditor } from '@components/routines/RoutineEditor';
 import type { Routine, RoutineInput } from '@factorai/types';
 import { Button, IconButton, Switch } from '@factorai/ui';
@@ -201,6 +202,15 @@ function RoutineRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
 					<span className="truncate font-medium">{routine.name}</span>
+					{/* An agent can write a schedule now (ADR-0028), so the row has to be
+					    able to say one did — beside the name, where "what is this" is
+					    already being answered. */}
+					<AgentTouched
+						createdBySessionId={routine.createdBySessionId}
+						lastModifiedBySessionId={routine.lastModifiedBySessionId}
+						changedAt={routine.createdAt}
+						clock24={clock24}
+					/>
 					{!routine.enabled && (
 						<span className="shrink-0 text-muted-foreground text-xs">disabled</span>
 					)}

@@ -1,0 +1,30 @@
+-- Who touched a routine (F22 slice 3, ADR-0028).
+--
+-- Slice 3 lets an agent write a schedule over the IDE bridge, which makes a
+-- routine the first object in this app a process other than the human can
+-- create. F22 originally recorded that slice as carrying no provenance, and
+-- said in the same paragraph that it was worth revisiting before the slice was
+-- built rather than during it. This is that revision: an agent may schedule
+-- work, and the row says so.
+--
+-- **NULL means a human.** Not "unknown" — every row written before this
+-- migration was written through the editor, and every row written after it
+-- carries a session id when a bridge wrote it. So the absence is meaningful
+-- rather than merely missing, and the list can read it directly.
+--
+-- **Two columns rather than one**, because an agent may amend a routine a human
+-- wrote. `created_by_session_id` answers "where did this come from";
+-- `last_modified_by_session_id` answers "who changed it last", which is the
+-- question a schedule that surprises you actually raises. With only the first,
+-- an agent rescheduling your nightly digest leaves the row looking exactly as
+-- you left it.
+--
+-- **No foreign key**, for the reason `session_routines` has none (migration
+-- 0013): a session's row in `sessions` is derived from a transcript the indexer
+-- has not necessarily seen yet, while the bridge writes here the moment the
+-- agent calls. A constraint would fail on the writes this column exists for.
+-- The session may also be deleted later (ADR-0027), and the trace should
+-- survive that — a routine whose author is gone is still not a routine a human
+-- wrote.
+ALTER TABLE routines ADD COLUMN created_by_session_id TEXT;
+ALTER TABLE routines ADD COLUMN last_modified_by_session_id TEXT;

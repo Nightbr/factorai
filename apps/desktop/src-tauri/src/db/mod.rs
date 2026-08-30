@@ -52,6 +52,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// writes at spawn, and the `sessions` row does not exist until Claude has
 	// written a transcript.
 	("0013_routines", include_str!("migrations/0013_routines.sql")),
+	// Provenance on a routine (F22 slice 3, ADR-0028), because the IDE bridge can
+	// now write one. NULL means a human wrote it — meaningful rather than
+	// missing, since every row that predates this column came from the editor.
+	("0014_routine_provenance", include_str!("migrations/0014_routine_provenance.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

@@ -199,3 +199,46 @@ test.describe('the clock setting', () => {
 		await expect(page.getByTestId('routine-time-meridiem')).toBeVisible();
 	});
 });
+
+test.describe('a routine an agent touched', () => {
+	// Slice 3 lets an agent write a schedule over the IDE bridge (ADR-0028),
+	// which makes "who wrote this" a question the list has to be able to answer.
+	// The mark is the visible half of that; migration 0014 is the durable one.
+	test('@smoke is marked, and one a human wrote is not', async ({ page }) => {
+		await installMockBridge(
+			page,
+			fixture([
+				routineFixture({ id: 'r-human', name: 'Written by hand' }),
+				routineFixture({
+					id: 'r-agent',
+					name: 'Written by an agent',
+					createdBySessionId: 'session-abc',
+				}),
+			]),
+		);
+		await page.goto(`/#/projects/${FOO_ID}?tab=routines`);
+
+		const marks = page.getByTestId('routine-agent-touched');
+		await expect(marks).toHaveCount(1);
+		await expect(
+			page.getByTestId('routine-r-agent').getByTestId('routine-agent-touched'),
+		).toHaveAttribute('title', /Created by an agent session/);
+	});
+
+	test('@smoke a human’s routine an agent amended says so rather than looking untouched', async ({
+		page,
+	}) => {
+		// The case a single `createdBy` column cannot record — and the reason
+		// there are two. An agent switching off your nightly digest would
+		// otherwise leave the row exactly as you left it.
+		await installMockBridge(
+			page,
+			fixture([routineFixture({ id: 'r-amended', lastModifiedBySessionId: 'session-abc' })]),
+		);
+		await page.goto(`/#/projects/${FOO_ID}?tab=routines`);
+
+		await expect(
+			page.getByTestId('routine-r-amended').getByTestId('routine-agent-touched'),
+		).toHaveAttribute('title', /Last changed by an agent session/);
+	});
+});

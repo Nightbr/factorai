@@ -7,6 +7,7 @@ import { FileViewerModal } from '@components/viewer/FileViewerModal';
 import { type DiffMode, isDiffMode, parsePosition, useFileViewer } from '@hooks/useFileViewer';
 import { useNativeContextMenu } from '@hooks/useNativeContextMenu';
 import { useRoutineFires } from '@hooks/useRoutineFires';
+import { useRoutinesChanged } from '@hooks/useRoutinesChanged';
 import { useSessionsSync } from '@hooks/useSessionsSync';
 import { useSettingsModal } from '@hooks/useSettingsModal';
 import { isSettingsSection, type SettingsSection } from '@lib/settingsDraft';
@@ -36,6 +37,7 @@ function RootLayout() {
 	// `routine:fire` → start the session a routine came due for (F22). Here for
 	// the same reason: a routine fires for a project no route is showing.
 	useRoutineFires();
+	useRoutinesChanged();
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;

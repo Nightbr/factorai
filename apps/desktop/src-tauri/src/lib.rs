@@ -125,6 +125,50 @@ pub fn run() {
 							}
 						})
 					},
+				})
+				// A project's routines, for the bridge's tool group (F22 slice 3,
+				// ADR-0028). Both writes go through the announcing layer the editor's
+				// own commands use, so a schedule an agent changed reaches an open
+				// Routines tab — the one case the renderer cannot fix for itself,
+				// since it never hears about that write.
+				//
+				// **Which project and which session are not decided here.** They are
+				// bound per bridge in `start_bridge`, where they are known; this layer
+				// only knows how to reach the table.
+				.with_routine_store(services::terminal::RoutineStore {
+					list: {
+						let db = db.clone();
+						Arc::new(move |project_id| {
+							db.with(|conn| services::routines::list(conn, project_id, epoch_ms()))
+						})
+					},
+					create: {
+						let db = db.clone();
+						let app = app.handle().clone();
+						Arc::new(move |input, author| {
+							services::routines::create_and_announce(
+								&db,
+								&app,
+								input,
+								Some(author),
+								epoch_ms(),
+							)
+						})
+					},
+					update: {
+						let db = db.clone();
+						let app = app.handle().clone();
+						Arc::new(move |id, patch, author| {
+							services::routines::update_and_announce(
+								&db,
+								&app,
+								id,
+								patch,
+								Some(author),
+								epoch_ms(),
+							)
+						})
+					},
 				});
 			let live = terminals.clone();
 			let indexer = Arc::new(

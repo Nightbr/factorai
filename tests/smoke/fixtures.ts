@@ -148,6 +148,8 @@ export function routineFixture(over: Partial<Routine> = {}): Routine {
 		lastSkippedAt: null,
 		lastError: null,
 		createdAt: Date.now() - 86_400_000,
+		createdBySessionId: null,
+		lastModifiedBySessionId: null,
 		nextRunAt: null,
 		...over,
 	};

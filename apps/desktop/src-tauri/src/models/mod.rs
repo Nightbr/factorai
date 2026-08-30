@@ -733,6 +733,16 @@ pub struct Routine {
 	pub last_skipped_at: Option<i64>,
 	pub last_error: Option<String>,
 	pub created_at: i64,
+	/// The session that created this routine over the IDE bridge, or `None` for
+	/// one a human wrote in the editor (F22 slice 3, ADR-0028).
+	///
+	/// **`None` means a human**, not "unknown": every row written before the
+	/// column existed came from the editor, and every bridge write since carries
+	/// an id. No foreign key — see migration `0014`.
+	pub created_by_session_id: Option<String>,
+	/// The session that last changed it, on the same terms. An agent may amend a
+	/// routine a human wrote, and this is the only thing that says so.
+	pub last_modified_by_session_id: Option<String>,
 	/// Derived per query from `cron`. Epoch ms.
 	pub next_run_at: Option<i64>,
 }

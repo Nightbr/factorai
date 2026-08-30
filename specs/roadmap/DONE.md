@@ -3,6 +3,58 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Routines over MCP — F22 slice 3 (spec `05-features.md` F22 § "Routines over MCP",
+  [ADR-0028](../../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md))** —
+  2026-08-30. Four tools on the IDE bridge — `listRoutines`, `createRoutine`, `updateRoutine`,
+  `setRoutineEnabled` — so an agent can schedule follow-up work in the project it is working in.
+
+  **The work was mostly the revisit, not the tools.** F22 recorded this slice as full CRUD with no
+  provenance and no off switch, against the recommendation at the time, and asked in the same
+  paragraph that it be revisited *before* the slice was built rather than during it. It was, and it
+  changed two of the three. There is **no `deleteRoutine`**: the editor's delete asks first, a tool
+  call has nobody to ask, and disable is the reversible form of the same act — the reasoning
+  `run_routine_now` already uses to refuse a second set of rules for one act, run backwards. And a
+  routine now records **who touched it**, in two columns rather than one, because the case a single
+  `created_by` cannot record is an agent amending a routine a *human* wrote: the row would still
+  read as untouched. The off switch stayed absent, which is the third and the one part of the
+  recorded decision that survived — `tools/list` is fetched once at connect, so a second,
+  subtly-broken switch for one tool group is worse than none.
+
+  **One answer went against the recommendation and is worth remembering as such.** An agent may
+  edit *any* routine in its project, not only ones it created — because "fix the broken schedule"
+  is a real request and a tool that refuses it sends the agent to create a duplicate instead. That
+  is precisely what makes `last_modified_by_session_id` load-bearing rather than decorative.
+
+  **Scope is the session's project and is not addressable.** No tool takes a `projectId`; it is
+  resolved at spawn from `SpawnOpts` and bound into the closure the bridge holds, the same place
+  the author is bound. The database analogue of ADR-0017 § 3's path scope, and load-bearing for the
+  reason that section gives: the token authenticates a process on this machine, which is a weaker
+  claim than it looks.
+
+  **Two things were latent bugs found by asking what an agent has that a human does not.** A cron
+  expression like `0 0 31 2 *` parses and names a date that does not exist — it used to save
+  cleanly and then never fire. A human has the next-fire line under the editor's control to catch
+  that; an agent has nothing, so the store now refuses an expression that projects no next run.
+  And nothing bounded how many routines a project could accumulate — the concurrency cap bounds
+  what *runs* — which matters once an agent inside a routine's own session can write more. 20 per
+  project, in the store so the editor hits it too.
+
+  **`routines:changed` is the other thing the slice needed.** The renderer invalidated its own
+  query after its own mutation, which is invisible to a write arriving over a socket: an open
+  Routines tab would have shown a list that was no longer true. Both callers now go through one
+  announcing layer, write-then-emit.
+
+  `updateRoutine` is a patch and the editor's command stays full replacement — a form holds every
+  field, an agent holds a subset. `catchupHours` is what decides it: `null` there means *inherit
+  the app-wide default*, so the wire carries three states and an unsent window is never silently
+  reset. The tool answers in 24-hour local time with an explicit offset whatever the app's clock
+  setting says, because that setting is a renderer preference (ADR-0013) the bridge cannot read and
+  the reader is a model rather than a person.
+
+  **Still unobserved: a real `claude` calling one of these.** Same gap F20 records for `openFile`.
+  The names are ours so nothing can drift out from under them; what is untested is whether the
+  descriptions are the ones a model acts on.
+
 - **Delete a session from the sidebar (spec `05-features.md` F2,
   [ADR-0027](../../docs/adr/0027-deleting-a-session-trashes-its-transcript.md))** — 2026-08-30,
   asked for the same day. Right-click a session row under an expanded project, `Delete session`,

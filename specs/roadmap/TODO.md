@@ -82,9 +82,11 @@ it still describes the tab.
 ## 42. Routines — the two slices slice 1 left
 
 **Slice 1 shipped 2026-08-29** — schema, runner, commands, the tabbed project view and its editor,
-the two context-menu items, the origin icon and the tabless spawn. See
-[`DONE.md`](./DONE.md), [F22](../05-features.md) and
-[ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md). What is left:
+the two context-menu items, the origin icon and the tabless spawn. **Slice 3 shipped 2026-08-30** —
+the MCP tool group, provenance and the cap. See [`DONE.md`](./DONE.md), [F22](../05-features.md),
+[ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md) and
+[ADR-0028](../../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md).
+What is left:
 
 ### Slice 2 — the skills picker
 
@@ -95,13 +97,19 @@ the two context-menu items, the origin icon and the tabless spawn. See
       are the point: the question a routine's author has is *what can I call from here*.
 - [ ] Later, and deliberately not first: a `/`-triggered autocomplete inside the textarea.
 
-### Slice 3 — routines over MCP
+### Slice 3 — routines over MCP — **done 2026-08-30**
 
-- [ ] A tool group on the IDE bridge (F20) so an agent can schedule follow-up work in the project
-      it is working in. Decided as **full CRUD with no off switch and no provenance**, against the
-      recommendation — F22 § "Later slices" records why that is worth revisiting *before* the slice
-      is built rather than during it. It is also a write through the bridge, which is the
-      ADR-0009 / ADR-0017 boundary question again.
+- [x] Four tools on the IDE bridge: `listRoutines`, `createRoutine`, `updateRoutine`,
+      `setRoutineEnabled`. **The revisit F22 asked for happened and changed two-thirds of the
+      recorded decision** — no `deleteRoutine`, and provenance in two columns, shown on the row.
+      The off switch stayed absent; F11 / item 4 own the bridge-wide one. ADR-0028 has the
+      reasoning, including why "an agent may edit a human's routine" went the other way from the
+      recommendation.
+- [x] Migration `0014`: `created_by_session_id`, `last_modified_by_session_id`. NULL means a human.
+- [x] `routines:changed`, emitted by a layer both callers share — the only thing that stops an open
+      Routines tab going stale under a bridge write.
+- [x] A cron must now project a next run, not merely parse; name and prompt bounded; 20 routines
+      per project.
 
 ### Still open, and not blocking either slice
 
@@ -119,7 +127,14 @@ the two context-menu items, the origin icon and the tabless spawn. See
   nothing reads it for a session with no `sessions` row yet.
 
 **Neighbours.** Item 35 (notifications) has picked up the requirement that its trigger cannot
-assume an open tab. Item 19 (MCP bridge) owns slice 3. Item 7 (toast) is half the error surface.
+assume an open tab. Item 7 (toast) is half the error surface, and slice 3 added a second customer:
+an agent writing a schedule gets a mark on the row rather than a notification, and a transient
+version of that would live there.
+
+**Unobserved, and worth a pass.** Slice 3's tools are exercised end to end by unit tests, but no
+real `claude` has been watched calling one — the same gap F20 records for `openFile`. These names
+are ours rather than the CLI's, so nothing can drift out from under them; what is untested is
+whether the descriptions are the ones a model acts on. Record the CLI version with any pass.
 
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 

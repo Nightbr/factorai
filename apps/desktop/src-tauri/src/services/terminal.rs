@@ -215,6 +215,41 @@ pub struct WorktreeStore {
 	pub set: WorktreeSet,
 }
 
+/// Reading and writing a project's routines, for the bridge's tool group
+/// (F22 slice 3, ADR-0028).
+///
+/// The same shape and the same reason as [`WorktreeStore`]: the manager needs
+/// answers from a database it should not hold. Absent in `with_callbacks`,
+/// where the tools are still advertised — they are advertised unconditionally —
+/// and answer that routines are unavailable, which is the state every test runs
+/// in.
+///
+/// **The author is a parameter, not a field.** Each closure takes the session
+/// making the write, because that is what the row records and the one thing the
+/// bridge knows that `lib.rs` does not.
+pub type RoutineList = Arc<dyn Fn(&str) -> AppResult<Vec<crate::models::Routine>> + Send + Sync>;
+pub type RoutineCreate = Arc<
+	dyn Fn(&crate::models::RoutineInput, &str) -> AppResult<crate::models::Routine> + Send + Sync,
+>;
+pub type RoutineUpdate = Arc<
+	dyn Fn(
+			&str,
+			&crate::services::routines::RoutinePatch,
+			&str,
+		) -> AppResult<crate::models::Routine>
+		+ Send
+		+ Sync,
+>;
+
+#[derive(Clone)]
+pub struct RoutineStore {
+	pub list: RoutineList,
+	/// `&str` is the session id to record as the author.
+	pub create: RoutineCreate,
+	/// Routine id, the change, and the session id to record as the last hand.
+	pub update: RoutineUpdate,
+}
+
 struct TerminalHandle {
 	session_id: String,
 	project_id: String,
@@ -280,6 +315,10 @@ pub struct TerminalManager {
 	/// Which checkout each session is working in (F21). `None` means a signal is
 	/// still emitted but not remembered.
 	worktree_store: Option<WorktreeStore>,
+	/// A project's routines, for the bridge's tool group (F22 slice 3).
+	/// `None` leaves the tools advertised but answering that they are
+	/// unavailable — see [`RoutineStore`].
+	routine_store: Option<RoutineStore>,
 	on_worktree: WorktreeCb,
 	/// What the renderer has on screen, for the bridge's answers (F20).
 	ui: Arc<UiState>,
@@ -318,6 +357,7 @@ impl TerminalManager {
 			user_binary: None,
 			session_cwd: None,
 			worktree_store: None,
+			routine_store: None,
 			on_worktree: Arc::new(move |e| {
 				let _ = app_worktree.emit("session:worktree", e);
 			}),
@@ -340,6 +380,7 @@ impl TerminalManager {
 			user_binary: None,
 			session_cwd: None,
 			worktree_store: None,
+			routine_store: None,
 			on_worktree: Arc::new(|_| {}),
 			ui: Arc::new(UiState::default()),
 			on_ide_open: Arc::new(|_| {}),
@@ -358,6 +399,13 @@ impl TerminalManager {
 	/// `session_worktrees` in `lib.rs`.
 	pub fn with_worktree_store(mut self, store: WorktreeStore) -> Self {
 		self.worktree_store = Some(store);
+		self
+	}
+
+	/// Where the bridge's routine tools read and write (F22 slice 3, ADR-0028).
+	/// Wired to the `routines` table in `lib.rs`.
+	pub fn with_routine_store(mut self, store: RoutineStore) -> Self {
+		self.routine_store = Some(store);
 		self
 	}
 
@@ -519,7 +567,7 @@ impl TerminalManager {
 	/// is: `openFile` on a session that is not in front marks its tab instead of
 	/// taking the window, and `getOpenEditors` reports what the viewer is
 	/// actually showing rather than a stub.
-	fn start_bridge(&self, session_id: &str, cwd: &Path) -> AppResult<IdeServer> {
+	fn start_bridge(&self, session_id: &str, project_id: &str, cwd: &Path) -> AppResult<IdeServer> {
 		let ui_for_open = self.ui.clone();
 		let ui_for_editors = self.ui.clone();
 		let on_open = self.on_ide_open.clone();
@@ -568,6 +616,37 @@ impl TerminalManager {
 			(recorded != current_cwd).then_some(recorded)
 		});
 
+		// **The routine tools' scope and their author, both fixed here** (ADR-0028).
+		// This is the only layer that knows which session and which project the
+		// bridge belongs to, so binding them in a closure is what makes it
+		// impossible for a tool argument to name another project or another
+		// author. The store itself takes both as parameters and has no opinion.
+		let routines = {
+			let store = self.routine_store.clone();
+			let author = session_id.to_string();
+			let unavailable = || {
+				AppError::InvalidInput("routines are not available for this session".to_string())
+			};
+			let list_store = store.clone();
+			let create_store = store.clone();
+			let update_author = author.clone();
+			protocol::Routines {
+				project_id: project_id.to_string(),
+				list: Arc::new(move |project_id| {
+					let s = list_store.as_ref().ok_or_else(unavailable)?;
+					(s.list)(project_id)
+				}),
+				create: Arc::new(move |input| {
+					let s = create_store.as_ref().ok_or_else(unavailable)?;
+					(s.create)(input, &author)
+				}),
+				update: Arc::new(move |id, patch| {
+					let s = store.as_ref().ok_or_else(unavailable)?;
+					(s.update)(id, patch, &update_author)
+				}),
+			}
+		};
+
 		let mcp = Mcp::new(
 			cwd.to_path_buf(),
 			protocol::Worktrees { checkouts, signal, current },
@@ -586,6 +665,7 @@ impl TerminalManager {
 				frontmost
 			}),
 			Arc::new(move || ui_for_editors.open_files()),
+			routines,
 		);
 
 		let on_status = self.on_ide_status.clone();
@@ -725,7 +805,7 @@ impl TerminalManager {
 		// its auto-connect on, and it pins which lockfile is chosen when a VS Code
 		// is open on the same machine — the CLI otherwise connects only when
 		// exactly one candidate matches.
-		let ide = match self.start_bridge(&opts.session_id, &cwd_path) {
+		let ide = match self.start_bridge(&opts.session_id, &opts.project_id, &cwd_path) {
 			Ok(server) => {
 				cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
 				IdeSlot::Running(server)

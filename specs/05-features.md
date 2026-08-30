@@ -3224,6 +3224,17 @@ First slice: `ide_connected`, `getWorkspaceFolders`, `openFile`,
 `getOpenEditors`. **F21 appended a fourth tool, `setWorktree`**, and widened
 `getWorkspaceFolders`'s answer — see F21 for both, and note that the new tool is
 advertised unconditionally because `tools/list` is fetched once at connect.
+**F22 slice 3 appended four more** — `listRoutines`, `createRoutine`,
+`updateRoutine`, `setRoutineEnabled` — on the same terms and for the same
+reason; see F22 § "Routines over MCP" and ADR-0028. There is deliberately no
+`deleteRoutine`.
+
+**Two of those groups write, and to our own database rather than the working
+tree.** ADR-0017 § 6 put `openDiff` out of scope because it would be the first
+time factorai wrote to a *repository*; our own tables are a different boundary,
+and what holds it is scope rather than the token — a path against the session's
+repository, a routine against the session's project, neither of which the client
+can address.
 
 **`getDiagnostics` is not registered, on purpose.** We have no diagnostics
 source — that is item 14's LSP question — and advertising the tool while
@@ -3962,12 +3973,15 @@ default both work without any uptake at all.
 
 **Specified and built 2026-08-29**, from a clarify-needs interview. Slice 1 is
 in: the schema, the runner, the commands, the tabbed project view with its
-editor, the two context-menu items, the origin icon and the tabless spawn. The
-skills picker (slice 2) and the MCP tool (slice 3) are not. The two decisions
+editor, the two context-menu items, the origin icon and the tabless spawn.
+**Slice 3 — the MCP tool group — landed 2026-08-30**; see § "Routines over MCP"
+below. The skills picker (slice 2) is still outstanding. The two decisions
 everything below rests on are in
 [ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md) — what a fire
-starts, and who decides it is time. Sequencing and the slices are roadmap item
-42.
+starts, and who decides it is time — with
+[ADR-0028](../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md)
+holding what an agent may do to a schedule. Sequencing and the slices are roadmap
+item 42.
 
 **A Routine is a per-project object: a name, a schedule, a prompt, an enable
 switch, and a catch-up window.** When it comes due, factorai starts an agent
@@ -4150,16 +4164,59 @@ because a brand-new session has no `sessions` row and the runner writes at spawn
 (the trap migration 0007 found), and the schedule lives in SQLite rather than a
 renderer store because Rust reads it (ADR-0013).
 
+### Routines over MCP
+
+**Slice 3, built 2026-08-30.** Four tools on the IDE bridge (F20) so an agent can
+schedule follow-up work in the project it is working in — `listRoutines`,
+`createRoutine`, `updateRoutine`, `setRoutineEnabled`. The decisions are
+[ADR-0028](../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md);
+this is the behaviour they add up to.
+
+**It reverses two-thirds of what this section used to record.** Slice 3 was
+written down as full CRUD with no provenance and no off switch, against the
+recommendation at the time, with a note to revisit before it was built. The
+revisit kept the third — there is still no off switch, and F11 / item 4 still own
+the bridge-wide one — and changed the other two.
+
+- **An agent may schedule work; only a human unschedules it.** There is no
+  `deleteRoutine`. Disable is the reversible form of the same act and covers what
+  the slice was for: an agent that scheduled something it should not have can
+  stop it, and cannot destroy the row that says it did. The editor's delete asks
+  first, and a tool call has nobody to ask — the same reasoning `Run now` uses to
+  refuse a second set of rules for one act, run backwards.
+- **Every write records the session that made it**, in two columns: who created
+  the routine, and whose hand was last on it. An agent may amend a routine a
+  *human* wrote, which is the case one column cannot record — the row would still
+  read as untouched.
+- **The list marks a routine an agent touched.** One small icon beside the name,
+  the tooltip saying whether it was written or amended and naming the session.
+  Not clickable, and not a notification: an agent writing a schedule is rare
+  rather than frequent, but the mark is the ambient answer the same way the status
+  dot is, and item 7's toast is where a transient version would live if it turns
+  out to be wanted.
+- **The tools cannot leave the session's project.** None of them takes a
+  `projectId` — it is resolved at spawn and bound into the bridge — and an id
+  from another project is refused in the words that fit an id that does not
+  exist. This is ADR-0017 § 3's path scope, in the database.
+- **`updateRoutine` is a patch; the editor stays a full replacement.** An agent
+  holds a subset of the fields; a form holds all of them. `catchupHours` is the
+  field that decides it, because `null` there means *inherit the app-wide
+  default* — so the wire carries three states, and an unsent window is never
+  silently reset.
+- **A new routine is enabled unless asked otherwise.** A schedule waiting to be
+  armed is a draft the agent will nonetheless report as scheduled.
+- **Both callers hit the same validation, which got stricter.** A cron has to
+  parse *and* project a next run — `0 0 31 2 *` used to save cleanly and never
+  fire — the name and prompt are bounded, and a project holds at most **20**
+  routines. The concurrency cap bounds what runs; nothing bounded what
+  accumulates, and an agent inside a routine's own session can write more.
+
+**Every routine write emits `routines:changed`**, whichever caller made it. The
+editor invalidates its own query already; this is what makes a schedule an agent
+changed appear in a Routines tab that is open in front of you.
+
 ### Later slices
 
 - **The skills picker** is slice 2. Additive, and it blocks nothing.
-- **Creating routines over MCP** is slice 3: a tool group on the IDE bridge (F20)
-  so an agent can schedule follow-up work in the project it is working in.
-  Decided as **full CRUD** — create, update, enable, delete — **with no off
-  switch and no per-row provenance**, against the recommendation at the time.
-  Recorded here as a decision rather than an oversight: an agent can enable or
-  delete a schedule unattended and leave no trace of having done it. It is also a
-  *write* through the bridge, which is the ADR-0009 / ADR-0017 boundary question
-  again. Revisit before the slice is built.
 
 **Roadmap.** Item 42.

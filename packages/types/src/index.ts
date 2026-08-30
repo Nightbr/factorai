@@ -748,6 +748,13 @@ export interface Routine {
 	lastSkippedAt: number | null;
 	lastError: string | null;
 	createdAt: number;
+	/** The session that created this routine over the IDE bridge (F22 slice 3,
+	 *  ADR-0028). **Null means a human wrote it** — meaningful rather than
+	 *  missing, since every row that predates the column came from the editor. */
+	createdBySessionId: string | null;
+	/** The session that last changed it, on the same terms. An agent may amend a
+	 *  routine a human wrote, and this is the only thing that says so. */
+	lastModifiedBySessionId: string | null;
 	/** Derived per query from `cron`, never stored — epoch ms. */
 	nextRunAt: number | null;
 }
@@ -789,4 +796,19 @@ export interface RoutineFireEvent {
 	prompt: string;
 	/** The project's folder, resolved by the runner. */
 	cwd: string;
+}
+
+/** `routines:changed` — a project's routine list is no longer what the renderer
+ *  has (F22 slice 3, ADR-0028).
+ *
+ *  Every routine write emits it, whichever caller made it. For the editor's own
+ *  mutations that is a belt on braces — they invalidate optimistically already.
+ *  For a write that arrived over the IDE bridge it is the only thing that stops
+ *  an open Routines tab showing a list that is no longer true.
+ *
+ *  It carries the project rather than the routine because every reader is a list
+ *  keyed by project, and a client that has to refetch anyway gains nothing from
+ *  knowing which row moved. */
+export interface RoutinesChangedEvent {
+	projectId: string;
 }

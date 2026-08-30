@@ -191,7 +191,8 @@ fn local(ms: i64) -> Option<chrono::DateTime<Local>> {
 // -------------------------------------------------------------------- store
 
 const COLUMNS: &str = "id, project_id, name, cron, prompt, enabled, catchup_hours,
-	 last_fire_at, last_run_at, last_session_id, last_skipped_at, last_error, created_at";
+	 last_fire_at, last_run_at, last_session_id, last_skipped_at, last_error, created_at,
+	 created_by_session_id, last_modified_by_session_id";
 
 fn row_to_routine(row: &rusqlite::Row<'_>, now_ms: i64) -> rusqlite::Result<Routine> {
 	let cron: String = row.get(3)?;
@@ -212,6 +213,8 @@ fn row_to_routine(row: &rusqlite::Row<'_>, now_ms: i64) -> rusqlite::Result<Rout
 		last_skipped_at: row.get(10)?,
 		last_error: row.get(11)?,
 		created_at: row.get(12)?,
+		created_by_session_id: row.get(13)?,
+		last_modified_by_session_id: row.get(14)?,
 		next_run_at,
 	})
 }
@@ -245,13 +248,171 @@ pub fn get(conn: &Connection, id: &str, now_ms: i64) -> AppResult<Routine> {
 		.ok_or_else(|| AppError::NotFound(format!("no routine {id}")))
 }
 
-/// Create a routine. The cron expression is validated first — see [`parse_cron`].
-pub fn create(conn: &Connection, input: &RoutineInput, now_ms: i64) -> AppResult<Routine> {
-	parse_cron(&input.cron)?;
+/// How many routines one project may hold (F22 slice 3, ADR-0028).
+///
+/// Far above any hand-maintained list and low enough that a loop stops within a
+/// tick. It exists because an agent can write routines now, and an agent inside
+/// a routine's own session can write more: the concurrency cap bounds what
+/// *runs*, and nothing bounded what *accumulates*. Enforced in the store rather
+/// than at the bridge, so the editor answers the same way — one rule, both
+/// callers, which is the shape `run_now` already established.
+pub const MAX_PER_PROJECT: i64 = 20;
+
+/// A name has to fit a row that truncates at a couple of hundred pixels; this
+/// is the bound that stops it being a document.
+const MAX_NAME_LEN: usize = 200;
+
+/// A prompt becomes argv on a spawn that may be hours away (ADR-0026 § 4).
+/// Unbounded, it is a spawn failure long after the call that caused it, with
+/// nobody watching. Generous for a prompt and far under either platform's argv
+/// limit.
+const MAX_PROMPT_LEN: usize = 8192;
+
+/// A change to some of a routine's fields.
+///
+/// **The bridge's shape, not the editor's** (ADR-0028). The editor is a form: it
+/// holds every field and sends all of them, which is the honest write for it.
+/// An agent holds a subset and would otherwise have to read, echo back
+/// everything it did not understand, and hope — `catchup_hours` being exactly
+/// the field a round trip loses, since `None` there means *inherit the app-wide
+/// default* rather than *no value*.
+///
+/// Which is why that one is a double option: absent leaves it alone,
+/// `Some(None)` puts it back on the default, `Some(Some(n))` pins it. The
+/// editor sends a patch with every field set, so full replacement is this same
+/// function with nothing left out.
+#[derive(Debug, Clone, Default)]
+pub struct RoutinePatch {
+	pub name: Option<String>,
+	pub cron: Option<String>,
+	pub prompt: Option<String>,
+	pub enabled: Option<bool>,
+	pub catchup_hours: Option<Option<i64>>,
+}
+
+impl RoutinePatch {
+	/// The whole configuration, as the editor sends it.
+	pub fn whole(input: &RoutineInput) -> Self {
+		Self {
+			name: Some(input.name.clone()),
+			cron: Some(input.cron.clone()),
+			prompt: Some(input.prompt.clone()),
+			enabled: Some(input.enabled),
+			catchup_hours: Some(input.catchup_hours),
+		}
+	}
+
+	/// Just the switch — what `setRoutineEnabled` and the row's toggle send.
+	pub fn just_enabled(enabled: bool) -> Self {
+		Self { enabled: Some(enabled), ..Self::default() }
+	}
+
+	fn is_empty(&self) -> bool {
+		self.name.is_none()
+			&& self.cron.is_none()
+			&& self.prompt.is_none()
+			&& self.enabled.is_none()
+			&& self.catchup_hours.is_none()
+	}
+}
+
+/// A name that will fit the row it has to explain itself from.
+fn check_name(name: &str) -> AppResult<()> {
+	if name.trim().is_empty() {
+		return Err(AppError::InvalidInput("a routine needs a name".into()));
+	}
+	if name.chars().count() > MAX_NAME_LEN {
+		return Err(AppError::InvalidInput(format!(
+			"that name is longer than {MAX_NAME_LEN} characters"
+		)));
+	}
+	Ok(())
+}
+
+/// A prompt that can still be argv when the fire comes due.
+fn check_prompt(prompt: &str) -> AppResult<()> {
+	if prompt.trim().is_empty() {
+		return Err(AppError::InvalidInput(
+			"a routine needs a prompt — it is the session's first message".into(),
+		));
+	}
+	if prompt.chars().count() > MAX_PROMPT_LEN {
+		return Err(AppError::InvalidInput(format!(
+			"that prompt is longer than {MAX_PROMPT_LEN} characters"
+		)));
+	}
+	Ok(())
+}
+
+/// A schedule that parses **and can still happen**.
+///
+/// The second half is the one that was missing. `0 0 31 2 *` is a valid cron
+/// expression for a date that does not exist, so it parses and then never fires
+/// — the failure this feature is least able to explain after the fact, and one
+/// an agent writing a schedule unattended has no next-fire line to catch.
+fn check_cron(expr: &str, now_ms: i64) -> AppResult<()> {
+	parse_cron(expr)?;
+	if next_occurrence_ms(expr, now_ms).is_none() {
+		return Err(AppError::InvalidInput(format!(
+			"{expr} parses but never fires again — nothing would ever run"
+		)));
+	}
+	Ok(())
+}
+
+/// How many routines a project already has, for [`MAX_PER_PROJECT`].
+pub fn count_in_project(conn: &Connection, project_id: &str) -> AppResult<i64> {
+	Ok(conn.query_row(
+		"SELECT COUNT(*) FROM routines WHERE project_id = ?1",
+		params![project_id],
+		|row| row.get(0),
+	)?)
+}
+
+/// The next few times an expression fires, for a caller that has to be shown
+/// its schedule rather than trusted to project it (F22: the next-fire line is
+/// "the whole defence against a schedule that silently never fires").
+pub fn next_occurrences(expr: &str, from_ms: i64, count: usize) -> Vec<i64> {
+	let mut out = Vec::with_capacity(count);
+	let mut cursor = from_ms;
+	for _ in 0..count {
+		match next_occurrence_ms(expr, cursor) {
+			// +1ms so the next projection starts after the one just found rather
+			// than on it, which would return the same occurrence forever.
+			Some(at) => {
+				out.push(at);
+				cursor = at + 1;
+			}
+			None => break,
+		}
+	}
+	out
+}
+
+/// Create a routine. Validated first — see [`check_cron`] — and capped, so a
+/// project cannot accumulate schedules without bound.
+///
+/// `author` is the session that asked, or `None` for a human at the editor.
+pub fn create(
+	conn: &Connection,
+	input: &RoutineInput,
+	author: Option<&str>,
+	now_ms: i64,
+) -> AppResult<Routine> {
+	check_name(&input.name)?;
+	check_prompt(&input.prompt)?;
+	check_cron(&input.cron, now_ms)?;
+	let existing = count_in_project(conn, &input.project_id)?;
+	if existing >= MAX_PER_PROJECT {
+		return Err(AppError::InvalidInput(format!(
+			"this project already has {existing} routines, which is the limit"
+		)));
+	}
 	let id = uuid::Uuid::new_v4().to_string();
 	conn.execute(
-		"INSERT INTO routines(id, project_id, name, cron, prompt, enabled, catchup_hours, created_at)
-		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+		"INSERT INTO routines(id, project_id, name, cron, prompt, enabled, catchup_hours,
+		 created_at, created_by_session_id)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
 		params![
 			id,
 			input.project_id,
@@ -260,37 +421,58 @@ pub fn create(conn: &Connection, input: &RoutineInput, now_ms: i64) -> AppResult
 			input.prompt,
 			i64::from(input.enabled),
 			input.catchup_hours,
-			now_ms
+			now_ms,
+			author
 		],
 	)?;
 	get(conn, &id, now_ms)
 }
 
-/// Rewrite a routine's configuration. Run state is not touched: it belongs to
-/// the runner, and a caller that could write `last_run_at` could rewrite
-/// whether something ran.
-pub fn update(
+/// Rewrite some of a routine's configuration. Run state is not touched: it
+/// belongs to the runner, and a caller that could write `last_run_at` could
+/// rewrite whether something ran.
+///
+/// **Only what is being changed is validated.** A patch that carries no cron
+/// does not re-check the stored one — a routine written under an older `croner`
+/// should not become impossible to switch off.
+///
+/// `author` is recorded as the last hand on the row, including when it is
+/// `None`: a human editing a routine an agent wrote clears the mark, which is
+/// the truthful answer to "who changed this last".
+pub fn update_partial(
 	conn: &Connection,
 	id: &str,
-	input: &RoutineInput,
+	patch: &RoutinePatch,
+	author: Option<&str>,
 	now_ms: i64,
 ) -> AppResult<Routine> {
-	parse_cron(&input.cron)?;
-	let changed = conn.execute(
-		"UPDATE routines SET name = ?2, cron = ?3, prompt = ?4, enabled = ?5, catchup_hours = ?6
-		 WHERE id = ?1",
-		params![
-			id,
-			input.name,
-			input.cron,
-			input.prompt,
-			i64::from(input.enabled),
-			input.catchup_hours
-		],
-	)?;
-	if changed == 0 {
-		return Err(AppError::NotFound(format!("no routine {id}")));
+	if patch.is_empty() {
+		return Err(AppError::InvalidInput("nothing to change".into()));
 	}
+	if let Some(name) = &patch.name {
+		check_name(name)?;
+	}
+	if let Some(prompt) = &patch.prompt {
+		check_prompt(prompt)?;
+	}
+	if let Some(cron) = &patch.cron {
+		check_cron(cron, now_ms)?;
+	}
+	// Read-modify-write inside the caller's transaction rather than a SQL
+	// `COALESCE` over five bound parameters: `catchup_hours` is nullable and
+	// being set to null is a real edit, which `COALESCE` cannot express.
+	let current = get(conn, id, now_ms)?;
+	let name = patch.name.clone().unwrap_or(current.name);
+	let cron = patch.cron.clone().unwrap_or(current.cron);
+	let prompt = patch.prompt.clone().unwrap_or(current.prompt);
+	let enabled = patch.enabled.unwrap_or(current.enabled);
+	let catchup_hours = patch.catchup_hours.unwrap_or(current.catchup_hours);
+	conn.execute(
+		"UPDATE routines SET name = ?2, cron = ?3, prompt = ?4, enabled = ?5, catchup_hours = ?6,
+		 last_modified_by_session_id = ?7
+		 WHERE id = ?1",
+		params![id, name, cron, prompt, i64::from(enabled), catchup_hours, author],
+	)?;
 	get(conn, id, now_ms)
 }
 
@@ -304,13 +486,94 @@ pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
 
 /// Stop, or resume, future fires. Never touches a live session: that is not
 /// what a switch means.
-pub fn set_enabled(conn: &Connection, id: &str, enabled: bool) -> AppResult<()> {
-	let changed = conn.execute(
-		"UPDATE routines SET enabled = ?2 WHERE id = ?1",
-		params![id, i64::from(enabled)],
-	)?;
-	if changed == 0 {
-		return Err(AppError::NotFound(format!("no routine {id}")));
+///
+/// A patch with one field set, so the switch and the editor write through one
+/// function — and so flipping it records a hand on the row like any other edit.
+pub fn set_enabled(
+	conn: &Connection,
+	id: &str,
+	enabled: bool,
+	author: Option<&str>,
+	now_ms: i64,
+) -> AppResult<Routine> {
+	update_partial(conn, id, &RoutinePatch::just_enabled(enabled), author, now_ms)
+}
+
+// ------------------------------------------------------- writes that announce
+
+/// `routines:changed` — a project's list is no longer what the renderer has.
+///
+/// Carries the project rather than the routine because every reader of it is a
+/// list keyed by project, and a client that has to fetch anyway gains nothing
+/// from knowing which row moved.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutinesChangedEvent {
+	pub project_id: String,
+}
+
+/// Write, then say so.
+///
+/// **Every routine write goes through this layer, whichever caller made it**
+/// (ADR-0028). The editor's own mutations already invalidate their query
+/// optimistically, so for them this is a belt on braces; for a write that
+/// arrived over the IDE bridge it is the only thing that stops an open Routines
+/// tab from showing a list that is no longer true. One emitter rather than one
+/// per caller, for the reason `session:worktree` has one: two paths doing the
+/// same job for different callers is how they come to disagree.
+///
+/// Write-then-emit, in that order and never the other — an event ahead of its
+/// row is a fact the next reload contradicts.
+fn announce(app: &tauri::AppHandle, project_id: &str) {
+	use tauri::Emitter;
+	let _ =
+		app.emit("routines:changed", RoutinesChangedEvent { project_id: project_id.to_string() });
+}
+
+/// Create a routine and tell the renderer. `author` is the session that asked,
+/// or `None` for a human at the editor.
+pub fn create_and_announce(
+	db: &crate::db::Db,
+	app: &tauri::AppHandle,
+	input: &RoutineInput,
+	author: Option<&str>,
+	now_ms: i64,
+) -> AppResult<Routine> {
+	let routine = db.with(|conn| create(conn, input, author, now_ms))?;
+	announce(app, &routine.project_id);
+	Ok(routine)
+}
+
+/// Change part of a routine and tell the renderer.
+pub fn update_and_announce(
+	db: &crate::db::Db,
+	app: &tauri::AppHandle,
+	id: &str,
+	patch: &RoutinePatch,
+	author: Option<&str>,
+	now_ms: i64,
+) -> AppResult<Routine> {
+	let routine = db.with(|conn| update_partial(conn, id, patch, author, now_ms))?;
+	announce(app, &routine.project_id);
+	Ok(routine)
+}
+
+/// Delete a routine and tell the renderer. **Not reachable from the bridge**
+/// (ADR-0028): an agent may schedule work and switch it off, and only a human
+/// unschedules it — the confirmation the editor asks for has nobody to ask on a
+/// tool call.
+pub fn delete_and_announce(
+	db: &crate::db::Db,
+	app: &tauri::AppHandle,
+	id: &str,
+	now_ms: i64,
+) -> AppResult<()> {
+	// Read the project before the row is gone; there is nothing to key the
+	// event on afterwards.
+	let project_id = db.with(|conn| get(conn, id, now_ms)).map(|r| r.project_id).ok();
+	db.with(|conn| delete(conn, id))?;
+	if let Some(project_id) = project_id {
+		announce(app, &project_id);
 	}
 	Ok(())
 }
@@ -715,6 +978,8 @@ mod tests {
 			last_skipped_at: None,
 			last_error: None,
 			created_at: created,
+			created_by_session_id: None,
+			last_modified_by_session_id: None,
 			next_run_at: None,
 		}
 	}
@@ -876,10 +1141,171 @@ mod tests {
 		db.with(|conn| {
 			let mut bad = input();
 			bad.cron = "not a cron".into();
-			assert!(create(conn, &bad, 1).is_err());
+			assert!(create(conn, &bad, None, 1).is_err());
 			Ok(())
 		})
 		.unwrap();
+	}
+
+	#[test]
+	fn a_project_cannot_accumulate_routines_without_bound() {
+		// The cap exists because an agent can write routines now, and an agent
+		// inside a routine's own session can write more (ADR-0028). It is in the
+		// store rather than at the bridge so the editor answers the same way.
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			for n in 0..MAX_PER_PROJECT {
+				let mut i = input();
+				i.name = format!("routine {n}");
+				create(conn, &i, None, now)?;
+			}
+			let err = create(conn, &input(), Some("s1"), now).unwrap_err();
+			assert!(format!("{err}").contains("which is the limit"), "{err}");
+			assert_eq!(count_in_project(conn, "p1")?, MAX_PER_PROJECT);
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_schedule_that_parses_but_can_never_fire_is_refused() {
+		// `0 0 31 2 *` is a valid expression for a date that does not exist. It
+		// used to save cleanly and then never run — the failure this feature is
+		// least able to explain afterwards, and the one an agent writing a
+		// schedule unattended has no next-fire line to catch.
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let mut impossible = input();
+			impossible.cron = "0 0 31 2 *".into();
+			let err = create(conn, &impossible, None, 1).unwrap_err();
+			assert!(format!("{err}").contains("never fires again"), "{err}");
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn an_empty_or_oversized_name_or_prompt_is_refused() {
+		// The prompt becomes argv on a spawn that may be hours away (ADR-0026 § 4).
+		// Unbounded, that is a spawn failure long after the call that caused it,
+		// with nobody watching.
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			for mutate in [
+				(|i: &mut RoutineInput| i.name = "  ".into()) as fn(&mut RoutineInput),
+				|i: &mut RoutineInput| i.prompt = String::new(),
+				|i: &mut RoutineInput| i.name = "n".repeat(MAX_NAME_LEN + 1),
+				|i: &mut RoutineInput| i.prompt = "p".repeat(MAX_PROMPT_LEN + 1),
+			] {
+				let mut i = input();
+				mutate(&mut i);
+				assert!(create(conn, &i, None, now).is_err());
+			}
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_patch_leaves_the_fields_it_does_not_carry_alone() {
+		// The bridge's shape. An agent holds a subset and would otherwise have to
+		// echo back everything it did not understand — `catchup_hours` being the
+		// field a round trip loses, since `None` there means *inherit the app-wide
+		// default* rather than *no value*, which is why it is a double option.
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			let mut i = input();
+			i.catchup_hours = Some(4);
+			let created = create(conn, &i, None, now)?;
+
+			let only_cron =
+				RoutinePatch { cron: Some("0 5 * * *".into()), ..RoutinePatch::default() };
+			let updated = update_partial(conn, &created.id, &only_cron, None, now)?;
+			assert_eq!(updated.cron, "0 5 * * *");
+			assert_eq!(updated.name, "Nightly triage", "an unsent field is left alone");
+			assert_eq!(updated.catchup_hours, Some(4), "an unsent window is not reset");
+
+			// `Some(None)` is the third state: back on the app-wide default.
+			let cleared = RoutinePatch { catchup_hours: Some(None), ..RoutinePatch::default() };
+			let updated = update_partial(conn, &created.id, &cleared, None, now)?;
+			assert_eq!(updated.catchup_hours, None);
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_patch_carrying_nothing_is_refused_rather_than_recorded() {
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			let created = create(conn, &input(), None, now)?;
+			assert!(update_partial(conn, &created.id, &RoutinePatch::default(), Some("s1"), now)
+				.is_err());
+			// And it did not leave a hand on the row for a change that never happened.
+			assert_eq!(get(conn, &created.id, now)?.last_modified_by_session_id, None);
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_patch_does_not_revalidate_the_fields_it_is_not_touching() {
+		// A routine written under an older `croner` must not become impossible to
+		// switch off. The row is edited past the store to make that concrete.
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			let created = create(conn, &input(), None, now)?;
+			conn.execute(
+				"UPDATE routines SET cron = 'not a cron' WHERE id = ?1",
+				params![created.id],
+			)?;
+
+			let off = set_enabled(conn, &created.id, false, None, now)?;
+			assert!(!off.enabled);
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn provenance_records_the_author_and_the_last_hand_separately() {
+		// One column cannot answer both questions (ADR-0028): an agent amending a
+		// routine a human wrote would leave the row reading as untouched.
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			let human = create(conn, &input(), None, now)?;
+			assert_eq!(human.created_by_session_id, None, "None means a human wrote it");
+
+			let touched = set_enabled(conn, &human.id, false, Some("s-agent"), now)?;
+			assert_eq!(touched.created_by_session_id, None);
+			assert_eq!(touched.last_modified_by_session_id.as_deref(), Some("s-agent"));
+
+			// And a human editing it back clears the mark, which is the truthful
+			// answer to "who changed this last".
+			let back = set_enabled(conn, &human.id, true, None, now)?;
+			assert_eq!(back.last_modified_by_session_id, None);
+
+			let agents = create(conn, &input(), Some("s-agent"), now)?;
+			assert_eq!(agents.created_by_session_id.as_deref(), Some("s-agent"));
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn the_next_few_occurrences_advance_rather_than_repeating_one() {
+		// Each projection has to start *after* the one just found, or the same
+		// occurrence comes back forever and the agent is told a daily routine
+		// runs three times at 02:00.
+		let from = at(2026, 8, 20, 12, 0);
+		let next = next_occurrences("0 2 * * *", from, 3);
+		assert_eq!(next, vec![at(2026, 8, 21, 2, 0), at(2026, 8, 22, 2, 0), at(2026, 8, 23, 2, 0)]);
 	}
 
 	#[test]
@@ -887,7 +1313,7 @@ mod tests {
 		let (_tmp, db) = db();
 		db.with(|conn| {
 			let now = at(2026, 8, 20, 12, 0);
-			let created = create(conn, &input(), now)?;
+			let created = create(conn, &input(), None, now)?;
 			assert_eq!(created.name, "Nightly triage");
 			assert!(created.enabled);
 			// Derived, and derived from *now* rather than stored.
@@ -896,11 +1322,12 @@ mod tests {
 			let mut changed = input();
 			changed.name = "Nightly digest".into();
 			changed.catchup_hours = Some(0);
-			let updated = update(conn, &created.id, &changed, now)?;
+			let updated =
+				update_partial(conn, &created.id, &RoutinePatch::whole(&changed), None, now)?;
 			assert_eq!(updated.name, "Nightly digest");
 			assert_eq!(updated.catchup_hours, Some(0));
 
-			set_enabled(conn, &created.id, false)?;
+			set_enabled(conn, &created.id, false, None, now)?;
 			assert!(!get(conn, &created.id, now)?.enabled);
 
 			assert_eq!(list(conn, "p1", now)?.len(), 1);
@@ -916,7 +1343,7 @@ mod tests {
 		let (_tmp, db) = db();
 		db.with(|conn| {
 			let now = at(2026, 8, 20, 12, 0);
-			let r = create(conn, &input(), now)?;
+			let r = create(conn, &input(), None, now)?;
 			record_error(conn, &r.id, now, "claude not found")?;
 			assert_eq!(get(conn, &r.id, now)?.last_error.as_deref(), Some("claude not found"));
 
@@ -944,7 +1371,7 @@ mod tests {
 		let (_tmp, db) = db();
 		db.with(|conn| {
 			let now = at(2026, 8, 20, 12, 0);
-			let r = create(conn, &input(), now)?;
+			let r = create(conn, &input(), None, now)?;
 			// No `sessions` row exists — this is the case migration 0007 found,
 			// and the insert has to work anyway.
 			link_session(conn, "s-new", &r.id, now)?;
@@ -965,7 +1392,7 @@ mod tests {
 		let (_tmp, db) = db();
 		db.with(|conn| {
 			let now = at(2026, 8, 20, 12, 0);
-			let r = create(conn, &input(), now)?;
+			let r = create(conn, &input(), None, now)?;
 			link_session(conn, "s-live", &r.id, now)?;
 			link_session(conn, "s-dead", &r.id, now)?;
 			let live = HashSet::from(["s-live".to_string(), "s-human".to_string()]);

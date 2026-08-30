@@ -442,6 +442,8 @@ and conflating the two is how a resume becomes a new conversation — see F21 §
 | last_skipped_at| INTEGER | when a fire was last dropped for an overlap                  |
 | last_error     | TEXT    | why the last fire failed, NULL when it did not               |
 | created_at     | INTEGER | epoch ms                                                     |
+| created_by_session_id | TEXT | the session that created it over the IDE bridge; **NULL means a human** |
+| last_modified_by_session_id | TEXT | the session whose hand was on it last, same terms |
 
 **Added by [F22](./05-features.md); see
 [ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md).** Written by the
@@ -452,8 +454,22 @@ rule, and the runner is the reader. The same goes for the app-wide catch-up
 default and the concurrency cap, which are `settings` rows for the same reason.
 
 **`cron` is the only representation.** The preset picker, the `Custom…` field and
-the later MCP tool all write this column, so nothing has to translate between two
+the MCP tool all write this column, so nothing has to translate between two
 dialects and a routine created by an agent is editable by a human.
+
+**The two provenance columns are migration `0014`
+([ADR-0028](../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md)),
+and `NULL` in them means a human** — not "unknown". Every row that predates the
+column came from the editor, so the absence is meaningful and the list reads it
+directly. **No foreign key**, for `session_routines`'s reason below: the bridge
+writes the moment an agent calls, which is earlier than the indexer's `sessions`
+row, and the trace should outlive the session being deleted (ADR-0027).
+
+**Two columns rather than one** because an agent may amend a routine a human
+wrote. With only the author recorded, an agent rescheduling your nightly digest
+leaves the row looking exactly as you left it. A human's edit clears
+`last_modified_by_session_id`, which is the truthful answer to *who changed this
+last*; `created_by_session_id` is the standing fact and never moves.
 
 **Three "last" columns, because they answer three questions.** `last_fire_at` is
 the occurrence the scheduler consumed and is what due-ness is measured against —

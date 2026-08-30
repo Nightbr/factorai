@@ -20,8 +20,8 @@ commands/
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
                       #   (+ git_worktrees — F21, planned)
   ide.rs              # the IDE bridge's command surface (F20)
-  routines.rs         # list/create/update/delete/set_enabled/run_now, list_skills
-                      #   — PLANNED, roadmap item 42 (F22)
+  routines.rs         # list/create/update/delete/set_enabled/run_now
+                      #   (+ list_skills — slice 2, planned)
   memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
                       #   — PLANNED, roadmap item 2
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
@@ -45,8 +45,8 @@ services/
   claude_cli.rs       # find_claude_binary + the version probe
   settings.rs         # the settings table, behind the commands
   git.rs              # repository status, blobs, graph (ADR-0009)
-  routines.rs         # RoutineRunner — the wall-clock tick, the cap, catch-up
-                      #   — PLANNED, roadmap item 42 (F22, ADR-0026)
+  routines.rs         # the store, the scheduler, and RoutineRunner — the
+                      #   wall-clock tick, the cap, catch-up (F22, ADR-0026)
   skills.rs           # the read-only scan of .claude/skills — PLANNED, F22
   ide/                # the bridge (F20, ADR-0017)
     mod.rs
@@ -163,13 +163,20 @@ search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<
 // a row can say which codebase a hit came from and draw the same path-hashed
 // icon the sidebar does.
 
-// routines (F22, ADR-0026)
+// routines (F22, ADR-0026, ADR-0028)
 // A project's scheduled prompts. `create` and `update` take the cron string —
 // the presets and the `Custom…` field both write that one representation — and
-// reject an expression `croner` cannot parse, so a routine that can never fire
-// cannot be saved.
+// reject an expression `croner` cannot parse **or that projects no next run**,
+// so a routine that can never fire cannot be saved. Name and prompt are bounded,
+// and a project holds at most 20 routines; all of it is enforced in the service
+// so the IDE bridge's tool group answers identically (ADR-0028).
+//
+// Every write here goes through the announcing layer that emits
+// `routines:changed`, which is the same one the bridge's tools use.
 list_routines(project_id: String) -> Vec<Routine>
 create_routine(input: RoutineInput) -> Routine
+// Full replacement — the editor is a form and holds every field. It reaches the
+// shared patch path as a patch with nothing left out; the bridge sends a subset.
 update_routine(id: String, input: RoutineInput) -> Routine
 // Leaves a running session alone. The caller confirms first; this does not ask.
 delete_routine(id: String) -> ()
@@ -264,6 +271,7 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `terminal:exit`        | `{ id, code }`                       | TerminalManager     |
 | `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
 | `routine:fire`         | `{ routineId, routineName, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |
+| `routines:changed`     | `{ projectId }`                      | routines service (F22 slice 3) |
 
 `session:worktree` is the one event whose source is the IDE bridge rather than a
 service, and it fires **after** the write to `session_worktrees`, never before:
@@ -688,6 +696,39 @@ async work, so it wants no runtime at all.
 - **The database is reached by callback**, `Arc<dyn Fn…>`, the same shape
   `TerminalManager`'s `user_binary` and `session_cwd` use — the runner needs
   answers from a database it should not hold.
+
+#### The routine store, and its two callers
+
+`services/routines.rs` also holds the rows and the rules, separably from the
+runner: the **store** is plain SQL, the **scheduler** is `plan()` — a pure
+function from a set of routines plus a clock to a list of things to do — and the
+runner is the thread that drives them.
+
+Two callers reach the store, and **both go through one announcing layer**
+(`create_and_announce` / `update_and_announce` / `delete_and_announce`), which
+writes and then emits `routines:changed { projectId }`. The Tauri commands are
+one caller; the IDE bridge's tool group is the other (F22 slice 3, ADR-0028).
+One emitter rather than one per caller, for the reason `session:worktree` has
+one.
+
+- **`update_partial` is the only row-writing update.** The editor's command sends
+  a patch with every field set, which is full replacement; the bridge sends a
+  subset. `catchup_hours` is a double option, because `NULL` there means *inherit
+  the app-wide default* and the wire has to distinguish "leave it" from "clear
+  it".
+- **Only the fields a patch carries are validated.** A routine written under an
+  older `croner` must not become impossible to switch off.
+- **Validation is the store's, so neither caller can be laxer**: a cron must
+  parse *and* project a next run, name and prompt are bounded, and a project
+  holds at most `MAX_PER_PROJECT` (20) routines.
+- **Provenance is a parameter, not a field.** Both writes take the session that
+  asked, or `None` for a human at the editor. The bridge binds it per session in
+  `start_bridge`, which is the only layer that knows which session it is — the
+  same place the project scope is bound, and for the same reason.
+
+The bridge reaches all of this through a `RoutineStore` of closures on
+`TerminalManager`, exactly as `WorktreeStore` works and for the identical
+reason: the manager needs answers from a database it should not hold.
 
 ### `Search`
 

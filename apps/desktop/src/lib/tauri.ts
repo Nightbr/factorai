@@ -19,6 +19,7 @@ import type {
 	QuitRequestedEvent,
 	Routine,
 	RoutineFireEvent,
+	RoutinesChangedEvent,
 	RoutineInput,
 	RunNowResult,
 	SearchHit,
@@ -412,6 +413,11 @@ export const events = {
 	 *  fact rather than racing one. */
 	onRoutineFire: (cb: (p: RoutineFireEvent) => void) =>
 		listen<RoutineFireEvent>('routine:fire', cb),
+	/** A project's routine list changed (F22 slice 3). Emitted by every write,
+	 *  which is what makes a schedule an agent wrote over the IDE bridge appear
+	 *  in a Routines tab that is already open. */
+	onRoutinesChanged: (cb: (p: RoutinesChangedEvent) => void) =>
+		listen<RoutinesChangedEvent>('routines:changed', cb),
 };
 
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
@@ -909,6 +915,11 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				lastSkippedAt: null,
 				lastError: null,
 				createdAt: Date.now(),
+				// A routine the human wrote at the editor, which is the only kind
+				// the mock bridge can produce — the routine tools live on the IDE
+				// bridge, which browser-only mode has no socket for.
+				createdBySessionId: null,
+				lastModifiedBySessionId: null,
 				nextRunAt: null,
 			};
 			if (fx) {
