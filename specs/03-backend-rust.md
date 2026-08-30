@@ -14,7 +14,7 @@ commands/
   sidebar.rs          # list_sidebar, reorder_sidebar,
                       #   create_group, rename_group, remove_group
   sessions.rs         # list_sessions, get_session_tail, search_sessions,
-                      #   delete_session
+                      #   session_transcript_path, delete_session
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
@@ -157,6 +157,15 @@ set_session_worktree(session_id: String, project_path: String, path: String) -> 
 // transcript still references it. A trash that refuses (a store on a filesystem
 // without one) is an error and deletes nothing — there is no unlink fallback.
 delete_session(session_id: String) -> ()
+// Where a session's transcript file is, absolute. For the sidebar row's
+// `Copy transcript path` (F2): the file is what gets fed to another agent, to
+// `jq`, or to a bug report, and deriving it by hand means knowing Claude's
+// directory encoding. Addressed by the recorded store key like every other read
+// here, so a sub-agent's nested path is right too. Returned whether or not the
+// file is still on disk — a transcript that moved since the last scan is one of
+// the reasons to ask.
+session_transcript_path(session_id: String) -> String
+
 // An offset-paged `get_session` sat here until 2026-08-16. It outlived the
 // JSONL viewer it was written for and was never called again — deleted rather
 // than kept "available", see 05-features.md F3.
@@ -762,6 +771,22 @@ the tool-result-versus-transport-error distinction, and `initialize`.
 `--strict-mcp-config` is **never** passed with our `--mcp-config`: it would make
 ours the only MCP servers a session has and silently drop every one the user
 configured. There is a test for that sentence.
+
+**Three behaviours of the CLI make `agent_tools` findable**, all read out of
+2.1.251 and all asserted by tests, because nothing in CI can prove they still
+hold:
+
+| What | Where | Read as |
+| --- | --- | --- |
+| Server instructions | `initialize` result's `instructions` | injected into the session as `## factorai …` (`mcp_instructions_delta`) |
+| Eager loading | tool `_meta["anthropic/alwaysLoad"]` | `alwaysLoad: e.config.alwaysLoad === true \|\| M._meta?.[…] === true` |
+| Search matching | tool `_meta["anthropic/searchHint"]` | feeds ToolSearch when a tool is deferred |
+
+The per-tool `_meta` route is used rather than the server-config `alwaysLoad`
+flag, because the config flag is server-wide and only `createRoutine` has to be
+present unprompted. Standard MCP `annotations.readOnlyHint` is set on
+`listRoutines` alone, which the CLI reads for `isReadOnly()` and
+`isConcurrencySafe()`.
 
 ### `Search`
 

@@ -3,6 +3,21 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Copy a session's transcript path (spec `05-features.md` F2 § "Copying a session's transcript
+  path")** — 2026-08-30. A second item on the session row's right-click menu, above the separator
+  the delete now sits below. It puts the absolute `.jsonl` on the clipboard, which is what gets fed
+  back to another agent, to `jq`, or to a bug report.
+
+  There was no way to get that path from inside the app, and deriving it by hand means knowing that
+  Claude names a project's store directory by dropping the leading `/` and replacing the rest with
+  `-`. The new `session_transcript_path(session_id)` composes it from the store key recorded at
+  index time rather than re-encoding a path, so a sub-agent's nested
+  `<parent>/subagents/<id>.jsonl` comes back right too, and it answers whether or not the file is
+  still on disk — a transcript that moved since the last scan is a reason to ask, not a reason to
+  fail. The row wears the tick or the cross for 1.4s, like the file tree's rows do: the menu has
+  closed by the time the clipboard write returns, and a tick for a copy the platform refused would
+  put a stale path in someone's bug report.
+
 - **Routines over MCP — F22 slice 3 (spec `05-features.md` F22 § "Routines over MCP",
   [ADR-0028](../../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md))** —
   2026-08-30. Four tools on the IDE bridge — `listRoutines`, `createRoutine`, `updateRoutine`,
@@ -61,12 +76,25 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   plain name, plain HTTP, handed to each session through `--mcp-config` at spawn — and reach the
   agent as `mcp__factorai__*`. [ADR-0029](../../docs/adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
 
+  **Found by the model, not by us: the tools were invisible.** With the transport
+  fixed, a session asked to "create a routine that checks for the day's reminders" went to Claude
+  Code's built-in `schedule` skill — cloud agents, advertised with the same words — spent a turn
+  interviewing the user, and failed with a 403 against a private vault repo. It reached
+  `createRoutine` only when the human typed "on factorai". Nothing had told the session where it
+  was running. Fixed with three things the CLI already offers and we were not using: MCP
+  `initialize` **instructions** (injected as `## factorai`, saying where the session is and that
+  scheduling here is local), `anthropic/alwaysLoad` on `createRoutine` so it is not deferred behind
+  a search, and `anthropic/searchHint` on all four. `listRoutines` is marked `readOnlyHint`, which
+  is true of it and of nothing else here.
+
   **The lesson is about the test, not the transport.** Everything green before the fix tested
   factorai's half: unit tests against the protocol object, and a hand-written client speaking the
   CLI's own wire protocol at a live bridge. A transport test can only ever prove the transport, and
   the client's half was assumed. `tests/agent_tools_conformance.rs` now runs the real binary with
   the real `--mcp-config`, asks it in English to schedule something, and looks in the database —
-  `#[ignore]`, because it costs a model turn. Green against CLI **2.1.251**; record the version with
+  `#[ignore]`, because it costs a model turn. A second one asks in the user's own words **without
+  naming factorai** and fails if the model picks a cloud routine — the only assertion that could
+  have caught the discoverability half. Both green against CLI **2.1.251**; record the version with
   any future pass.
 
 - **Delete a session from the sidebar (spec `05-features.md` F2,

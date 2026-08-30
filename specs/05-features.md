@@ -483,6 +483,26 @@ rows live.
 **Edge cases.**
 - Session file is huge (>100MB) → still index, just lazily.
 
+### Copying a session's transcript path
+
+**Right-click a session row → `Copy transcript path`.** The absolute path of the
+session's `.jsonl`, on the clipboard. It is the file you feed to another agent,
+to `jq`, or to a bug report, and there is no other way to get it from inside the
+app: deriving it by hand means knowing that Claude names a project's directory
+by dropping the leading `/` from its path and replacing the rest with `-`.
+
+**Backend.** `session_transcript_path(session_id)`, addressed by the store key
+recorded when the session was indexed — so a sub-agent's nested
+`<parent>/subagents/<id>.jsonl` is right too. The path comes back whether or not
+the file is still there; a transcript that has moved since the last scan is one
+of the reasons someone is asking where it lives.
+
+**The row reports, not the menu.** The menu has closed by the time the clipboard
+write returns, so the row wears a tick — or a cross, when either half refuses —
+for a moment after, the same mark the file tree's rows use (F12). A tick for a
+copy that did not happen is worse than no mark at all: the path pasted into the
+bug report would be a stale one.
+
 ### Deleting a session
 
 **Right-click a session row → `Delete session` → confirm.** The row is in the
@@ -4229,12 +4249,50 @@ the bridge-wide one — and changed the other two.
 editor invalidates its own query already; this is what makes a schedule an agent
 changed appear in a Routines tab that is open in front of you.
 
+### Being found without being asked for
+
+**A tool an agent cannot see is a tool nobody calls**, and for a day this one was
+invisible in the way that matters. Asked *"create a routine that checks for the
+day's reminders"*, a session reached for Claude Code's built-in **`schedule`**
+skill — cloud agents, whose own description carries the words *routine*, *cron*
+and *schedule* — interviewed the human for a turn, and failed with an HTTP 403
+because the vault was a private repository Claude's cloud cannot read. It found
+`createRoutine` only when the human typed *"on factorai"*.
+
+Nothing had told that session it was **running inside factorai**. Three things do
+now, and none of them is decoration:
+
+- **The server introduces itself.** MCP's `initialize` carries an `instructions`
+  field, which Claude Code injects into the conversation as `## factorai`. Ours
+  says where the session is running — the project's folder, which it can check
+  against its own `pwd` — and that scheduling recurring work here means
+  `createRoutine` rather than a cloud routine, because a factorai routine needs
+  nothing pushed to a remote and no repository access granted to anyone. It also
+  states the limit in the same breath: **it runs only while factorai is open.**
+  That sentence is a property of the tool, not a hedge — a session that scheduled
+  something without knowing it would be promising work factorai cannot do.
+- **`createRoutine` is always loaded**, so it exists at the moment somebody says
+  "create a routine" rather than being something a model must first think to go
+  looking for. Only that one: it is the tool that has to be there unprompted, and
+  the other three are reachable once the server is known.
+- **The rest carry search hints**, in the words people actually use — routine,
+  schedule, cron, recurring, daily — for the path where a model does go looking.
+
+`listRoutines` is also marked read-only, which is simply true of it and of
+nothing else here. Nothing is marked destructive, because after ADR-0028 nothing
+here destroys anything.
+
 **The acceptance test runs a real `claude`.** `tests/agent_tools_conformance.rs`
 hands the binary the same `--mcp-config` a session gets, asks it in English to
 schedule something, and looks in the database. It is `#[ignore]` because it costs
 a model turn, and it exists because its absence is precisely what let the first
 version of this slice ship broken: every other test proves factorai's half, and
 factorai's half was never the part that was wrong.
+
+A second one asks in the user's own words **without naming factorai**, and fails
+if the model reaches for a cloud routine instead. That is the only assertion that
+could have caught the discoverability failure above — everything else in the
+suite passed while it was live.
 
 ### Later slices
 

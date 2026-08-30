@@ -98,6 +98,11 @@ export const cmd = {
 		invoke<SessionPage>('get_session_tail', { sessionId, limit }),
 	searchSessions: (query: string, projectId?: string, limit?: number) =>
 		invoke<SearchHit[]>('search_sessions', { query, projectId, limit }),
+	/** The absolute path of a session's transcript file (F2), for the sidebar
+	 *  row's `Copy transcript path`. Answers where the session lives whether or
+	 *  not the file is still on disk — that case is one reason to ask. */
+	sessionTranscriptPath: (sessionId: string) =>
+		invoke<string>('session_transcript_path', { sessionId }),
 	/** Delete a session (F2, ADR-0027): its transcript to the OS trash, its rows
 	 *  out of the index, then `sessions:changed`. The only write into the agent's
 	 *  store that is not fork.
@@ -747,6 +752,18 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				fx.searchHits = (fx.searchHits ?? []).filter((h) => h.sessionId !== sessionId);
 			}
 			return undefined as unknown as T;
+		}
+		case 'session_transcript_path': {
+			const sessionId = String(args?.sessionId ?? '');
+			// The real command reads the store key recorded at index time; the mock
+			// has no store, so it composes the same shape from the fixture's project
+			// path — enough for a test to assert what reached the clipboard.
+			const project = Object.entries(fx?.sessionsByProject ?? {}).find(([, list]) =>
+				list.some((s) => s.id === sessionId),
+			);
+			const summary = project?.[1].find((s) => s.id === sessionId);
+			const encoded = (summary?.cwd ?? '/mock/project').replace(/\/+$/, '').replaceAll('/', '-');
+			return `/mock/.claude/projects/${encoded}/${sessionId}.jsonl` as unknown as T;
 		}
 		case 'search_sessions': {
 			const query = String(args?.query ?? '').trim();

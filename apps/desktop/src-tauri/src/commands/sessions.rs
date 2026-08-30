@@ -144,6 +144,27 @@ pub fn get_session_tail(
 	Ok(SessionPage { id: session_id, events, offset, limit, total })
 }
 
+/// Where a session's transcript file is, as an absolute path.
+///
+/// For the sidebar row's `Copy transcript path` (F2): the file is what you feed
+/// back to another agent, `jq`, or a bug report, and hunting it by hand means
+/// knowing Claude's directory encoding. Addressed by the recorded store key,
+/// like every other read here, so a sub-agent's nested path is right too.
+///
+/// **The path is returned whether or not the file is still there.** It is the
+/// answer to "where does this session live", and a transcript that has been
+/// moved or trashed since the last scan is exactly the case someone is copying
+/// the path to investigate.
+#[tauri::command]
+pub fn session_transcript_path(
+	state: State<'_, AppState>,
+	session_id: String,
+) -> AppResult<String> {
+	let (key, parent_id, _) = lookup_store_key_and_total(&state, &session_id)?;
+	let path = transcript_path(&state.claude_dir, &key, parent_id.as_deref(), &session_id);
+	Ok(path.to_string_lossy().to_string())
+}
+
 /// Full-text search across the workspace (spec F4). `project_id` optionally
 /// restricts to one project. Returns up to `limit` (default 200, hard-capped at
 /// 200) ranked hits.

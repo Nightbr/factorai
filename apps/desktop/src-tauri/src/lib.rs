@@ -281,6 +281,7 @@ pub fn run() {
 			commands::routines::run_routine_now,
 			commands::sessions::list_sessions,
 			commands::sessions::get_session_tail,
+			commands::sessions::session_transcript_path,
 			commands::sessions::search_sessions,
 			commands::sessions::delete_session,
 			commands::files::list_dir,

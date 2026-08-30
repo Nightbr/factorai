@@ -46,6 +46,7 @@ import {
 	AlertTriangle,
 	ArrowDown,
 	ArrowUp,
+	Check,
 	ChevronRight,
 	FolderInput,
 	FolderOpen,
@@ -53,7 +54,9 @@ import {
 	FolderPlus,
 	ClockFading,
 	Plus,
+	Route,
 	Trash2,
+	X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
@@ -688,9 +691,28 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 	// must not be left believing is that a delete which failed succeeded. A
 	// closed dialog and an unchanged list says exactly that.
 	const [error, setError] = useState<string | null>(null);
+	// Whether the last copy worked, shown on the row for a moment: the menu has
+	// closed by the time the clipboard write returns, so it cannot report
+	// anything itself. Same transient mark the file tree's rows use, and for the
+	// same missing toast (roadmap item 7).
+	const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
 
 	const title = session.title.trim() || session.id.slice(0, 8);
 	const running = mark !== undefined && mark.status !== 'stopped';
+
+	async function copyTranscriptPath() {
+		try {
+			await navigator.clipboard.writeText(await cmd.sessionTranscriptPath(session.id));
+			setCopied('yes');
+		} catch {
+			// Either half can refuse — the session may not be in the index any more,
+			// and a clipboard write can be turned down by the platform. A tick for
+			// something that didn't happen is worse than a cross: you would paste a
+			// stale path into a bug report and not know why it was wrong.
+			setCopied('failed');
+		}
+		setTimeout(() => setCopied(null), 1400);
+	}
 
 	async function confirmDelete() {
 		setDeleting(true);
@@ -707,10 +729,11 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 
 	return (
 		<li>
-			{/* One item, and it is the destructive one. A session row's other verbs
-			    are the row itself — clicking it opens the session — so a menu padded
-			    out to match the project row's would be three decoys around the only
-			    thing here that cannot be undone from inside the app. */}
+			{/* Two items. Clicking the row is still what opens the session, so this
+			    stays the menu of things the row itself cannot do: where the
+			    transcript is, and deleting it. Anything beyond those would be a
+			    decoy around the only entry here that cannot be undone from inside
+			    the app, which is why the destructive one sits below a separator. */}
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<Link
@@ -747,6 +770,15 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 								</span>
 							)}
 						</span>
+						{copied === 'yes' && (
+							<Check data-testid="session-path-copied" className="size-3.5 shrink-0 text-primary" />
+						)}
+						{copied === 'failed' && (
+							<X
+								data-testid="session-path-copy-failed"
+								className="size-3.5 shrink-0 text-destructive"
+							/>
+						)}
 						{mark && (
 							// Smaller than the standalone dot: down a column of nested rows the
 							// full-size dot is the loudest thing on screen. It stayed at 6px when
@@ -757,9 +789,21 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 					</Link>
 				</ContextMenuTrigger>
 				{/* No `w-56` here, unlike the project row's. That width exists to stop
-				    a menu of eight items of different lengths ragging; a single short
-				    item in a 224px box just reads as a mis-sized menu. */}
+				    a menu of eight items of different lengths ragging; two short items
+				    in a 224px box just read as a mis-sized menu. */}
 				<ContextMenuContent>
+					{/* The transcript file, not the session id. It is what you hand to
+					    another agent, to `jq`, or to a bug report, and finding it by
+					    hand means knowing how Claude encodes a project path into a
+					    directory name. */}
+					<ContextMenuItem
+						data-testid={`copy-session-path-${session.id}`}
+						onSelect={() => void copyTranscriptPath()}
+					>
+						<Route />
+						Copy transcript path
+					</ContextMenuItem>
+					<ContextMenuSeparator />
 					<ContextMenuItem
 						variant="destructive"
 						data-testid={`delete-session-${session.id}`}
