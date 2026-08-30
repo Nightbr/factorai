@@ -54,6 +54,9 @@ pub type UpdateRoutine = Arc<dyn Fn(&str, &RoutinePatch) -> AppResult<Routine> +
 pub struct Routines {
 	/// The project every tool in this group reads and writes.
 	pub project_id: String,
+	/// Its folder, for [`AgentTools::instructions`] — the one thing the session
+	/// can check for itself against `pwd`.
+	pub project_path: String,
 	pub list: ListRoutines,
 	pub create: CreateRoutine,
 	/// Partial by design — see [`RoutinePatch`]. An agent holds a subset of the
@@ -70,6 +73,42 @@ pub struct AgentTools {
 impl AgentTools {
 	pub fn new(routines: Routines) -> Self {
 		Self { routines }
+	}
+
+	/// What this session needs to know that is not a tool.
+	///
+	/// **The fix for a real failure** (2026-08-30). Asked to "create a routine
+	/// that checks for reminders", a session went to Claude Code's built-in
+	/// `schedule` skill — which advertises "scheduled cloud agents (routines) that
+	/// execute on a cron schedule", the user's exact words — spent a turn
+	/// interviewing them, and failed with a 403 because the vault is a private
+	/// repository the cloud cannot read. Nothing had told the session it was
+	/// running inside factorai at all, so a local routine was not a thing it could
+	/// have chosen.
+	///
+	/// Claude Code injects this as `## factorai` followed by the text
+	/// (`mcp_instructions_delta`, observed 2.1.251). It is short on purpose: it is
+	/// paid for in context on every session factorai starts.
+	///
+	/// **The "only while factorai is open" line is a property of the tool, not a
+	/// hedge against the recommendation.** F22 insists that limit is stated as
+	/// behaviour rather than buried as a caveat, and a session that schedules
+	/// something without knowing it would be reporting work it cannot promise.
+	fn instructions(&self) -> String {
+		// `concat!` of whole lines rather than `\`-continuations: rustfmt joins
+		// continued lines and leaves the source indentation *inside* the literal,
+		// which put tabs in the middle of sentences. Caught by the test below.
+		const BODY: &str = concat!(
+			"To schedule recurring work in this project, use `createRoutine` from this server ",
+			"rather than a cloud routine. A factorai routine starts a new agent session in this ",
+			"same folder, on this machine, with your prompt as its first message — nothing has ",
+			"to be pushed to a remote and no repository access has to be granted to anyone. ",
+			"It runs only while factorai is open.",
+		);
+		format!(
+			"This session is running inside factorai, in the project at {}.\n\n{BODY}",
+			self.routines.project_path
+		)
 	}
 
 	/// Answer one message. `None` for a notification, which by definition is not
@@ -91,7 +130,9 @@ impl AgentTools {
 		};
 
 		let result = match incoming.method.as_str() {
-			"initialize" => Ok(mcp_wire::initialize_result(&params, SERVER_NAME)),
+			"initialize" => {
+				Ok(mcp_wire::initialize_result(&params, SERVER_NAME, Some(&self.instructions())))
+			}
 			"tools/list" => Ok(tools_list()),
 			"tools/call" => self.tools_call(&params),
 			other => {
@@ -324,6 +365,24 @@ fn stamp(ms: i64) -> String {
 /// call has nobody to ask, and disable is the reversible form of the same act.
 /// No `projectId` argument anywhere either — the project is the session's own,
 /// resolved at spawn.
+///
+/// **Three things here are not decoration**, and each was earned by watching a
+/// real session fail to find these tools at all (2026-08-30):
+///
+/// * `_meta["anthropic/alwaysLoad"]` on **`createRoutine` alone**. The CLI reads
+///   it as `M._meta?.["anthropic/alwaysLoad"] === true` and keeps that tool out
+///   of the deferred set, so it is present at the moment somebody says "create a
+///   routine" rather than something a model must first think to search for. Only
+///   the one: it is the tool that has to be there unprompted, and the other
+///   three are reachable by search once the server is known. The server-config
+///   `alwaysLoad` flag would load all four and is deliberately not used.
+/// * `_meta["anthropic/searchHint"]` on all four, so the deferred path still
+///   matches the words people actually use — routine, schedule, cron, recurring,
+///   daily.
+/// * `annotations.readOnlyHint`, which is simply true of `listRoutines` and
+///   false of the rest. The CLI reads it for `isReadOnly()` and
+///   `isConcurrencySafe()`. Nothing here sets `destructiveHint`, because nothing
+///   here destroys anything — that is what leaving `deleteRoutine` out bought.
 fn tools_list() -> Value {
 	json!({
 		"tools": [
@@ -334,16 +393,25 @@ fn tools_list() -> Value {
 								with its prompt as the first message. Call this before \
 								updating one, for its id and its current schedule.",
 				"inputSchema": { "type": "object", "properties": {} },
+				"annotations": { "title": "List factorai routines", "readOnlyHint": true },
+				"_meta": {
+					"anthropic/searchHint": "list existing routines, schedules, cron jobs or \
+											 recurring tasks configured for this project in \
+											 factorai",
+				},
 			},
 			{
 				"name": "createRoutine",
-				"description": "Schedule recurring work in this session's project. factorai \
-								will start a new agent session on this schedule with `prompt` \
-								as its first message — so write the prompt for an agent \
-								starting cold, with no memory of this conversation. Routines \
-								run only while factorai is open; one due while it is closed \
-								runs when it next opens, if it is still inside its catch-up \
-								window. Say what you scheduled and when it will run.",
+				"description": "Schedule recurring work in this project — use this rather \
+								than a cloud routine when the session is running in factorai. \
+								factorai starts a new agent session in this same folder, on \
+								this machine, on the schedule you give, with `prompt` as its \
+								first message. Nothing has to be pushed to a remote and no \
+								repository access has to be granted. Write the prompt for an \
+								agent starting cold, with no memory of this conversation. \
+								Routines run only while factorai is open; one due while it is \
+								closed runs when it next opens, if it is still inside its \
+								catch-up window. Say what you scheduled and when it will run.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -375,6 +443,15 @@ fn tools_list() -> Value {
 					},
 					"required": ["name", "cron", "prompt"],
 				},
+				"annotations": { "title": "Create a factorai routine", "readOnlyHint": false },
+				// The one tool that has to exist before anyone thinks to look for
+				// it — see this function's own comment.
+				"_meta": {
+					"anthropic/alwaysLoad": true,
+					"anthropic/searchHint": "schedule a recurring task, routine, cron job, \
+											 daily or weekly agent run for this project in \
+											 factorai, running locally on this machine",
+				},
 			},
 			{
 				"name": "updateRoutine",
@@ -399,6 +476,11 @@ fn tools_list() -> Value {
 					},
 					"required": ["id"],
 				},
+				"annotations": { "title": "Change a factorai routine", "readOnlyHint": false },
+				"_meta": {
+					"anthropic/searchHint": "change or edit an existing factorai routine's \
+											 schedule, cron, prompt or catch-up window",
+				},
 			},
 			{
 				"name": "setRoutineEnabled",
@@ -413,6 +495,14 @@ fn tools_list() -> Value {
 						"enabled": { "type": "boolean" },
 					},
 					"required": ["id", "enabled"],
+				},
+				"annotations": {
+					"title": "Enable or disable a factorai routine",
+					"readOnlyHint": false,
+				},
+				"_meta": {
+					"anthropic/searchHint": "stop, pause, resume, enable or disable a \
+											 factorai routine without deleting it",
 				},
 			},
 		]
@@ -472,6 +562,7 @@ mod tests {
 		let create_rows = rows.clone();
 		Routines {
 			project_id: PROJECT.to_string(),
+			project_path: "/p/session".to_string(),
 			list: Arc::new(move |project_id| {
 				asked_for.lock().push(project_id.to_string());
 				Ok(list_rows
@@ -564,6 +655,72 @@ mod tests {
 		// The one that is absent on purpose (ADR-0028): the editor's delete asks
 		// first, and a tool call has nobody to ask.
 		assert!(!names.contains(&"deleteRoutine"));
+	}
+
+	#[test]
+	fn initialize_tells_the_session_where_it_is_running() {
+		// **The fix for a real failure.** Asked to "create a routine", a session
+		// reached for Claude Code's built-in `schedule` skill — cloud agents,
+		// whose description carries the same words — interviewed the user, and
+		// died on a 403 against a private repo. Nothing had told it that it was
+		// running inside factorai, so a local routine was never a candidate.
+		let f = fixture();
+		let reply = call(&f.tools, "initialize", json!({ "protocolVersion": "2025-11-25" }));
+		let instructions = reply["result"]["instructions"].as_str().expect("instructions");
+
+		assert!(instructions.contains("factorai"), "{instructions}");
+		assert!(instructions.contains("/p/session"), "it names the project folder");
+		assert!(instructions.contains("createRoutine"), "it names the tool to reach for");
+		assert!(instructions.contains("cloud routine"), "it names what it is preferred over");
+		// The limit is stated rather than buried, which F22 requires of every
+		// surface that mentions a routine at all.
+		assert!(instructions.contains("only while factorai is open"), "{instructions}");
+		// No stray indentation inside the sentences: rustfmt joins `\`-continued
+		// lines and leaves the source's tabs in the literal, which is how this
+		// text first shipped reading "It runs only while\t\t\tfactorai is open".
+		assert!(!instructions.contains('\t'), "{instructions:?}");
+	}
+
+	#[test]
+	fn createroutine_is_always_loaded_and_the_others_are_searchable() {
+		// A tool nobody can see is a tool nobody calls. `anthropic/alwaysLoad`
+		// keeps `createRoutine` out of the deferred set so it exists at the moment
+		// somebody says "create a routine"; the rest carry search hints for the
+		// path where a model has to go looking.
+		let f = fixture();
+		let reply = call(&f.tools, "tools/list", Value::Null);
+		let tools = reply["result"]["tools"].as_array().unwrap();
+
+		let always: Vec<&str> = tools
+			.iter()
+			.filter(|t| t["_meta"]["anthropic/alwaysLoad"] == json!(true))
+			.map(|t| t["name"].as_str().unwrap())
+			.collect();
+		assert_eq!(always, ["createRoutine"], "only the one that must be there unprompted");
+
+		for t in tools {
+			let hint = t["_meta"]["anthropic/searchHint"].as_str().unwrap_or_default();
+			assert!(hint.contains("routine"), "{} has no usable search hint", t["name"]);
+			assert!(hint.contains("factorai"), "{} does not name the app", t["name"]);
+		}
+	}
+
+	#[test]
+	fn only_the_read_tool_claims_to_be_read_only() {
+		// The CLI reads `readOnlyHint` for `isReadOnly()` and
+		// `isConcurrencySafe()`. Claiming it for a write would be the same
+		// confident falsehood `getDiagnostics` is kept out of the bridge to avoid.
+		let f = fixture();
+		let reply = call(&f.tools, "tools/list", Value::Null);
+		for t in reply["result"]["tools"].as_array().unwrap() {
+			let name = t["name"].as_str().unwrap();
+			let read_only = t["annotations"]["readOnlyHint"] == json!(true);
+			assert_eq!(read_only, name == "listRoutines", "{name}");
+			assert!(t["annotations"]["title"].is_string(), "{name} has no title");
+			// Nothing here destroys anything — which is what leaving
+			// `deleteRoutine` out bought (ADR-0028).
+			assert_ne!(t["annotations"]["destructiveHint"], json!(true), "{name}");
+		}
 	}
 
 	#[test]

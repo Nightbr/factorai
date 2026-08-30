@@ -42,11 +42,12 @@ fn now_ms() -> i64 {
 ///
 /// The store closures are the ones `lib.rs` wires, minus the `routines:changed`
 /// emit — that needs a Tauri handle, and it is not what this test is about.
-fn harness(db: Db, session_id: &str) -> AgentToolsServer {
+fn harness(db: Db, session_id: &str, project_path: &str) -> AgentToolsServer {
 	let author = session_id.to_string();
 	let (list_db, create_db, update_db) = (db.clone(), db.clone(), db);
 	let routines = Routines {
 		project_id: PROJECT.to_string(),
+		project_path: project_path.to_string(),
 		list: Arc::new(move |project_id| {
 			list_db.with(|conn| routines::list(conn, project_id, now_ms()))
 		}),
@@ -79,13 +80,31 @@ fn db_with_a_project(dir: &TempDir) -> Db {
 	db
 }
 
+/// Run one turn against the real binary and hand back what the model said.
+fn run_claude(dir: &TempDir, config: String, prompt: &str) -> String {
+	let out = Command::new("claude")
+		.arg("--mcp-config")
+		.arg(config)
+		.arg("--allowedTools")
+		.arg("mcp__factorai__createRoutine,mcp__factorai__listRoutines")
+		.arg("-p")
+		.arg(prompt)
+		.current_dir(dir.path())
+		.output()
+		.expect("run claude");
+	let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+	let stderr = String::from_utf8_lossy(&out.stderr);
+	println!("--- claude stdout ---\n{stdout}\n--- stderr ---\n{stderr}");
+	stdout
+}
+
 #[test]
 #[ignore = "runs the real claude binary and costs a model turn"]
 fn a_real_claude_can_schedule_a_routine() {
 	let dir = TempDir::new().unwrap();
 	let db = db_with_a_project(&dir);
 	let session = "s-conformance";
-	let server = harness(db.clone(), session);
+	let server = harness(db.clone(), session, &dir.path().to_string_lossy());
 
 	// Exactly what `TerminalManager::argv_for` puts in a session's argv — and
 	// **without `--strict-mcp-config`**, which is the flag that would silently
@@ -133,4 +152,43 @@ fn a_real_claude_can_schedule_a_routine() {
 		"routine {:?} — cron {:?}, next run {:?}",
 		routine.name, routine.cron, routine.next_run_at
 	);
+}
+
+#[test]
+#[ignore = "runs the real claude binary and costs a model turn"]
+fn the_word_factorai_is_not_needed_to_find_the_tool() {
+	// **The failure this is written from** (2026-08-30, from a real transcript).
+	// Asked in exactly these terms, a session went to Claude Code's built-in
+	// `schedule` skill — cloud agents, advertised with the same words the user
+	// used — interviewed the human for a turn, and died on an HTTP 403 because
+	// the vault was a private repository the cloud could not read. It only
+	// reached `mcp__factorai__createRoutine` after the human typed "on factorai".
+	//
+	// Nothing had told that session it was running inside factorai. Two things
+	// fix it and both are asserted by unit tests: `anthropic/alwaysLoad` keeps
+	// `createRoutine` out of the deferred set, and the server's `initialize`
+	// instructions say where the session is. This is the end-to-end proof that
+	// the two together are enough, which is the only proof that counts —
+	// everything else here would have passed before the fix as well.
+	let dir = TempDir::new().unwrap();
+	let db = db_with_a_project(&dir);
+	let session = "s-discovery";
+	let server = harness(db.clone(), session, &dir.path().to_string_lossy());
+
+	let stdout = run_claude(
+		&dir,
+		server.mcp_config_arg(),
+		"Create a routine that checks every weekday morning whether any invoice is \
+		 overdue and whether a tax declaration is due. Then say DONE.",
+	);
+
+	let rows = db.with(|conn| routines::list(conn, PROJECT, now_ms())).expect("read routines");
+	assert_eq!(
+		rows.len(),
+		1,
+		"the model did not reach for factorai's own tool without being told to. \
+		 stdout was:\n{stdout}"
+	);
+	assert_eq!(rows[0].created_by_session_id.as_deref(), Some(session));
+	println!("routine {:?} — cron {:?}", rows[0].name, rows[0].cron);
 }

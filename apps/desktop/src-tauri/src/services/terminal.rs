@@ -583,7 +583,12 @@ impl TerminalManager {
 	/// Binding them in a closure is what makes it impossible for a tool argument
 	/// to name another project or another author; the store itself takes both as
 	/// parameters and has no opinion.
-	fn start_agent_tools(&self, session_id: &str, project_id: &str) -> AppResult<AgentToolsServer> {
+	fn start_agent_tools(
+		&self,
+		session_id: &str,
+		project_id: &str,
+		cwd: &Path,
+	) -> AppResult<AgentToolsServer> {
 		let store = self.routine_store.clone();
 		let author = session_id.to_string();
 		let unavailable =
@@ -593,6 +598,10 @@ impl TerminalManager {
 		let update_author = author.clone();
 		let routines = agent_tools::Routines {
 			project_id: project_id.to_string(),
+			// The folder rather than the project's display name: it is what the
+			// session can check against its own `pwd`, and it cannot go stale
+			// against a name the human renamed in the sidebar.
+			project_path: cwd.to_string_lossy().into_owned(),
 			list: Arc::new(move |project_id| {
 				let s = list_store.as_ref().ok_or_else(unavailable)?;
 				(s.list)(project_id)
@@ -799,13 +808,14 @@ impl TerminalManager {
 		// factorai's own tools is every session before this landed, whereas
 		// refusing to spawn `claude` because a socket would not bind trades the
 		// whole feature for one of its conveniences.
-		let agent_tools = match self.start_agent_tools(&opts.session_id, &opts.project_id) {
-			Ok(server) => Some(server),
-			Err(e) => {
-				warn!(error = %e, "agent tool server did not start; the session runs without it");
-				None
-			}
-		};
+		let agent_tools =
+			match self.start_agent_tools(&opts.session_id, &opts.project_id, &cwd_path) {
+				Ok(server) => Some(server),
+				Err(e) => {
+					warn!(error = %e, "agent tool server did not start; the session runs without it");
+					None
+				}
+			};
 
 		let argv = match argv_override {
 			Some(v) => v,

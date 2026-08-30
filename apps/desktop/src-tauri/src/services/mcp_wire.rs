@@ -76,20 +76,31 @@ pub struct Incoming {
 
 /// The `initialize` result, with the client's own protocol version echoed back.
 ///
+/// `instructions` is MCP's channel for what a session should know about a server
+/// beyond its tools, and Claude Code injects it into the conversation as
+/// `## <serverName>` followed by the text — observed in 2.1.251 as the
+/// `mcp_instructions_delta` attachment. It is the only way a server can tell a
+/// session something that is not a tool, which is what
+/// [`super::agent_tools`] uses to say where the session is running.
+///
 /// **Echoed rather than pinned.** Neither server offers resources, prompts or
 /// sampling, and the tool half has not changed shape across MCP revisions — so
 /// the honest answer to "can you speak this" is yes. Pinning a version list is a
 /// list we would then have to chase; a conformance pass against a real client is
 /// what would catch it if that ever stops being true. The CLI has been observed
 /// asking for `2025-06-18` on the bridge and `2025-11-25` over HTTP.
-pub fn initialize_result(params: &Value, server_name: &str) -> Value {
+pub fn initialize_result(params: &Value, server_name: &str, instructions: Option<&str>) -> Value {
 	let version =
 		params.get("protocolVersion").and_then(Value::as_str).unwrap_or("2025-06-18").to_string();
-	json!({
+	let mut result = json!({
 		"protocolVersion": version,
 		"capabilities": { "tools": { "listChanged": false } },
 		"serverInfo": { "name": server_name, "version": env!("CARGO_PKG_VERSION") },
-	})
+	});
+	if let Some(text) = instructions {
+		result["instructions"] = json!(text);
+	}
+	result
 }
 
 /// Wrap a handler's outcome in the JSON-RPC envelope for `id`.

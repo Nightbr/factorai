@@ -179,7 +179,12 @@ impl Mcp {
 		};
 
 		let result = match incoming.method.as_str() {
-			"initialize" => Ok(mcp_wire::initialize_result(&params, super::lockfile::IDE_NAME)),
+			// No `instructions`: everything this server offers is called by the
+			// CLI rather than the model, so there is nothing a session needs
+			// told about it (ADR-0029).
+			"initialize" => {
+				Ok(mcp_wire::initialize_result(&params, super::lockfile::IDE_NAME, None))
+			}
 			"tools/list" => Ok(tools_list()),
 			"tools/call" => self.tools_call(&params),
 			other => {
