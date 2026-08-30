@@ -79,6 +79,14 @@
 	--color-status-working: oklch(68% 0.17 150);
 	--color-status-waiting: oklch(81.3% 0.165 75);
 	--color-status-stopped: oklch(55% 0.01 250);
+	/* A fourth colour and **not** a fourth state (F22): it is `working` for a
+	   session running with no tab — a routine's, until somebody opens it. Blue
+	   because the ramp above is a scale of how much you are involved, and this
+	   is one step further from you than green: work you scheduled rather than
+	   work you started. It sits at the green's lightness and chroma so the two
+	   read as the same kind of mark; `waiting` still wins over it, because
+	   "your move" is true wherever the session runs. */
+	--color-status-background: oklch(68% 0.16 255);
 
 	/* Working activity indicator */
 	--animate-running-pulse: running-pulse 1.5s ease-in-out infinite;

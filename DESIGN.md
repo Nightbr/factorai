@@ -19,6 +19,7 @@ colors:
   status-working: "oklch(68% 0.17 150)"
   status-waiting: "oklch(81.3% 0.165 75)"
   status-stopped: "oklch(55% 0.01 250)"
+  status-background: "oklch(68% 0.16 255)"
   lane-0: "oklch(70% 0.15 255)"
   lane-1: "oklch(72% 0.16 145)"
   lane-2: "oklch(68% 0.19 25)"
@@ -562,7 +563,15 @@ agent session.
 ### Status Dot (signature)
 
 An 8px round mark in `working` green, `waiting` amber, or `stopped` grey, with
-the state's name as its title. **Still by default** — the pulse is opt-in,
+the state's name as its title.
+
+**A fourth colour, and not a fourth state: `background` blue** — `working` for a
+session running with **no tab**, which today means a routine's until somebody
+opens it (F22). Blue because the ramp is a scale of how involved you are, and
+this is one step further out than green: work you scheduled rather than work you
+started. It sits at the green's lightness and chroma so the two read as the same
+kind of mark. `waiting` amber still wins over it, because "your move" is true
+wherever the session runs. **Still by default** — the pulse is opt-in,
 because the dot appears in the sidebar's project rows, its session rows and the
 tab strip at once, and a dozen things breathing at their own rate is a christmas
 tree rather than a signal. The animation is earned in the session header, where

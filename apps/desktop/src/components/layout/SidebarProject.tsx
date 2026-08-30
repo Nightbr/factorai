@@ -27,7 +27,7 @@ import {
 	DialogTitle,
 	IconButton,
 } from '@factorai/ui';
-import { useOpenSessions } from '@hooks/useOpenSessions';
+import { useSessionMarks } from '@hooks/useSessionMarks';
 import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
@@ -533,7 +533,9 @@ function SessionList({ project }: { project: Project }) {
 	// `pendingSessions` needs the latter: a never-messaged session that is not
 	// running has no transcript and no process, so a permanent "New session" row
 	// for it would be a ghost no reindex ever clears (F16).
-	const open = useOpenSessions();
+	// The marks rather than the open record, for F22's reason: a routine's
+	// session is live with no tab, and this is where you look for it.
+	const open = useSessionMarks();
 	const bySession = useTerminalStore((s) => s.bySession);
 	// Which of these a routine started (F22) — from the store, because a routine's
 	// session is live long before the indexer has a row with `routineId` on it.
@@ -593,7 +595,11 @@ function SessionList({ project }: { project: Project }) {
 								? routineSessionLabel(routineOrigins[p.sessionId], clock24)
 								: 'New session'}
 						</span>
-						<StatusDot status={p.status} className="size-1.5" />
+						<StatusDot
+							status={p.status}
+							background={open[p.sessionId]?.background ?? true}
+							className="size-1.5"
+						/>
 					</Link>
 				</li>
 			))}
@@ -641,7 +647,11 @@ function SessionList({ project }: { project: Project }) {
 							// full-size dot is the loudest thing on screen. It stayed at 6px when
 							// the rows went to 14px — it marks which session is open, and a mark
 							// that grows with its label starts competing with it.
-							<StatusDot status={open[session.id].status} className="size-1.5" />
+							<StatusDot
+								status={open[session.id].status}
+								background={open[session.id].background}
+								className="size-1.5"
+							/>
 						)}
 					</Link>
 				</li>

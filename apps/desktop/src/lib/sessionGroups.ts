@@ -176,3 +176,40 @@ export function tabsInKnownProjects<T extends { projectId: string }>(
 	const known = new Set(projects.map((p) => p.id));
 	return tabs.filter((t) => known.has(t.projectId));
 }
+
+/** One session's mark in a list: what it is doing, and whether it is doing it
+ *  with no tab open. */
+export interface SessionMark {
+	projectId: string;
+	status: TerminalStatus;
+	/** Live, with nothing on the strip — a routine's session until somebody
+	 *  opens it (F22). Drawn blue rather than green. */
+	background: boolean;
+}
+
+/**
+ * Every session a list should mark: the ones you have **open**, plus the ones
+ * that are **running without a tab**.
+ *
+ * The second half is F22's requirement and the reason this exists. `openSessions`
+ * is a projection of the tab strip, so a routine's session — live, tabless —
+ * appeared in no list's dot at all: an agent working invisibly, which is the one
+ * thing `00-overview.md` § "The operating model" says the app must not do.
+ *
+ * Structural parameters, like the rest of this file: `lib/` stays free of store
+ * imports.
+ */
+export function sessionMarks(
+	tabs: ReadonlyArray<{ sessionId: string; projectId: string }>,
+	bySession: Record<string, { projectId: string; status: TerminalStatus }>,
+): Record<string, SessionMark> {
+	const marks: Record<string, SessionMark> = {};
+	for (const [sessionId, live] of Object.entries(openSessions(tabs, bySession))) {
+		marks[sessionId] = { ...live, background: false };
+	}
+	for (const [sessionId, live] of Object.entries(bySession)) {
+		if (marks[sessionId]) continue;
+		marks[sessionId] = { ...live, background: true };
+	}
+	return marks;
+}

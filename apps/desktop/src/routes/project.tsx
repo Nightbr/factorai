@@ -4,7 +4,7 @@ import { RoutineOrigin } from '@components/routines/RoutineOrigin';
 import { RoutinesView } from '@components/routines/RoutinesView';
 import { Button, IconButton } from '@factorai/ui';
 import type { SessionSummary } from '@factorai/types';
-import { useOpenSessions } from '@hooks/useOpenSessions';
+import { useSessionMarks } from '@hooks/useSessionMarks';
 import { useStartSession } from '@hooks/useStartSession';
 import { formatStamp, routineSessionLabel } from '@lib/cron';
 import { formatRelative } from '@lib/format';
@@ -116,6 +116,7 @@ function ProjectView() {
 	// A routine's session is live before the indexer has ever seen it, and the
 	// only thing that knows it is a routine's is the store (F22).
 	const routineOrigins = useTerminalStore((s) => s.routineBySession);
+	const marks = useSessionMarks();
 	const clock24 = usePrefsStore((s) => s.clock24);
 	const startSession = useStartSession();
 
@@ -261,7 +262,12 @@ function ProjectView() {
 								    its own column and the two row kinds did not agree. */}
 								<div className="flex items-center transition-colors hover:bg-secondary">
 									<span className={GUTTER} aria-hidden>
-										<StatusDot status={p.status} />
+										{/* A pending session has no index row yet; a routine's has no
+										    tab either, which is what the blue says. */}
+										<StatusDot
+											status={p.status}
+											background={marks[p.sessionId]?.background ?? true}
+										/>
 									</span>
 									<Link
 										to="/projects/$projectId/sessions/$sessionId"
@@ -328,10 +334,11 @@ interface SessionRowProps {
  */
 function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 	const { session, agents } = group;
-	// The open record, not `bySession`: the sidebar's list and this one show the
-	// same sessions and are read the same way, so a dot that meant different
-	// things in the two panes would be worse than either rule alone (F16).
-	const open = useOpenSessions();
+	// The marks, not the open record: a routine's session runs with no tab and
+	// would otherwise have no dot at all here — an agent working invisibly, which
+	// is the one thing the operating model rules out (F22). The sidebar's list is
+	// read the same way, so the two panes cannot disagree about a dot.
+	const open = useSessionMarks();
 	const clock24 = usePrefsStore((s) => s.clock24);
 	const live = open[session.id];
 	const hasAgents = agents.length > 0;
@@ -352,7 +359,7 @@ function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 					</IconButton>
 				) : (
 					<span className={GUTTER} aria-hidden>
-						{live && <StatusDot status={live.status} />}
+						{live && <StatusDot status={live.status} background={live.background} />}
 					</span>
 				)}
 				<Link
@@ -380,7 +387,7 @@ function SessionRow({ group, projectId, expanded, onToggle }: SessionRowProps) {
 					    So does the dot itself on the one row that cannot show it on
 					    the left: a session with sub-agents, whose gutter holds the
 					    disclosure chevron. */}
-					{hasAgents && live && <StatusDot status={live.status} />}
+					{hasAgents && live && <StatusDot status={live.status} background={live.background} />}
 					{session.routineId && (
 						<RoutineOrigin
 							name={session.routineName}

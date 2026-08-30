@@ -3956,8 +3956,19 @@ survives an exit and a quit, and still goes only when you close it.
 The rule this feature has to satisfy: **an agent is never running invisibly.**
 
 - **The sidebar lists routine sessions like any other**, and they feed the
-  project's aggregate status dot. The dot going green while you are elsewhere is
+  project's aggregate status dot. The dot appearing while you are elsewhere is
   the ambient signal that something started.
+- **That dot is blue while the session has no tab** (`status-background`, added
+  2026-08-30). It is `working` in a different colour rather than a fourth state:
+  where a session runs is orthogonal to what it is doing, and `waiting_input`
+  keeps its amber wherever it runs. Opening the session gives it a tab, and the
+  dot goes green with everything else.
+- **A live session with no tab used to have no dot anywhere.** Every list drew
+  from `useOpenSessions`, a projection of the tab strip, so a routine's session
+  was invisible in exactly the surfaces that exist to say what is running — the
+  failure `00-overview.md` § "The operating model" rules out. The lists read
+  `useSessionMarks` now: open sessions *and* live ones, with `background`
+  carrying the difference.
 - **A routine's session is named for its routine *and the time it started***
   until Claude writes a transcript to take a title from. A daily routine produces
   a row a day with the same name, and in the sidebar several can be live at once.

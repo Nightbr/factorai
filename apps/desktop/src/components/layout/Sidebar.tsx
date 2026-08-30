@@ -44,7 +44,7 @@ import {
 } from '@factorai/ui';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { useDragDwell } from '@hooks/useDragDwell';
-import { useOpenSessions } from '@hooks/useOpenSessions';
+import { useSessionMarks } from '@hooks/useSessionMarks';
 import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
 import { projectStatus } from '@lib/sessionGroups';
@@ -182,7 +182,11 @@ export function Sidebar() {
 	// outlive its process. A project holding open tabs with nothing running now
 	// shows grey — `STATUS_RANK` puts `stopped` last, so one waiting session
 	// still wins the row.
-	const open = useOpenSessions();
+	// **The marks, since F22**, so a project whose only live session is a
+	// routine's — tabless — still shows a dot. It was `useOpenSessions`, a
+	// projection of the tab strip, and a scheduled agent working in a project you
+	// had nothing open in coloured nothing at all.
+	const open = useSessionMarks();
 	const statusByProject = useMemo(() => {
 		const ids = new Set(Object.values(open).map((t) => t.projectId));
 		return new Map([...ids].map((id) => [id, projectStatus(open, id)]));

@@ -5,6 +5,7 @@ import {
 	openSessions,
 	pendingSessions,
 	projectStatus,
+	sessionMarks,
 	tabsInKnownProjects,
 } from './sessionGroups';
 
@@ -225,5 +226,34 @@ describe('tabsInKnownProjects', () => {
 		expect(tabsInKnownProjects(many, [{ id: 'p1' }, { id: 'p2' }]).map((t) => t.sessionId)).toEqual(
 			['c', 'a'],
 		);
+	});
+});
+
+describe('sessionMarks (F22)', () => {
+	it('marks a live session with no tab as background', () => {
+		// A routine's session: spawned, live, deliberately tabless. Under the old
+		// tab-strip projection it had no dot in any list at all.
+		const marks = sessionMarks([{ sessionId: 'open-one', projectId: 'p1' }], {
+			'open-one': { projectId: 'p1', status: 'working' },
+			'routine-one': { projectId: 'p1', status: 'working' },
+		});
+		expect(marks['open-one']).toEqual({ projectId: 'p1', status: 'working', background: false });
+		expect(marks['routine-one']).toEqual({
+			projectId: 'p1',
+			status: 'working',
+			background: true,
+		});
+	});
+
+	it('stops calling it background the moment it has a tab', () => {
+		const marks = sessionMarks([{ sessionId: 'routine-one', projectId: 'p1' }], {
+			'routine-one': { projectId: 'p1', status: 'working' },
+		});
+		expect(marks['routine-one'].background).toBe(false);
+	});
+
+	it('keeps a stopped tab, which has no live process at all', () => {
+		const marks = sessionMarks([{ sessionId: 'a', projectId: 'p1' }], {});
+		expect(marks.a).toEqual({ projectId: 'p1', status: 'stopped', background: false });
 	});
 });

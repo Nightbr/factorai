@@ -26,21 +26,30 @@ export function StatusDot({
 	status,
 	className,
 	pulse = false,
+	background = false,
 }: {
 	status: TerminalStatus;
 	className?: string;
 	pulse?: boolean;
+	/** The session is running with **no tab** — a routine's, until somebody
+	 *  opens it (F22).
+	 *
+	 *  A modifier on `working`, not a fourth status: where a session runs is
+	 *  orthogonal to what it is doing, and `waiting_input` keeps its amber
+	 *  wherever it runs, because "your move" is true either way. */
+	background?: boolean;
 }) {
+	const inBackground = background && status === 'working';
 	return (
 		<span
-			title={LABEL[status]}
+			title={inBackground ? 'Working in the background — no tab open' : LABEL[status]}
 			// `cn` (tailwind-merge), not string concatenation: a caller passing
 			// `size-1.5` has to actually beat the `size-2` below, and two classes of
 			// equal specificity are resolved by stylesheet order, not by which one
 			// the caller wrote last.
 			className={cn(
 				'inline-block size-2 shrink-0 rounded-full',
-				COLOR[status],
+				inBackground ? 'bg-status-background' : COLOR[status],
 				pulse && status === 'working' && 'animate-running-pulse',
 				className,
 			)}
