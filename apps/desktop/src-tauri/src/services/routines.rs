@@ -154,14 +154,32 @@ pub fn parse_cron(expr: &str) -> AppResult<Cron> {
 pub fn next_occurrence_ms(expr: &str, from_ms: i64) -> Option<i64> {
 	let cron = parse_cron(expr).ok()?;
 	let from = local(from_ms)?;
-	cron.find_next_occurrence(&from, false).ok().map(|dt| dt.timestamp_millis())
+	cron.find_next_occurrence(&from, false).ok().map(|dt| whole_second(dt.timestamp_millis()))
 }
 
 /// The most recent time this expression fired at or before `at_ms`.
 fn previous_occurrence_ms(expr: &str, at_ms: i64) -> Option<i64> {
 	let cron = parse_cron(expr).ok()?;
 	let at = local(at_ms)?;
-	cron.find_previous_occurrence(&at, true).ok().map(|dt| dt.timestamp_millis())
+	cron.find_previous_occurrence(&at, true).ok().map(|dt| whole_second(dt.timestamp_millis()))
+}
+
+/// An occurrence to the second, dropping whatever sub-second part came with it.
+///
+/// **A correctness fix, not tidiness** (2026-08-30, found in the wild: a routine
+/// started a session on every tick for a whole minute). `croner` answers
+/// `find_previous_occurrence` with the *query instant's* milliseconds attached —
+/// ask at `02:00:14.974` and the 02:00 occurrence comes back as `02:00:00.974`.
+/// `last_fire_at` stores that, the next tick asks at `02:00:44.976`, gets
+/// `02:00:00.976`, and finds it **greater than the marker** — so the same cron
+/// minute is due again, and again, until the minute is over.
+///
+/// Truncating here makes an occurrence a property of the schedule rather than of
+/// the moment somebody asked, which is what the marker comparison in
+/// [`due_occurrence`] assumes. `div_euclid` rather than `/`, so a pre-1970
+/// timestamp truncates downwards like every other one.
+fn whole_second(ms: i64) -> i64 {
+	ms.div_euclid(1000) * 1000
 }
 
 /// Epoch ms as **local** wall-clock time, which is what a cron expression means
@@ -756,6 +774,35 @@ mod tests {
 		r.catchup_hours = Some(12);
 		let now = at(2026, 8, 20, 7, 30);
 		assert_eq!(due_occurrence(&r, now, 6), Some(at(2026, 8, 20, 7, 0)));
+	}
+
+	/// **The duplicate-fire bug, in the wild on 2026-08-30**: a routine started a
+	/// session on every tick for a whole minute.
+	///
+	/// `croner` returns an occurrence carrying the *query instant's*
+	/// milliseconds, so a fire recorded at `02:00:14.974` was `02:00:00.974` and
+	/// the next tick's `02:00:00.976` was greater than it. Both halves are
+	/// pinned: an occurrence is a property of the schedule, and a routine that
+	/// has fired is not due again in the same minute.
+	#[test]
+	fn an_occurrence_does_not_carry_the_millisecond_it_was_asked_at() {
+		let exact = at(2026, 8, 30, 2, 0);
+		assert_eq!(previous_occurrence_ms("0 2 * * *", exact + 14_974), Some(exact));
+		assert_eq!(previous_occurrence_ms("0 2 * * *", exact + 44_976), Some(exact));
+		assert_eq!(next_occurrence_ms("0 2 * * *", exact + 14_974), Some(exact + 86_400_000));
+	}
+
+	#[test]
+	fn a_routine_that_just_fired_is_not_due_again_in_the_same_minute() {
+		let mut r = routine("0 2 * * *", at(2026, 8, 29, 0, 0));
+		let first_tick = at(2026, 8, 30, 2, 0) + 14_974;
+		let occurrence = due_occurrence(&r, first_tick, 6).expect("due on the first tick");
+		r.last_fire_at = Some(occurrence);
+
+		// Thirty seconds later, same minute, same schedule: nothing owed.
+		assert_eq!(due_occurrence(&r, at(2026, 8, 30, 2, 0) + 44_976, 6), None);
+		// And still nothing at the end of the minute.
+		assert_eq!(due_occurrence(&r, at(2026, 8, 30, 2, 0) + 59_999, 6), None);
 	}
 
 	#[test]

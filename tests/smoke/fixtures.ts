@@ -895,12 +895,6 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					routineId: null,
 					routineName: null,
 					routineStartedAt: null,
-					worktree: null,
-					lastCwd: null,
-					touchedPaths: [],
-					routineId: null,
-					routineName: null,
-					routineStartedAt: null,
 				},
 			],
 		},
@@ -1155,8 +1149,8 @@ export function fixtureTwoProjectGraphs(): TestFixture {
 		// it came from — the assertion that a restored selection is *this* history's
 		// and not the other one's.
 		gitCommits: {
-			[`aa00`.padEnd(40, '0')]: detail(`aa00`.padEnd(40, '0'), 'zulu', zulu.realPath),
-			[`bb00`.padEnd(40, '0')]: detail(`bb00`.padEnd(40, '0'), 'alpha', alpha.realPath),
+			['aa00'.padEnd(40, '0')]: detail('aa00'.padEnd(40, '0'), 'zulu', zulu.realPath),
+			['bb00'.padEnd(40, '0')]: detail('bb00'.padEnd(40, '0'), 'alpha', alpha.realPath),
 		},
 	};
 }
