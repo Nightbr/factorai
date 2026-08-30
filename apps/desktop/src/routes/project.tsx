@@ -28,16 +28,18 @@ import { rootRoute } from './__root';
  * line up in one column, and a gutter that appears only sometimes moves every
  * title beside it.
  *
- * **24px: the 8px dot with 8px of air on each side.** The width was narrowed
+ * **32px: the 8px dot with 12px of air on each side.** The width was narrowed
  * four times in one afternoon of user feedback — 72px in front of every title,
- * then 40, 32, 20, 16 — and widened once after that, because 16 measured as a
- * true 4px a side and still read as cramped between the card's border and the
- * title. The step that made it one column merged the dot's own slot into this
- * one — two reserved columns cost the list the width of both, and no row
+ * then 40, 32, 20, 16 — and then widened twice, to 24 and to 32, because the
+ * narrow ones read as cramped between the card's border and the title however
+ * the arithmetic came out. The number that mattered was never the total: it was
+ * how much air the mark has on each side, which is why this column centres its
+ * contents and nothing else on the row adds space beside it. The step that made
+ * it one column merged the dot's own slot into this one — two reserved columns cost the list the width of both, and no row
  * draws both marks: a session with sub-agents shows its chevron here, and if it
  * is also running its dot rides with the badges on the right.
  */
-const GUTTER = 'flex w-6 shrink-0 justify-center';
+const GUTTER = 'flex w-8 shrink-0 justify-center';
 
 /** The marker on a sub-agent row: an agent run by a session, readable but
  *  not resumable. Small and quiet — it disambiguates, it doesn't shout.

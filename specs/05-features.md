@@ -425,7 +425,7 @@ unbounded list in a narrow column.
 
 **Backend.** `list_sessions(project_id)`.
 
-**The status dot has its own 24px column on the project page, always reserved**
+**The status dot has its own 32px column on the project page, always reserved**
 (2026-08-29, user feedback, narrowed and then widened across several rounds —
 `DESIGN.md` § Status Dot has the metric and why). It used to sit inline before the title, so a
 running session's name started 16px right of an idle one's and the list read as
