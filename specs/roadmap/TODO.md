@@ -394,6 +394,13 @@ What a real pass covers:
   (`pr-2`) exist to dodge the native bar and could shrink or go.
 - **Overlay vs in-flow.** An overlay bar reclaims the gutter but sits on top of content, which is
   why the `+` button and the scrollbar collided in the first place. Decide once, apply once.
+- **The native bar paints over dropdown menus** (seen 2026-08-30, sidebar). Open a session's row
+  menu next to a scrolling sidebar and the scrollbar draws *on top of* the menu panel, striping it.
+  It is not a `z-index` we can outbid: the menu is already portalled to the body at the top of the
+  stacking order, and a platform-drawn scrollbar is painted by the engine outside the page's
+  stacking contexts. So it is a reason to stop being platform-drawn — a styled
+  `::-webkit-scrollbar` is a real element in the page and loses to the portal like anything else.
+  Whichever treatment this pass picks, it has to be checked with a menu open over it.
 - **`scrollbar-gutter: stable`** was rejected earlier for the release workflow's glibc reasons —
   no, for support reasons: it is recent in WebKit and this ships on WebKitGTK. Re-check before
   relying on it.
