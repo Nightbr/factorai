@@ -1042,10 +1042,19 @@ blocking the whole item on the hardest parser.
 
 ## 39. User documentation, hosted on GitHub Pages
 
-**User ask, 2026-08-24.** Everything written for a *user* today is `README.md` and the three
-screenshots in `docs/images/`. Everything else in the repository is written for whoever is
+**User ask, 2026-08-24, restated 2026-08-30**: *"we will write a full docs later for all factorai
+features"*. Everything written for a *user* today is `README.md` and the four screenshots in
+`docs/images/`. Everything else in the repository is written for whoever is
 building it: `specs/` is the design source of truth (§ 6), `docs/adr/` is the decision trail, and
 this file is sequencing. All three read as internal because they are.
+
+**The README is a pitch, not a manual, and it stays that way** — settled 2026-08-30 when the
+routines section arrived and its second half, which explained how to *configure* one, was cut the
+same day. A section there says what a surface is for and shows it; how to set it up belongs on the
+site, and every feature that ships between now and then adds to what the site owes rather than to
+the README. F22's own configuration — the preset picker and the custom cron, the next-runs echo,
+the catch-up window, the concurrency cap and what `Run now` answers — is the first entry on that
+list.
 
 **The rule that keeps this from rotting: the site does not fork the specs.** It is a different
 document for a different reader — how to install it, what the surfaces do, what to do when
@@ -1058,7 +1067,10 @@ What it holds, in the order a new user meets it:
 - **Install**, which is currently the most under-served thing: the AppImage, the unsigned `.dmg`
   and the Gatekeeper step it costs, and the Homebrew cask once item 36 lands.
 - **First run** — adding a project, what discovery does, why sessions appear on their own.
-- **The surfaces** — sessions and the terminal, Files, Changes, the graph, search, worktrees.
+- **The surfaces** — sessions and the terminal, Files, Changes, the graph, search, worktrees, and
+  **routines** (F22): the schedule presets and the custom cron, the next-runs echo, catch-up and
+  its window, the concurrency cap, what `Run now` answers when it declines, and the blue dot for a
+  session running with no tab.
 - **Settings**, and **keyboard shortcuts** once item 5 gives it a table worth publishing.
 - **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
   override, the AppImage's environment leaking into child processes, Linux specifics.

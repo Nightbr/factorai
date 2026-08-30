@@ -54,16 +54,8 @@ opening a tab**, so a project's scheduled work does not take the window away
 from what you are doing. Its dot is blue while it runs in the background, and
 opening it makes it an ordinary session with an ordinary tab.
 
-Pick the schedule from presets or write the cron yourself; either way the editor
-shows the next few runs in plain language, because a schedule that silently
-never fires is the one thing this feature cannot explain afterwards. Miss a run
-with the app closed and it is caught up at launch, inside a window you set —
-five missed hourly runs are one run, not five. A routine whose last session is
-still going skips rather than piling up, and a cap keeps ten projects coming due
-at `:00` from starting ten agents at once.
-
-Routines run while factorai is open. There is no daemon, and the app says so
-rather than implying otherwise.
+Routines run while factorai is open, and a run missed while it was closed is
+caught up at launch.
 
 ![A project's Routines tab: three routines with their schedules, next runs and enable switches](docs/images/factorai-routines.png)
 
