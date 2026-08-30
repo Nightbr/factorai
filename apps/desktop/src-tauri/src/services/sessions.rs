@@ -6,10 +6,11 @@
 //! should not hold, so it takes callbacks and these are what they close over.
 //! See its `session_cwd` and `session_worktree` fields.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use crate::agents::claude;
 use crate::db::Db;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// The directories a session's transcript records it having run in, **newest
 /// first** — its last `cwd` then its first. Usually the same path twice, hence
@@ -110,6 +111,134 @@ pub fn worktree(db: &Db, session_id: &str) -> Option<String> {
 	.flatten()
 }
 
+/// Delete a session: its transcript to the OS trash, its rows out of the index
+/// (F2, ADR-0027). Returns the **workspace** project the session belonged to,
+/// for the `sessions:changed` the caller emits — `None` when its store directory
+/// is linked to no project in the workspace, which is the same `project_id IS
+/// NULL` case search already filters on. There is no list to tell about then.
+///
+/// **The one write into an agent's store that is not fork.** ADR-0004 forbade
+/// moving or deleting a transcript to stop factorai corrupting a file Claude
+/// Code is reading; a delete the human asked for by name is not that failure
+/// mode, and ADR-0027 amends the clause for it — as a *move* to the trash,
+/// which is also the shape ADR-0004's own escape hatch describes.
+///
+/// **The trash refusing is an error, not a reason to unlink.** A store on a
+/// filesystem with no trash directory, or a `$HOME` on a different mount from
+/// `~/.claude`, both land here — and silently upgrading a recoverable delete to
+/// a permanent one is precisely the surprise the decision exists to avoid.
+///
+/// **Files first, rows second.** The other order would leave a session missing
+/// from every list while its transcript is still on disk, which the next scan
+/// would then re-index — the row coming *back* a few seconds after you deleted
+/// it. This order's failure is a row for a file that is gone, which the reap
+/// already handles.
+///
+/// The live-PTY guard is here rather than only in the renderer because it is a
+/// backend invariant: a killed process is the caller's job (ADR-0005 wants the
+/// tab standing if the kill fails), but a transcript trashed out from under a
+/// running `claude` is a corrupt session, which is the thing ADR-0004 protects.
+pub fn delete(
+	db: &Db,
+	claude_dir: &Path,
+	session_id: &str,
+	is_live: bool,
+) -> AppResult<Option<String>> {
+	let (key, project_id, subagent_of) = db.with(|conn| {
+		conn.query_row(
+			"SELECT d.key, d.project_id, s.subagent_of
+			 FROM sessions s
+			 JOIN discovered_projects d ON d.id = s.discovered_id
+			 WHERE s.id = ?1",
+			rusqlite::params![session_id],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, Option<String>>(1)?,
+					row.get::<_, Option<String>>(2)?,
+				))
+			},
+		)
+		// Only "no such row" becomes NotFound. A mapping that swallowed every
+		// error into it would report a locked or corrupt database as a session
+		// that does not exist, and send the reader looking in the wrong place.
+		.map_err(|e| match e {
+			rusqlite::Error::QueryReturnedNoRows => {
+				AppError::NotFound(format!("no indexed session {session_id}"))
+			}
+			other => AppError::from(other),
+		})
+	})?;
+
+	// A sub-agent's transcript lives inside its parent's directory and its parent's
+	// transcript still references it, so deleting one alone leaves a hole in a
+	// conversation you can still read. The parent is what you delete.
+	if subagent_of.is_some() {
+		return Err(AppError::InvalidInput(format!(
+			"{session_id} is a sub-agent transcript — delete the session that spawned it"
+		)));
+	}
+	if is_live {
+		return Err(AppError::InvalidInput(format!(
+			"session {session_id} is still running — stop it first"
+		)));
+	}
+
+	let transcript = claude::transcript_path_by_key(claude_dir, &key, session_id);
+	// The sub-agent directory, `<store dir>/<id>/`, taken whole — Claude Code
+	// nests `subagents/agent-*.jsonl` inside it. Absent for most sessions, since
+	// nothing spawned an agent, which is why it is a separate optional move
+	// rather than part of the one above. Built from the store key rather than by
+	// stripping the transcript's extension: a session id is not guaranteed to be
+	// free of dots, and `with_extension("")` on one that isn't takes a directory
+	// name that never existed.
+	let subagents = claude_dir.join("projects").join(&key).join(session_id);
+
+	// Collected first so both go in one call: `trash::delete_all` is atomic per
+	// item, but one call means one trash entry pair rather than two, and on macOS
+	// one trip through Finder's API.
+	let mut targets: Vec<PathBuf> = Vec::new();
+	if transcript.exists() {
+		targets.push(transcript);
+	}
+	if subagents.is_dir() {
+		targets.push(subagents);
+	}
+	// **Not an error when there is nothing to move.** A row whose transcript has
+	// already gone is exactly what the reap exists for, and the user's ask —
+	// "get this row out of my list" — is still answerable. Falling over here
+	// would leave the row permanently undeletable.
+	if !targets.is_empty() {
+		trash::delete_all(&targets).map_err(|e| {
+			AppError::Io(format!("could not move {session_id}'s transcript to the trash: {e}"))
+		})?;
+	}
+
+	drop_rows(db, session_id)?;
+	Ok(project_id)
+}
+
+/// Drop one session's rows across the four tables that hold them, in one
+/// transaction.
+///
+/// **The same four, in the same order, as `Indexer::reap_deleted`** — this is
+/// that removal arriving by a different route, and two lists of tables that must
+/// agree is one list waiting to drift. `session_worktrees` (F21) and
+/// `session_routines` (F22) are here rather than cascading because neither has a
+/// foreign key: both are written before the indexer has seen a transcript, so
+/// their lifetime cannot hang off `sessions` (migrations 0007, 0013).
+fn drop_rows(db: &Db, session_id: &str) -> AppResult<()> {
+	db.with_mut(|conn| {
+		let tx = conn.transaction()?;
+		tx.execute("DELETE FROM messages_fts WHERE session_id = ?1", [session_id])?;
+		tx.execute("DELETE FROM session_worktrees WHERE session_id = ?1", [session_id])?;
+		tx.execute("DELETE FROM session_routines WHERE session_id = ?1", [session_id])?;
+		tx.execute("DELETE FROM sessions WHERE id = ?1", [session_id])?;
+		tx.commit()?;
+		Ok(())
+	})
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -179,6 +308,133 @@ mod tests {
 		let (_tmp, db) = db();
 		insert_session(&db, "s1", None);
 		assert!(recorded_cwds(&db, "s1").is_empty());
+	}
+
+	/// The store key `insert_session` writes is the session id itself, so a
+	/// transcript for these rows lives at `<claude>/projects/<id>/<id>.jsonl`.
+	fn transcript_of(claude_dir: &Path, session_id: &str) -> PathBuf {
+		claude_dir.join("projects").join(session_id).join(format!("{session_id}.jsonl"))
+	}
+
+	#[test]
+	fn deleting_drops_the_session_and_every_side_row_it_had() {
+		let (tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+		set_worktree(&db, "s1", "/wt/feature-x", 10).unwrap();
+		db.with(|conn| {
+			// Three columns, not four: migration 0004 dropped `project_id` from the
+			// FTS table — a hit resolves its project through `sessions` now.
+			conn.execute(
+				"INSERT INTO messages_fts(session_id, role, body) VALUES ('s1', 'user', 'hello')",
+				[],
+			)?;
+			Ok(())
+		})
+		.unwrap();
+
+		// No transcript on disk, which is deliberate: it exercises every row this
+		// removes without putting anything in the developer's trash. The move
+		// itself is one call into `trash`; what is ours is which rows go.
+		delete(&db, tmp.path(), "s1", false).unwrap();
+
+		assert!(recorded_cwds(&db, "s1").is_empty(), "the sessions row should be gone");
+		assert_eq!(worktree(&db, "s1"), None, "the F21 checkout record should go with it");
+		let hits: i64 = db
+			.with(|conn| {
+				Ok(conn
+					.query_row(
+						"SELECT count(*) FROM messages_fts WHERE session_id = 's1'",
+						[],
+						|r| r.get(0),
+					)
+					.unwrap())
+			})
+			.unwrap();
+		assert_eq!(hits, 0, "search must not still find a deleted session");
+	}
+
+	#[test]
+	fn deleting_returns_the_project_whose_list_changed() {
+		let (tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+		db.with(|conn| {
+			conn.execute(
+				"INSERT INTO projects(id, real_path, display_name, opened_at)
+				 VALUES ('p1', '/repo', 'repo', 0)",
+				[],
+			)?;
+			conn.execute("UPDATE discovered_projects SET project_id = 'p1' WHERE key = 's1'", [])?;
+			Ok(())
+		})
+		.unwrap();
+
+		assert_eq!(delete(&db, tmp.path(), "s1", false).unwrap().as_deref(), Some("p1"));
+	}
+
+	#[test]
+	fn a_session_in_no_workspace_project_has_no_list_to_tell() {
+		let (tmp, db) = db();
+		// `insert_session` leaves the discovery unlinked, which is the ordinary
+		// state of a store directory for a folder nobody has added. Nothing is
+		// listing it, so there is no `sessions:changed` to emit — and that is a
+		// `None`, not a failure to delete.
+		insert_session(&db, "s1", Some("/repo"));
+		assert_eq!(delete(&db, tmp.path(), "s1", false).unwrap(), None);
+	}
+
+	#[test]
+	fn a_row_whose_transcript_is_already_gone_still_deletes() {
+		let (tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+		// The reap's own case, arriving from the menu instead. Falling over here
+		// would leave the row permanently undeletable — the user's ask is "get this
+		// out of my list", and the list is the part we can still answer for.
+		assert!(delete(&db, tmp.path(), "s1", false).is_ok());
+		assert!(!transcript_of(tmp.path(), "s1").exists());
+	}
+
+	#[test]
+	fn a_running_session_is_refused_rather_than_trashed_underneath() {
+		let (tmp, db) = db();
+		insert_session(&db, "s1", Some("/repo"));
+
+		let err = delete(&db, tmp.path(), "s1", true).unwrap_err();
+		assert!(matches!(err, AppError::InvalidInput(_)), "got {err:?}");
+		// And nothing happened: a refused delete that took the row anyway would be
+		// the invisible-agent state ADR-0005 forbids, wearing a different hat.
+		assert_eq!(recorded_cwds(&db, "s1"), vec![PathBuf::from("/repo")]);
+	}
+
+	#[test]
+	fn a_sub_agent_is_refused_because_its_file_belongs_to_its_parent() {
+		let (tmp, db) = db();
+		insert_session(&db, "parent", Some("/repo"));
+		db.with(|conn| {
+			let discovered: i64 = conn
+				.query_row("SELECT id FROM discovered_projects WHERE key = 'parent'", [], |r| {
+					r.get(0)
+				})
+				.unwrap();
+			conn.execute(
+				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at,
+				                      turn_count, file_mtime, file_size, subagent_of)
+				 VALUES ('agent-1', ?1, '', 0, 0, 0, 0, 0, 'parent')",
+				rusqlite::params![discovered],
+			)
+			.unwrap();
+			Ok(())
+		})
+		.unwrap();
+
+		let err = delete(&db, tmp.path(), "agent-1", false).unwrap_err();
+		assert!(matches!(err, AppError::InvalidInput(_)), "got {err:?}");
+	}
+
+	#[test]
+	fn a_session_the_index_has_never_seen_is_not_found() {
+		let (tmp, db) = db();
+		let err = delete(&db, tmp.path(), "nope", false).unwrap_err();
+		assert!(matches!(err, AppError::NotFound(_)), "got {err:?}");
 	}
 
 	#[test]

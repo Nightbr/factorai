@@ -483,6 +483,63 @@ rows live.
 **Edge cases.**
 - Session file is huge (>100MB) → still index, just lazily.
 
+### Deleting a session
+
+**Right-click a session row → `Delete session` → confirm.** The row is in the
+sidebar's inline list under an expanded project — the surface you are already on
+when a stale session is in your way. The project page's rows do not carry the
+menu yet.
+
+**What it does** (ADR-0027): moves the transcript
+`<store dir>/<session-id>.jsonl` to the operating system's trash, along with the
+`<session-id>/` directory holding its sub-agent transcripts, and drops the
+session's index rows — `sessions`, `messages_fts`, `session_worktrees`,
+`session_routines` — in one transaction. `sessions:changed` follows, so the
+project page and the sidebar agree without waiting for a poll.
+
+**The trash, not `unlink`.** This is the only action in the app that removes a
+user's own work, so it is recoverable by the means they already know, and the
+dialog says so rather than warning that nothing can be undone. Restoring the
+file from the trash restores the session: the next scan re-indexes it and the
+row comes back with its title.
+
+**Backend.** `delete_session(session_id)`. It refuses — `InvalidInput` — while
+the session has a live PTY. That is not the path the UI takes: the renderer kills
+first, exactly as `useRemoveProject` does, because a kill that fails must leave
+the tab standing rather than orphan a running `claude` (ADR-0005).
+
+**Confirming is not optional, and the dialog changes with the session.**
+
+- Idle: names the session and says the transcript goes to the trash.
+- Running: says the session will be **stopped** first, and the button reads
+  `Stop & delete`. Losing a running agent is a different loss from losing a
+  finished transcript, and the button that does it says so.
+- With sub-agents: names how many go with it. They are not reachable once their
+  parent is gone, so a count is the honest thing to show before the click rather
+  than a surprise after it.
+
+**The menu holds this one item.** A session row's other verbs are already the
+row itself — clicking it opens the session — so a menu padded out to look like
+the project row's would be three decoys around the one destructive thing. The
+item is `destructive`, which is the same marking `Remove Project` carries and
+the only signal a one-item menu has room for.
+
+**Edge cases.**
+- Deleting the session you are looking at navigates to the project page. Same
+  rule `useRemoveProject` applies, for the same reason: a route pointing at a
+  transcript that is gone renders an error where a list should be.
+- Deleting a session with an open tab closes the tab. A tab is only removed by
+  closing, and deleting the session *is* closing it.
+- A **sub-agent** row has no `Delete session`. It is not a session you can go
+  back into, its file belongs to its parent's directory, and deleting one alone
+  would leave a hole its parent's transcript still references. Delete the parent.
+- The trash can refuse — a store on a filesystem without one, a `$HOME` on
+  another mount. The error is shown and **nothing is deleted**; there is no
+  `unlink` fallback, since quietly turning a recoverable delete into a permanent
+  one is the surprise the decision exists to avoid.
+- A session with no transcript yet (spawned, never messaged — ADR-0008) has no
+  row to right-click. Closing its tab is what disposes of it.
+
 ---
 
 ## F3 — Session view (terminal-first)

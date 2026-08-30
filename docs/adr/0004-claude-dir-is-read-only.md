@@ -3,7 +3,11 @@
 **Status.** Accepted (M0, 2026-05-28). Generalised to every agent store by
 [ADR-0011](./0011-a-project-is-a-folder-in-the-workspace.md) — the stance below
 is about *an agent's* transcript store, and Claude's is simply the only one we
-read today.
+read today. **Amended** by
+[ADR-0027](./0027-deleting-a-session-trashes-its-transcript.md) in one clause —
+"move or delete session files" — which now has a second exception beside fork: a
+delete the human asked for by name, which *moves* the transcript to the OS
+trash. Only this line is added here; the record itself is not edited (§ 5).
 
 ## Context
 

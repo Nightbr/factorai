@@ -3,6 +3,37 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Delete a session from the sidebar (spec `05-features.md` F2,
+  [ADR-0027](../../docs/adr/0027-deleting-a-session-trashes-its-transcript.md))** — 2026-08-30,
+  asked for the same day. Right-click a session row under an expanded project, `Delete session`,
+  confirm.
+
+  **The design question was not the menu, it was what "delete" means.** ADR-0004 forbids moving or
+  deleting a transcript, and its own Consequences section names the cost and the escape hatch: *do
+  it explicitly behind a confirm dialog and write to new file paths*. So the transcript goes to the
+  **OS trash** — `trash` 5.x, freedesktop on Linux and Finder's Trash on macOS — and the dialog says
+  where it went rather than warning that nothing can be undone. A `unlink` would have been simpler
+  and one misclick from destroying a day's reasoning; hiding the row in the index would have left
+  `claude --resume` still listing the thing you asked to delete. The `<id>/` directory of sub-agent
+  transcripts goes with the parent, and the dialog counts them first.
+
+  **The kill is the renderer's and the guard is Rust's**, which is the division `useRemoveProject`
+  already draws: a kill that fails has to leave the tab standing, because the tab is the only place
+  you can still see and stop the process (ADR-0005). `delete_session` refuses while a PTY is live,
+  which is what stops a transcript being moved out from under a `claude` still writing to it.
+
+  **`terminal_kill` is not synchronous, and that guard is.** The kill signals through the killer
+  handle and returns; the entry leaves `TerminalManager`'s map on the *waiter* thread once
+  `child.wait()` comes back — so a `terminal_kill` → `delete_session` pair arrives microseconds
+  apart with the session still in the live set, and the delete of a session you just stopped would
+  be refused every time. Found by reading `kill` rather than by shipping it. The wait lives in
+  `useDeleteSession`, waiting on `terminal:exit` with a 3s grace, because **every Rust command in
+  this app is synchronous and therefore on the main thread** — three seconds of sleep there is three
+  seconds of frozen window.
+
+  The row's menu holds one item. A session row's other verbs are the row itself, so a menu padded
+  out to match the project row's would be three decoys around the only thing here with no undo.
+
 - **Routines — a project's cron-scheduled agent sessions, slice 1 (TODO item 42, spec
   `05-features.md` F22, [ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md))** —
   2026-08-29, asked for the same day and designed in a clarify-needs interview before any code.

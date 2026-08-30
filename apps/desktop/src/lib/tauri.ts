@@ -97,6 +97,14 @@ export const cmd = {
 		invoke<SessionPage>('get_session_tail', { sessionId, limit }),
 	searchSessions: (query: string, projectId?: string, limit?: number) =>
 		invoke<SearchHit[]>('search_sessions', { query, projectId, limit }),
+	/** Delete a session (F2, ADR-0027): its transcript to the OS trash, its rows
+	 *  out of the index, then `sessions:changed`. The only write into the agent's
+	 *  store that is not fork.
+	 *
+	 *  **Refuses while the session is running.** Stopping it is the caller's job
+	 *  — `useDeleteSession` does it, for the reason `useRemoveProject` kills in
+	 *  the renderer: a kill that fails has to leave the tab standing. */
+	deleteSession: (sessionId: string) => invoke<void>('delete_session', { sessionId }),
 
 	/** List one directory. `root` is the project root — only used to flag
 	 *  symlinks that point out of the project. */
@@ -715,6 +723,24 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				limit: 0,
 				total: 0,
 			}) as unknown as T;
+		}
+		case 'delete_session': {
+			const sessionId = String(args?.sessionId ?? '');
+			if (fx) {
+				// The rows go, the same way the real command's transaction takes them
+				// — including the sub-agents nested under it, which go with the
+				// directory their parent's transcript lives in.
+				const byProject = fx.sessionsByProject ?? {};
+				for (const [projectId, list] of Object.entries(byProject)) {
+					byProject[projectId] = list.filter(
+						(s) => s.id !== sessionId && s.subagentOf !== sessionId,
+					);
+				}
+				// And so does the search index, or a test would "prove" a deleted
+				// session is still findable.
+				fx.searchHits = (fx.searchHits ?? []).filter((h) => h.sessionId !== sessionId);
+			}
+			return undefined as unknown as T;
 		}
 		case 'search_sessions': {
 			const query = String(args?.query ?? '').trim();

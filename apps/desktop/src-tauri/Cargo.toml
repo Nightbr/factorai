@@ -59,6 +59,14 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # that also owns execution has nowhere to put the cap, the queue, the overlap
 # skip or coalesced catch-up.
 croner = "3"
+# Deleting a session moves its transcript to the OS trash rather than unlinking
+# it (F2, ADR-0027) — `~/.local/share/Trash` per the freedesktop spec on Linux,
+# Finder's Trash on macOS, both without a system dependency we do not already
+# link. Default features off on purpose: they are the Windows `coinit_*` pair,
+# which we do not build for, and `chrono`, which this path never asks for — the
+# crate uses it only to answer *what is in* the trash, and we only ever put
+# things there.
+trash = { version = "5.2.6", default-features = false }
 
 [dev-dependencies]
 regex = "1.13.1"

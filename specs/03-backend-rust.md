@@ -13,7 +13,8 @@ commands/
                       #   list_import_candidates, resolve_project_path
   sidebar.rs          # list_sidebar, reorder_sidebar,
                       #   create_group, rename_group, remove_group
-  sessions.rs         # list_sessions, get_session_tail, search_sessions
+  sessions.rs         # list_sessions, get_session_tail, search_sessions,
+                      #   delete_session
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
@@ -139,6 +140,17 @@ clear_session_worktree(session_id: String) -> ()
 // and this is the half that does not trust it. A path that is not one of them,
 // or whose directory is gone, is InvalidInput.
 set_session_worktree(session_id: String, project_path: String, path: String) -> ()
+// The one write into the agent's store that is not fork (ADR-0027, F2): moves
+// `<store dir>/<id>.jsonl` and the `<id>/` sub-agent directory to the OS trash,
+// then drops the session's rows — sessions, messages_fts, session_worktrees,
+// session_routines — in one transaction and emits `sessions:changed`. The same
+// four tables and the same order Indexer::reap_deleted uses, because it is the
+// same removal arriving by a different route.
+// **InvalidInput while the session has a live PTY**, and InvalidInput for a
+// sub-agent id: one belongs to its parent's directory, and its parent's
+// transcript still references it. A trash that refuses (a store on a filesystem
+// without one) is an error and deletes nothing — there is no unlink fallback.
+delete_session(session_id: String) -> ()
 // An offset-paged `get_session` sat here until 2026-08-16. It outlived the
 // JSONL viewer it was written for and was never called again — deleted rather
 // than kept "available", see 05-features.md F3.

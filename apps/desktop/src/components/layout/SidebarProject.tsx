@@ -27,12 +27,14 @@ import {
 	DialogTitle,
 	IconButton,
 } from '@factorai/ui';
+import { useDeleteSession } from '@hooks/useDeleteSession';
 import { useSessionMarks } from '@hooks/useSessionMarks';
 import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
 import { formatStamp, routineSessionLabel } from '@lib/cron';
-import { pendingSessions } from '@lib/sessionGroups';
+import { formatError } from '@lib/errors';
+import { type SessionMark, pendingSessions } from '@lib/sessionGroups';
 import { cmd, openExternally } from '@lib/tauri';
 import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
@@ -83,6 +85,22 @@ export function orderSessions(
 			return b.updatedAt - a.updatedAt;
 		})
 		.slice(0, limit);
+}
+
+/**
+ * Sub-agents per parent session id.
+ *
+ * Pure and exported for the reason `orderSessions` is: the delete dialog names
+ * this number before you commit to it, and a count that is wrong is worse than
+ * no count — it is a promise about what is being destroyed.
+ */
+export function countSubagents(sessions: SessionSummary[]): Record<string, number> {
+	const counts: Record<string, number> = {};
+	for (const session of sessions) {
+		if (session.subagentOf === null) continue;
+		counts[session.subagentOf] = (counts[session.subagentOf] ?? 0) + 1;
+	}
+	return counts;
 }
 
 interface SidebarProjectProps {
@@ -560,6 +578,11 @@ function SessionList({ project }: { project: Project }) {
 		() => pendingSessions(bySession, project.id, sessionsQ.data),
 		[bySession, project.id, sessionsQ.data],
 	);
+	// How many sub-agents each listed session spawned, for its delete dialog.
+	// From the unfiltered response, because `orderSessions` drops sub-agent rows
+	// — they are not sessions you can go back into — and the count is exactly
+	// what is about to go with the parent.
+	const subagentCounts = useMemo(() => countSubagents(sessionsQ.data ?? []), [sessionsQ.data]);
 
 	if (sessionsQ.isPending) return <Row muted>Loading…</Row>;
 	if (sessions.length === 0 && pending.length === 0) return <Row muted>No sessions yet</Row>;
@@ -604,57 +627,14 @@ function SessionList({ project }: { project: Project }) {
 				</li>
 			))}
 			{sessions.map((session) => (
-				<li key={session.id}>
-					<Link
-						to="/projects/$projectId/sessions/$sessionId"
-						params={{ projectId: project.id, sessionId: session.id }}
-						// The stamp is in the row too, but a long title truncates it
-						// away — so the tooltip carries it as well (2026-08-29, user
-						// report). Same reason the origin icon's own tooltip does.
-						title={
-							session.routineStartedAt !== null
-								? `${session.title || session.id} · ran ${formatStamp(
-										new Date(session.routineStartedAt),
-										clock24,
-									)}`
-								: session.title || session.id
-						}
-						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
-						activeProps={{ className: 'bg-secondary text-foreground' }}
-					>
-						{session.routineId && (
-							<RoutineOrigin
-								name={session.routineName}
-								startedAt={session.routineStartedAt}
-								clock24={clock24}
-							/>
-						)}
-						<span className="min-w-0 flex-1 truncate">
-							{session.title.trim() || session.id.slice(0, 8)}
-							{/* The moment it ran, kept after Claude has titled the
-							    session: it is the only thing telling two runs of a daily
-							    routine apart, and it used to vanish on the agent's first
-							    answer (2026-08-29, user report). */}
-							{session.routineStartedAt !== null && (
-								<span className="text-muted-foreground/60">
-									{' · '}
-									{formatStamp(new Date(session.routineStartedAt), clock24)}
-								</span>
-							)}
-						</span>
-						{open[session.id] && (
-							// Smaller than the standalone dot: down a column of nested rows the
-							// full-size dot is the loudest thing on screen. It stayed at 6px when
-							// the rows went to 14px — it marks which session is open, and a mark
-							// that grows with its label starts competing with it.
-							<StatusDot
-								status={open[session.id].status}
-								background={open[session.id].background}
-								className="size-1.5"
-							/>
-						)}
-					</Link>
-				</li>
+				<SessionRow
+					key={session.id}
+					session={session}
+					projectId={project.id}
+					mark={open[session.id]}
+					subagentCount={subagentCounts[session.id] ?? 0}
+					clock24={clock24}
+				/>
 			))}
 			{hidden > 0 && (
 				// Not a scroll-forever list: the rest live on the project page.
@@ -669,6 +649,188 @@ function SessionList({ project }: { project: Project }) {
 				</li>
 			)}
 		</ul>
+	);
+}
+
+interface SessionRowProps {
+	session: SessionSummary;
+	projectId: string;
+	/** This session's entry in the marks record, when it has one — open, or
+	 *  running with no tab (F16, F22). Undefined for every other row. */
+	mark?: SessionMark;
+	/** Sub-agents that go with it, named in the confirm dialog. */
+	subagentCount: number;
+	clock24: boolean;
+}
+
+/**
+ * One indexed session in the sidebar's inline list, with its delete menu (F2).
+ *
+ * Its own component because the menu brings state — a dialog, an in-flight
+ * request, an error to show — and `SessionList` renders three kinds of row.
+ * Holding ten rows' worth of that in the list would mean keying every piece of
+ * it by session id.
+ *
+ * **The pending rows above it deliberately do not have this menu.** A session
+ * that has been spawned but never messaged has no transcript (ADR-0008) and so
+ * no index row; there is nothing to delete, and closing its tab is what disposes
+ * of it.
+ */
+function SessionRow({ session, projectId, mark, subagentCount, clock24 }: SessionRowProps) {
+	const deleteSession = useDeleteSession();
+	const [confirming, setConfirming] = useState(false);
+	// In flight: the button says so and neither button can be pressed again. A
+	// delete stops a PTY and then waits for it to actually exit, which is a
+	// second or two on a busy agent — long enough for a second click.
+	const [deleting, setDeleting] = useState(false);
+	// **Shown in the dialog, which stays open.** The trash can legitimately
+	// refuse — a store on a filesystem that has none — and the one thing the user
+	// must not be left believing is that a delete which failed succeeded. A
+	// closed dialog and an unchanged list says exactly that.
+	const [error, setError] = useState<string | null>(null);
+
+	const title = session.title.trim() || session.id.slice(0, 8);
+	const running = mark !== undefined && mark.status !== 'stopped';
+
+	async function confirmDelete() {
+		setDeleting(true);
+		setError(null);
+		try {
+			await deleteSession(session.id, projectId);
+			setConfirming(false);
+		} catch (e) {
+			setError(formatError(e));
+		} finally {
+			setDeleting(false);
+		}
+	}
+
+	return (
+		<li>
+			{/* One item, and it is the destructive one. A session row's other verbs
+			    are the row itself — clicking it opens the session — so a menu padded
+			    out to match the project row's would be three decoys around the only
+			    thing here that cannot be undone from inside the app. */}
+			<ContextMenu>
+				<ContextMenuTrigger asChild>
+					<Link
+						to="/projects/$projectId/sessions/$sessionId"
+						params={{ projectId, sessionId: session.id }}
+						// The stamp is in the row too, but a long title truncates it
+						// away — so the tooltip carries it as well (2026-08-29, user
+						// report). Same reason the origin icon's own tooltip does.
+						title={
+							session.routineStartedAt !== null
+								? `${title} · ran ${formatStamp(new Date(session.routineStartedAt), clock24)}`
+								: title
+						}
+						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						activeProps={{ className: 'bg-secondary text-foreground' }}
+					>
+						{session.routineId && (
+							<RoutineOrigin
+								name={session.routineName}
+								startedAt={session.routineStartedAt}
+								clock24={clock24}
+							/>
+						)}
+						<span className="min-w-0 flex-1 truncate">
+							{title}
+							{/* The moment it ran, kept after Claude has titled the
+							    session: it is the only thing telling two runs of a daily
+							    routine apart, and it used to vanish on the agent's first
+							    answer (2026-08-29, user report). */}
+							{session.routineStartedAt !== null && (
+								<span className="text-muted-foreground/60">
+									{' · '}
+									{formatStamp(new Date(session.routineStartedAt), clock24)}
+								</span>
+							)}
+						</span>
+						{mark && (
+							// Smaller than the standalone dot: down a column of nested rows the
+							// full-size dot is the loudest thing on screen. It stayed at 6px when
+							// the rows went to 14px — it marks which session is open, and a mark
+							// that grows with its label starts competing with it.
+							<StatusDot status={mark.status} background={mark.background} className="size-1.5" />
+						)}
+					</Link>
+				</ContextMenuTrigger>
+				{/* No `w-56` here, unlike the project row's. That width exists to stop
+				    a menu of eight items of different lengths ragging; a single short
+				    item in a 224px box just reads as a mis-sized menu. */}
+				<ContextMenuContent>
+					<ContextMenuItem
+						variant="destructive"
+						data-testid={`delete-session-${session.id}`}
+						onSelect={() => {
+							setError(null);
+							setConfirming(true);
+						}}
+					>
+						<Trash2 />
+						Delete session
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
+
+			{/* Always asks. This is the only action in the app that removes the
+			    user's own work, and the row it starts from is one pixel of travel
+			    from the row that merely opens the session. */}
+			<Dialog
+				open={confirming}
+				onOpenChange={(next) => {
+					// Not dismissible mid-flight: the PTY is being stopped and the
+					// transcript moved, and a dialog that vanishes halfway leaves you
+					// guessing which half happened.
+					if (deleting) return;
+					setConfirming(next);
+				}}
+			>
+				<DialogContent data-testid="confirm-delete-session">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							<AlertTriangle className="size-5 text-destructive" />
+							Delete {title}?
+						</DialogTitle>
+						<DialogDescription>
+							{running
+								? 'This session is running. It will be stopped first, and its transcript moved to the trash — '
+								: 'Its transcript moves to the trash — '}
+							{/* Where it went, not "this cannot be undone": the sentence is
+							    true, and a true sentence that names the way back is less
+							    frightening than a warning that overstates the loss. */}
+							you can restore it from there, and factorai will list the session again when you do.
+							{subagentCount > 0 &&
+								` ${subagentCount} sub-agent transcript${subagentCount === 1 ? '' : 's'} go with it.`}
+						</DialogDescription>
+					</DialogHeader>
+					{error && (
+						// The dialog stays open behind this. Nothing was deleted, and the
+						// row is still in the list to try again from.
+						<p
+							data-testid="delete-session-error"
+							className="rounded-sm bg-destructive/10 px-3 py-2 text-destructive text-sm"
+						>
+							{error}
+						</p>
+					)}
+					<DialogFooter>
+						<Button variant="outline" disabled={deleting} onClick={() => setConfirming(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							disabled={deleting}
+							data-testid="confirm-delete-session-yes"
+							onClick={() => void confirmDelete()}
+						>
+							{deleting ? 'Deleting…' : running ? 'Stop & delete' : 'Delete'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</li>
 	);
 }
 

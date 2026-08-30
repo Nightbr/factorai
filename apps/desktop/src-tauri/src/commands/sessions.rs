@@ -1,5 +1,5 @@
 use rusqlite::params;
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::agents::claude;
 use crate::error::{AppError, AppResult};
@@ -243,6 +243,51 @@ pub fn set_session_worktree(
 		&wanted.to_string_lossy(),
 		crate::epoch_ms(),
 	)
+}
+
+/// Delete a session (F2, ADR-0027): its transcript to the OS trash, its rows out
+/// of the index, then `sessions:changed` for the project it belonged to.
+///
+/// **Not a kill.** The renderer stops a running session first and this refuses
+/// while one is running, which is the division `useRemoveProject` already draws:
+/// a kill that fails has to leave the tab standing so you can see and stop the
+/// process yourself, and a backend that killed silently would take that away
+/// (ADR-0005). What the guard here protects is the other half — a transcript
+/// moved out from under a `claude` that is still writing to it is the corruption
+/// ADR-0004 exists to prevent.
+///
+/// **The guard is a plain check, and the caller waits.** `TerminalManager::kill`
+/// signals and returns; the entry leaves the map on the *waiter* thread once
+/// `child.wait()` comes back, so a `terminal_kill` → `delete_session` pair
+/// arrives here microseconds apart with the session still live. `useDeleteSession`
+/// waits for `terminal:exit` before calling, which is where a wait belongs:
+/// every command in this crate is synchronous and therefore on the main thread,
+/// and three seconds of sleep here would be three seconds of frozen window.
+///
+/// The event rather than a return value the caller re-broadcasts: every other
+/// list on screen is a `list_sessions` too, and the one you clicked in is not
+/// the only one that is now wrong.
+#[tauri::command]
+pub fn delete_session(
+	app: tauri::AppHandle,
+	state: State<'_, AppState>,
+	session_id: String,
+) -> AppResult<()> {
+	let is_live = state.terminals.live_session_ids().contains(&session_id);
+	let project_id =
+		crate::services::sessions::delete(&state.db, &state.claude_dir, &session_id, is_live)?;
+
+	// Same shape the indexer emits, so `useSessionsSync` needs nothing new: the
+	// project whose list changed, and the ids that changed in it. `None` means
+	// the session's store directory belongs to no project in the workspace —
+	// nothing is listing it, so there is nothing to tell.
+	if let Some(project_id) = project_id {
+		let _ = app.emit(
+			"sessions:changed",
+			crate::models::SessionsChanged { project_id, session_ids: vec![session_id] },
+		);
+	}
+	Ok(())
 }
 
 /// Where a session's transcript lives, addressed by the store directory we

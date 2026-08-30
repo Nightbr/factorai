@@ -1,4 +1,8 @@
-import { SIDEBAR_SESSION_LIMIT, orderSessions } from '@components/layout/SidebarProject';
+import {
+	SIDEBAR_SESSION_LIMIT,
+	countSubagents,
+	orderSessions,
+} from '@components/layout/SidebarProject';
 import type { SessionSummary } from '@factorai/types';
 import type { LiveTerminal } from '@store/terminalStore';
 import { describe, expect, it } from 'vitest';
@@ -116,5 +120,34 @@ describe('orderSessions', () => {
 
 		expect(ordered).toHaveLength(9);
 		expect(ordered.every((s) => s.subagentOf === null)).toBe(true);
+	});
+});
+
+describe('countSubagents', () => {
+	it("counts each parent's agents and leaves top-level sessions out", () => {
+		const counts = countSubagents([
+			session('parent', 300),
+			session('agent-1', 250, 'parent'),
+			session('agent-2', 240, 'parent'),
+			session('lonely', 200),
+		]);
+
+		expect(counts).toEqual({ parent: 2 });
+	});
+
+	it('reports nothing for a list with no sub-agents', () => {
+		// The ordinary case, and the one the dialog must not put a sentence in
+		// for: `?? 0` at the call site plus this is what keeps "0 sub-agent
+		// transcripts go with it" off the screen.
+		expect(countSubagents([session('a', 100), session('b', 200)])).toEqual({});
+	});
+
+	it('counts an orphan against the parent it names', () => {
+		// The parent's transcript is gone but the agent row survives with its
+		// marking (F2). Deleting the parent is not on offer — it is not in the
+		// list — and nothing here should pretend otherwise by dropping the count.
+		expect(countSubagents([session('agent-1', 100, 'deleted-parent')])).toEqual({
+			'deleted-parent': 1,
+		});
 	});
 });

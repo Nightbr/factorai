@@ -238,6 +238,7 @@ pub fn run() {
 			commands::sessions::list_sessions,
 			commands::sessions::get_session_tail,
 			commands::sessions::search_sessions,
+			commands::sessions::delete_session,
 			commands::files::list_dir,
 			commands::files::read_file,
 			commands::files::read_image,
