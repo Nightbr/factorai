@@ -1203,3 +1203,53 @@ Sequencing note: the mock-bridge fixture and the pointer choreography would also
 give the smoke suite a way to demonstrate the drag at human speed for debugging,
 which is the second reason to build it once rather than hand-roll a capture.
 
+
+## 43. A simpler way to hand a file to the agent — a drop target and a visible control
+
+**User feedback, 2026-08-31.** The capability exists and the *gesture* is the problem: today the
+only ways to put a file in front of the agent are a right-click on a tree row
+(`FileRowMenu.tsx`, "Add to agent context") and the viewer's selection mention
+(`FileView.tsx`), both landing on `cmd.ideMention` / the F20 bridge. Neither is visible until you
+already know it is there, and neither accepts a file from outside the project tree. Asked for as
+"drag-and-drop, or an Add file button somewhere".
+
+- [ ] **A visible control.** F12 refuses hover actions on a tree row at 288px and that stays true,
+      so this is a control on the session surface rather than on the row — near the terminal, where
+      the thing you are adding context *to* is. It opens the tree's own selection, or a native file
+      dialog for a path outside the project, and calls the same `ideMention`.
+- [ ] **Drag a tree row onto the terminal.** In-app, so dnd-kit (ADR-0016), the same as
+      `SessionTabs` — not HTML5 DnD, which § 4 rules out. Multi-select already exists
+      (`panelStore.selectedPaths`) and the menu already acts on it; the drag should too.
+- [ ] **Drop a file from outside the app.** This is *not* the banned HTML5 path — it is Tauri's own
+      window-level drag-drop event, which is the thing that swallows HTML5 DnD in the first place.
+      Verify it fires on both platforms before designing around it, and decide what a path outside
+      the project root means: `ideMention` is scoped (see `05-features.md` § F20, "the human's own
+      mention path shares the scope"), so an out-of-project drop either widens that scope or is
+      refused with a reason.
+- [ ] A keyboard path beside the drag, per § 4 — the visible control above is most of it, but the
+      tree needs a key that adds the current selection without the mouse.
+
+**Open.** Whether a folder drop means the folder or its files, and what feedback the terminal gives
+that a mention landed — today the only acknowledgement is the row's transient mark, which is on a
+surface you may have dragged away from.
+
+## 44. A default model, set once in Settings
+
+**User feedback, 2026-08-31.** Every session spawns whatever the CLI defaults to; choosing a model
+means typing `/model` in each one. Wanted as a preference.
+
+- [ ] `SettingKey::ClaudeModel` (`models/`, `services/settings.rs`) — the SQLite `settings` table,
+      not `prefsStore`, because **Rust** reads it at spawn (ADR-0013 decides this).
+- [ ] Pass it as `--model` where the argv is built in `services/terminal.rs` (beside `--resume` /
+      `--session-id` / `--mcp-config`). Empty means unset, and unset must pass no flag at all —
+      the CLI's own default is a real answer and overriding it with a stale pin is worse than
+      nothing.
+- [ ] A row in the `claude` section of `SettingsModal.tsx`, beside the binary path — same section,
+      because both are "how we launch it". A free text field, not a hardcoded list: model ids
+      outlive our releases, and a picker that does not know this month's names is a wrong picker.
+- [ ] A `--resume`d session keeps the model its transcript already has; check what the CLI does
+      when `--model` and `--resume` disagree before assuming either.
+
+**Open.** Whether this belongs per-project as well as globally — a project pinned to a cheap model
+for routine work is the obvious second ask, and item 42's routines are the case where it matters
+most.
