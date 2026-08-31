@@ -20,6 +20,7 @@ import { Button, IconButton, Input } from '@factorai/ui';
 import { formatBytes } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
+import { REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { useQuery } from '@tanstack/react-query';
 import { Lock, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -58,8 +59,9 @@ export function PdfView({ path }: { path: string }) {
 	const pdfQ = useQuery({
 		queryKey: queryKeys.pdf(path),
 		queryFn: () => cmd.readPdf(path),
-		// A file open in the viewer is a snapshot, like every other read here.
-		staleTime: Number.POSITIVE_INFINITY,
+		// A file open in the viewer is a snapshot, like every other read here —
+		// and reopening it re-reads, like every other read here.
+		...REREAD_ON_OPEN,
 		retry: false,
 	});
 

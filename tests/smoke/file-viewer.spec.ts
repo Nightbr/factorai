@@ -281,6 +281,43 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
 	});
 
+	test('@smoke reopening a file re-reads it, so an agent edit shows', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		const viewer = page.getByTestId('file-viewer');
+		await expect(
+			viewer.getByTestId('markdown-view').getByRole('heading', { name: 'foo' }),
+		).toBeVisible();
+
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
+
+		// The agent edits the file while the viewer is closed. Nothing tells the
+		// renderer — there is no watcher on the viewer's path — so the reopen is
+		// the only thing that can notice.
+		await page.evaluate((path) => {
+			const files = window.__FACTORAI_TEST__?.files;
+			const file = files?.[path];
+			if (file) file.contents = '# rewritten\n\nby the agent.\n';
+		}, `${ROOT}/README.md`);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const md = page.getByTestId('file-viewer').getByTestId('markdown-view');
+		await expect(md.getByRole('heading', { name: 'rewritten' })).toBeVisible();
+		// And it got there by reading again, not from a cache that happened to
+		// expire: two reads of the document, one per open. Filtered by path
+		// because the rendered page reads its inline SVG through read_file too.
+		const reads = (await readCalls(page)).filter((c) => c.path === `${ROOT}/README.md`);
+		expect(reads).toEqual([
+			{ path: `${ROOT}/README.md`, maxBytes: 'undefined' },
+			{ path: `${ROOT}/README.md`, maxBytes: 'undefined' },
+		]);
+	});
+
 	test('@smoke frontmatter is laid out as fields, and collapses', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

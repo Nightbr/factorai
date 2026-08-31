@@ -4,6 +4,7 @@ import { MermaidDiagram } from '@components/viewer/MermaidDiagram';
 import { iconKeyFor } from '@lib/fileIcon';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, openExternally } from '@lib/tauri';
+import { REREAD_ON_OPEN } from '@lib/viewerQuery';
 import type { FileContents, ImageContents } from '@factorai/types';
 import { usePrefsStore } from '@store/prefsStore';
 import { useQuery } from '@tanstack/react-query';
@@ -257,8 +258,9 @@ function LocalImage({ path, alt, title }: { path: string; alt: string; title?: s
 		queryKey: isSvg ? queryKeys.file(path, false) : queryKeys.image(path),
 		queryFn: (): Promise<ImageContents | FileContents> =>
 			isSvg ? cmd.readFile(path) : cmd.readImage(path),
-		// A document open in the viewer is a snapshot, like the text around it.
-		staleTime: Number.POSITIVE_INFINITY,
+		// A document open in the viewer is a snapshot, like the text around it,
+		// and re-read on open with it — an edited diagram is the common case.
+		...REREAD_ON_OPEN,
 		retry: false,
 	});
 

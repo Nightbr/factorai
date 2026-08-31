@@ -3,6 +3,7 @@ import { IconButton } from '@factorai/ui';
 import { formatBytes } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, copyImageElement } from '@lib/tauri';
+import { REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, Minus, Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
@@ -68,7 +69,8 @@ export function ImageView({ path }: { path: string }) {
 	const imageQ = useQuery({
 		queryKey: queryKeys.image(path),
 		queryFn: () => cmd.readImage(path),
-		staleTime: Number.POSITIVE_INFINITY,
+		// Reopening re-reads: an agent can replace a screenshot under you.
+		...REREAD_ON_OPEN,
 		retry: false,
 	});
 

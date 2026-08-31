@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 import { type DiffMode, parseCommitRange } from '@hooks/useFileViewer';
 import { formatBytes } from '@lib/format';
 import { cmd } from '@lib/tauri';
+import { IMMUTABLE_REV, REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { queryKeys } from '@lib/queryKeys';
 import { ensureTheme, FACTORAI_DARK, languageForFile, monaco } from '@components/viewer/monaco';
 import { usePrefsStore } from '@store/prefsStore';
@@ -28,10 +29,16 @@ interface DiffViewProps {
 }
 
 /** One side of a diff, as a cache key plus the call that fills it.
- *  `key` is what distinguishes a HEAD blob from a blob at some commit. */
+ *  `key` is what distinguishes a HEAD blob from a blob at some commit.
+ *
+ *  `freshness` is per side because the two sides age differently: the worktree
+ *  is whatever is on disk right now, and so are `head` and `index` — commit or
+ *  stage and the blob under those names is a different one. Only a full SHA is
+ *  cacheable forever. */
 interface Side {
 	key: readonly unknown[];
 	load: () => Promise<FileContents | null>;
+	freshness: { readonly staleTime: number };
 }
 
 /**
@@ -42,10 +49,15 @@ interface Side {
  * `GitRev` growing an object member (F18).
  */
 function sidesFor(path: string, mode: DiffMode): { left: Side; right: Side } {
-	const worktree: Side = { key: queryKeys.file(path, false), load: () => readWorktree(path) };
+	const worktree: Side = {
+		key: queryKeys.file(path, false),
+		load: () => readWorktree(path),
+		freshness: REREAD_ON_OPEN,
+	};
 	const at = (rev: 'head' | 'index'): Side => ({
 		key: queryKeys.gitBlob(path, rev),
 		load: () => cmd.gitBlob(path, rev),
+		freshness: REREAD_ON_OPEN,
 	});
 
 	const range = parseCommitRange(mode);
@@ -55,9 +67,21 @@ function sidesFor(path: string, mode: DiffMode): { left: Side; right: Side } {
 			// A root commit has no left side at all: everything in it is an addition,
 			// so an absent blob is the honest answer rather than an error.
 			left: parent
-				? { key: queryKeys.gitBlob(path, parent), load: () => cmd.gitBlobAt(path, parent) }
-				: { key: queryKeys.gitBlob(path, 'empty-tree'), load: () => Promise.resolve(null) },
-			right: { key: queryKeys.gitBlob(path, commit), load: () => cmd.gitBlobAt(path, commit) },
+				? {
+						key: queryKeys.gitBlob(path, parent),
+						load: () => cmd.gitBlobAt(path, parent),
+						freshness: IMMUTABLE_REV,
+					}
+				: {
+						key: queryKeys.gitBlob(path, 'empty-tree'),
+						load: () => Promise.resolve(null),
+						freshness: IMMUTABLE_REV,
+					},
+			right: {
+				key: queryKeys.gitBlob(path, commit),
+				load: () => cmd.gitBlobAt(path, commit),
+				freshness: IMMUTABLE_REV,
+			},
 		};
 	}
 	switch (mode) {
@@ -83,13 +107,13 @@ export function DiffView({ path, mode }: DiffViewProps) {
 	const leftQ = useQuery({
 		queryKey: left.key,
 		queryFn: left.load,
-		staleTime: Number.POSITIVE_INFINITY,
+		...left.freshness,
 		retry: false,
 	});
 	const rightQ = useQuery({
 		queryKey: right.key,
 		queryFn: right.load,
-		staleTime: Number.POSITIVE_INFINITY,
+		...right.freshness,
 		retry: false,
 	});
 

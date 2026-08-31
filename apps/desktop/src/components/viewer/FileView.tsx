@@ -15,6 +15,7 @@ import { formatBytes } from '@lib/format';
 import { type LineSelection, mentionFor, mentionLabel, mentionRange } from '@lib/mentions';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
+import { REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Code2, Eye, Sparkles } from 'lucide-react';
@@ -105,8 +106,9 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 		queryKey: queryKeys.file(path, uncapped),
 		queryFn: () => cmd.readFile(path, uncapped ? null : undefined),
 		// A file open in the viewer is a snapshot; the refresh path is reopening
-		// it, not a background refetch that would yank the scroll position.
-		staleTime: Number.POSITIVE_INFINITY,
+		// it, not a background refetch that would yank the scroll position — so
+		// the reopen has to actually re-read. See `REREAD_ON_OPEN`.
+		...REREAD_ON_OPEN,
 		retry: false,
 	});
 

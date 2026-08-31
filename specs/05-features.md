@@ -1142,6 +1142,22 @@ HMR reopen the file, browser-back closes it, and the tab system grows out of
 the same place — `?file=` becomes a list of open paths. See
 `hooks/useFileViewer.ts`.
 
+**Freshness.** No watcher on the open path, for the reasons F12 gives — but
+**opening the viewer re-reads the file**, and so does switching paths inside
+it. Every on-disk read behind the viewer (`read_file`, `read_image`,
+`read_pdf`, a rendered document's inline images, and the worktree side of an
+F13 diff) has `staleTime: 0`; only a git object named by a full SHA is cached
+for the life of the process. `refetchOnWindowFocus` stays off, so what is on
+screen never moves under the reader: a refetch would recreate the editor and
+take the scroll position with it.
+
+Fixed 2026-08-31 — these all read with `staleTime: Infinity` on the reasoning
+that a file open in the viewer is a snapshot and the refresh path is reopening
+it. The second half did not hold: with the key never stale, a reopen was
+answered from the cache, so an agent's edit stayed invisible for `gcTime` (5
+minutes) — reliably, in the exact loop this app is for. `lib/viewerQuery.ts`
+holds the two policies and the reasoning.
+
 **Backend.** `read_file(path, max_bytes?)` and `read_image(path, max_bytes?)`
 — see specs/03-backend-rust.md § `files`.
 
@@ -1949,6 +1965,12 @@ same data — and nothing at all when the panel is closed. TanStack pauses
 intervals when the window is hidden, so a backgrounded app is silent. No
 watcher: `.git/index` churns mid-operation and would need debouncing back into
 what polling already does (Q17's reasoning, same conclusion).
+
+**A diff's two sides age separately.** `head` and `index` are moving names —
+commit or stage and the blob under them is a different object — so both sides
+of a working-tree diff, and the worktree read itself, re-read on open exactly
+as F7's viewer does. Only an F18 range, whose ends are full SHAs, is cached for
+the life of the process.
 
 **Backend.** `git_status`, `git_blob` — see `03-backend-rust.md` § `git`.
 

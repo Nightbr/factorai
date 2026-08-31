@@ -3,6 +3,26 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Reopening a file in the viewer re-reads it (spec `05-features.md` F7 § "Freshness", F13 § "A
+  diff's two sides age separately")** — 2026-08-31. An agent edited an open markdown file, the
+  reader closed the viewer and opened it again, and the old text came back.
+
+  Every on-disk read behind the viewer — `read_file`, `read_image`, `read_pdf`, a rendered
+  document's inline images, the worktree side of a diff — carried `staleTime: Infinity` with a
+  comment saying a file open in the viewer is a snapshot and the refresh path is reopening it. The
+  first half is right and worth keeping; the second half never happened, because a key that is
+  never stale is answered from the cache on remount. So the edit was invisible for the whole
+  `gcTime` window, five minutes, in exactly the loop this app exists for. `lib/viewerQuery.ts` now
+  holds the two policies — `REREAD_ON_OPEN` for anything on disk, `IMMUTABLE_REV` for a git object
+  named by a full SHA — and the diff's sides pick per side, which also fixes `head` and `index`
+  being cached forever under names whose object changes every time you commit or stage.
+
+  `refetchOnWindowFocus` stays off, so this is not the refetch the old comment was guarding
+  against: nothing moves under the reader while the file is open, and alt-tabbing does not recreate
+  the editor and lose the scroll position. The smoke test edits the fixture while the viewer is
+  closed and asserts two reads of the same path, one per open — it fails against the old
+  `staleTime`, which is the only reason it is worth having.
+
 - **Copy a session's transcript path (spec `05-features.md` F2 § "Copying a session's transcript
   path")** — 2026-08-30. A second item on the session row's right-click menu, above the separator
   the delete now sits below. It puts the absolute `.jsonl` on the clipboard, which is what gets fed
