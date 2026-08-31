@@ -212,15 +212,23 @@ never edited — superseding ones are created.
 | 0005  | Kill-on-quit, non-optional confirm dialog (Q10)             |
 
 We enforce ADRs for the categories above, and no third-party quality
-gates (AGENTS.md § 8).
+gates (AGENTS.md § "What this project does not do").
 
 ---
 
 ## A.9 — AGENTS.md as the source-of-truth, CLAUDE.md as shim
 
-All agent guidance lives in `AGENTS.md`, with `CLAUDE.md` a real symlink
-to it (`CLAUDE.md -> AGENTS.md`) rather than a one-line `@AGENTS.md`
+`AGENTS.md` is the entry point for agent guidance, with `CLAUDE.md` a real
+symlink to it (`CLAUDE.md -> AGENTS.md`) rather than a one-line `@AGENTS.md`
 include, so the two files literally cannot drift.
+
+It is deliberately thin — identity, the non-negotiables, and a routing table.
+The detail lives beside it and is loaded only when a task needs it:
+`.claude/skills/<name>/SKILL.md` per task (the gate, the spec/ADR workflow,
+frontend and backend conventions, the two test lanes, doc screenshots) and
+`.claude/rules/*.md` for the constraints the one-liners compress. A rule that
+must never be missed stays *in* `AGENTS.md` as a line, because a rule nobody
+loads is a rule that does not exist; the rules files carry its reasoning.
 
 ---
 

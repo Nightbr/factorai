@@ -3,6 +3,33 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **`AGENTS.md` split into a portable document, path-scoped rules and on-demand skills
+  (`annex-A-cli-agent-patterns.md` § A.9)** — 2026-08-31, user ask. The file had reached 512
+  lines and was loaded whole into every session, most of it irrelevant to whatever the session
+  was doing. It is now 135 lines that follow the [agents.md](https://agents.md/) shape — project
+  overview, setup, before-you-start, code style, testing with the full gate block, commits,
+  scope, and a map of where the rest lives.
+
+  **Portability decided the split.** Codex, Cursor and Jules read `AGENTS.md` and never look
+  inside `.claude/`, so every rule that has to reach any agent is stated flat in the file itself
+  rather than delegated. What moved out is the reasoning and the war stories: `.claude/skills/`
+  gained `quality-gate`, `spec-and-adr-workflow`, `frontend-conventions`, `backend-conventions`,
+  `smoke-tests` and `manual-qa`, each loaded only when a task calls for it.
+
+  **`.claude/rules/*.md` load automatically alongside `CLAUDE.md`, and `paths` frontmatter is
+  what makes that affordable** — a rule scoped to `apps/desktop/src-tauri/**` costs nothing on a
+  renderer task. Three exist: `frontend.md`, `rust.md`, `tests.md`, each holding the traps of one
+  area (dnd-kit, the spinner's `animationiteration` latch, base64 PTY bytes, the two env leaks,
+  the port 1420 collision, `over` reported a frame late). A first pass wrote these without
+  frontmatter, which loads them on every task and buys nothing; that is the mistake to avoid if
+  more are added.
+
+  **Twenty-five files cited `AGENTS.md § N`** — code comments, both CI workflows,
+  `scripts/qa/launch.sh`, four specs and `TODO.md` — and all of them now name a section title, a
+  rule file or a skill. `docs/adr/` and this log were left alone because ADRs are immutable and a
+  log is a record of what happened; the five-line map at the bottom of `AGENTS.md` is what keeps
+  their old section numbers resolvable.
+
 - **A watch on the open file (spec `05-features.md` F7 § "Freshness",
   `03-backend-rust.md` § `FileWatch`)** — 2026-08-31. The reopen fix below covers the file you
   closed; this covers the one in front of you. `watch_file` on open, `unwatch_file` on close,

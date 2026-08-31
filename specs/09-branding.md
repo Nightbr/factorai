@@ -314,7 +314,7 @@ alive for a future caller is the kind of thing that is still there and still
 wrong two years later. Add it back when a second surface actually wants it.
 
 **The geometry is mirrored by hand** in `components/brand/geometry.ts`, for the
-reason `CLAUDE.md` § 4 gives for the IPC types: the renderer gets a real
+reason the `backend-conventions` skill gives for the IPC types: the renderer gets a real
 component that inherits `currentColor` and needs no asset plumbing, and
 `geometry.test.ts` fails the moment the mirror and the master disagree. Change
 the master first, always.

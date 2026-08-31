@@ -9,7 +9,7 @@
  * exists so that it can be, not because it is being.
  *
  * POSIX separators throughout, like `lib/paths.ts`: macOS and Linux only
- * (AGENTS.md § 8).
+ * (AGENTS.md § "What this project does not do").
  */
 
 import type { PathKind } from '@factorai/types';

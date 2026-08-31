@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import { fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
 
 /**
- * House rules for interactive affordances (AGENTS.md § Design rules): every
+ * House rules for interactive affordances (the `frontend-conventions` skill,
+ * and `DESIGN.md`): every
  * clickable thing gets a pointer, and an icon button never paints a background
  * — its hover state is the icon taking colour.
  */

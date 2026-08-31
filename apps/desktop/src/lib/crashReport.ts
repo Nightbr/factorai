@@ -31,7 +31,8 @@ export interface CrashContext {
  *
  * Deliberately small: what broke, where, and enough about the build to place
  * it. Nothing is collected that the user has not already read on screen —
- * CLAUDE.md § 8 rules out telemetry, and this is not an exception to it. The
+ * AGENTS.md § "What this project does not do" rules out telemetry, and this is
+ * not an exception to it. The
  * user reads this, edits it, and sends it by hand, or does not send it.
  */
 export function crashReport(ctx: CrashContext): string {

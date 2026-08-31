@@ -2,7 +2,7 @@
  * The mark's geometry, mirrored by hand from `docs/brand/factorai-icon.svg`.
  *
  * Hand-mirrored rather than imported, for the same reason the IPC types are
- * (`CLAUDE.md` § 4): the renderer gets a real component that inherits
+ * (the `backend-conventions` skill): the renderer gets a real component that inherits
  * `currentColor` and carries no build-time asset plumbing, and the duplication
  * is held honest by `geometry.test.ts`, which fails the moment this file and
  * the master SVG disagree.

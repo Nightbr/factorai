@@ -37,7 +37,7 @@ cd apps/desktop && pnpm tauri build
 
 Run all of these green before calling something done. The order matters —
 `--frozen-lockfile` leads because it is what CI runs first and what nothing
-local reproduces. AGENTS.md § 2c explains why each one is in the list; most of
+local reproduces. `.claude/skills/quality-gate/SKILL.md` explains why each one is in the list; most of
 them were added after the thing they catch had already broken `main`.
 
 ```bash
@@ -77,7 +77,9 @@ a stale window origin once put a synthetic click into an unrelated app.
 
 | | |
 |---|---|
-| [`AGENTS.md`](AGENTS.md) | how work is done here — workflow, quality floor, conventions, gotchas |
+| [`AGENTS.md`](AGENTS.md) | how work is done here — setup, code style, the checks, commits, scope |
+| [`.claude/rules/`](.claude/rules/) | the traps in one area of the tree, loaded by Claude Code when you edit it |
+| [`.claude/skills/`](.claude/skills/) | the long form, one file per task — the gate, the spec/ADR workflow, conventions, the test lanes, QA |
 | [`specs/`](specs/) | the design source of truth: architecture, the command surface, feature-by-feature behaviour |
 | [`specs/roadmap/`](specs/roadmap/) | what is next in priority order, and a dated log of what shipped |
 | [`docs/adr/`](docs/adr/) | decisions and why, including superseded ones |

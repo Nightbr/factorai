@@ -1,7 +1,8 @@
 /**
  * Path arithmetic the renderer does on strings the backend handed it.
  *
- * POSIX separators throughout: macOS and Linux only (AGENTS.md § 8), and every
+ * POSIX separators throughout: macOS and Linux only
+ * (AGENTS.md § "What this project does not do"), and every
  * path here came from `list_dir`, which walks a real filesystem.
  */
 

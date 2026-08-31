@@ -37,10 +37,10 @@ becomes the place a feature is specified.
   ever named.
 - [`05-features.md`](../05-features.md) and the other numbered specs are the **contract** for
   behavior. If a TODO item and a spec disagree about what a feature should do, the spec wins —
-  or the spec is wrong and gets fixed first, per `CLAUDE.md` § 2a.
+  or the spec is wrong and gets fixed first, per the `spec-and-adr-workflow` skill.
 - [`docs/adr/`](../../docs/adr/) holds decisions that constrain the approach. A TODO item that
   wants to relitigate one needs a superseding ADR, not a bullet here.
 
 Practical consequence: when an item here lands, the same commit updates the spec it changed
-(`CLAUDE.md` § 6), and *then* the entry moves to `DONE.md`. A `DONE.md` entry is a log of what
+(same skill), and *then* the entry moves to `DONE.md`. A `DONE.md` entry is a log of what
 happened, not a substitute for the spec being right.

@@ -26,7 +26,7 @@ describe('the vendored text-layer CSS', () => {
 	 *
 	 * The copy is **not** byte-identical, and shouldn't be: biome formats every
 	 * CSS file in this repo, vendored ones included — the same call the shadcn
-	 * primitives got, so they stop being a landmine (AGENTS.md § 2c). What has to
+	 * primitives got, so they stop being a landmine (the `quality-gate` skill). What has to
 	 * hold is that the *rules* are upstream's, which is what survives dropping
 	 * the formatting.
 	 */

@@ -10,7 +10,8 @@
 # plain "factorai" and must never be mistaken for ours. If the window never
 # appears within $LAUNCH_TIMEOUT_S seconds, exits non-zero.
 #
-# Designed to be called by an AI agent in a verification loop. See AGENTS.md
+# Designed to be called by an AI agent in a verification loop. See the
+# `manual-qa` skill (.claude/skills/manual-qa/SKILL.md)
 # § "Manual verification loop".
 
 set -euo pipefail

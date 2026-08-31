@@ -12,7 +12,8 @@
 //! the request struct. Everything about *which* tools exist and what they may
 //! touch stays in the server that owns them.
 //!
-//! Hand-written rather than an SDK, per ADR-0017 § 4 and AGENTS.md § 4 — this
+//! Hand-written rather than an SDK, per ADR-0017 § 4 and the
+//! `backend-conventions` skill — this
 //! project hand-mirrors types across a boundary and takes no code generation.
 
 use serde::Deserialize;

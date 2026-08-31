@@ -65,14 +65,16 @@ surfaces (not yet measured).
 **C3 — Read-only, except where we plan to write.** ADR-0009 states
 *"Everything is read-only. No staging, no discard, no commit"*. TODO item 19
 (IDE emulation) applies hunks to the working tree. Needs a **superseding ADR**,
-not an edit — ADRs are immutable (`AGENTS.md` § 5) — and that ADR has to say
+not an edit — ADRs are immutable (`.claude/skills/spec-and-adr-workflow/SKILL.md`)
+— and that ADR has to say
 what happens when the working tree moves under a pending approval.
 
 **C4 — `~/.claude/` is read-only.** ADR-0004. TODO item 17 (rename a session
 from inside factorai) writes a `custom-title` line into a session's JSONL,
 which lives there. Same shape as C3, same remedy.
 
-**E1 — The smoke suite's time budget.** `AGENTS.md § 2d` says the suite *"stays
+**E1 — The smoke suite's time budget.** `.claude/skills/smoke-tests/SKILL.md`
+says the suite *"stays
 under a few seconds"*. It is **114 tests in ~2 minutes** (measured 2026-08-17;
 it was 75 in ~70s when this entry was written two days earlier, and F18 added
 seven the same afternoon — the drift is ongoing and roughly linear in features
@@ -163,7 +165,7 @@ Two patterns worth keeping in mind next time this file is compiled.
 
 **A correction recorded in the wrong place is not a correction.** The accurate
 account of WebKitGTK and synthetic input was sitting in TODO item 10 the whole
-time, while `scripts/qa/README.md` and `AGENTS.md § 2e` went on asserting the
+time, while `scripts/qa/README.md` and what is now the `manual-qa` skill went on asserting the
 opposite — and it was those two that agents actually read, so QA strategy
 followed the false version for days.
 

@@ -538,7 +538,8 @@ A right rule that never reaches the process is the failure mode this module has
 already shipped once.
 
 Note this is a *second*, independent source of the `XDG_DATA_DIRS` breakage
-described in `AGENTS.md § Tauri gotchas` — that one is Turborepo stripping the
+described in `.claude/skills/backend-conventions/SKILL.md` § Tauri gotchas — that
+one is Turborepo stripping the
 variable, this one is the AppImage prepending to it.
 
 #### And `CLAUDE_CODE_CHILD_SESSION` goes, or transcripts stop existing

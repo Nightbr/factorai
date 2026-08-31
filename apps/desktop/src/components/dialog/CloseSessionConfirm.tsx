@@ -33,7 +33,8 @@ export interface CloseConfirmPrefs {
  * `undefined` means no live PTY, so there is nothing to kill and nothing to ask
  * about.
  *
- * **The preference does not contradict `AGENTS.md` § 1.** "Every irreversible
+ * **The preference does not contradict the operating model**
+ * (AGENTS.md § "Project overview"). "Every irreversible
  * action keeps its confirmation" binds *the app* — it forbids factorai deciding
  * on its own that an ask isn't worth it. A human turning it off is the fourth
  * verb in `00-overview.md` § "The operating model": setting the rules agents run

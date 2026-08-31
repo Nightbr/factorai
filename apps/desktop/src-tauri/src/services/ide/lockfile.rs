@@ -52,7 +52,7 @@ pub fn path_for(claude_dir: &Path, port: u16) -> PathBuf {
 }
 
 /// The JSON body. `camelCase` to match the CLI's parser, like every other
-/// cross-boundary type in this codebase (AGENTS.md § 4).
+/// cross-boundary type in this codebase (the `backend-conventions` skill).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Lockfile {
@@ -67,7 +67,8 @@ pub struct Lockfile {
 	pub pid: u32,
 	pub ide_name: String,
 	pub transport: String,
-	/// Always false here: v1 is macOS and Linux only (AGENTS.md § 8).
+	/// Always false here: v1 is macOS and Linux only
+	/// (AGENTS.md § "What this project does not do").
 	pub running_in_windows: bool,
 	pub auth_token: String,
 }

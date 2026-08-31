@@ -23,7 +23,7 @@ import {
  * switch, pages, and answers the arrow keys.
  *
  * The rest grew from bug reports, and that is the rule for adding to it — the
- * suite is already well past the time budget `AGENTS.md` § 2d claims for it (E1),
+ * suite is already well past the time budget the `smoke-tests` skill claims for it (E1),
  * so a case earns its ~0.5s by being something that already regressed once. The
  * split drag is still recorded against roadmap item 10 rather than covered here.
  */

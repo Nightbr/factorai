@@ -1,7 +1,7 @@
 //! The exact JSON the sidebar's types cross the IPC boundary as.
 //!
 //! **This file exists because nothing else could catch what it catches.** § 4 of
-//! AGENTS.md says the TS types are hand-mirrored and that drift is "a bug we want
+//! The `backend-conventions` skill says the TS types are hand-mirrored and that drift is "a bug we want
 //! to catch in review, not at runtime" — but the two mechanisms that look like
 //! they would catch it do not:
 //!

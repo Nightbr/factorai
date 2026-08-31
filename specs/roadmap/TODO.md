@@ -231,7 +231,7 @@ left is the *regression* lane and the depth, not the approach.
 
 The doc correction it asked for is **done (2026-08-15)**. Worth noting how that went, because it
 is the argument for this item: the accurate version was written *here*, in this entry, while
-`scripts/qa/README.md` and `AGENTS.md § 2e` went on asserting the wrong one for days. A
+`scripts/qa/README.md` and what is now the `manual-qa` skill went on asserting the wrong one for days. A
 correction recorded in a roadmap item is not a correction. It has to land where the reader looks.
 
 The real reasons GUI-driven QA stays awkward here are duller than "WebKit filters input", and
@@ -272,7 +272,7 @@ component**: a single palette modal with a mode prefix, VS Code style (bare = fi
 keyboard handling. Build the palette here; items 13–14 add modes to it.
 
 **Prerequisite: none of the three exists in the specs yet.** `05-features.md` stops at F12, and its
-keyboard table has no `Cmd+P`. Write F13 (this item) before coding, per `CLAUDE.md` § 2a — the
+keyboard table has no `Cmd+P`. Write F13 (this item) before coding, per the `spec-and-adr-workflow` skill — the
 palette is a new surface with its own state, not a variation on the tree.
 
 - [ ] Palette shell in app code (`Command`-style modal): fuzzy filter, ↑/↓/Enter, Escape, scoped to
@@ -631,7 +631,7 @@ because F7 already commits to them:
 
 **User ask, 2026-08-16, explicitly later.** Not now, and worth stating why it isn't free.
 
-Design rules today live in `CLAUDE.md` § 4 — cursor-pointer as a base rule, icon buttons paint no
+Design rules today live in the `frontend-conventions` skill — cursor-pointer as a base rule, icon buttons paint no
 background, chevrons colour on hover, repeatedly-actioned rows keep their affordances visible —
 plus whatever a component's own doc comment says (`IconButton`'s is a small design essay), plus
 per-feature UI notes in `specs/05-features.md`. A `DESIGN.md` that doesn't say what it *takes
@@ -640,13 +640,13 @@ over* becomes a fourth place, and this repo already knows what that costs: `08-i
 
 So the first decision is boundaries, not content:
 
-- `CLAUDE.md` § 4 either **moves wholesale** into `DESIGN.md` and links out, or `DESIGN.md`
+- the `frontend-conventions` skill either **moves wholesale** into `DESIGN.md` and links out, or `DESIGN.md`
   doesn't exist. Two lists of design rules is the failure.
 - `specs/` keeps per-feature behaviour; `DESIGN.md` holds what is true across every surface —
   the control scale, colour and status semantics, density, hover and focus, empty states.
 - **It starts from concrete numbers rather than principles**, because they exist now: `Button`'s
   desktop scale shipped 2026-08-17 (`default h-8 · sm h-7 · lg h-9 · icon 8`, base icon `size-3.5`,
-  with `Input` and `Select` moved to `h-8` so a row holding both lines up), and `AGENTS.md` § 4 has
+  with `Input` and `Select` moved to `h-8` so a row holding both lines up), and the `frontend-conventions` skill has
   since grown the menu metrics, the two type sizes and the icon-button rule. One leftover to record
   rather than re-derive: the viewer's toolbar buttons keep `h-6 text-xs` on purpose, a step below
   `sm`, and an `xs` variant is the way to retire them **if a third call site ever wants one** —
