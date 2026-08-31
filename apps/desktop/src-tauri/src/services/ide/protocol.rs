@@ -2,10 +2,8 @@
 //!
 //! Hand-written rather than an SDK, and ADR-0017 gives the reason: the surface
 //! is `initialize`, `tools/list`, `tools/call` and two notifications, against
-//! three tools. The `backend-conventions` skill already says this project
-//! hand-mirrors types
-//! across a boundary and takes no code generation; an MCP SDK is the same bet
-//! in a different coat. It also keeps the whole protocol readable in one file,
+//! three tools. This project hand-mirrors types across a boundary and takes no
+//! code generation; an MCP SDK is the same bet in a different coat. It also keeps the whole protocol readable in one file,
 //! which matters for a component whose correctness is a security property.
 //!
 //! **`getDiagnostics` is deliberately not offered.** We have no diagnostics

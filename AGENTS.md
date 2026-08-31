@@ -62,6 +62,10 @@ Tauri bridge; `pnpm tauri build` produces `.app` / `.dmg` / `.AppImage`.
 - Zustand for client state, TanStack Query for command results. PTY data never
   goes through React state — it streams from events into xterm.
 - No emojis in code or commits unless a user asks.
+- Code comments cite `specs/`, an ADR or `DESIGN.md` — never this file,
+  `.claude/rules/` or `.claude/skills/`. Those are instructions for whoever is
+  working, not contracts the code is written against, and a comment pointing at
+  one is a dangling reference the next reorganisation creates silently.
 
 ## Testing
 

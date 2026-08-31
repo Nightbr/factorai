@@ -1,6 +1,6 @@
 name: Quality
 
-# The gate from .claude/skills/quality-gate/, minus `pnpm e2e`, run on every PR and on main.
+# The repo's check list, minus `pnpm e2e`, run on every PR and on main.
 #
 # Local runs are still the real gate — this is the net under them, for the day
 # there are PRs and for the case where someone pushes to main without running

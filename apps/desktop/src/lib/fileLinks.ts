@@ -8,8 +8,7 @@
  * consumer — a rendered transcript — would reuse unchanged, and the split
  * exists so that it can be, not because it is being.
  *
- * POSIX separators throughout, like `lib/paths.ts`: macOS and Linux only
- * (AGENTS.md § "What this project does not do").
+ * POSIX separators throughout, like `lib/paths.ts`: macOS and Linux only.
  */
 
 import type { PathKind } from '@factorai/types';

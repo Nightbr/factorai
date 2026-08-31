@@ -33,7 +33,7 @@ name: Release
 # its own terms.
 #
 # Note this workflow does NOT run the test gate. Tagging an unverified commit
-# ships an unverified build; .claude/skills/quality-gate/ is the gate, and it runs locally.
+# ships an unverified build; the check list is the gate, and it runs locally.
 
 on:
   push:

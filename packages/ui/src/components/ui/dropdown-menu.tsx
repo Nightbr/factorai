@@ -11,9 +11,8 @@ import { cn } from '../../lib/utils';
  * `py-1.5` and the `pl-8` indicator gutter make sense in a 16px-body web app;
  * next to this app's 26px session, file and commit rows a menu of 32px rows
  * reads as a different, chunkier application. The label goes with them — it is a
- * section header, and this app writes those at `text-xs` (`DESIGN.md`, and the
- * `frontend-conventions` skill for where the rule lives — § Design
- * rules), not at the same size and weight as the items underneath. Tightened
+ * section header, and this app writes those at `text-xs` (`DESIGN.md`), not at
+ * the same size and weight as the items underneath. Tightened
  * 2026-08-18 on user feedback about the sidebar's sort menu; it lives here
  * rather than at that one call site because a menu that is 28px in one corner
  * and 32px in another is worse than either.

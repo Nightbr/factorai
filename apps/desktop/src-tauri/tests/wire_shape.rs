@@ -1,9 +1,9 @@
 //! The exact JSON the sidebar's types cross the IPC boundary as.
 //!
-//! **This file exists because nothing else could catch what it catches.** § 4 of
-//! The `backend-conventions` skill says the TS types are hand-mirrored and that drift is "a bug we want
-//! to catch in review, not at runtime" — but the two mechanisms that look like
-//! they would catch it do not:
+//! **This file exists because nothing else could catch what it catches.** The TS
+//! types are hand-mirrored against these structs, and drift is meant to be caught
+//! in review rather than at runtime — but the two mechanisms that look like they
+//! would catch it do not:
 //!
 //! - `tsc` cannot see across the boundary. It checks the renderer against
 //!   `@factorai/types`, and `@factorai/types` against nothing.

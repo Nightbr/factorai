@@ -11,7 +11,7 @@
  * rather than noticed by eye.
  *
  * Reformatted by biome on the way in, like every other CSS file in this repo and
- * for the same reason the vendored shadcn primitives were (AGENTS.md § 2c): a
+ * for the same reason the vendored shadcn primitives were: a
  * file the formatter is not allowed to touch is a landmine. That is why the test
  * compares the rules with the whitespace dropped rather than byte for byte.
  *

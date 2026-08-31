@@ -11,8 +11,7 @@ import { cn } from '../../lib/utils';
  * `Button variant="ghost" size="icon"` paints a filled `bg-accent` block behind
  * the glyph on hover, which in a dense row reads as a widget rather than as an
  * affordance — and at 14px the block is bigger than the thing it highlights.
- * This is the house style for icon-only controls; see `DESIGN.md` and the
- * `frontend-conventions` skill.
+ * This is the house style for icon-only controls; see `DESIGN.md`.
  *
  * Not a variant of `Button`: every `Button` variant carries a background, and a
  * "ghost-with-no-hover-background" variant would be a trap — the next person
