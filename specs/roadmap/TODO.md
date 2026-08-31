@@ -1253,3 +1253,69 @@ means typing `/model` in each one. Wanted as a preference.
 **Open.** Whether this belongs per-project as well as globally — a project pinned to a cheap model
 for routine work is the obvious second ask, and item 42's routines are the case where it matters
 most.
+
+## 45. Several Claude profiles, isolated by config directory, assigned per project
+
+**User feedback, 2026-08-31.** One machine, several Claude identities — a personal account and a
+work one, or a throwaway config for testing hooks. Today there is exactly one: `claude_dir()` in
+`lib.rs` reads `CLAUDE_HOME` once at boot and everything downstream — the indexer, the transcript
+reader, the IDE lockfile, the spawned session — assumes that single directory for the life of the
+process. Asked for as "manage multiple profiles, create one, set a default, and point a project at
+one from Settings".
+
+**The mechanism is `CLAUDE_CONFIG_DIR` per spawned session**, which is the CLI's own isolation
+boundary: credentials, `settings.json`, `projects/`, `ide/`, hooks and MCP config all live under
+it. So a profile *is* a directory plus a name, and switching profile is an environment variable on
+one child process — not a login, not a token we hold. That keeps Q3's answer and § 8's "no Claude
+OAuth helper" intact: the secret is still not here.
+
+- [ ] **A `profiles` table** — id, name, config directory path, `is_default`. Plus a nullable
+      `profile_id` on `projects`, which is the one-to-many the request describes: a project with no
+      profile uses the default, so an existing install keeps working with zero rows written.
+      Deleting a profile that projects point at has to be decided rather than cascaded — reassign
+      to default is the sane answer, and it is a confirmation, not a silent move.
+- [ ] **Creating one.** A name and a directory. "Create" means make the directory if it is missing
+      and leave it empty — the CLI populates it on first run and asks the user to log in, which is
+      correct and is the only place authentication should happen. Never copy credentials from one
+      profile directory into another: that is exactly the "where is the secret" line the settings
+      spec refuses to cross.
+- [ ] **Pass it at spawn.** `cmd.env("CLAUDE_CONFIG_DIR", …)` in `services/terminal.rs`, beside the
+      `TERM` and `CLAUDE_CODE_SSE_PORT` writes, resolved from the session's project. It is a diff
+      over the inherited environment like everything else there, so it goes through
+      `services::child_env` conventions rather than around them.
+
+**Three things break the moment the directory stops being global, and each is the real work:**
+
+- [ ] **The IDE bridge lockfile (F20, ADR-0017).** We advertise at
+      `<claude_dir>/ide/<port>.lock` and the CLI discovers it under *its own* config directory. A
+      session spawned with a profile therefore finds nothing and the bridge is silently dead — no
+      error, just a session that cannot see the editor. Either write the lockfile into every
+      profile's `ide/` directory, or write it per spawn into the one that session will use; the
+      second is narrower and cleans up with the session, which is what `lockfile::remove` already
+      does at shutdown.
+- [ ] **The indexer scans one `projects/` directory.** `Indexer::claude_dir` and
+      `spawn_initial_scan` walk a single tree; with profiles there are N, and sessions from all of
+      them belong in the same sidebar. This is the largest piece: the scan becomes per-profile and
+      the walk has to know which profile a transcript came from.
+- [ ] **`projects.id` is the encoded directory name and collides across profiles.** The same
+      repository under two config directories produces the *same* primary key from two different
+      trees. Either the key gains the profile, or the table gains a profile column and a composite
+      key — a schema decision with a migration behind it, and the reason this item is not a small
+      one. `sessions.project_id` and the FTS tables follow whatever it decides.
+
+- [ ] **Settings UI.** A `profiles` section in `SettingsModal.tsx` — list, create, rename, set
+      default, delete — and the per-project assignment. The assignment plausibly belongs on the
+      project rather than in the global modal, since that is where a project's other settings would
+      go; decide before building both.
+- [ ] **Show which profile a session is running under.** An identity that is invisible is an
+      identity you use by accident. The session surface needs to say it, at least where the model
+      and the binary would be said.
+
+**Open.** What `CLAUDE_HOME` means once profiles exist — the honest reading is that it seeds the
+default profile's directory at first boot and is then a normal profile row, rather than staying a
+second mechanism that outranks the table. And whether a *running* session can change profile: it
+cannot, since the variable is read at spawn, so the UI has to make a reassignment mean "next
+session" and say so.
+
+**Sequencing.** Item 44's `SettingKey::ClaudeModel` is a per-project preference of the same shape
+and hits the same "global or per-project" question — settle it once, in whichever lands first.
