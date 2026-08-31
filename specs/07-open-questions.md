@@ -227,6 +227,13 @@ churn doesn't flood the channel, per-project watcher lifecycle, and inotify
 watch-limit handling on Linux. The existing watcher is scoped to
 `~/.claude/projects` and stays that way.
 
+**Still the decision for the tree, and 2026-08-31 drew the line.** The viewer's
+*open file* is watched now (F7 § "Freshness", `03-backend-rust.md` §
+`FileWatch`), which is not this bet: one path, one watch, held for exactly as
+long as a file is on screen, so there is no ignore rule to write and no
+lifecycle to own. What that watch does not do is decorate the tree — a listing
+still goes stale until you focus the window or press refresh.
+
 ---
 
 ## Q18 — Who owns the panel's tab strip? → **hardcoded; `Files | Changes | Graph`**

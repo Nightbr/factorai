@@ -25,6 +25,16 @@ function readCalls(page: Page) {
 	);
 }
 
+/** Every watch/unwatch the viewer asked for, in order — the subscription's
+ *  whole lifetime as the renderer drove it. */
+function watchCalls(page: Page) {
+	return page.evaluate(() =>
+		(window.__FACTORAI_TEST_CALLS__ ?? [])
+			.filter((c) => c.name === 'watch_file' || c.name === 'unwatch_file')
+			.map((c) => ({ name: c.name, path: String(c.args?.path) })),
+	);
+}
+
 test.describe('file viewer', () => {
 	test('@smoke clicking a file opens it in the viewer and records it in the URL', async ({
 		page,
@@ -298,10 +308,14 @@ test.describe('file viewer', () => {
 		// The agent edits the file while the viewer is closed. Nothing tells the
 		// renderer — there is no watcher on the viewer's path — so the reopen is
 		// the only thing that can notice.
+		// A fresh object, not a mutated one: `read_file` returns a new
+		// `FileContents` per call, and mutating the fixture's in place would put the
+		// new bytes into the *cache entry* as well — the test would then pass
+		// against a viewer that never re-read anything.
 		await page.evaluate((path) => {
 			const files = window.__FACTORAI_TEST__?.files;
 			const file = files?.[path];
-			if (file) file.contents = '# rewritten\n\nby the agent.\n';
+			if (files && file) files[path] = { ...file, contents: '# rewritten\n\nby the agent.\n' };
 		}, `${ROOT}/README.md`);
 
 		await panel.getByRole('button', { name: 'README.md' }).click();
@@ -316,6 +330,87 @@ test.describe('file viewer', () => {
 			{ path: `${ROOT}/README.md`, maxBytes: 'undefined' },
 			{ path: `${ROOT}/README.md`, maxBytes: 'undefined' },
 		]);
+	});
+
+	test('@smoke an edit lands in the open file without reopening it', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		const md = page.getByTestId('file-viewer').getByTestId('markdown-view');
+		await expect(md.getByRole('heading', { name: 'foo' })).toBeVisible();
+
+		// The agent edits the file the reader is looking at, and Rust's watch on
+		// it fires. Nothing is closed and nothing is clicked.
+		await page.evaluate((path) => {
+			const files = window.__FACTORAI_TEST__?.files;
+			const file = files?.[path];
+			if (files && file) files[path] = { ...file, contents: '# live\n\nedited while open.\n' };
+			window.__FACTORAI_EMIT__?.('file:changed', { path });
+		}, `${ROOT}/README.md`);
+
+		await expect(md.getByRole('heading', { name: 'live' })).toBeVisible();
+	});
+
+	test('@smoke an event for another file leaves the open one alone', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		const md = page.getByTestId('file-viewer').getByTestId('markdown-view');
+		await expect(md.getByRole('heading', { name: 'foo' })).toBeVisible();
+
+		// A stale notification — the watch fired for a file the reader has since
+		// moved off. It invalidates that path's cache entry, not this one's.
+		await page.evaluate((root) => {
+			const files = window.__FACTORAI_TEST__?.files;
+			const open = `${root}/README.md`;
+			const file = files?.[open];
+			if (files && file) files[open] = { ...file, contents: '# should not appear\n' };
+			window.__FACTORAI_EMIT__?.('file:changed', { path: `${root}/docs/guide.md` });
+		}, ROOT);
+
+		await expect(md.getByRole('heading', { name: 'foo' })).toBeVisible();
+		await expect(md.getByRole('heading', { name: 'should not appear' })).toHaveCount(0);
+	});
+
+	test('@smoke the viewer watches the file it opens and releases it on close', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
+		await expect
+			.poll(() => watchCalls(page))
+			.toEqual([{ name: 'watch_file', path: `${ROOT}/README.md` }]);
+
+		// Switching files moves the watch, and the file being left is released
+		// *first* — React runs the old effect's cleanup before the new effect, which
+		// is what makes a path-scoped `unwatch_file` safe. Through the document's
+		// own link rather than the tree, because the modal covers the tree.
+		await page.getByTestId('file-viewer').getByRole('link', { name: 'the guide' }).click();
+		await expect
+			.poll(() => watchCalls(page))
+			.toEqual([
+				{ name: 'watch_file', path: `${ROOT}/README.md` },
+				{ name: 'unwatch_file', path: `${ROOT}/README.md` },
+				{ name: 'watch_file', path: `${ROOT}/docs/guide.md` },
+			]);
+
+		// And closing the viewer leaves nothing watching.
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
+		await expect
+			.poll(() => watchCalls(page))
+			.toEqual([
+				{ name: 'watch_file', path: `${ROOT}/README.md` },
+				{ name: 'unwatch_file', path: `${ROOT}/README.md` },
+				{ name: 'watch_file', path: `${ROOT}/docs/guide.md` },
+				{ name: 'unwatch_file', path: `${ROOT}/docs/guide.md` },
+			]);
 	});
 
 	test('@smoke frontmatter is laid out as fields, and collapses', async ({ page }) => {

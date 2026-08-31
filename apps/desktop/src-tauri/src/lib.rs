@@ -196,6 +196,7 @@ pub fn run() {
 				data_dir,
 				ui,
 				routines: routines.clone(),
+				file_watch: Arc::new(services::file_watch::FileWatch::new()),
 			});
 
 			spawn_initial_scan(indexer.clone());
@@ -289,6 +290,8 @@ pub fn run() {
 			commands::files::read_image,
 			commands::files::read_pdf,
 			commands::files::path_kinds,
+			commands::files::watch_file,
+			commands::files::unwatch_file,
 			commands::ide::ide_report_ui,
 			commands::ide::ide_resync,
 			commands::ide::ide_mention,

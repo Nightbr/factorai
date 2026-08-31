@@ -469,6 +469,17 @@ export interface SessionsChangedEvent {
 	sessionIds: string[];
 }
 
+/**
+ * The file the viewer has open changed on disk (F7).
+ *
+ * The path only: the renderer re-reads through `readFile` / `readImage` /
+ * `readPdf`, so the refresh cannot show something a reopen wouldn't, and the
+ * bytes of a file nobody is looking at any more never cross the bridge.
+ */
+export interface FileChangedEvent {
+	path: string;
+}
+
 export interface TerminalDataEvent {
 	id: TerminalId;
 	bytesB64: string;

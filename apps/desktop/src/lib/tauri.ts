@@ -1,6 +1,7 @@
 import type {
 	ClaudeCliStatus,
 	DirListing,
+	FileChangedEvent,
 	FileContents,
 	GitCommitDetail,
 	GitGraph,
@@ -133,6 +134,15 @@ export const cmd = {
 	 *  order given. Never rejects: everything that isn't an openable path comes
 	 *  back `missing`. */
 	pathKinds: (paths: string[]) => invoke<PathKind[]>('path_kinds', { paths }),
+	/** Watch the file the viewer just opened, so an edit made while it is on
+	 *  screen arrives as `file:changed` (F7). One watch at a time: this replaces
+	 *  whatever was being watched, and the *directory* is what is watched, so an
+	 *  atomic save survives. */
+	watchFile: (path: string) => invoke<void>('watch_file', { path }),
+	/** Release the watch on `path`. Named rather than bare so a cleanup that
+	 *  lands after the next file's `watchFile` cannot kill the live watch —
+	 *  answers whether it stopped anything. */
+	unwatchFile: (path: string) => invoke<boolean>('unwatch_file', { path }),
 	/** Tell the backend what is on screen, so the IDE bridge can answer for it
 	 *  rather than guess (F20). Fire-and-forget: a report that goes missing
 	 *  leaves a stale-but-honest picture. */
@@ -418,6 +428,10 @@ export const events = {
 	 *  fact rather than racing one. */
 	onRoutineFire: (cb: (p: RoutineFireEvent) => void) =>
 		listen<RoutineFireEvent>('routine:fire', cb),
+	/** The file the viewer has open changed on disk (F7). Carries the path; the
+	 *  renderer re-reads it through the same commands a reopen uses. */
+	onFileChanged: (cb: (p: FileChangedEvent) => void) =>
+		listen<FileChangedEvent>('file:changed', cb),
 	/** A project's routine list changed (F22 slice 3). Emitted by every write,
 	 *  which is what makes a schedule an agent wrote over the IDE bridge appear
 	 *  in a Routines tab that is already open. */
@@ -806,6 +820,13 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			if (!pdf) throw { kind: 'InvalidInput', message: `not a PDF: ${path}` };
 			return pdf as unknown as T;
 		}
+		// No filesystem to watch in the browser. The call is still recorded, so a
+		// spec can assert the viewer subscribes on open and releases on close, and
+		// `__FACTORAI_EMIT__('file:changed', …)` stands in for the watch firing.
+		case 'watch_file':
+			return undefined as unknown as T;
+		case 'unwatch_file':
+			return true as unknown as T;
 		case 'ide_mention':
 			// No bridge in browser-only mode. Resolving rather than rejecting keeps
 			// a smoke test able to click the menu item and assert what was asked

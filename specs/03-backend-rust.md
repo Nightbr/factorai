@@ -16,7 +16,8 @@ commands/
   sessions.rs         # list_sessions, get_session_tail, search_sessions,
                       #   session_transcript_path, delete_session
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
-  files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds
+  files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds,
+                      #   watch_file, unwatch_file
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
                       #   (+ git_worktrees — F21, planned)
   ide.rs              # the IDE bridge's command surface (F20)
@@ -39,6 +40,8 @@ services/
   sessions.rs         # the small `sessions` reads something outside the
                       #   command layer needs — today, a recorded cwd
   files.rs            # list_dir, read_file, read_image, read_pdf, path_kinds
+  file_watch.rs       # FileWatch — the one watch on the file the viewer has
+                      #   open (F7), replaced on open and dropped on close
   child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
                       #   strip, and CLAUDE_CODE_CHILD_SESSION
   shell_path.rs       # ask the login shell what the user's PATH really is
@@ -243,6 +246,13 @@ list_dir(path: String, root: Option<String>) -> DirListing            // one lev
 // Batch stat for the terminal's link provider (F19): is each of these a file,
 // a directory, or nothing? One call per hovered line, so it takes a list.
 path_kinds(paths: Vec<String>) -> Vec<PathKind>                       // file | directory | missing
+// The viewer's watch on the file it has open (F7). One at a time: `watch_file`
+// replaces whatever was being watched, and the renderer releases it on close.
+// `unwatch_file` names the path so a cleanup that lands after the next file's
+// `watch_file` is a no-op rather than a killed watch; it answers whether it
+// stopped anything.
+watch_file(path: String) -> ()
+unwatch_file(path: String) -> bool
 // NOTE: file_diff(path, original, modified) -> DiffPayload was specced and
 // never built. Monaco's createDiffEditor (ADR-0007) diffs two strings itself,
 // so a Rust hunk list has no consumer. Dropped in ADR-0009; the diff viewer is
@@ -287,6 +297,7 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
 | `routine:fire`         | `{ routineId, routineName, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |
 | `routines:changed`     | `{ projectId }`                      | routines service (F22 slice 3) |
+| `file:changed`         | `{ path }`                           | FileWatch (F7)      |
 
 `session:worktree` is the one event whose source is the IDE bridge rather than a
 service, and it fires **after** the write to `session_worktrees`, never before:
@@ -321,6 +332,33 @@ Wraps `notify::RecommendedWatcher` with a debounced channel (500ms,
 implemented with `tokio::sync::mpsc` + a coalescing buffer). Emits batched
 change events. Watches `~/.claude/projects` recursively but ignores
 non-`.jsonl` files.
+
+### `FileWatch`
+
+The watch on **one** file: whatever the viewer has open (F7). A
+`Mutex<Option<Active>>`, where `Active` is the path plus a
+`notify_debouncer_mini::Debouncer` held only to be dropped — dropping it stops
+the debouncer thread and releases the backend watch, so an app with no viewer
+open holds neither.
+
+Three decisions worth keeping:
+
+- **The watch is on the parent directory, non-recursive, filtered by file
+  name.** A watch on the file follows the inode, and an agent that saves by
+  writing `foo.md.tmp` and renaming it over `foo.md` leaves that watch pointing
+  at an inode nothing will touch again. The directory sees the write, the
+  rename, the delete and the recreate.
+- **Debounce is 250ms**, shorter than the indexer's 1s: this one decides how
+  long the file you are looking at keeps showing text that is no longer in it,
+  and it still collapses a rewrite that arrives as truncate-then-fill into one
+  refresh.
+- **`unwatch` is path-scoped.** The renderer's close and its next open are two
+  calls; a bare `unwatch()` arriving late would kill a watch that had already
+  moved on.
+
+The event carries the path only — the contents come back through `read_file` /
+`read_image` / `read_pdf`, so a refresh cannot show something a reopen wouldn't,
+and no bytes cross the bridge for a file the reader has left.
 
 ### `TerminalManager`
 

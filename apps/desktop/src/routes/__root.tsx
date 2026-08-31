@@ -9,6 +9,7 @@ import { useNativeContextMenu } from '@hooks/useNativeContextMenu';
 import { useRoutineFires } from '@hooks/useRoutineFires';
 import { useRoutinesChanged } from '@hooks/useRoutinesChanged';
 import { useSessionsSync } from '@hooks/useSessionsSync';
+import { useWatchedOpenFile } from '@hooks/useWatchedOpenFile';
 import { useSettingsModal } from '@hooks/useSettingsModal';
 import { isSettingsSection, type SettingsSection } from '@lib/settingsDraft';
 import { cmd, events } from '@lib/tauri';
@@ -38,6 +39,11 @@ function RootLayout() {
 	// the same reason: a routine fires for a project no route is showing.
 	useRoutineFires();
 	useRoutinesChanged();
+
+	// `file:changed` → re-read whatever the viewer has open (F7). Here rather
+	// than in the viewer because this is where `?file=` lives, and the watch has
+	// to be released when the viewer closes and the modal is gone.
+	useWatchedOpenFile(viewer.path);
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;

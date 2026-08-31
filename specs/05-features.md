@@ -1142,21 +1142,44 @@ HMR reopen the file, browser-back closes it, and the tab system grows out of
 the same place — `?file=` becomes a list of open paths. See
 `hooks/useFileViewer.ts`.
 
-**Freshness.** No watcher on the open path, for the reasons F12 gives — but
-**opening the viewer re-reads the file**, and so does switching paths inside
-it. Every on-disk read behind the viewer (`read_file`, `read_image`,
-`read_pdf`, a rendered document's inline images, and the worktree side of an
-F13 diff) has `staleTime: 0`; only a git object named by a full SHA is cached
-for the life of the process. `refetchOnWindowFocus` stays off, so what is on
-screen never moves under the reader: a refetch would recreate the editor and
-take the scroll position with it.
+**Freshness.** Two halves, both added 2026-08-31, because an agent edits the
+file you are reading and the viewer used to show neither the edit you had
+closed the file on nor the one landing in front of you.
 
-Fixed 2026-08-31 — these all read with `staleTime: Infinity` on the reasoning
-that a file open in the viewer is a snapshot and the refresh path is reopening
-it. The second half did not hold: with the key never stale, a reopen was
-answered from the cache, so an agent's edit stayed invisible for `gcTime` (5
-minutes) — reliably, in the exact loop this app is for. `lib/viewerQuery.ts`
-holds the two policies and the reasoning.
+**Opening re-reads**, and so does switching paths inside the viewer. Every
+on-disk read behind it (`read_file`, `read_image`, `read_pdf`, a rendered
+document's inline images, and the worktree side of an F13 diff) has
+`staleTime: 0`; only a git object named by a full SHA is cached for the life of
+the process. These all read with `staleTime: Infinity` on the reasoning that a
+file open in the viewer is a snapshot and the refresh path is reopening it. The
+second half did not hold: with the key never stale, a reopen was answered from
+the cache, so an edit stayed invisible for `gcTime` (5 minutes).
+`lib/viewerQuery.ts` holds the two policies.
+
+**And the open file is watched** — `watch_file` on open, `unwatch_file` on
+close, `file:changed` in between (see `03-backend-rust.md` § `FileWatch` for the
+directory watch, the 250ms debounce and the path-scoped release).
+`hooks/useWatchedOpenFile.ts` owns the subscription, mounted at the shell where
+`?file=` lives, and invalidates the three read namespaces for the event's path —
+its own path, not the one on screen, so a notification that arrives after the
+reader has moved on refreshes a cache entry nobody is reading.
+
+**The subscription's lifetime is exactly the viewer's**, which is the whole
+reason this is two commands rather than a watcher pointed at the project: with
+no file open there is no debouncer thread and no inotify descriptor. Q17 decided
+against a watcher for the **tree** and that stands — a recursive watch on an
+arbitrary project directory means ignore rules, per-project lifecycle and
+inotify limits, and one open file has none of those. The wrong answer is worse
+here, too: a stale row in a tree is a row you can click, while stale contents
+look exactly like current ones.
+
+**Nothing moves under the reader.** `refetchOnWindowFocus` stays off, so
+alt-tabbing refreshes nothing; and a refresh that *does* arrive keeps the place
+you were in — the Monaco host saves `saveViewState()` (scroll, selection, folds)
+before it disposes the editor and restores it into the new one, keyed by path so
+the next file starts clean. A `&line=` position still wins, but only when it is
+one the reader has not been sent to yet, so a refresh no longer re-jumps to a
+line a terminal link asked for ten minutes ago.
 
 **Backend.** `read_file(path, max_bytes?)` and `read_image(path, max_bytes?)`
 — see specs/03-backend-rust.md § `files`.

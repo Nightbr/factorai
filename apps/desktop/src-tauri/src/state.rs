@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::Db;
+use crate::services::file_watch::FileWatch;
 use crate::services::ide::ui_state::UiState;
 use crate::services::indexer::Indexer;
 use crate::services::routines::Runner as RoutineRunner;
@@ -21,4 +22,8 @@ pub struct AppState {
 	/// The routine scheduler (F22). Held so `run_routine_now` fires through the
 	/// same path the tick does, rather than growing a second one.
 	pub routines: Arc<RoutineRunner>,
+	/// The watch on whatever file the viewer has open (F7). One at a time, and
+	/// the renderer owns its lifetime — it watches on open and releases on
+	/// close, so an app with no viewer open holds no watch at all.
+	pub file_watch: Arc<FileWatch>,
 }

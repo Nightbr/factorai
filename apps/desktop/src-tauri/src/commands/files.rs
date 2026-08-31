@@ -1,6 +1,10 @@
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, State};
+
 use crate::error::AppResult;
 use crate::models::{DirListing, FileContents, ImageContents, PathKind, PdfContents};
 use crate::services::files;
+use crate::state::AppState;
 
 /// List one directory for the project file tree. `root` is the project root,
 /// used only to decide whether a symlink points out of the project.
@@ -45,4 +49,44 @@ pub fn read_pdf(path: String, max_bytes: Option<usize>) -> AppResult<PdfContents
 #[tauri::command]
 pub fn path_kinds(paths: Vec<String>) -> Vec<PathKind> {
 	files::path_kinds(&paths)
+}
+
+/// `file:changed` — the file the viewer has open is no longer what the renderer
+/// read (F7).
+///
+/// Carries the path and nothing else. The contents come back through
+/// `read_file` / `read_image` / `read_pdf` like any other read, so this event
+/// cannot disagree with what a reopen would show, and a 40MB file does not
+/// travel over the event channel to be thrown away when the viewer has moved on.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileChangedEvent {
+	pub path: String,
+}
+
+/// Watch the file the viewer just opened, so an edit made while it is on screen
+/// shows up without the reader having to close and reopen it (F7).
+///
+/// Replaces whatever was being watched — there is one viewer and one watch. The
+/// renderer is the one that knows when a file stops being open, so it calls
+/// `unwatch_file` on close; nothing here expires on its own.
+#[tauri::command]
+pub fn watch_file(app: AppHandle, state: State<'_, AppState>, path: String) -> AppResult<()> {
+	let emit_path = path.clone();
+	state.file_watch.watch(std::path::Path::new(&path), move || {
+		// `AppHandle::emit`, not `Window::emit` — a window-scoped emit does not
+		// reach the JS listeners (see the terminal manager for the same note).
+		let _ = app.emit("file:changed", FileChangedEvent { path: emit_path.clone() });
+	})
+}
+
+/// Release the watch on `path`, if that is the one running.
+///
+/// Named rather than bare so a late cleanup cannot kill a live watch: the
+/// renderer's close and its next open are two calls, and only their order
+/// distinguishes "stop watching the file I closed" from "stop watching the file
+/// I just opened".
+#[tauri::command]
+pub fn unwatch_file(state: State<'_, AppState>, path: String) -> bool {
+	state.file_watch.unwatch(std::path::Path::new(&path))
 }

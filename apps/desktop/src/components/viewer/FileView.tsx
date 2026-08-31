@@ -134,6 +134,10 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 				)}
 				{file && !file.isBinary && file.contents.length > 0 && !showPreview && (
 					<Editor
+						// Keyed by path: the view state below is this file's scroll and
+						// selection, and carrying it into the next file would land the
+						// reader somewhere nobody asked for.
+						key={path}
 						contents={file.contents}
 						language={language}
 						position={position ?? null}
@@ -275,9 +279,23 @@ interface EditorProps {
 /**
  * Monaco host. Mirrors the xterm lifecycle in `Terminal.tsx`: create in an
  * effect, dispose on unmount, never through React state.
+ *
+ * **New contents recreate the editor, and the view state survives it.** The
+ * effect has always been keyed on `contents`, which was invisible while the
+ * only way to get new contents was to open a different file. The watcher on the
+ * open file (F7 § "Freshness") makes it visible: an agent saving the file you
+ * are reading would drop you back at line 1, having thrown away the selection
+ * you were about to hand it. Monaco's own `saveViewState` / `restoreViewState`
+ * is the whole mechanism — scroll, selection and folds, in one opaque blob —
+ * kept in a ref so it outlives the editor it came from but not the component,
+ * which is keyed by path.
  */
 function Editor({ contents, language, position, onSelection }: EditorProps) {
 	const hostRef = useRef<HTMLDivElement>(null);
+	const viewStateRef = useRef<monaco.editor.ICodeEditorViewState | null>(null);
+	/** The last position actually jumped to, so a *new* `?line=` wins over the
+	 *  restored scroll while a re-render does not re-jump to an old one. */
+	const appliedPositionRef = useRef<ViewerPosition | null>(null);
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -310,7 +328,15 @@ function Editor({ contents, language, position, onSelection }: EditorProps) {
 			padding: { top: 8, bottom: 8 },
 		});
 
-		if (position) {
+		// A position the reader has not been sent to yet is a jump they asked for
+		// — a terminal link, or a second `foo.ts:99` for the file already open.
+		// Anything else (a re-render, or the file changing under us) restores
+		// where they were.
+		const applied = appliedPositionRef.current;
+		const isNewJump =
+			position !== null && (applied?.line !== position.line || applied?.col !== position.col);
+
+		if (position && isNewJump) {
 			// Clamp rather than trust: the line came off a terminal line the agent
 			// printed, and the file may have shrunk since — `foo.ts:900` in stale
 			// output should land at the end of a 40-line file, not throw Monaco at
@@ -326,6 +352,9 @@ function Editor({ contents, language, position, onSelection }: EditorProps) {
 			// The caret is the only thing marking the destination, and Monaco puts
 			// it where it isn't visible until the editor has focus.
 			editor.focus();
+			appliedPositionRef.current = position;
+		} else if (viewStateRef.current) {
+			editor.restoreViewState(viewStateRef.current);
 		}
 
 		// Monaco's line and column numbers are 1-based, which is already what an
@@ -344,6 +373,9 @@ function Editor({ contents, language, position, onSelection }: EditorProps) {
 		});
 
 		return () => {
+			// Before disposal, not after: a disposed editor has no view state to
+			// give, and this is the only moment the next one can inherit from.
+			viewStateRef.current = editor.saveViewState();
 			selectionSub.dispose();
 			editor.dispose();
 		};

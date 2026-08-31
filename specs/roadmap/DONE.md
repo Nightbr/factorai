@@ -3,6 +3,37 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A watch on the open file (spec `05-features.md` F7 § "Freshness",
+  `03-backend-rust.md` § `FileWatch`)** — 2026-08-31. The reopen fix below covers the file you
+  closed; this covers the one in front of you. `watch_file` on open, `unwatch_file` on close,
+  `file:changed` in between, and `hooks/useWatchedOpenFile.ts` invalidating the three read
+  namespaces for the event's path.
+
+  **The subscription's lifetime is exactly the viewer's**, which is why this is two commands
+  rather than a watcher pointed at a project: with no file open there is no debouncer thread and
+  no inotify descriptor to account for. `unwatch_file` **names its path**, so the close of one
+  file cannot kill the watch of the next — React runs the old effect's cleanup before the new
+  effect, and a bare `unwatch()` would make that ordering load-bearing across an IPC boundary.
+  Q17's "no watcher" stands for the *tree*, and the entry there now says why one open file is a
+  different bet: no ignore rules, no per-project lifecycle, no watch limit.
+
+  **The watch is on the parent directory, non-recursive, filtered by name.** A watch on the file
+  follows the inode, and an agent's `Write` saves by renaming a temp file over the target — which
+  leaves an inode-scoped watch looking at something nothing will touch again. Verified in the
+  real window, not only in the mock: a `mv` over the open file refreshed the rendered document
+  (32 B → 85 B) and then the Monaco source view (61 B → 75 B) with nothing clicked.
+
+  **Monaco keeps your place across the refresh.** The editor is recreated on a contents change —
+  invisible while the only way to get new contents was to open a different file — so it now saves
+  `saveViewState()` before disposing and restores it into the new editor, keyed by path so the
+  next file starts clean. A `&line=` position wins only when it is one the reader has not been
+  sent to yet, which also stops a re-render from re-jumping to a line a terminal link asked for
+  ten minutes ago.
+
+  **Known bound:** a renderer reload with the viewer open leaves one watch running (the hook's
+  cleanup never runs), released by the next `watch_file` or by quitting. One, ever — not a leak
+  that grows.
+
 - **Reopening a file in the viewer re-reads it (spec `05-features.md` F7 § "Freshness", F13 § "A
   diff's two sides age separately")** — 2026-08-31. An agent edited an open markdown file, the
   reader closed the viewer and opened it again, and the old text came back.
