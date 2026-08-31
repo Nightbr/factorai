@@ -176,6 +176,18 @@ attach to the *app's* vite, and every test times out at 30s. Twenty-four unrelat
 specs "failing" is the tell. Set `PLAYWRIGHT_PORT=1421` to run alongside a dev
 app; the config reads it and starts its own server.
 
+**A test that waits thirty seconds for a control that is always there is
+usually the network, not the selector.** Chromium aborts every in-flight request
+with `net::ERR_NETWORK_CHANGED` when the kernel reports a network change, and it
+learns that from netlink — which on a machine running docker or tailscale is
+noisy: `ip monitor all` counted 177 events in 90 seconds here, veths coming and
+going under a compose bridge. The dev renderer is some 800 module requests, so a
+burst lands mid-load often enough to hit one test per full run, react-dom
+included, and the app never mounts. `installMockBridge` prints every aborted
+script and page error as it happens, so the log says so; `retries: 1` (local as
+well as CI, 2026-08-31) is what keeps it from failing the gate, and a real break
+still fails both attempts.
+
 **dnd-kit reports `over` one move behind** — it collides against rects measured on
 the previous frame. A real drag never notices, but a test that jumps once per aim
 names the row the pointer just *left*. Move twice, a pixel apart, per aim. The

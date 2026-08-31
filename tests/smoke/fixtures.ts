@@ -111,9 +111,45 @@ declare global {
  * before `page.goto(...)`.
  */
 export async function installMockBridge(page: Page, fixture: TestFixture): Promise<void> {
+	watchForRendererTrouble(page);
 	await page.addInitScript((fx) => {
 		(window as unknown as { __FACTORAI_TEST__: typeof fx }).__FACTORAI_TEST__ = fx;
 	}, fixture);
+}
+
+/**
+ * Print anything the renderer says about its own failure, tagged with the page's
+ * url, as it happens.
+ *
+ * Every spec goes through `installMockBridge` before it navigates, which is why
+ * this lives here rather than in a fixture each spec would have to import.
+ *
+ * The failure it exists for looks like nothing at all: a locator that never
+ * resolves, thirty seconds of waiting, and a call log that says only
+ * `waiting for getByRole(...)`. Whether the shell threw while mounting, a chunk
+ * failed to load, or the page simply never got there is invisible from the test
+ * side — Playwright reports the symptom and the cause stays in the browser. A
+ * `pageerror` or a failed document request is the one line that separates those
+ * cases, and it costs nothing to print on every run.
+ */
+function watchForRendererTrouble(page: Page): void {
+	const where = () => page.url() || '(no url yet)';
+	page.on('pageerror', (err) => {
+		console.error(`[renderer] uncaught at ${where()}: ${err.message}`);
+	});
+	page.on('crash', () => {
+		console.error(`[renderer] the page crashed at ${where()}`);
+	});
+	page.on('requestfailed', (req) => {
+		// Only the ones that can leave the app half-mounted. An image or a font
+		// the mock never serves is not news.
+		if (req.resourceType() !== 'document' && req.resourceType() !== 'script') return;
+		console.error(
+			`[renderer] ${req.resourceType()} request failed: ${req.url()} — ${
+				req.failure()?.errorText ?? 'no reason given'
+			}`,
+		);
+	});
 }
 
 /**
