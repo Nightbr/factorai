@@ -283,33 +283,78 @@ mod tests {
 		);
 		s.write_all(req.as_bytes()).unwrap();
 		s.flush().unwrap();
-		read_reply(&mut s)
+		Replies::on(&mut s).next()
 	}
 
-	fn read_reply(s: &mut StdStream) -> (u16, String) {
-		let mut buf = Vec::new();
-		loop {
-			let mut chunk = [0u8; 1024];
-			let n = s.read(&mut chunk).unwrap();
-			if n == 0 {
-				break;
-			}
-			buf.extend_from_slice(&chunk[..n]);
-			let text = String::from_utf8_lossy(&buf).to_string();
-			if let Some((head, rest)) = text.split_once("\r\n\r\n") {
-				let len: usize = head
-					.split("\r\n")
-					.find_map(|l| l.strip_prefix("Content-Length: "))
-					.and_then(|v| v.parse().ok())
-					.unwrap_or(0);
-				if rest.len() >= len {
-					let status =
-						head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
-					return (status, rest[..len].to_string());
+	/// Replies read off one connection, in order.
+	///
+	/// **Stateful on purpose.** A reply is framed by `Content-Length` inside a
+	/// byte stream, not delivered as its own packet, so two pipelined replies
+	/// routinely arrive in a single `read`. A helper that parsed the first and
+	/// dropped the rest of its buffer would then block forever waiting for bytes
+	/// it had already thrown away — which is what the previous one did, and it
+	/// hung `a_body_longer_than_it_claims_does_not_hang_the_next_request` for
+	/// exactly as often as the kernel happened to coalesce the two writes.
+	/// Leftover bytes stay in `buf` and answer the next call.
+	struct Replies<'a> {
+		stream: &'a mut StdStream,
+		buf: Vec<u8>,
+	}
+
+	impl<'a> Replies<'a> {
+		fn on(stream: &'a mut StdStream) -> Self {
+			// A read that never returns would hang the whole suite with no name on
+			// it; this fails the one test instead. Generous, because it is a
+			// backstop and not a latency assertion.
+			stream
+				.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+				.expect("set read timeout");
+			Self { stream, buf: Vec::new() }
+		}
+
+		/// Write a request onto the same connection. Here rather than on the
+		/// caller because `Replies` borrows the stream for as long as the
+		/// session lasts, and a session is writes and reads interleaved.
+		fn send(&mut self, req: &str) {
+			self.stream.write_all(req.as_bytes()).unwrap();
+			self.stream.flush().unwrap();
+		}
+
+		/// The next whole reply, reading more bytes only when the buffer has none.
+		fn next(&mut self) -> (u16, String) {
+			loop {
+				if let Some(reply) = self.take_framed() {
+					return reply;
+				}
+				let mut chunk = [0u8; 1024];
+				match self.stream.read(&mut chunk) {
+					Ok(0) => return (0, String::new()),
+					Ok(n) => self.buf.extend_from_slice(&chunk[..n]),
+					Err(e) => panic!("reading a reply: {e}"),
 				}
 			}
 		}
-		(0, String::new())
+
+		/// One reply, if `buf` already holds a whole one — head, blank line and
+		/// as many body bytes as `Content-Length` claims. Framed over bytes
+		/// rather than a lossy string so an index can never land mid-character.
+		fn take_framed(&mut self) -> Option<(u16, String)> {
+			let head_end = self.buf.windows(4).position(|w| w == b"\r\n\r\n")?;
+			let head = String::from_utf8_lossy(&self.buf[..head_end]).into_owned();
+			let len: usize = head
+				.split("\r\n")
+				.find_map(|l| l.strip_prefix("Content-Length: "))
+				.and_then(|v| v.parse().ok())
+				.unwrap_or(0);
+			let body_at = head_end + 4;
+			if self.buf.len() < body_at + len {
+				return None;
+			}
+			let status = head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+			let body = String::from_utf8_lossy(&self.buf[body_at..body_at + len]).into_owned();
+			self.buf.drain(..body_at + len);
+			Some((status, body))
+		}
 	}
 
 	fn echo_server() -> AgentToolsServer {
@@ -390,16 +435,15 @@ mod tests {
 		let server = echo_server();
 		let bearer = format!("Bearer {}", server.token());
 		let mut s = StdStream::connect(("127.0.0.1", server.port())).expect("connect");
+		let mut replies = Replies::on(&mut s);
 		for n in 1..=3 {
 			let body = format!(r#"{{"id":{n},"method":"tools/list"}}"#);
-			let req = format!(
+			replies.send(&format!(
 				"POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: {bearer}\r\n\
 				 Content-Length: {}\r\n\r\n{body}",
 				body.len()
-			);
-			s.write_all(req.as_bytes()).unwrap();
-			s.flush().unwrap();
-			let (status, reply) = read_reply(&mut s);
+			));
+			let (status, reply) = replies.next();
 			assert_eq!(status, 200, "request {n} on the same connection");
 			assert!(reply.contains("echoed"), "request {n}: {reply}");
 		}
@@ -433,10 +477,15 @@ mod tests {
 			first.len(),
 			second.len()
 		);
-		s.write_all(req.as_bytes()).unwrap();
-		s.flush().unwrap();
+		let mut replies = Replies::on(&mut s);
+		replies.send(&req);
+		// Give both replies time to arrive before the first read, so the coalesced
+		// case — two replies in one `read`, the one a reply-at-a-time reader loses
+		// the second half of — is what every run exercises rather than what a
+		// scheduling accident occasionally exercises.
+		std::thread::sleep(std::time::Duration::from_millis(200));
 		for n in 1..=2 {
-			let (status, reply) = read_reply(&mut s);
+			let (status, reply) = replies.next();
 			assert_eq!(status, 200, "pipelined request {n}");
 			assert!(reply.contains("echoed"), "pipelined request {n}: {reply}");
 		}
