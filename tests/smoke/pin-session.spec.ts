@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { ZULU_ID, fixtureTwoProjectsManySessions, installMockBridge } from './fixtures';
+import {
+	FOO_ID,
+	ZULU_ID,
+	fixtureTwoProjectsManySessions,
+	fixtureWithSubagents,
+	installMockBridge,
+} from './fixtures';
 
 /**
  * Pinning a session to the top of its project's list (specs/05-features.md F2).
@@ -11,7 +17,6 @@ import { ZULU_ID, fixtureTwoProjectsManySessions, installMockBridge } from './fi
  * the top and stays there".
  */
 const STALE = 'zulu-session-02';
-const NEWEST = 'zulu-session-11';
 
 test.describe('pin a session', () => {
 	test('@smoke the row menu pins a session to the top of the list', async ({ page }) => {
@@ -43,28 +48,47 @@ test.describe('pin a session', () => {
 		).toBe(true);
 	});
 
-	test('@smoke the pin button on the row toggles it back off', async ({ page }) => {
-		// The button is the discoverable half — a feature reachable only by
-		// right-click is one nobody finds. It is also the mark on a pinned row, so
-		// it stays visible once the pin is on.
+	test('@smoke the session header pins and unpins the session you are in', async ({ page }) => {
+		// The header is the other half of the control (F2): the session in front of
+		// you is the one you know you want kept, and the sidebar's inline list only
+		// shows ten rows. Icon only, and the icon says which way it goes.
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
+		await page
+			.getByTestId(`sidebar-sessions-${ZULU_ID}`)
+			.getByRole('link', { name: /Zulu task 2$/ })
+			.click();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
 
-		await page.getByTestId(`pin-session-button-${STALE}`).click();
+		const pin = page.getByTestId('session-pin');
+		await expect(pin).toHaveAttribute('aria-pressed', 'false');
+		await pin.click();
+
+		await expect(pin).toHaveAttribute('aria-pressed', 'true');
+		await expect(pin).toHaveAccessibleName('Unpin session');
+		// And the list it reordered is the sidebar's, in the background.
 		const rows = page.getByTestId(`sidebar-sessions-${ZULU_ID}`).getByRole('link');
 		await expect(rows.first()).toHaveText(/Zulu task 2/);
-		await expect(page.getByTestId(`pin-session-button-${STALE}`)).toHaveAttribute(
-			'aria-pressed',
-			'true',
-		);
 
-		await page.getByTestId(`pin-session-button-${STALE}`).click();
-		await expect(rows.first()).toHaveText(/Zulu task 11/);
-		await expect(page.getByTestId(`pin-session-button-${NEWEST}`)).toHaveAttribute(
-			'aria-pressed',
-			'false',
-		);
+		// Unpinning leaves it at the top, and that is right rather than a bug: the
+		// session is open now, and `open` is the second sort key. What the assertion
+		// can say is that the pin is off — the menu test above is where the *order*
+		// falls back, from a row nobody opened.
+		await pin.click();
+		await expect(pin).toHaveAttribute('aria-pressed', 'false');
+		await expect(pin).toHaveAccessibleName('Pin session');
+	});
+
+	test('@smoke a sub-agent has no pin control in the header', async ({ page }) => {
+		// Not a session you go back into, and `set_session_pinned` refuses one.
+		// Straight to the route, the way `subagent-sessions.spec.ts` does: the row
+		// is nested under a group that is collapsed by default.
+		await installMockBridge(page, fixtureWithSubagents());
+		await page.goto(`/#/projects/${FOO_ID}/sessions/agent-1111`);
+
+		await expect(page.getByTestId('subagent-transcript')).toBeVisible();
+		await expect(page.getByTestId('session-pin')).toHaveCount(0);
 	});
 
 	test('@smoke the project page splits the list into Pinned and Recent', async ({ page }) => {
@@ -74,7 +98,11 @@ test.describe('pin a session', () => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Expand zulu' }).click();
-		await page.getByTestId(`pin-session-button-${STALE}`).click();
+		await page
+			.getByTestId(`sidebar-sessions-${ZULU_ID}`)
+			.getByRole('link', { name: /Zulu task 2$/ })
+			.click({ button: 'right' });
+		await page.getByTestId(`pin-session-${STALE}`).click();
 
 		await page.goto(`/#/projects/${ZULU_ID}`);
 		await expect(page.getByText('Pinned', { exact: true })).toBeVisible();

@@ -7,6 +7,7 @@ import {
 	GitBranch,
 	GitCommitHorizontal,
 	Pin,
+	PinOff,
 	Play,
 	TriangleAlert,
 	X,
@@ -19,6 +20,7 @@ import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
 import { disposeTerminal, restartSession, Terminal } from '@components/terminal/Terminal';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useGitBranch } from '@hooks/useGitBranch';
+import { useSetSessionPinned } from '@hooks/useSetSessionPinned';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { usePrefsStore } from '@store/prefsStore';
@@ -147,7 +149,22 @@ function SessionView() {
 	// irreversible, and this header used to do it on one unguarded click —
 	// see `00-overview.md` § "The operating model".
 	const [closing, setClosing] = useState(false);
+	// A pin that failed colours the button for a moment. The alternative is a
+	// header that says the session is pinned while the list disagrees.
+	const [pinFailed, setPinFailed] = useState(false);
+	const setPinned = useSetSessionPinned();
 	const navigate = useNavigate();
+
+	async function togglePin() {
+		if (!session) return;
+		setPinFailed(false);
+		try {
+			await setPinned(session.id, projectId, !session.pinned);
+		} catch {
+			setPinFailed(true);
+			setTimeout(() => setPinFailed(false), 1400);
+		}
+	}
 
 	/**
 	 * Closing a session ends your business with it, so leave rather than
@@ -257,21 +274,54 @@ function SessionView() {
 						onRevert={isLinked ? revertWorktree : null}
 					/>
 				)}
-				{/* **A mark, not a control** (F2). The session you are looking at says
-				    whether it is pinned, because the sidebar shows ten rows and a pin
-				    you made three days ago is otherwise a fact only the list knows.
-				    Pinning and unpinning stay on the row, where the list you are
-				    reordering is on screen — a toggle here would reorder something you
-				    cannot see. */}
-				{session?.pinned && (
-					<span
-						className="flex shrink-0 items-center gap-1 text-primary text-xs"
-						title="Pinned to the top of this project's sessions"
-						data-testid="session-pinned"
+				{/* **The pin's control, and its mark** (F2). The session you are looking
+				    at is the one you know you want kept, so this is where the decision
+				    is made — and the sidebar shows ten rows, so a pin made three days
+				    ago is otherwise a fact only the list holds.
+
+				    **At rest it shows the state; on hover it shows the action.** A filled
+				    pin means pinned, an outline pin means not, so the glyph is readable
+				    without hovering and without leaning on colour alone. Point at it and
+				    it becomes what the click will do: `PinOff` over a pinned session,
+				    the filled pin over an unpinned one — a preview of the result rather
+				    than a repeat of the state.
+
+				    The swap is CSS on the button's own `group`, not a React hover state:
+				    a re-render per pointer entry, for two glyphs whose only difference is
+				    which one is `hidden`, is state nobody needs.
+
+				    Absent for a sub-agent — not a session you go back into, and the
+				    backend refuses to pin one — and absent until the index has a row,
+				    which is what a pin hangs off (ADR-0008). */}
+				{session && !isSubAgent && (
+					<IconButton
+						data-testid="session-pin"
+						aria-label={session.pinned ? 'Unpin session' : 'Pin session'}
+						aria-pressed={session.pinned}
+						title={
+							pinFailed
+								? 'Could not change the pin'
+								: session.pinned
+									? 'Unpin — stop keeping it at the top of this project'
+									: 'Pin to the top of this project'
+						}
+						onClick={() => void togglePin()}
+						className={`group ${pinFailed ? 'text-destructive' : session.pinned ? 'text-primary' : ''}`}
 					>
-						<Pin className="size-3 shrink-0" aria-hidden />
-						pinned
-					</span>
+						{session.pinned ? (
+							<>
+								{/* lucide draws outlines, so "filled" is `fill-current` rather
+								    than a second icon. */}
+								<Pin className="fill-current group-hover:hidden" aria-hidden />
+								<PinOff className="hidden group-hover:block" aria-hidden />
+							</>
+						) : (
+							<>
+								<Pin className="group-hover:hidden" aria-hidden />
+								<Pin className="hidden fill-current group-hover:block" aria-hidden />
+							</>
+						)}
+					</IconButton>
 				)}
 				{/* The full id is one hover away rather than spending header width on
 				    36 characters nobody reads. */}

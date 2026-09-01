@@ -622,10 +622,7 @@ function SessionList({ project }: { project: Project }) {
 								? `Started by routine — ${routineOrigins[p.sessionId].routineName}`
 								: 'New session — it takes its title from your first message'
 						}
-						// `pr-8`, like the indexed rows below: they reserve that space for
-						// the pin button, and a status dot that sits 24px further right on
-						// these two rows makes the column read as ragged.
-						className="flex items-center gap-2 py-1.5 pr-8 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						{routineOrigins[p.sessionId] && (
@@ -715,6 +712,7 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 	// menu has closed by the time the command returns, and the alternative is a
 	// list that quietly did not reorder.
 	const [pinFailed, setPinFailed] = useState(false);
+
 	const [confirming, setConfirming] = useState(false);
 	// In flight: the button says so and neither button can be pressed again. A
 	// delete stops a PTY and then waits for it to actually exit, which is a
@@ -772,11 +770,7 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 	}
 
 	return (
-		// `group` and `relative` for the pin button, which is overlaid on the row
-		// rather than laid out beside the `Link`. A sibling in a flex row would end
-		// the `Link` short of the row's right edge, and the hover and active
-		// backgrounds — which the `Link` paints — would stop with it.
-		<li className="group relative">
+		<li>
 			{/* Three items. Clicking the row is still what opens the session, so this
 			    stays the menu of things the row itself cannot do: pinning it, where
 			    the transcript is, and deleting it. Anything beyond those would be a
@@ -795,9 +789,7 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 								? `${title} · ran ${formatStamp(new Date(session.routineStartedAt), clock24)}`
 								: title
 						}
-						// `pr-8` reserves the pin button's column, so a long title
-						// truncates before it rather than sliding underneath.
-						className="flex items-center gap-2 py-1.5 pr-8 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						{session.routineId && (
@@ -826,6 +818,12 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 						{copied === 'failed' && (
 							<X
 								data-testid="session-path-copy-failed"
+								className="size-3.5 shrink-0 text-destructive"
+							/>
+						)}
+						{pinFailed && (
+							<X
+								data-testid={`pin-session-failed-${session.id}`}
 								className="size-3.5 shrink-0 text-destructive"
 							/>
 						)}
@@ -876,28 +874,6 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 					</ContextMenuItem>
 				</ContextMenuContent>
 			</ContextMenu>
-
-			{/* **Visible on hover and focus, and permanently once pinned.** The
-			    right-click menu is the same path every other row action takes, but a
-			    feature reachable only by right-click is one nobody finds — and on a
-			    pinned row this button doubles as the per-row statement of *which*
-			    rows the divider above covers. `focus-within` is not enough: the
-			    button is not inside the `Link`, so tabbing to the row has to reveal
-			    it through its own `focus-visible`. */}
-			<IconButton
-				data-testid={`pin-session-button-${session.id}`}
-				aria-label={session.pinned ? `Unpin ${title}` : `Pin ${title}`}
-				aria-pressed={session.pinned}
-				title={pinFailed ? 'Could not change the pin' : session.pinned ? 'Unpin' : 'Pin to top'}
-				onClick={() => void togglePin()}
-				className={`absolute top-1/2 right-1.5 -translate-y-1/2 ${
-					session.pinned
-						? 'text-primary opacity-100'
-						: 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
-				} ${pinFailed ? 'text-destructive' : ''}`}
-			>
-				{session.pinned ? <PinOff /> : <Pin />}
-			</IconButton>
 
 			{/* Always asks. This is the only action in the app that removes the
 			    user's own work, and the row it starts from is one pixel of travel

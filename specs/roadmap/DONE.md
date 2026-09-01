@@ -7,7 +7,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   "Pinning a session", `02-data-model.md` § `session_pins`, migration 0015)** — 2026-09-01, user
   ask. The session you keep coming back to sank under whatever you touched most recently, and the
   only way to keep one to hand was to leave a tab open. Right-click a sidebar row → `Pin session`,
-  or the pin button that appears on hover; the row leads the list until you unpin it.
+  or the pin button in the session header; the row leads the list until you unpin it.
 
   **One bit, deliberately, three weeks after migration 0011 removed exactly such a bit from
   `projects`.** A project list is ten stable rows you can drag into the order you want, which is
@@ -38,20 +38,28 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   **The boundary is the mark, not a per-row icon.** A rule between the two blocks in the sidebar;
   on the project page, where `divide-y` already draws a rule under every row, the two captions
   `PINNED` / `RECENT`, drawn only when both blocks exist. Two pins with nothing between them and
-  the rest of the list read as a broken sort. The pin button stays visible on a pinned row, so it
-  doubles as that row's own statement, and the session view's header carries a `pinned` mark — a
-  mark, not a control: a toggle there would reorder a list you cannot see.
+  the rest of the list read as a broken sort.
+
+  **The row's own pin button lasted one afternoon** (user feedback, same day). A hover affordance
+  on every row of a ten-row list is ten things competing with the titles, and the block boundary
+  already says which rows are pinned — so the sidebar keeps only the context menu, and the
+  **session header** gained the toggle. It is icon-only and does two jobs at once: at rest the
+  glyph is the state (filled pin = pinned, outline = not), on hover it becomes the action
+  (`PinOff` over a pinned session, the filled pin over an unpinned one). Shape rather than colour
+  alone, and a CSS swap on the button's own `group` rather than a React hover state.
 
   **The project page has no toggle**, by decision rather than omission: its rows carry no context
   menu at all today (same as the delete item), and giving them one meant either duplicating the
   destructive action or shipping a menu with a single entry. It honours the order and names the
   blocks.
 
-  Verified in the real window as well as the suites — pin, order, divider, header mark, unpin —
-  because the hover-and-focus reveal on the button is not something `tsc` has an opinion about.
-  Four Rust integration tests (`tests/session_pins.rs`), four `orderSessions` cases, three
-  `@smoke` specs including the mock bridge reordering the way the SQL does, so a fixture that
-  merely flipped the flag cannot pass.
+  Verified in the real window as well as the suites — pin, order, divider, header toggle, unpin —
+  because an icon that swaps on hover is not something `tsc` has an opinion about. Four Rust
+  integration tests (`tests/session_pins.rs`), four `orderSessions` cases, four `@smoke` specs
+  including the mock bridge reordering the way the SQL does, so a fixture that merely flipped the
+  flag cannot pass. The header test asserts the *state* after unpinning rather than the order: the
+  session is open by then, and `open` is the second sort key — which is the rule working, not a
+  bug, and the menu test covers the fallback from a row nobody opened.
 
 - **`AGENTS.md` split into a portable document, path-scoped rules and on-demand skills
   (`annex-A-cli-agent-patterns.md` § A.9)** — 2026-08-31, user ask. The file had reached 512

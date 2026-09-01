@@ -490,11 +490,11 @@ rows live.
 
 ### Pinning a session
 
-**Right-click a session row → `Pin session`, or the pin button on the row.** A
-pinned session leads its project's list — in the sidebar's inline list and on the
-project page — where recency can no longer push it below the fold. It is the
-answer to "the session I keep coming back to keeps sinking", which until now was
-solved by leaving a tab open.
+**Right-click a session row → `Pin session`, or the pin button in the session
+header.** A pinned session leads its project's list — in the sidebar's inline list
+and on the project page — where recency can no longer push it below the fold. It
+is the answer to "the session I keep coming back to keeps sinking", which until
+now was solved by leaving a tab open.
 
 **One bit, not an ordinal.** A project's position in the sidebar is a stored
 ordinal you drag (F1, ADR-0023/0025); a session's is not, and the difference is
@@ -515,18 +515,30 @@ pin, not the row's: `list_sessions` orders by it and the renderer's
 never being pinned itself. Sub-agents cannot be pinned — they are not sessions
 you go back into.
 
-**Where the control is.** The sidebar's row: the context menu's first item, and a
-pin button that appears on hover or focus and **stays visible once pinned**,
-where it doubles as the row's mark. The project page has no toggle; it honours
-the order and names the two blocks (`Pinned` / `Recent`, drawn only when both
-exist). The session view's header shows a `pinned` mark for the session you are
-looking at — a mark, not a control, since a toggle there would reorder a list you
-cannot see.
+**Where the control is.** Two places, and no third.
+
+- **The sidebar row's context menu**, first item — `Pin session` / `Unpin
+  session`. The row itself carries no button: an affordance on every row of a
+  ten-row list is ten affordances competing with the titles, and the boundary
+  between the blocks is what says which rows are pinned.
+- **The session header**, as an icon-only button for the session you are looking
+  at. That is the session you know you want kept, and the sidebar's inline list
+  only reaches ten rows, so a pin made days ago is otherwise a fact only the list
+  holds. **At rest it shows the state, on hover the action**: a filled pin means
+  pinned and an outline pin means not, and pointing at it swaps in what the click
+  will do — `PinOff` over a pinned session, the filled pin over an unpinned one.
+  Shape carries the state, so colour is confirmation rather than the only signal.
+  Absent for a sub-agent, which cannot be pinned.
+
+The project page has no toggle: it honours the order and names the two blocks
+(`Pinned` / `Recent`, drawn only when both exist).
 
 **The boundary is the mark, not a per-row icon.** In the sidebar a rule between
 the two blocks; on the project page, where every row already has a rule under it,
 the two captions. Two pins with nothing between them and the rest of the list
-read as a broken sort.
+read as a broken sort. A failed pin does mark the row it was attempted on, the
+same transient cross a failed `Copy transcript path` leaves — the menu has closed
+by the time the command answers.
 
 **Backend.** `set_session_pinned(session_id, pinned)`, then `sessions:changed`
 for the project — every list on screen is a `list_sessions` too. `pinned` rides
