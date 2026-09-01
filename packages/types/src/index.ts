@@ -233,12 +233,51 @@ export type TerminalId = string;
  */
 export type TerminalStatus = 'working' | 'waiting_input' | 'stopped';
 
+/**
+ * What a PTY *is*, which is not what it is doing. Mirrors
+ * `services::terminal::TerminalKind`.
+ *
+ * `shell` is the footer terminal under a session (F23). It carries that
+ * session's id so the footer can find it and so it dies with it, and it is
+ * **not** that session: `bySession` is keyed by session id, so adopting a shell
+ * without checking this would file it over the agent it is drawn under.
+ */
+export type TerminalKind = 'agent' | 'shell';
+
 export interface TerminalStatusDto {
 	id: TerminalId;
 	sessionId: string;
 	projectId: string;
 	status: TerminalStatus;
 	lastActivity: number;
+	kind: TerminalKind;
+	/** The last title a shell set for itself, so a reload can label its chip
+	 *  without waiting for the next one. Always null for an agent, whose titles
+	 *  are a status rather than a name. */
+	title: string | null;
+	/** Where this terminal is running. A shell chip that outlives its process
+	 *  respawns here (F23). */
+	cwd: string;
+}
+
+/**
+ * What the footer needs to open a shell (F23). Mirrors
+ * `services::terminal::ShellSpawnOpts`.
+ *
+ * Deliberately not `SpawnOpts` with a flag on it: half of that struct is about
+ * a Claude session — the transcript probe, a routine's first prompt — and none
+ * of it means anything here.
+ */
+export interface ShellSpawnOpts {
+	/** The session whose footer this shell is drawn in. It decides which shells
+	 *  die with which session, and nothing else. */
+	sessionId: string;
+	projectId: string;
+	/** Required, unlike an agent's: the caller knows which checkout the footer
+	 *  is under (F21) and there is no transcript to fall back to. */
+	cwd: string;
+	cols: number;
+	rows: number;
 }
 
 export interface SpawnOpts {
@@ -501,6 +540,18 @@ export interface TerminalStatusEvent {
 export interface TerminalExitEvent {
 	id: TerminalId;
 	code: number | null;
+}
+
+/**
+ * The title a **shell** terminal set for itself, which is what labels its chip
+ * (F23). Mirrors `services::terminal::TerminalTitleEvent`.
+ *
+ * Never emitted for an agent: there the same `OSC 0` decides a status instead
+ * (F10, ADR-0015), and Claude's title is a spinner frame rather than a name.
+ */
+export interface TerminalTitleEvent {
+	id: TerminalId;
+	title: string;
 }
 
 // ── Git (F13) ──────────────────────────────────────────────────────────────

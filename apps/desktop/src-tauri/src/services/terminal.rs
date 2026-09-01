@@ -37,6 +37,26 @@ use crate::services::osc_title::TitleScanner;
 
 pub type TerminalId = String;
 
+/// What a PTY *is*, which is not the same question as what it is doing.
+///
+/// Everything in factorai was a Claude session until F23, and three passes over
+/// the handle map still mean "session" when they say "terminal": the new-session
+/// reuse rule, the set of ids the indexer must not reap, and the `OSC 0` status
+/// parse. A shell has a session id only because it is drawn under one — it is
+/// not that session, and it is not any session — so it is excluded from all
+/// three by kind rather than by a name check.
+///
+/// See `specs/05-features.md` § F23 and ADR-0031.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalKind {
+	/// A `claude` process. The session id names a real transcript.
+	Agent,
+	/// The user's own shell, in the footer under a session (F23). The session
+	/// id says which footer it is drawn in, and nothing more.
+	Shell,
+}
+
 /// What a session is doing, derived from Claude's own terminal title — see
 /// `services::osc_title`, `specs/05-features.md` § F10 and ADR-0015.
 ///
@@ -85,6 +105,28 @@ pub struct SpawnOpts {
 	pub initial_prompt: Option<String>,
 }
 
+/// What the footer needs to open a shell (F23).
+///
+/// Deliberately not `SpawnOpts` with a flag on it. Half that struct is about a
+/// Claude session — the transcript probe that chooses `--resume`, the routine's
+/// first prompt — and none of it means anything here; a shared struct would
+/// make every one of those fields a question a shell has to answer.
+///
+/// `cwd` is required rather than optional, unlike an agent's: the caller knows
+/// which checkout the footer is under (F21) and there is no transcript to fall
+/// back to.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellSpawnOpts {
+	/// The session whose footer this shell is drawn in. It says which shells die
+	/// with which session, and nothing else — see [`TerminalKind`].
+	pub session_id: String,
+	pub project_id: String,
+	pub cwd: String,
+	pub cols: u16,
+	pub rows: u16,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalStatusDto {
@@ -93,6 +135,30 @@ pub struct TerminalStatusDto {
 	pub project_id: String,
 	pub status: TerminalStatus,
 	pub last_activity: i64,
+	/// Agent or shell (F23). The renderer keys `bySession` by session id, and a
+	/// shell shares its footer session's id — so a boot adoption that did not
+	/// know the difference would file a shell over the agent it is drawn under.
+	pub kind: TerminalKind,
+	/// The last title a shell set for itself, so a reload can label its chip
+	/// without waiting for the next one. Always `None` for an agent, whose
+	/// titles are a status rather than a name.
+	pub title: Option<String>,
+	/// Where this terminal is running. A shell chip that outlives its process
+	/// respawns here (F23).
+	pub cwd: String,
+}
+
+/// The title a **shell** terminal set for itself, which is what its chip is
+/// labelled with (F23).
+///
+/// Not emitted for an agent terminal: there the same bytes decide a status
+/// instead (F10, ADR-0015), and Claude's title is a spinner frame rather than a
+/// name anybody wants on a chip.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalTitleEvent {
+	pub id: TerminalId,
+	pub title: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,19 +228,25 @@ pub struct IdeStatusEvent {
 enum IdeSlot {
 	Running(IdeServer),
 	Failed(String),
+	/// No bridge was ever attempted — a shell terminal (F23).
+	///
+	/// Distinct from `Failed` because the header reports a failure to the user:
+	/// "the agent cannot open files" is news when a bridge did not bind, and a
+	/// lie about a terminal that has no agent in it.
+	None,
 }
 
 impl IdeSlot {
 	fn server(&self) -> Option<&IdeServer> {
 		match self {
 			Self::Running(s) => Some(s),
-			Self::Failed(_) => None,
+			Self::Failed(_) | Self::None => None,
 		}
 	}
 
 	fn error(&self) -> Option<String> {
 		match self {
-			Self::Running(_) => None,
+			Self::Running(_) | Self::None => None,
 			Self::Failed(reason) => Some(reason.clone()),
 		}
 	}
@@ -190,6 +262,7 @@ pub struct TerminalExitEvent {
 type DataCb = Arc<dyn Fn(TerminalDataEvent) + Send + Sync>;
 type StatusCb = Arc<dyn Fn(TerminalStatusEvent) + Send + Sync>;
 type ExitCb = Arc<dyn Fn(TerminalExitEvent) + Send + Sync>;
+type TitleCb = Arc<dyn Fn(TerminalTitleEvent) + Send + Sync>;
 type IdeOpenCb = Arc<dyn Fn(IdeOpenFileEvent) + Send + Sync>;
 type IdeStatusCb = Arc<dyn Fn(IdeStatusEvent) + Send + Sync>;
 /// Asks for the user's configured `claude` path, once per spawn (F11).
@@ -254,6 +327,9 @@ pub struct RoutineStore {
 struct TerminalHandle {
 	session_id: String,
 	project_id: String,
+	/// Agent or shell (F23). Read by the three passes that would otherwise
+	/// mistake a footer shell for a session — see [`TerminalKind`].
+	kind: TerminalKind,
 	master: Mutex<Box<dyn MasterPty + Send>>,
 	writer: Mutex<Box<dyn Write + Send>>,
 	/// A killer cloned from the child at spawn time. We deliberately do NOT
@@ -267,6 +343,10 @@ struct TerminalHandle {
 	/// signals the process without touching the waiter's `Child`.
 	killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 	status: Mutex<TerminalStatus>,
+	/// The last `OSC 0` title, for a shell only (F23). Held so a renderer that
+	/// reloads can label the chip from `terminal_list` instead of waiting for
+	/// the shell to retitle itself, which it may not do until you press Enter.
+	title: Mutex<Option<String>>,
 	last_activity: AtomicI64,
 	/// The directory this session runs in, and the root every IDE-bridge path is
 	/// checked against. Kept on the handle because the bridge's scope has to
@@ -295,6 +375,7 @@ pub struct TerminalManager {
 	on_data: DataCb,
 	on_status: StatusCb,
 	on_exit: ExitCb,
+	on_title: TitleCb,
 	/// Claude's config dir, for locating session transcripts. Spawn decisions
 	/// read the filesystem rather than the index, so they can't go stale.
 	claude_dir: PathBuf,
@@ -343,6 +424,7 @@ impl TerminalManager {
 		let app_exit = app.clone();
 		let app_ide = app.clone();
 		let app_ide_status = app.clone();
+		let app_title = app.clone();
 		let app_worktree = app;
 		Self {
 			terminals: Arc::new(DashMap::new()),
@@ -362,6 +444,9 @@ impl TerminalManager {
 			}),
 			on_exit: Arc::new(move |e| {
 				let _ = app_exit.emit("terminal:exit", e);
+			}),
+			on_title: Arc::new(move |e| {
+				let _ = app_title.emit("terminal:title", e);
 			}),
 			binary_override: None,
 			user_binary: None,
@@ -385,6 +470,10 @@ impl TerminalManager {
 			on_data,
 			on_status,
 			on_exit,
+			// A no-op rather than a fourth parameter: a title only names a
+			// shell chip, and no test that predates F23 has one. `set_title_cb`
+			// is how a test that wants them asks, matching `set_ide_status_cb`.
+			on_title: Arc::new(|_| {}),
 			claude_dir,
 			binary_override: None,
 			user_binary: None,
@@ -439,6 +528,12 @@ impl TerminalManager {
 		self.on_ide_status = cb;
 	}
 
+	/// Watch shell terminals' titles (F23). For tests only, same as above.
+	#[cfg(test)]
+	pub fn set_title_cb(&mut self, cb: TitleCb) {
+		self.on_title = cb;
+	}
+
 	pub fn live_count(&self) -> usize {
 		self.terminals.len()
 	}
@@ -452,6 +547,7 @@ impl TerminalManager {
 	pub fn working_count(&self) -> usize {
 		self.terminals
 			.iter()
+			.filter(|e| e.value().kind == TerminalKind::Agent)
 			.filter(|e| *e.value().status.lock() == TerminalStatus::Working)
 			.count()
 	}
@@ -460,7 +556,11 @@ impl TerminalManager {
 	/// pass takes this so it never drops the row of a session you are watching,
 	/// whatever happened to its transcript on disk.
 	pub fn live_session_ids(&self) -> HashSet<String> {
-		self.terminals.iter().map(|e| e.value().session_id.clone()).collect()
+		self.terminals
+			.iter()
+			.filter(|e| e.value().kind == TerminalKind::Agent)
+			.map(|e| e.value().session_id.clone())
+			.collect()
 	}
 
 	/// Hand files to one session's agent as `at_mentioned` notifications (F20).
@@ -540,6 +640,9 @@ impl TerminalManager {
 					project_id: h.project_id.clone(),
 					status: *h.status.lock(),
 					last_activity: h.last_activity.load(Ordering::Relaxed),
+					kind: h.kind,
+					title: h.title.lock().clone(),
+					cwd: h.cwd.to_string_lossy().into_owned(),
 				}
 			})
 			.collect()
@@ -561,7 +664,8 @@ impl TerminalManager {
 	pub fn next_session_id(&self, project_id: &str, folder: &Path) -> String {
 		for entry in self.terminals.iter() {
 			let h = entry.value();
-			if h.project_id == project_id
+			if h.kind == TerminalKind::Agent
+				&& h.project_id == project_id
 				&& !claude::transcript_path(&self.claude_dir, folder, &h.session_id).exists()
 			{
 				return h.session_id.clone();
@@ -746,6 +850,34 @@ impl TerminalManager {
 		self.spawn_with_argv(opts, None)
 	}
 
+	/// Spawn the user's own shell in the footer under a session (F23).
+	///
+	/// **Bare `$SHELL`, no flags.** A PTY with no arguments is already an
+	/// interactive shell, so `~/.zshrc` is sourced the way it is in any terminal
+	/// emulator; `-l` would re-source the profile and hand this shell a
+	/// different environment from the agent above it, which is the one thing a
+	/// shell sitting beside an agent must not have. `child_env` supplies the
+	/// login-shell `PATH` for both.
+	///
+	/// The session id is carried for one purpose — which footer this belongs to,
+	/// so closing that session kills its shells — and [`TerminalKind::Shell`]
+	/// keeps it out of every pass that would read it as a session (ADR-0031).
+	pub fn spawn_shell(&self, opts: ShellSpawnOpts) -> AppResult<TerminalId> {
+		let shell = crate::services::shell_path::user_shell();
+		self.spawn_inner(
+			SpawnOpts {
+				session_id: opts.session_id,
+				project_id: opts.project_id,
+				cwd: Some(opts.cwd),
+				cols: opts.cols,
+				rows: opts.rows,
+				initial_prompt: None,
+			},
+			Some(vec![shell.to_string_lossy().into_owned()]),
+			TerminalKind::Shell,
+		)
+	}
+
 	/// The command line for a session: the binary, the flag the transcript probe
 	/// chose, the id, and — for a routine fire — the prompt.
 	///
@@ -795,27 +927,58 @@ impl TerminalManager {
 		opts: SpawnOpts,
 		argv_override: Option<Vec<String>>,
 	) -> AppResult<TerminalId> {
+		self.spawn_inner(opts, argv_override, TerminalKind::Agent)
+	}
+
+	/// The one place a PTY comes into existence, for both kinds.
+	///
+	/// A shell takes the same cwd resolution, the same `child_env` diff and the
+	/// same reader/waiter threads as an agent, and differs in four places, all
+	/// guarded by `kind`: no transcript probe, no IDE bridge, no agent tool
+	/// server, and a title that names it rather than deciding a status.
+	fn spawn_inner(
+		&self,
+		opts: SpawnOpts,
+		argv_override: Option<Vec<String>>,
+		kind: TerminalKind,
+	) -> AppResult<TerminalId> {
 		// Resolved before argv, because the transcript probe that decides
 		// `--resume` vs `--session-id` is keyed by the folder Claude will run in.
-		let cwd_path = self
-			.resume_cwd(&opts.session_id)
-			.or_else(|| opts.cwd.as_deref().map(PathBuf::from))
-			.or_else(dirs::home_dir)
-			.unwrap_or_else(|| PathBuf::from("/"));
+		//
+		// **A shell never consults the transcript.** `resume_cwd` answers "where
+		// did Claude write this session's transcript", which for a shell is a
+		// question about a *different* process that happens to share its id: a
+		// session whose agent moved into a worktree would otherwise drag the
+		// footer's shell there too, ignoring the directory the caller asked for.
+		let cwd_path = match kind {
+			TerminalKind::Agent => self.resume_cwd(&opts.session_id),
+			TerminalKind::Shell => None,
+		}
+		.or_else(|| opts.cwd.as_deref().map(PathBuf::from))
+		.or_else(dirs::home_dir)
+		.unwrap_or_else(|| PathBuf::from("/"));
 
 		// **Started before argv, because its port goes into argv.** A failure is
 		// logged and dropped, the same rule the bridge follows: a session without
 		// factorai's own tools is every session before this landed, whereas
 		// refusing to spawn `claude` because a socket would not bind trades the
 		// whole feature for one of its conveniences.
-		let agent_tools =
-			match self.start_agent_tools(&opts.session_id, &opts.project_id, &cwd_path) {
-				Ok(server) => Some(server),
-				Err(e) => {
-					warn!(error = %e, "agent tool server did not start; the session runs without it");
-					None
+		// Shells get neither this nor the IDE bridge below: both exist to let an
+		// *agent* reach back into factorai, and a shell has no model in it to
+		// hand a tool to. Standing them up anyway would put two more listeners
+		// and two more lockfiles behind every `ls`.
+		let agent_tools = match kind {
+			TerminalKind::Shell => None,
+			TerminalKind::Agent => {
+				match self.start_agent_tools(&opts.session_id, &opts.project_id, &cwd_path) {
+					Ok(server) => Some(server),
+					Err(e) => {
+						warn!(error = %e, "agent tool server did not start; the session runs without it");
+						None
+					}
 				}
-			};
+			}
+		};
 
 		let argv = match argv_override {
 			Some(v) => v,
@@ -862,15 +1025,22 @@ impl TerminalManager {
 		// its auto-connect on, and it pins which lockfile is chosen when a VS Code
 		// is open on the same machine — the CLI otherwise connects only when
 		// exactly one candidate matches.
-		let ide = match self.start_bridge(&opts.session_id, &cwd_path) {
-			Ok(server) => {
-				cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
-				IdeSlot::Running(server)
-			}
-			Err(e) => {
-				warn!(error = %e, "ide bridge did not start; the session runs without one");
-				IdeSlot::Failed(e.to_string())
-			}
+		let ide = match kind {
+			// See the note on `agent_tools` above: no model, no bridge. It also
+			// keeps `CLAUDE_CODE_SSE_PORT` out of the shell's environment, so a
+			// `claude` the user starts *by hand* in that shell is not silently
+			// bound to the footer it was typed in.
+			TerminalKind::Shell => IdeSlot::None,
+			TerminalKind::Agent => match self.start_bridge(&opts.session_id, &cwd_path) {
+				Ok(server) => {
+					cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
+					IdeSlot::Running(server)
+				}
+				Err(e) => {
+					warn!(error = %e, "ide bridge did not start; the session runs without one");
+					IdeSlot::Failed(e.to_string())
+				}
+			},
 		};
 
 		let pty_system = native_pty_system();
@@ -903,6 +1073,7 @@ impl TerminalManager {
 		let handle = Arc::new(TerminalHandle {
 			session_id: opts.session_id.clone(),
 			project_id: opts.project_id.clone(),
+			kind,
 			master: Mutex::new(pair.master),
 			writer: Mutex::new(writer),
 			killer: Mutex::new(killer),
@@ -910,7 +1081,12 @@ impl TerminalManager {
 			// 300ms. A spawning session genuinely is doing something — resolving
 			// MCP servers, replaying a transcript — and this is also what the
 			// dot did before F10, so a launch looks no different than it used to.
+			//
+			// A shell is never anything else: it has no status, and
+			// `working_count` skips it by kind rather than by value, so this
+			// records only that the process exists.
 			status: Mutex::new(TerminalStatus::Working),
+			title: Mutex::new(None),
 			last_activity: AtomicI64::new(now_ms()),
 			cwd: cwd_path.clone(),
 			ide,
@@ -939,6 +1115,7 @@ impl TerminalManager {
 			handle.clone(),
 			self.on_data.clone(),
 			self.on_status.clone(),
+			self.on_title.clone(),
 		);
 		// Wait thread: owns the child and blocks on `wait()`; emits on_exit
 		// when it terminates. Owning (not sharing) the child is what keeps
@@ -991,6 +1168,29 @@ impl TerminalManager {
 
 	/// Kill every live terminal. SIGTERM via `child.kill()`, then a 500ms
 	/// grace period, then anything still alive gets force-killed by Drop.
+	/// Kill every shell drawn in one session's footer (F23).
+	///
+	/// Called when that session is closed, which is the whole of a shell's
+	/// lifetime rule: a shell dies with the footer it lives in. Agents are left
+	/// alone — closing a session kills its agent through `terminal_kill` on the
+	/// id the renderer already holds, and doing it twice from here would race
+	/// that path for no gain.
+	pub fn kill_shells_for_session(&self, session_id: &str) {
+		let ids: Vec<TerminalId> = self
+			.terminals
+			.iter()
+			.filter(|e| {
+				let h = e.value();
+				h.kind == TerminalKind::Shell && h.session_id == session_id
+			})
+			.map(|e| e.key().clone())
+			.collect();
+		debug!(count = ids.len(), session_id, "kill shells for session");
+		for id in &ids {
+			let _ = self.kill(id);
+		}
+	}
+
 	pub fn kill_all(&self) {
 		let ids: Vec<TerminalId> = self.terminals.iter().map(|e| e.key().clone()).collect();
 		debug!(count = ids.len(), "kill_all");
@@ -1040,6 +1240,7 @@ fn spawn_reader(
 	handle: Arc<TerminalHandle>,
 	on_data: DataCb,
 	on_status: StatusCb,
+	on_title: TitleCb,
 ) {
 	let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(FLUSH_BYTES)));
 	let eof = Arc::new(AtomicBool::new(false));
@@ -1062,8 +1263,21 @@ fn spawn_reader(
 					Ok(0) => break,
 					Ok(n) => {
 						handle_r.last_activity.store(now_ms(), Ordering::Relaxed);
-						if let Some(next) = titles.push(&tmp[..n]) {
-							set_status(&id_r, &handle_r, next, &on_status);
+						// One stream, two readings of the same `OSC 0`. For an
+						// agent the title is Claude's state (F10, ADR-0015); for
+						// a shell it is a name for its chip, and classifying it
+						// would report the user's prompt as Claude working.
+						match handle_r.kind {
+							TerminalKind::Agent => {
+								if let Some(next) = titles.push(&tmp[..n]) {
+									set_status(&id_r, &handle_r, next, &on_status);
+								}
+							}
+							TerminalKind::Shell => {
+								if let Some(next) = titles.push_title(&tmp[..n]) {
+									set_title(&id_r, &handle_r, next, &on_title);
+								}
+							}
 						}
 						buf_r.lock().extend_from_slice(&tmp[..n]);
 					}
@@ -1129,6 +1343,22 @@ fn set_status(
 	}
 	let last_activity = handle.last_activity.load(Ordering::Relaxed);
 	(on_status)(TerminalStatusEvent { id: id.clone(), status: next, last_activity });
+}
+
+/// Record a shell's new title and announce it, if it actually changed (F23).
+///
+/// Guarded the same way `set_status` is, and for the same reason: a prompt that
+/// re-emits its title on every keystroke would otherwise cross the bridge once
+/// per character to say nothing new.
+fn set_title(id: &TerminalId, handle: &Arc<TerminalHandle>, next: String, on_title: &TitleCb) {
+	{
+		let mut t = handle.title.lock();
+		if t.as_deref() == Some(next.as_str()) {
+			return;
+		}
+		*t = Some(next.clone());
+	}
+	(on_title)(TerminalTitleEvent { id: id.clone(), title: next });
 }
 
 fn emit_data(id: &TerminalId, bytes: &[u8], on_data: &DataCb) {
@@ -1475,6 +1705,131 @@ mod tests {
 
 		let _ = mgr.kill(&id);
 		assert_eq!(got.as_deref(), Some(id.as_str()), "no waiting_input event for the title");
+	}
+
+	/// SpawnOpts for a shell test — same shape, a session id it does not own.
+	fn shell_opts(session_id: &str) -> SpawnOpts {
+		SpawnOpts {
+			session_id: session_id.into(),
+			project_id: "11111111-aaaa-4bbb-8ccc-dddddddddddd".into(),
+			cwd: None,
+			cols: 80,
+			rows: 24,
+			initial_prompt: None,
+		}
+	}
+
+	/// The three passes that mean "session" when they say "terminal" (F23,
+	/// ADR-0031). A shell carries a session id so its footer can find it, and
+	/// every one of these would otherwise read that id as a session: the sidebar
+	/// would show a live row for a shell, the indexer would refuse to reap a
+	/// transcript that no longer exists, and "new session" would hand the user
+	/// the shell's id to run `claude --resume` against.
+	#[test]
+	fn a_shell_is_never_mistaken_for_a_session() {
+		let (mgr, _d, _e) = make_manager();
+		let shell_session = "99999999-8888-7777-6666-555555555555";
+		let id = mgr
+			.spawn_inner(
+				shell_opts(shell_session),
+				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
+				TerminalKind::Shell,
+			)
+			.expect("spawn");
+
+		assert_eq!(mgr.live_count(), 1, "the PTY exists and quitting will kill it");
+		assert_eq!(mgr.working_count(), 0, "a shell is never work in progress (ADR-0020)");
+		assert!(mgr.live_session_ids().is_empty(), "a shell pins no session against the reaper");
+		assert_ne!(
+			mgr.next_session_id("11111111-aaaa-4bbb-8ccc-dddddddddddd", Path::new("/tmp")),
+			shell_session,
+			"new session must never be handed a shell's id"
+		);
+
+		let _ = mgr.kill(&id);
+	}
+
+	/// The same bytes, read two ways (F10 vs F23). A shell that titles itself
+	/// with Claude's own idle marker — the worst case, and one `starship` or a
+	/// stray `printf` can produce — must name its chip and leave the session's
+	/// status alone.
+	#[test]
+	fn a_shells_title_names_it_and_never_moves_a_status() {
+		let statuses: Arc<StdMutex<Vec<TerminalStatusEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+		let titles: Arc<StdMutex<Vec<TerminalTitleEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+		let sc = statuses.clone();
+		let tc = titles.clone();
+		let mut mgr = TerminalManager::with_callbacks(
+			PathBuf::from("/nonexistent-claude-dir"),
+			Arc::new(|_| {}),
+			Arc::new(move |e| sc.lock().unwrap().push(e)),
+			Arc::new(|_| {}),
+		);
+		mgr.set_title_cb(Arc::new(move |e| tc.lock().unwrap().push(e)));
+
+		let id = mgr
+			.spawn_inner(
+				shell_opts("99999999-8888-7777-6666-555555555555"),
+				Some(vec![
+					"/bin/sh".into(),
+					"-c".into(),
+					"printf '\\033]0;\\342\\234\\263 ~/dev/factorai\\007'; sleep 30".into(),
+				]),
+				TerminalKind::Shell,
+			)
+			.unwrap();
+
+		// Poll, for the reason `a_title_written_by_a_real_child_moves_the_status`
+		// polls: the read is fast, the scheduler is not.
+		let deadline = std::time::Instant::now() + Duration::from_secs(5);
+		let got = loop {
+			if let Some(e) = titles.lock().unwrap().first() {
+				break Some(e.title.clone());
+			}
+			if std::time::Instant::now() > deadline {
+				break None;
+			}
+			std::thread::sleep(Duration::from_millis(25));
+		};
+
+		let status_events = statuses.lock().unwrap().len();
+		let _ = mgr.kill(&id);
+
+		assert_eq!(got.as_deref(), Some("\u{2733} ~/dev/factorai"), "the chip's label");
+		assert_eq!(status_events, 0, "a shell's title must not be classified as Claude's state");
+	}
+
+	/// A shell's whole lifetime is the footer it is drawn in (F23).
+	#[test]
+	fn closing_a_session_kills_its_shells_and_nothing_else() {
+		let (mgr, _d, _e) = make_manager();
+		let mine = "99999999-8888-7777-6666-555555555555";
+		let other = "12121212-3434-5656-7878-909090909090";
+		let sleep = || Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]);
+
+		let agent = mgr.spawn_inner(shell_opts(mine), sleep(), TerminalKind::Agent).unwrap();
+		let ours = mgr.spawn_inner(shell_opts(mine), sleep(), TerminalKind::Shell).unwrap();
+		let theirs = mgr.spawn_inner(shell_opts(other), sleep(), TerminalKind::Shell).unwrap();
+		assert_eq!(mgr.live_count(), 3);
+
+		mgr.kill_shells_for_session(mine);
+
+		// `kill` signals; the waiter thread removes the entry when the process
+		// actually goes. Poll for that rather than assuming it has happened —
+		// the same reason the title tests poll.
+		let deadline = std::time::Instant::now() + Duration::from_secs(5);
+		let live: HashSet<TerminalId> = loop {
+			let live: HashSet<TerminalId> = mgr.list().into_iter().map(|t| t.id).collect();
+			if !live.contains(&ours) || std::time::Instant::now() > deadline {
+				break live;
+			}
+			std::thread::sleep(Duration::from_millis(25));
+		};
+		assert!(!live.contains(&ours), "the session's own shell dies with it");
+		assert!(live.contains(&agent), "the agent is killed by its own path, not this one");
+		assert!(live.contains(&theirs), "another session's shells are untouched");
+
+		mgr.kill_all();
 	}
 
 	#[test]

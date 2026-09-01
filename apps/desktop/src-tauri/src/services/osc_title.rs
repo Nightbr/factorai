@@ -60,6 +60,31 @@ impl TitleScanner {
 	/// caller holds whatever state it already had. Last-wins because a chunk
 	/// can carry several frames of the spinner and only the newest is current.
 	pub fn push(&mut self, bytes: &[u8]) -> Option<TerminalStatus> {
+		self.scan(bytes, classify)
+	}
+
+	/// The **text** of the last complete title in the chunk, for a terminal
+	/// whose title names it rather than describing its state.
+	///
+	/// A shell terminal's chip is labelled from this (`specs/05-features.md`
+	/// § F23). Deliberately a second entry point rather than a flag on
+	/// [`push`]: the two callers want different things out of the same bytes,
+	/// and only one of them may touch a session's status — a shell sets its own
+	/// title, so classifying one would report the user's prompt as Claude
+	/// working (F10, ADR-0015).
+	pub fn push_title(&mut self, bytes: &[u8]) -> Option<String> {
+		self.scan(bytes, |payload| {
+			let text = String::from_utf8_lossy(payload).trim().to_string();
+			(!text.is_empty()).then_some(text)
+		})
+	}
+
+	/// Walk the chunk, hand every complete `OSC 0`/`OSC 2` payload to `pick`,
+	/// and answer with the last one it accepted.
+	///
+	/// Generic over `pick` so both entry points share one scan: the carry
+	/// handling is the delicate part and having it once is the point.
+	fn scan<T>(&mut self, bytes: &[u8], pick: impl Fn(&[u8]) -> Option<T>) -> Option<T> {
 		// Work over carry + new bytes so a sequence split across reads is seen
 		// whole. The common case is an empty carry and no copy.
 		let buf: Vec<u8> = if self.carry.is_empty() {
@@ -70,7 +95,7 @@ impl TitleScanner {
 			v
 		};
 
-		let mut status = None;
+		let mut picked = None;
 		let mut i = 0;
 
 		while let Some(start) = find_osc_start(&buf, i) {
@@ -80,8 +105,8 @@ impl TitleScanner {
 					// SET_TITLE. Accepting both costs nothing and means a CLI
 					// that switches to the narrower sequence still works.
 					if code == 0 || code == 2 {
-						if let Some(s) = classify(payload) {
-							status = Some(s);
+						if let Some(v) = pick(payload) {
+							picked = Some(v);
 						}
 					}
 					i = end;
@@ -93,7 +118,7 @@ impl TitleScanner {
 					if tail.len() <= MAX_CARRY {
 						self.carry = tail.to_vec();
 					}
-					return status;
+					return picked;
 				}
 				OscScan::NotOsc => {
 					// `ESC` not followed by `]` — skip just the ESC so a `]`
@@ -103,7 +128,7 @@ impl TitleScanner {
 			}
 		}
 
-		status
+		picked
 	}
 }
 

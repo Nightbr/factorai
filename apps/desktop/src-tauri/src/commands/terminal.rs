@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::commands::projects::project_path;
 use crate::error::AppResult;
-use crate::services::terminal::{SpawnOpts, TerminalStatusDto};
+use crate::services::terminal::{ShellSpawnOpts, SpawnOpts, TerminalStatusDto};
 use crate::state::AppState;
 
 /// The session id to open for a "new session" in this project.
@@ -34,6 +34,28 @@ pub fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<
 	let terminal_id = state.terminals.spawn(opts)?;
 	state.routines.mark_started(&session_id, crate::epoch_ms());
 	Ok(terminal_id)
+}
+
+/// Open a shell in the footer under a session (F23).
+///
+/// Separate from `terminal_spawn` rather than a flag on it, because the two
+/// share only the PTY: this one runs no transcript probe, stands up no IDE
+/// bridge and no agent tool server, and never marks a routine started. See
+/// `TerminalManager::spawn_shell` and ADR-0031.
+#[tauri::command]
+pub fn shell_spawn(state: State<'_, AppState>, opts: ShellSpawnOpts) -> AppResult<String> {
+	state.terminals.spawn_shell(opts)
+}
+
+/// Kill every shell in one session's footer.
+///
+/// The renderer calls this when it closes a session: a shell's whole lifetime
+/// is the footer it is drawn in. Killing the agent is still the caller's own
+/// `terminal_kill`, on the id it already holds.
+#[tauri::command]
+pub fn shell_kill_for_session(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+	state.terminals.kill_shells_for_session(&session_id);
+	Ok(())
 }
 
 #[tauri::command]

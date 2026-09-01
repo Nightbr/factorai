@@ -9,6 +9,9 @@ function dto(sessionId: string, over: Partial<TerminalStatusDto> = {}): Terminal
 		projectId: 'p1',
 		status: 'waiting_input',
 		lastActivity: 0,
+		kind: 'agent',
+		title: null,
+		cwd: '/tmp',
 		...over,
 	};
 }
@@ -18,6 +21,15 @@ const ids = () => useTerminalStore.getState().tabs.map((t) => t.sessionId);
 
 describe('adoptLive', () => {
 	beforeEach(reset);
+
+	it("skips a shell, which shares its footer session's id (F23)", () => {
+		useTerminalStore
+			.getState()
+			.adoptLive([dto('s1'), dto('s1', { id: 'pty-shell', kind: 'shell' })]);
+		// Not "the shell is absent" — the point is that the *agent's* PTY is
+		// still the one this session writes to and kills.
+		expect(useTerminalStore.getState().bySession.s1?.terminalId).toBe('pty-s1');
+	});
 
 	it('colours the strip from the PTYs Rust is already running, and opens no tabs', () => {
 		// **Changed by F22.** Adopting used to open a tab per live PTY, on the

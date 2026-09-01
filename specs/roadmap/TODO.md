@@ -1320,66 +1320,73 @@ session" and say so.
 **Sequencing.** Item 44's `SettingKey::ClaudeModel` is a per-project preference of the same shape
 and hits the same "global or per-project" question — settle it once, in whichever lands first.
 
-## 47. A shell terminal in a footer under the session, with its own tabs
+## 47. A shell terminal in a footer under the session, with its own chips
 
-**User feedback, 2026-09-01.** The session pane is one PTY running `claude` and nothing else, so
-running `git log`, `cargo test` or `ls` beside the agent means leaving the app. Asked for as a
-terminal along the bottom of the session, a footer control that opens a new shell, little tabs in
-that footer for the shells you have open, and **the system's default shell** rather than a
-configured one.
+**User feedback, 2026-09-01; design settled 2026-09-01.** The session pane is one PTY running
+`claude` and nothing else, so running `git log`, `cargo test` or `ls` beside the agent means
+leaving the app. Asked for as a terminal along the bottom of the session, a footer control that
+opens a new shell, little tabs in that footer, and **the system's default shell**.
 
 **This is not the deferred "launch in external terminal"** (`06-milestones.md` § Deferred, entry
 5), which hands the argv to Terminal.app or `xdg-open`. It is the opposite: a second PTY inside
-the app, on the surface the agent is already running on. That entry stays deferred.
+the app, on the surface the agent already runs on. That entry stays deferred.
 
-- [ ] **A resizable bottom region in the session surface.** `routes/session.tsx:390` is today a
-      single `min-h-0 flex-1` box holding the agent terminal; the footer splits it. The pattern is
-      already in the repo — `GraphView.tsx:188` stacks a list over a detail pane with
-      `PanelResizer` and a clamped height in `panelStore` — so this is a `terminalHeight` beside
-      `detailHeight`, with the same pure clamp and the same keyboard resize the resizer already
-      ships. Layout, therefore `panelStore` and not `prefsStore`, per ADR-0013: a height you
-      dragged is not a preference you set.
-- [ ] **The footer strip itself**, declaring its height rather than deriving it — `DESIGN.md`
-      § "Chrome heights are explicit". 30px matches the Session Tabs signature, which is also the
-      closest visual precedent for the tabs; they should read as related to it and not identical,
-      because a session tab carries a status dot and a shell tab has no status to carry (below).
-      Collapsed, the strip is just the strip plus the new-shell control, so the footer costs 30px
-      of terminal when you are not using it — decide whether it hides entirely until first use.
-- [ ] **Spawn the login shell.** `$SHELL`, which `services/shell_path.rs` already treats as the
-      authority (and whose `/bin/zsh` fallback rule is only for when it is unset). Interactive,
-      not a login shell, cwd the project root — or the session's checkout under F21, since the
-      whole point is to be beside *this* agent. The backend piece is small on purpose:
-      `terminal.rs:793 spawn_with_argv` is already the generic path `spawn()` calls, so a shell is
-      a second caller of it, and `services::child_env` gives it the same PATH, the same AppImage
-      strip and the same `TERM` as an agent child gets.
+**A shell is session-scoped.** It dies when the session closes and when the app quits, and it
+belongs to nothing else. Every question below was answered against that.
 
-**Three things assume a PTY is a Claude session, and each has to be answered before this can
-ship. They are the item, not a footnote to it.**
+**The identity problem is smaller than it first looked.** `TerminalId` is already a fresh
+`Uuid::new_v4()` (`terminal.rs:897`) and the session id is a *field* on `TerminalHandle`, so a
+shell needs no new id space. What it needs is a `kind`, because three places iterate every handle
+and mean "session" by it: `next_session_id` (`:561`) would hand a shell's session id to a "new
+session" click, `live_session_ids` (`:462`) would pin a phantom row against the indexer's reap,
+and the `OSC 0` status parse (F10, ADR-0015) would read a shell's own title — most prompts set one
+— as Claude working or waiting.
 
-- [ ] **`TerminalId` is the session id** (`terminal.rs:38`), and ADR-0008 built the whole identity
-      chain on that: the route, the xterm pool key, `terminalStore.bySession`, the status dots, the
-      SQLite `sessions` row. A shell has no session id and must never acquire one — a fabricated
-      UUID here would be indexed, listed in the sidebar and offered to `--resume`. So the id space
-      grows a second kind, and every consumer that today assumes "a terminal id names a session"
-      is a site to check. This wants an ADR: ADR-0008 is not wrong, its scope is.
-- [ ] **Status would lie.** F10 / ADR-0015 derive `working` / `waiting_input` from `OSC 0` titles
-      in the byte stream, and a shell emits `OSC 0` too — most prompts set the title to the cwd or
-      the running command. A shell terminal must be excluded from that parse rather than
-      misclassified by it, and it must not put a dot in the sidebar, the project row or the tab
-      strip.
-- [ ] **The quit confirm.** ADR-0020 asks about *work in progress*, counted as
-      `TerminalManager::working_count()` over Claude statuses. A shell running a 20-minute build is
-      real work that count cannot see, and an idle shell at its prompt must not start firing the
-      dialog that ADR-0020 exists to stop firing. Kill-on-quit is untouched either way (ADR-0005):
-      every shell dies with the app, asked about or not.
+- [ ] **Slice 1 — the backend.** A `kind` on the handle, a `shell_spawn` command beside
+      `terminal_spawn` (`SpawnOpts.session_id` stays required and honest), and exclusion from the
+      three iterations above. `terminal_write` / `terminal_resize` / `terminal_kill` and the
+      `terminal:data` event are keyed by terminal id already and are reused unchanged. argv is
+      **bare `$SHELL`** — a PTY with no arguments is already interactive, so the rc file is sourced
+      the usual way — falling back to `shell_path.rs`'s documented `/bin/zsh` guess when `$SHELL`
+      is unset. `services::child_env` gives it the login-shell `PATH`, the AppImage strip and
+      `TERM`, exactly as an agent child gets. The title is still parsed out of the stream, but for
+      a shell it names the chip rather than deriving a status. Spec `F23` and the ADR land here.
+- [ ] **Slice 2 — the split, one shell, no chips.** Agent above, shell below, `PanelResizer`
+      between them: the same component and clamped-height shape `GraphView.tsx:188` already uses
+      for its commit detail. **One global `shellHeight`** in `panelStore` — a height you dragged is
+      layout, not a preference (ADR-0013). Usable at the end of this slice.
+- [ ] **Slice 3 — chips, several shells, titles, collapse.** The strip is a permanent **30px**
+      (`DESIGN.md` § "Chrome heights are explicit"), present with no shells open so the `+` can be
+      found, and the split below it only exists once a shell does. Clicking the **active** chip
+      collapses the split back to the bare strip with the shells still running. `DESIGN.md` gains
+      the chip variant here.
+- [ ] **Slice 4 — dead chips.** `exit` removes a chip; a chip killed by the app quitting comes
+      back **dead**, holding its cwd, and clicking it respawns there. So the renderer has to know a
+      quit is under way before shell exits arrive, or the persisted list empties itself on the way
+      out.
 
-**Open.** Whether shells belong to the session or to the project — the session is where they are
-drawn, but a shell whose agent you closed is a shell you probably still wanted. Whether they
-survive a restart (there is a `restoreTabs` pref for the agent side, and no scrollback to restore
-for either). What a shell tab is called, given the agent's own title machinery is the thing we are
-deliberately not reading here. And whether `Ctrl` shortcuts for switching tabs are possible at all
-in a surface whose entire purpose is to receive keystrokes — F12 already refused `Ctrl+B` for
-exactly that reason.
+**The chips are `DESIGN.md`'s Tab Chips, with two extensions and one constraint.** A `×` inside
+the chip on hover or focus, with its space reserved so nothing shifts, borrowed from the Session
+Tabs signature since no chip in the app closes today; a dead chip keeps its border and drops to
+muted text, reading like a stopped session tab. The constraint is the interesting one: chips were
+chosen partly because they do not change width, and a chip labelled with a live `OSC 0` title
+would resize every time the title changes. So a shell chip is a **fixed ~120px**, the title
+truncating into it with the full text on hover.
+
+**Nothing about a shell ever raises a dialog, and that is a deliberate trade.** It is outside
+`working_count()` and ADR-0020's quit confirm, and outside `needsCloseConfirm` on the session
+header's `×`. Quitting the app or closing the session therefore `SIGKILL`s a running build without
+asking. Chosen over both alternatives — an "any live shell" trigger reintroduces the noise
+ADR-0020 removed, and `process_group_leader()` on the master fd (portable-pty 0.8 exposes it, it
+is `tcgetpgrp`) would have made "a command is actually running" exact but was judged not worth the
+dialog. **Kill-on-quit is untouched** (ADR-0005): every shell dies with the app either way.
+
+**Settled and not to be relitigated without a reason:** the footer is on live session views only —
+not the project page, and not a sub-agent transcript, which F3 gives no terminal and no process.
+A new shell opens in the session's F21 checkout when it has one and the project root otherwise. No
+keyboard chord in v1: every plain key belongs to whichever terminal has focus, F12 refused
+`Ctrl+B` on that same reasoning, and roadmap item 5 is where a set of bindings gets decided at
+once. The strip's controls stay Tab-reachable.
 
 ## 48. The file viewer as a split under the tree, chosen in Settings — and a wider panel
 

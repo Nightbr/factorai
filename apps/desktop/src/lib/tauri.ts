@@ -29,12 +29,14 @@ import type {
 	SessionWorktreeEvent,
 	SessionsChangedEvent,
 	SettingKey,
+	ShellSpawnOpts,
 	SpawnOpts,
 	TerminalDataEvent,
 	TerminalExitEvent,
 	TerminalId,
 	TerminalStatusDto,
 	TerminalStatusEvent,
+	TerminalTitleEvent,
 	UiSnapshot,
 	SidebarOrder,
 	SidebarRow,
@@ -258,6 +260,13 @@ export const cmd = {
 		invoke<void>('terminal_resize', { id, cols, rows }),
 	terminalKill: (id: TerminalId) => invoke<void>('terminal_kill', { id }),
 	terminalList: () => invoke<TerminalStatusDto[]>('terminal_list'),
+	/** Open a shell in a session's footer (F23). A separate command from
+	 *  `terminalSpawn` because a shell runs no transcript probe, stands up no
+	 *  IDE bridge and no tool server, and starts no routine. */
+	shellSpawn: (opts: ShellSpawnOpts) => invoke<TerminalId>('shell_spawn', { opts }),
+	/** Kill every shell in one session's footer. Called when that session is
+	 *  closed; the agent is killed by `terminalKill` as it always was. */
+	shellKillForSession: (sessionId: string) => invoke<void>('shell_kill_for_session', { sessionId }),
 	appQuitConfirmed: () => invoke<void>('app_quit_confirmed'),
 };
 
@@ -428,6 +437,9 @@ export const events = {
 		listen<TerminalStatusEvent>('terminal:status', cb),
 	onTerminalExit: (cb: (p: TerminalExitEvent) => void) =>
 		listen<TerminalExitEvent>('terminal:exit', cb),
+	/** A shell renamed itself, which is what its chip is labelled with (F23). */
+	onTerminalTitle: (cb: (p: TerminalTitleEvent) => void) =>
+		listen<TerminalTitleEvent>('terminal:title', cb),
 	onQuitRequested: (cb: (p: QuitRequestedEvent) => void) =>
 		listen<QuitRequestedEvent>('app:quit-requested', cb),
 	/** The agent asked to show a file, through the IDE bridge (F20). */
@@ -511,6 +523,9 @@ interface TestFixture {
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	/** The id `shell_spawn` hands back in the browser lane (F23). Distinct from
+	 *  `terminalSpawnId` so a test can tell a shell's PTY from its agent's. */
+	shellSpawnId?: TerminalId;
 	/** Session id `start_session` hands back for a new-session click. */
 	newSessionId?: string;
 	searchHits?: SearchHit[];
@@ -1096,9 +1111,12 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return (fx?.newSessionId ?? '00000000-0000-4000-8000-000000000000') as unknown as T;
 		case 'terminal_spawn':
 			return (fx?.terminalSpawnId ?? 'mock-terminal-id') as unknown as T;
+		case 'shell_spawn':
+			return (fx?.shellSpawnId ?? 'mock-shell-id') as unknown as T;
 		case 'terminal_write':
 		case 'terminal_resize':
 		case 'terminal_kill':
+		case 'shell_kill_for_session':
 		case 'app_quit_confirmed':
 			return undefined as unknown as T;
 		case 'terminal_list':

@@ -108,7 +108,7 @@ pub fn warm() {
 }
 
 fn resolve() -> OsString {
-	let shell = login_shell();
+	let shell = user_shell();
 	match path_from_shell(&shell, RESOLVE_TIMEOUT) {
 		Some(path) => {
 			info!(shell = %shell.display(), path = %path.to_string_lossy(), "resolved login shell PATH");
@@ -121,7 +121,15 @@ fn resolve() -> OsString {
 	}
 }
 
-fn login_shell() -> PathBuf {
+/// The shell the user actually runs: `$SHELL`, or `/bin/zsh` when it is unset.
+///
+/// Public because F23's footer spawns this same shell for the user to type in,
+/// and two answers to "which shell is yours" is one too many — a footer running
+/// bash while the `PATH` was read from zsh would be a difference nobody could
+/// see and everybody would feel.
+///
+/// The single-guess rule is the module note's: no cascade past `/bin/zsh`.
+pub fn user_shell() -> PathBuf {
 	match std::env::var_os("SHELL") {
 		Some(s) if !s.is_empty() => PathBuf::from(s),
 		_ => PathBuf::from("/bin/zsh"),

@@ -4449,3 +4449,120 @@ suite passed while it was live.
 - **The skills picker** is slice 2. Additive, and it blocks nothing.
 
 **Roadmap.** Item 42.
+
+---
+
+## F23 — A shell in the session's footer
+
+**Behavior.** A permanent strip along the bottom of a live session view opens
+the user's own shell in a PTY, beside the agent rather than instead of it. One
+`git log` or `cargo test` without leaving the app, in the directory the agent is
+already working in.
+
+This is **not** the deferred "launch in external terminal"
+(`06-milestones.md` § Deferred, entry 5), which hands the argv to Terminal.app
+or `xdg-open`. It is the opposite: a second PTY inside the app.
+
+**A shell is session-scoped.** It dies when the session closes and when the app
+quits, and belongs to nothing else. A shell carries the session id of the footer
+it is drawn in — that is what makes closing that session kill it — and it *is*
+not that session, which is the whole of ADR-0031.
+
+**UI.**
+
+- **The strip is 30px and always present** on a live session view, so the `+`
+  can be found by someone who does not already know the feature exists. The
+  split below it only exists once a shell does. Height declared, per
+  `DESIGN.md` § "Chrome heights are explicit".
+- **The split.** Agent above, shell below, a `PanelResizer` between them —
+  the same component and clamped-height shape the graph's commit detail uses.
+  One **global** height in `panelStore`, not one per session: a height you
+  dragged is layout, not a preference (ADR-0013).
+- **Clicking the active chip collapses the split** back to the bare strip with
+  the shells still running, so a long build can be left alone without the agent
+  losing the height to it.
+- **Chips**, not tabs: `DESIGN.md`'s Tab Chips, with two extensions and one
+  constraint.
+  - A `×` inside the chip on hover or focus, its space reserved so nothing
+    shifts. No chip in the app closed before this one; the affordance is
+    borrowed from the Session Tabs signature.
+  - A **dead** chip — one whose process was killed by the app quitting — keeps
+    its border and drops to muted text, reading like a stopped session tab.
+  - **Fixed width, ~120px, the label truncating into it** with the full text on
+    hover. Chips were chosen partly because they do not change width as you
+    switch, and a chip labelled with a live `OSC 0` title would resize every
+    time the title changed. The fixed width is what keeps the reason true.
+- **A chip is labelled from the shell's own `OSC 0`/`OSC 2` title**, falling
+  back to the shell's basename. Most prompts set the title to the cwd or the
+  running command, so a chip reads `cargo test` while one runs. Reading the
+  title for a *name* is not F10 reading it for a *status* — see below.
+
+**Where it appears.** Live session views only. Not the project page, and not a
+sub-agent transcript: F3 gives that view no terminal and no process, and a
+footer there would be a live process on a surface whose premise is that there
+is not one.
+
+**Lifecycle.**
+
+- **A new shell starts in the session's checkout** when it has one (F21), and
+  the project root otherwise. A shell beside an agent working in a worktree is
+  useless pointed at a different tree.
+- **`exit` removes the chip.** Ending a shell yourself is a deliberate act and
+  leaves nothing behind.
+- **A shell killed by the app quitting comes back dead**, holding its cwd;
+  clicking the chip spawns a new shell there. So the renderer has to know a quit
+  is under way *before* the exits arrive, or the persisted list empties itself
+  on the way out.
+
+**Nothing about a shell ever raises a dialog, and that is a deliberate trade.**
+It is outside `working_count()` and ADR-0020's quit confirm, and outside
+`needsCloseConfirm` on the session header's `×`. Quitting the app or closing the
+session therefore `SIGKILL`s a running build without asking. The alternative
+was available and was declined: `MasterPty::process_group_leader()`
+(portable-pty 0.8, `tcgetpgrp` on the master fd) answers "is a command running
+in this shell" exactly, and an "any live shell" trigger would have reintroduced
+the noise ADR-0020 removed. **Kill-on-quit is untouched** (ADR-0005): every
+shell dies with the app either way.
+
+**No keyboard chord in v1.** Every plain key belongs to whichever terminal has
+focus — F12 refused `Ctrl+B` on the same reasoning — so switching panes and
+chips is by click, and roadmap item 5 is where a set of bindings gets decided at
+once. The strip's controls stay reachable by `Tab`.
+
+**Backend.** `shell_spawn(opts)` and `shell_kill_for_session(sessionId)`.
+Writing, resizing, killing and `terminal:data` are the existing commands and the
+existing event, which are keyed by terminal id and need no shell-specific twin.
+A new `terminal:title` event carries a shell's title; it is never emitted for an
+agent.
+
+- **argv is bare `$SHELL`** — a PTY with no arguments is already an interactive
+  shell, so `~/.zshrc` is sourced the way it is in any terminal emulator.
+  `/bin/zsh` when `$SHELL` is unset, reusing `shell_path`'s single-guess rule
+  rather than inventing a second one. `-l` was rejected: it re-sources the
+  profile and would hand this shell a different environment from the agent
+  directly above it.
+- **The environment is `child_env`'s**, exactly as an agent's is — the
+  login-shell `PATH`, the AppImage strip, `TERM=xterm-256color`.
+- **No IDE bridge and no agent tool server.** Both exist to let an *agent* reach
+  back into factorai and there is no model in a shell to hand a tool to. It also
+  keeps `CLAUDE_CODE_SSE_PORT` out of the shell's environment, so a `claude` the
+  user starts by hand in that shell is not silently bound to the footer it was
+  typed in.
+- **No transcript probe.** `resume_cwd` answers "where did Claude write this
+  session's transcript", which for a shell is a question about a different
+  process that happens to share its id.
+
+**One stream, two readings of the same `OSC 0`.** For an agent the title is
+Claude's state (F10, ADR-0015); for a shell it is a name. A shell that titles
+itself with the CLI's own idle marker — one stray `printf` does it — must label
+its chip and leave the session's status alone, and
+`a_shells_title_names_it_and_never_moves_a_status` is the test that says so.
+
+**Edge cases.**
+- `$SHELL` points at something unrunnable → the spawn fails and the error is
+  printed in the pane, the same as a missing `claude`.
+- The session's checkout has been deleted → the spawn is refused rather than
+  starting in `$HOME`, which is the rule `spawn_refuses_a_cwd_that_does_not_exist`
+  already enforces for agents.
+
+**Roadmap.** Item 47.
