@@ -1334,6 +1334,9 @@ the app, on the surface the agent already runs on. That entry stays deferred.
 **A shell is session-scoped.** It dies when the session closes and when the app quits, and it
 belongs to nothing else. Every question below was answered against that.
 
+**All four slices shipped 2026-09-01.** What follows is what was built and why;
+it moves to `DONE.md` once the manual pass on the dead chip is done.
+
 **The identity problem is smaller than it first looked.** `TerminalId` is already a fresh
 `Uuid::new_v4()` (`terminal.rs:897`) and the session id is a *field* on `TerminalHandle`, so a
 shell needs no new id space. What it needs is a `kind`, because three places iterate every handle
@@ -1342,7 +1345,7 @@ session" click, `live_session_ids` (`:462`) would pin a phantom row against the 
 and the `OSC 0` status parse (F10, ADR-0015) would read a shell's own title — most prompts set one
 — as Claude working or waiting.
 
-- [ ] **Slice 1 — the backend.** A `kind` on the handle, a `shell_spawn` command beside
+- [x] **Slice 1 — the backend** (`da3d3fb`). A `kind` on the handle, a `shell_spawn` command beside
       `terminal_spawn` (`SpawnOpts.session_id` stays required and honest), and exclusion from the
       three iterations above. `terminal_write` / `terminal_resize` / `terminal_kill` and the
       `terminal:data` event are keyed by terminal id already and are reused unchanged. argv is
@@ -1351,19 +1354,19 @@ and the `OSC 0` status parse (F10, ADR-0015) would read a shell's own title — 
       is unset. `services::child_env` gives it the login-shell `PATH`, the AppImage strip and
       `TERM`, exactly as an agent child gets. The title is still parsed out of the stream, but for
       a shell it names the chip rather than deriving a status. Spec `F23` and the ADR land here.
-- [ ] **Slice 2 — the split, one shell, no chips.** Agent above, shell below, `PanelResizer`
+- [x] **Slice 2 — the split, one shell, no chips** (`d3a69e6`). Agent above, shell below, `PanelResizer`
       between them: the same component and clamped-height shape `GraphView.tsx:188` already uses
       for its commit detail. **One global `shellHeight`** in `panelStore` — a height you dragged is
       layout, not a preference (ADR-0013). Usable at the end of this slice.
-- [ ] **Slice 3 — chips, several shells, titles, collapse.** The strip is a permanent **30px**
+- [x] **Slice 3 — chips, several shells, titles, collapse** (`0fe2a25`). The strip is a permanent **30px**
       (`DESIGN.md` § "Chrome heights are explicit"), present with no shells open so the `+` can be
       found, and the split below it only exists once a shell does. Clicking the **active** chip
       collapses the split back to the bare strip with the shells still running. `DESIGN.md` gains
       the chip variant here.
-- [ ] **Slice 4 — dead chips.** `exit` removes a chip; a chip killed by the app quitting comes
+- [x] **Slice 4 — dead chips** (`c9656a7`). `exit` removes a chip; a chip killed by the app quitting comes
       back **dead**, holding its cwd, and clicking it respawns there. So the renderer has to know a
-      quit is under way before shell exits arrive, or the persisted list empties itself on the way
-      out.
+      quit is under way before shell exits arrive — answered by `TerminalExitEvent.killed` rather
+      than by a renderer-side flag, since on that path the renderer may not outlive the event.
 
 **The chips are `DESIGN.md`'s Tab Chips, with two extensions and one constraint.** A `×` inside
 the chip on hover or focus, with its space reserved so nothing shifts, borrowed from the Session
