@@ -864,7 +864,7 @@ impl TerminalManager {
 	/// keeps it out of every pass that would read it as a session (ADR-0031).
 	pub fn spawn_shell(&self, opts: ShellSpawnOpts) -> AppResult<TerminalId> {
 		let shell = crate::services::shell_path::user_shell();
-		self.spawn_inner(
+		let id = self.spawn_inner(
 			SpawnOpts {
 				session_id: opts.session_id,
 				project_id: opts.project_id,
@@ -875,7 +875,20 @@ impl TerminalManager {
 			},
 			Some(vec![shell.to_string_lossy().into_owned()]),
 			TerminalKind::Shell,
-		)
+		)?;
+
+		// **Name the chip before the shell has said anything.** A chip labelled
+		// from `OSC 0` has no label at all until the prompt sets one, and a shell
+		// that never sets one — `sh`, or a bare `PS1` — would stay nameless for
+		// its whole life. The basename is the fallback F23 specifies, and it goes
+		// through the same path a real title does so there is one way a chip is
+		// named rather than two.
+		if let Some(name) = shell.file_name().map(|n| n.to_string_lossy().into_owned()) {
+			if let Some(handle) = self.terminals.get(&id).map(|e| e.value().clone()) {
+				set_title(&id, &handle, name, &self.on_title);
+			}
+		}
+		Ok(id)
 	}
 
 	/// The command line for a session: the binary, the flag the transcript probe

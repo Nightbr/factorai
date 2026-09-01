@@ -8,7 +8,7 @@ import { create } from 'zustand';
  * PTY: a chip whose process died keeps its key, its cwd and its scrollback, and
  * respawning writes a new `terminalId` into the same entry.
  */
-interface ShellTab {
+export interface ShellTab {
 	/** `shell:<uuid>`. Prefixed so it can never collide with a session id in the
 	 *  xterm pool, which both kinds of terminal share. */
 	key: string;

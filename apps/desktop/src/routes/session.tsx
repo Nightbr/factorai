@@ -148,7 +148,10 @@ function SessionView() {
 	// The footer's split (F23). `hasShell` rather than the list itself: this only
 	// decides whether the pane and its handle are rendered, and subscribing to
 	// the array would re-render the whole route on every title a shell sets.
-	const hasShell = useShellStore((s) => (s.bySession[sessionId]?.length ?? 0) > 0);
+	// **The active chip, not the list.** A collapsed footer keeps its shells
+	// running with no pane on screen (F23), so "is the split showing" is a
+	// question about which chip is selected.
+	const shellOpen = useShellStore((s) => Boolean(s.activeBySession[sessionId]));
 	const shellHeight = usePanelStore((s) => s.shellHeight);
 	const setShellHeight = usePanelStore((s) => s.setShellHeight);
 	// Read as two scalars and assembled in the handler, not through a selector
@@ -418,7 +421,7 @@ function SessionView() {
 					{/* The footer's shells (F23). The split is docked at the bottom and
 					    grows upwards, so the handle is on its top edge — the same
 					    arrangement as the graph's commit detail. */}
-					{hasShell && (
+					{shellOpen && (
 						<>
 							<PanelResizer
 								size={shellHeight}

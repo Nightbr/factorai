@@ -31,11 +31,23 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 				useShellStore.getState().bySession[sessionId]?.find((t) => t.key === active.key)
 					?.terminalId ?? undefined,
 		);
-		if (entry.host.parentElement !== container) container.appendChild(entry.host);
+		// True after a collapse: the pane unmounted and took its children with it,
+		// while the PTY kept running. The host comes back into a box of a
+		// different size, so it is measured again below.
+		const adopted = entry.host.parentElement !== container;
+		if (adopted) container.appendChild(entry.host);
 		showOnly(container, entry);
 		// Measure before the spawn so the shell is born at the real width — an
 		// 80-column default would wrap every `git log` line until the next resize.
 		fitToHost(entry);
+		// An adopted host was last measured against a box that no longer exists,
+		// so its first paint here is at the old grid until something redraws it.
+		if (adopted) {
+			requestAnimationFrame(() => {
+				fitToHost(entry);
+				entry.term.refresh(0, entry.term.rows - 1);
+			});
+		}
 
 		attachStream(
 			entry,

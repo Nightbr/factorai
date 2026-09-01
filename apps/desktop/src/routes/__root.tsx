@@ -14,6 +14,7 @@ import { useSettingsModal } from '@hooks/useSettingsModal';
 import { isSettingsSection, type SettingsSection } from '@lib/settingsDraft';
 import { cmd, events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
+import { useShellStore } from '@store/shellStore';
 import { useTerminalStore } from '@store/terminalStore';
 
 function RootLayout() {
@@ -159,6 +160,7 @@ function RootLayout() {
 	useEffect(() => {
 		let unStatus: (() => void) | undefined;
 		let unExit: (() => void) | undefined;
+		let unTitle: (() => void) | undefined;
 		events
 			.onTerminalStatus((e) => useTerminalStore.getState().setStatus(e.id, e.status))
 			.then((fn) => {
@@ -169,9 +171,19 @@ function RootLayout() {
 			.then((fn) => {
 				unExit = fn;
 			});
+		// A shell renaming itself, which is what labels its chip (F23). Global for
+		// the reason the two above are: a chip is drawn on a route that may not be
+		// mounted, and a title that only arrived while you were looking would leave
+		// every backgrounded shell wearing a stale name.
+		events
+			.onTerminalTitle((e) => useShellStore.getState().setTitle(e.id, e.title))
+			.then((fn) => {
+				unTitle = fn;
+			});
 		return () => {
 			unStatus?.();
 			unExit?.();
+			unTitle?.();
 		};
 	}, []);
 

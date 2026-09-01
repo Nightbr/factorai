@@ -609,6 +609,20 @@ others. The border is on all of them because a chip that only becomes a box when
 selected changes width as you switch, and its label steps sideways. Bare text tabs were tried
 first and read as a heading, because the row sits directly under one.
 
+**The session footer's shells are chips too, at a fixed width** (F23). Same
+12px label, same `rounded-md`, same border on every chip — plus a `×` inside the
+chip, `invisible` until hover or `focus-within`, its space always reserved so
+the label's box does not move when the pointer arrives. No chip elsewhere in the
+app closes; the affordance is the Session Tabs signature's, borrowed rather than
+invented.
+
+The width is **fixed at 120px and the label truncates into it**, which is the
+part worth keeping. A shell chip is labelled from the terminal's own `OSC 0`
+title, and most prompts rewrite that on every command — so a chip sized to its
+label would resize whenever a build started, which is exactly the stepping-
+sideways this section chose chips to avoid. A constant box keeps the property;
+the full title is on hover.
+
 ### Empty Hero
 
 A route's empty state is centred in the pane — a 24px muted glyph, a `text-lg`

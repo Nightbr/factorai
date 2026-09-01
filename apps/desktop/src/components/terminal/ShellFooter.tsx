@@ -1,5 +1,6 @@
 import { IconButton } from '@factorai/ui';
 import { Plus } from 'lucide-react';
+import { ShellChip } from '@components/terminal/ShellChip';
 import { useShellStore } from '@store/shellStore';
 
 /**
@@ -24,9 +25,32 @@ export function ShellFooter({
 	cwd: string | null;
 }) {
 	const open = useShellStore((s) => s.open);
+	const close = useShellStore((s) => s.close);
+	const setActive = useShellStore((s) => s.setActive);
+	const tabs = useShellStore((s) => s.bySession[sessionId]);
+	const activeKey = useShellStore((s) => s.activeBySession[sessionId] ?? null);
 
 	return (
-		<div className="flex h-7.5 shrink-0 items-center gap-1 border-border border-t bg-card px-2">
+		<div
+			className="flex h-7.5 shrink-0 items-center gap-1 overflow-x-auto border-border border-t bg-card px-2"
+			// A strip of chips is a tab list even when it is empty, and the `+` at
+			// the end of it is not one of the tabs.
+			role="tablist"
+			aria-label="Shells"
+			data-testid="shell-footer"
+		>
+			{tabs?.map((tab) => (
+				<ShellChip
+					key={tab.key}
+					tab={tab}
+					active={tab.key === activeKey}
+					// **Clicking the chip you are on collapses the split**, leaving the
+					// shells running: the agent gets its full height back while a long
+					// build finishes, and nothing is lost by looking away.
+					onSelect={() => setActive(sessionId, tab.key === activeKey ? null : tab.key)}
+					onClose={() => close(tab.key)}
+				/>
+			))}
 			<IconButton
 				aria-label="New shell"
 				title="New shell"
