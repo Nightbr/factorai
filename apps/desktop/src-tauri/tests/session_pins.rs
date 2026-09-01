@@ -67,6 +67,11 @@ fn fixture(tmp: &Path) -> (Db, String) {
 	let claude = tmp.join("claude");
 	let cwd = tmp.join("repo");
 	std::fs::create_dir_all(&cwd).expect("mkdir repo");
+	// Canonicalised so the encoded transcript path and the added project resolve
+	// to the same real path — on macOS the temp dir sits behind the
+	// `/var -> /private/var` symlink, and a raw cwd leaves the two disagreeing so
+	// the scan links nothing.
+	let cwd = cwd.canonicalize().expect("canonicalize repo");
 	write_session(&claude, &cwd, OLD, "2026-01-01T00:00:00Z");
 	write_session(&claude, &cwd, NEW, "2026-02-01T00:00:00Z");
 	write_subagent(&claude, &cwd, OLD, AGENT, "2026-01-01T00:00:05Z");
