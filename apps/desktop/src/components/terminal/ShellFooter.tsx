@@ -61,14 +61,22 @@ export function ShellFooter({
 				/>
 			))}
 			{/* Labelled, so `Button` rather than `IconButton` — the house rule is
-			    that `IconButton` is for icon-*only* controls. `ghost` because this
-			    sits in a chrome strip: a filled button here would outweigh the
-			    chips beside it, which are the thing you are meant to be reading.
-			    No `aria-label`: the visible word is the accessible name. */}
+			    that `IconButton` is for icon-*only* controls. `quiet` is the
+			    labelled sibling of that rule: nothing paints behind it and the text
+			    takes colour on hover, because a filled block in a chrome strip
+			    outweighs the chips beside it. No `aria-label`: the visible word is
+			    the accessible name.
+
+			    **`size-3` on the glyph, matching the 12px label, and lifted 1px.**
+			    The scale's 3.5 is sized for a 14px label. And centring is not
+			    alignment: the flex line centres the glyph's box against the text's
+			    line box, whose baseline sits below its centre — measured in the
+			    running app, the `+`'s bar landed at y=935.5 against the word's
+			    optical centre of 934. The pixel is that difference, not a taste. */}
 			<Button
-				variant="ghost"
+				variant="quiet"
 				size="sm"
-				className="shrink-0 gap-1.5 font-normal text-muted-foreground text-xs hover:text-foreground"
+				className="shrink-0 gap-1.5 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
 				// A shell with nowhere to run is refused by the backend anyway; not
 				// offering the button at all is the honest version of that.
 				disabled={!cwd}

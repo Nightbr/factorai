@@ -14,6 +14,18 @@ const buttonVariants = cva(
 				outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
 				secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
 				ghost: 'hover:bg-accent hover:text-accent-foreground',
+				// **The labelled sibling of `IconButton`: no background, ever.** The
+				// glyph and the word take `primary` on hover — the same colour, and
+				// the same rule, as every icon-only affordance in the app — and
+				// nothing paints behind them. That is what a control in a chrome
+				// strip has to do: a filled block there outweighs the content it
+				// sits beside.
+				//
+				// `ghost` is not this: it paints `bg-accent` on hover, which in a
+				// dense row reads as a widget. Same argument `IconButton` carries,
+				// and the same trap: **never add a `hover:bg-*` to this variant**, or
+				// every quiet control in the app gains a block at once.
+				quiet: 'text-muted-foreground hover:text-primary',
 				link: 'text-primary underline-offset-4 hover:underline',
 			},
 			// A desktop scale, not shadcn's stock web one. The numbers are taken

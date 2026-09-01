@@ -454,6 +454,19 @@ exactly once.
 - **Secondary / Outline / Ghost / Link:** secondary is a `22%` ground; outline is
   a bordered transparent field; ghost fills with accent on hover; link is amber
   text with an offset underline.
+- **Quiet:** muted text and glyph going to **amber** on hover, with no ground in
+  any state. It is the **labelled sibling of the Icon Button** and carries that
+  section's rule for the same reason: in a chrome strip a filled hover block
+  outweighs the content beside it. Reach for it when a control needs a word but
+  must not read as a widget — the session footer's `+ Terminal` is the case it
+  was made for. **Never add a hover ground to it**, or every quiet control in the
+  app gains a block at once.
+- **A glyph beside a label is centred, and centring is not alignment.** The flex
+  line centres the glyph's box against the text's *line* box, whose baseline sits
+  below its centre — so a glyph sized for a 14px label reads high beside a 12px
+  one. Match the glyph to the label's size and lift it a pixel; measured on the
+  session footer, that moved the `+` from 1.5px below the word's optical centre
+  to half a pixel above it.
 - **The scale is a desktop scale, not a stock web one.** It was derived from what
   the app's dense surfaces were already overriding to by hand. If you find
   yourself writing a seventh inline override, the scale is wrong again — not the
