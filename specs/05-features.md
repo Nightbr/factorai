@@ -4470,10 +4470,16 @@ not that session, which is the whole of ADR-0031.
 
 **UI.**
 
-- **The strip is 30px and always present** on a live session view, so the `+`
-  can be found by someone who does not already know the feature exists. The
-  split below it only exists once a shell does. Height declared, per
-  `DESIGN.md` § "Chrome heights are explicit".
+- **The strip is 36px and always present** on a live session view, so the
+  control can be found by someone who does not already know the feature exists.
+  The split below it only exists once a shell does. Height declared, per
+  `DESIGN.md` § "Chrome heights are explicit" — and 36px specifically because
+  the sidebar footer is 36px and the two sit level across the bottom of the
+  window.
+- **The new-terminal control is labelled `+ Terminal`**, not a bare `+`
+  (user feedback, 2026-09-01). A permanent strip only introduces the feature if
+  what is on it says what it does. Being labelled, it is a `Button` and not an
+  `IconButton` — `ghost`, so it does not outweigh the chips beside it.
 - **The split.** Agent above, shell below, a `PanelResizer` between them —
   the same component and clamped-height shape the graph's commit detail uses.
   One **global** height in `panelStore`, not one per session: a height you

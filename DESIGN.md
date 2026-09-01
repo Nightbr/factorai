@@ -292,8 +292,11 @@ truncating string shows, which is capped in proportion to its own column rather
 than by a constant.
 
 **Chrome heights are explicit, never derived.** Top bar 42px (`h-10.5`); file
-panel header and sidebar footer 36px (`h-9`); session tab 30px (`h-7.5`); menu
-row 28px; sidebar rows 26–28px. A row sized by padding moves the moment a taller
+panel header, sidebar footer and the session's shell footer 36px (`h-9`);
+session tab 30px (`h-7.5`); menu row 28px; sidebar rows 26–28px. The sidebar
+footer and the shell footer share a height because they share a **line**: they
+sit level across the bottom of the window, and 6px between them read as a
+misalignment rather than as two surfaces. A row sized by padding moves the moment a taller
 child appears in it, and the thing that appears is by definition the thing you
 were already looking at — the sidebar footer once grew 6px to announce a staged
 update the badge inside it was already announcing.

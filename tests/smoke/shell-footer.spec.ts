@@ -22,7 +22,7 @@ test.describe('shell footer', () => {
 		// Discoverability is the reason it is permanent: a control that only
 		// appears once you have used the feature cannot introduce it.
 		await expect(page.getByTestId('shell-footer')).toBeVisible();
-		await expect(page.getByRole('button', { name: 'New shell' })).toBeEnabled();
+		await expect(page.getByRole('button', { name: 'Terminal' })).toBeEnabled();
 		await expect(page.getByTestId('shell-pane')).toHaveCount(0);
 	});
 
@@ -33,7 +33,7 @@ test.describe('shell footer', () => {
 		await page.goto('/');
 		await page.locator('aside').getByText('foo').click();
 		await page.getByText('Refactor the auth middleware').click();
-		await page.getByRole('button', { name: 'New shell' }).click();
+		await page.getByRole('button', { name: 'Terminal' }).click();
 
 		// Scoped to the strip: the project page's `Sessions | Routines` chips are
 		// tabs too, and they share this role.
