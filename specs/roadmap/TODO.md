@@ -1319,3 +1319,107 @@ session" and say so.
 
 **Sequencing.** Item 44's `SettingKey::ClaudeModel` is a per-project preference of the same shape
 and hits the same "global or per-project" question — settle it once, in whichever lands first.
+
+## 47. A shell terminal in a footer under the session, with its own tabs
+
+**User feedback, 2026-09-01.** The session pane is one PTY running `claude` and nothing else, so
+running `git log`, `cargo test` or `ls` beside the agent means leaving the app. Asked for as a
+terminal along the bottom of the session, a footer control that opens a new shell, little tabs in
+that footer for the shells you have open, and **the system's default shell** rather than a
+configured one.
+
+**This is not the deferred "launch in external terminal"** (`06-milestones.md` § Deferred, entry
+5), which hands the argv to Terminal.app or `xdg-open`. It is the opposite: a second PTY inside
+the app, on the surface the agent is already running on. That entry stays deferred.
+
+- [ ] **A resizable bottom region in the session surface.** `routes/session.tsx:390` is today a
+      single `min-h-0 flex-1` box holding the agent terminal; the footer splits it. The pattern is
+      already in the repo — `GraphView.tsx:188` stacks a list over a detail pane with
+      `PanelResizer` and a clamped height in `panelStore` — so this is a `terminalHeight` beside
+      `detailHeight`, with the same pure clamp and the same keyboard resize the resizer already
+      ships. Layout, therefore `panelStore` and not `prefsStore`, per ADR-0013: a height you
+      dragged is not a preference you set.
+- [ ] **The footer strip itself**, declaring its height rather than deriving it — `DESIGN.md`
+      § "Chrome heights are explicit". 30px matches the Session Tabs signature, which is also the
+      closest visual precedent for the tabs; they should read as related to it and not identical,
+      because a session tab carries a status dot and a shell tab has no status to carry (below).
+      Collapsed, the strip is just the strip plus the new-shell control, so the footer costs 30px
+      of terminal when you are not using it — decide whether it hides entirely until first use.
+- [ ] **Spawn the login shell.** `$SHELL`, which `services/shell_path.rs` already treats as the
+      authority (and whose `/bin/zsh` fallback rule is only for when it is unset). Interactive,
+      not a login shell, cwd the project root — or the session's checkout under F21, since the
+      whole point is to be beside *this* agent. The backend piece is small on purpose:
+      `terminal.rs:793 spawn_with_argv` is already the generic path `spawn()` calls, so a shell is
+      a second caller of it, and `services::child_env` gives it the same PATH, the same AppImage
+      strip and the same `TERM` as an agent child gets.
+
+**Three things assume a PTY is a Claude session, and each has to be answered before this can
+ship. They are the item, not a footnote to it.**
+
+- [ ] **`TerminalId` is the session id** (`terminal.rs:38`), and ADR-0008 built the whole identity
+      chain on that: the route, the xterm pool key, `terminalStore.bySession`, the status dots, the
+      SQLite `sessions` row. A shell has no session id and must never acquire one — a fabricated
+      UUID here would be indexed, listed in the sidebar and offered to `--resume`. So the id space
+      grows a second kind, and every consumer that today assumes "a terminal id names a session"
+      is a site to check. This wants an ADR: ADR-0008 is not wrong, its scope is.
+- [ ] **Status would lie.** F10 / ADR-0015 derive `working` / `waiting_input` from `OSC 0` titles
+      in the byte stream, and a shell emits `OSC 0` too — most prompts set the title to the cwd or
+      the running command. A shell terminal must be excluded from that parse rather than
+      misclassified by it, and it must not put a dot in the sidebar, the project row or the tab
+      strip.
+- [ ] **The quit confirm.** ADR-0020 asks about *work in progress*, counted as
+      `TerminalManager::working_count()` over Claude statuses. A shell running a 20-minute build is
+      real work that count cannot see, and an idle shell at its prompt must not start firing the
+      dialog that ADR-0020 exists to stop firing. Kill-on-quit is untouched either way (ADR-0005):
+      every shell dies with the app, asked about or not.
+
+**Open.** Whether shells belong to the session or to the project — the session is where they are
+drawn, but a shell whose agent you closed is a shell you probably still wanted. Whether they
+survive a restart (there is a `restoreTabs` pref for the agent side, and no scrollback to restore
+for either). What a shell tab is called, given the agent's own title machinery is the thing we are
+deliberately not reading here. And whether `Ctrl` shortcuts for switching tabs are possible at all
+in a surface whose entire purpose is to receive keystrokes — F12 already refused `Ctrl+B` for
+exactly that reason.
+
+## 48. The file viewer as a split under the tree, chosen in Settings — and a wider panel
+
+**User feedback, 2026-09-01.** The viewer is a 90vw × 85vh modal
+(`FileViewerModal.tsx:75`), so reading a file covers the terminal you opened it from. Asked for as
+a viewer **inline, under the file tree**, with a setting to choose between that and the full-screen
+modal, a draggable height for the inline pane, and a wider file panel to read in.
+
+**F7 already committed to this shape**: "`FileView` is written self-contained and modal-agnostic,
+and `FileViewerModal` is just its first host". This item builds the second host. Item 21's
+per-project tab system is the eventual third and is not blocked by it.
+
+- [ ] **The split host.** Tree above, viewer below, inside `FileTreePanel`. Same pattern as
+      item 47 and the same precedent: `GraphView.tsx:188` with `PanelResizer` and a clamped
+      `panelStore` height (`MIN_DETAIL_HEIGHT` / `MAX_DETAIL_HEIGHT` / `DEFAULT_DETAIL_HEIGHT` are
+      the shape to copy, not the values to reuse). Layout state, not a preference — ADR-0013.
+- [ ] **The mode setting.** `fileViewerMode: 'modal' | 'split'` in `prefsStore`, which is a genuine
+      preference and renderer-only, so it does not go near the SQLite `settings` table. A row in
+      the **editor** section of `SettingsModal.tsx`, beside `diffInline`, which is the same kind of
+      choice about the same surface.
+- [ ] **Raise `MAX_PANEL_WIDTH`.** 600 today (`panelStore.ts:21`), chosen when the panel only ever
+      held a tree. A Monaco pane at 600px is a narrow column, and the comment on
+      `MIN_PANEL_WIDTH` says the ceiling's real constraint out loud: the panel is taking columns
+      from the terminal. So the new ceiling has to be relative to the window rather than another
+      constant — a fixed 900 leaves nothing for the agent on a laptop — and the session pane needs
+      a floor it cannot be dragged below. `clampPanelWidth` is pure and unit-tested; keep both
+      properties.
+- [ ] **Every view has to survive the narrow host, not just Monaco.** The markdown renderer, the
+      image view, `SvgPreview` and pdf.js all render inside `FileView`. F7 turned the minimap off
+      because it was "noise at modal width" and that argument only gets stronger; word wrap is
+      already on. The PDF is the one to check first — a continuous-scroll document at 400px is
+      either fine or unreadable, and nothing in ADR-0018 answers it.
+- [ ] **Routing and the two agents that open files.** The open file is `?file=` on the `__root`
+      route, so F19's terminal path-click and F20's IDE bridge both arrive through it and land in
+      whichever host the preference names. In split mode, opening a file with the panel closed has
+      to open the panel — silently doing nothing is the failure that looks like a broken link.
+- [ ] **`Escape`.** It closes the modal today. In split mode it must not close the panel by
+      reflex; decide what it does close, if anything.
+
+**Open.** Which sidebar the width ask meant. The file panel is the one the viewer would sit in and
+is read as the target here, but the left sidebar has its own ceiling —
+`MAX_SIDEBAR_WIDTH = 480` (`sidebarStore.ts:24`) — and if that is the one that feels cramped it is
+a one-line change with none of the above behind it. Confirm before building the wrong half.
