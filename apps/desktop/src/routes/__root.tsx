@@ -167,7 +167,16 @@ function RootLayout() {
 				unStatus = fn;
 			});
 		events
-			.onTerminalExit((e) => useTerminalStore.getState().removeByTerminal(e.id))
+			.onTerminalExit((e) => {
+				useTerminalStore.getState().removeByTerminal(e.id);
+				// **The two ways a shell dies, answered differently** (F23). One it
+				// ended itself loses its chip; one factorai killed — the quit, in
+				// practice — keeps it, dead, holding its cwd. Rust decides which,
+				// because on the quit path this renderer may not outlive the event.
+				const shells = useShellStore.getState();
+				if (e.killed) shells.markDead(e.id);
+				else shells.closeByTerminal(e.id);
+			})
 			.then((fn) => {
 				unExit = fn;
 			});

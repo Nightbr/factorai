@@ -1,5 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { attachStream, fitToHost, getOrCreateTerm, showOnly } from '@components/terminal/Terminal';
+import {
+	attachStream,
+	disposeTerminal,
+	fitToHost,
+	getOrCreateTerm,
+	showOnly,
+} from '@components/terminal/Terminal';
 import { cmd } from '@lib/tauri';
 import { useShellStore } from '@store/shellStore';
 
@@ -21,6 +27,12 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container || !active) return;
+
+		// A dead chip that has just been clicked: throw the finished terminal away
+		// so `attachStream` will spawn again. Its scrollback goes with it, which
+		// is right — the shell it belonged to is gone, and a prompt that answers
+		// nothing is worse than an empty pane.
+		if (active.dead) disposeTerminal(active.key);
 
 		const entry = getOrCreateTerm(
 			active.key,
@@ -65,9 +77,6 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 						return id;
 					}),
 			'Failed to open a shell',
-			// `exit` closes the chip. A shell killed by the app quitting is the
-			// other way this fires, and slice 4 is what tells the two apart.
-			() => useShellStore.getState().close(active.key),
 		);
 
 		const focusTimer = setTimeout(() => {
@@ -83,6 +92,9 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 			ro.disconnect();
 			entry.host.style.visibility = 'hidden';
 		};
+		// `active.dead` deliberately: a click on a dead chip has to re-run this
+		// effect, and the identity of `active` alone would not change if the store
+		// only flipped a flag on it.
 	}, [sessionId, active]);
 
 	if (!active) return null;

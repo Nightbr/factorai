@@ -257,6 +257,17 @@ impl IdeSlot {
 pub struct TerminalExitEvent {
 	pub id: TerminalId,
 	pub code: Option<i32>,
+	/// True when **factorai** killed this process — the quit, a session close,
+	/// a restart — rather than it ending on its own.
+	///
+	/// It exists because F23 answers the two cases differently: a shell you
+	/// typed `exit` in loses its chip, and one the app killed on the way out
+	/// comes back as a dead chip holding its cwd. The exit *code* cannot tell
+	/// them apart (a SIGTERM'd bash and `exit 143` are indistinguishable), and
+	/// the renderer cannot infer it either — on the quit path it may not live
+	/// long enough to see the event at all, which is precisely the race this
+	/// flag removes.
+	pub killed: bool,
 }
 
 type DataCb = Arc<dyn Fn(TerminalDataEvent) + Send + Sync>;
@@ -343,6 +354,9 @@ struct TerminalHandle {
 	/// signals the process without touching the waiter's `Child`.
 	killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 	status: Mutex<TerminalStatus>,
+	/// Set by [`TerminalManager::kill`] before it signals, and read by the
+	/// waiter when it reports the exit. See `TerminalExitEvent::killed`.
+	killed: AtomicBool,
 	/// The last `OSC 0` title, for a shell only (F23). Held so a renderer that
 	/// reloads can label the chip from `terminal_list` instead of waiting for
 	/// the shell to retitle itself, which it may not do until you press Enter.
@@ -1099,6 +1113,7 @@ impl TerminalManager {
 			// `working_count` skips it by kind rather than by value, so this
 			// records only that the process exists.
 			status: Mutex::new(TerminalStatus::Working),
+			killed: AtomicBool::new(false),
 			title: Mutex::new(None),
 			last_activity: AtomicI64::new(now_ms()),
 			cwd: cwd_path.clone(),
@@ -1175,12 +1190,13 @@ impl TerminalManager {
 			self.terminals.get(id).ok_or_else(|| AppError::NotFound(format!("terminal {id}")))?;
 		// Signal via the killer, not the child — the waiter thread owns the
 		// child and is parked in `wait()`. Best effort: it may already be gone.
+		// Recorded before the signal, so the waiter cannot report the exit before
+		// this is true. The other order is a race with a fast-dying child.
+		handle.killed.store(true, Ordering::Relaxed);
 		let _ = handle.killer.lock().kill();
 		Ok(())
 	}
 
-	/// Kill every live terminal. SIGTERM via `child.kill()`, then a 500ms
-	/// grace period, then anything still alive gets force-killed by Drop.
 	/// Kill every shell drawn in one session's footer (F23).
 	///
 	/// Called when that session is closed, which is the whole of a shell's
@@ -1204,6 +1220,8 @@ impl TerminalManager {
 		}
 	}
 
+	/// Kill every live terminal. SIGTERM via `child.kill()`, then a 500ms
+	/// grace period, then anything still alive gets force-killed by Drop.
 	pub fn kill_all(&self) {
 		let ids: Vec<TerminalId> = self.terminals.iter().map(|e| e.key().clone()).collect();
 		debug!(count = ids.len(), "kill_all");
@@ -1407,7 +1425,11 @@ fn spawn_waiter(
 				status: TerminalStatus::Stopped,
 				last_activity,
 			});
-			(on_exit)(TerminalExitEvent { id: id.clone(), code: exit_code });
+			(on_exit)(TerminalExitEvent {
+				id: id.clone(),
+				code: exit_code,
+				killed: handle.killed.load(Ordering::Relaxed),
+			});
 			terminals.remove(&id);
 		})
 		.expect("spawn term-wait thread");
@@ -1810,6 +1832,44 @@ mod tests {
 
 		assert_eq!(got.as_deref(), Some("\u{2733} ~/dev/factorai"), "the chip's label");
 		assert_eq!(status_events, 0, "a shell's title must not be classified as Claude's state");
+	}
+
+	/// The two ways a shell can die, which F23 answers differently: a chip whose
+	/// shell you ended yourself goes away, and one the app killed comes back
+	/// dead. The exit code cannot tell them apart — a SIGTERM'd bash and
+	/// `exit 143` look the same — so the flag has to come from the side that
+	/// knows.
+	#[test]
+	fn an_exit_says_whether_we_killed_it() {
+		let (mgr, _d, exit) = make_manager();
+		let ended = mgr
+			.spawn_inner(
+				shell_opts("99999999-8888-7777-6666-555555555555"),
+				Some(vec!["/bin/sh".into(), "-c".into(), "exit 0".into()]),
+				TerminalKind::Shell,
+			)
+			.unwrap();
+		let killed = mgr
+			.spawn_inner(
+				shell_opts("99999999-8888-7777-6666-555555555555"),
+				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
+				TerminalKind::Shell,
+			)
+			.unwrap();
+		let _ = mgr.kill(&killed);
+
+		let deadline = std::time::Instant::now() + Duration::from_secs(5);
+		let events = loop {
+			let events = exit.lock().unwrap().clone();
+			if events.len() >= 2 || std::time::Instant::now() > deadline {
+				break events;
+			}
+			std::thread::sleep(Duration::from_millis(25));
+		};
+
+		let flag = |id: &str| events.iter().find(|e| e.id == id).map(|e| e.killed);
+		assert_eq!(flag(&ended), Some(false), "a shell that ended on its own");
+		assert_eq!(flag(&killed), Some(true), "a shell we killed");
 	}
 
 	/// A shell's whole lifetime is the footer it is drawn in (F23).

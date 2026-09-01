@@ -47,7 +47,11 @@ export function ShellFooter({
 					// **Clicking the chip you are on collapses the split**, leaving the
 					// shells running: the agent gets its full height back while a long
 					// build finishes, and nothing is lost by looking away.
-					onSelect={() => setActive(sessionId, tab.key === activeKey ? null : tab.key)}
+					//
+					// Except a dead chip, where there is nothing to collapse away from
+					// and a click means "open a shell here" — collapsing it would make
+					// that take two clicks for no reason anyone could infer.
+					onSelect={() => setActive(sessionId, tab.key === activeKey && !tab.dead ? null : tab.key)}
 					onClose={() => close(tab.key)}
 				/>
 			))}

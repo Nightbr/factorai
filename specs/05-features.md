@@ -4510,9 +4510,16 @@ is not one.
 - **`exit` removes the chip.** Ending a shell yourself is a deliberate act and
   leaves nothing behind.
 - **A shell killed by the app quitting comes back dead**, holding its cwd;
-  clicking the chip spawns a new shell there. So the renderer has to know a quit
-  is under way *before* the exits arrive, or the persisted list empties itself
-  on the way out.
+  clicking the chip spawns a new shell there. **`TerminalExitEvent.killed` is
+  what tells the two apart**, and it is decided in Rust rather than inferred
+  here: the exit code cannot separate a `SIGTERM`'d bash from `exit 143`, and on
+  the quit path the renderer may not outlive the event at all. `kill()` records
+  the flag before it signals, so the waiter cannot report an exit ahead of it.
+- **The restored footer is collapsed.** Chips persist without their
+  `terminalId` — an id from a previous run names nothing, the rule
+  `terminalStore.bySession` already follows — so every restored chip is dead,
+  and the active chip is deliberately *not* persisted: a footer that came back
+  expanded onto a dead chip would spawn a shell at launch that nobody asked for.
 
 **Nothing about a shell ever raises a dialog, and that is a deliberate trade.**
 It is outside `working_count()` and ADR-0020's quit confirm, and outside

@@ -318,7 +318,7 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `sessions:changed`     | `{ projectId, sessionIds: [...] }`   | watcher             |
 | `terminal:data`        | `{ id, bytes: base64 }`              | TerminalManager     |
 | `terminal:status`      | `{ id, status, lastActivity }`       | TerminalManager     |
-| `terminal:exit`        | `{ id, code }`                       | TerminalManager     |
+| `terminal:exit`        | `{ id, code, killed }`               | TerminalManager     |
 | `terminal:title`       | `{ id, title }`                      | TerminalManager (F23, shells only) |
 | `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
 | `routine:fire`         | `{ routineId, routineName, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |

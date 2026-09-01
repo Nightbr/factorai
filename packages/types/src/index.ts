@@ -540,6 +540,14 @@ export interface TerminalStatusEvent {
 export interface TerminalExitEvent {
 	id: TerminalId;
 	code: number | null;
+	/** True when **factorai** killed this process — the quit, a session close, a
+	 *  restart — rather than it ending on its own.
+	 *
+	 *  F23 answers the two differently: a shell you typed `exit` in loses its
+	 *  chip, one the app killed comes back as a dead chip holding its cwd. The
+	 *  exit code cannot tell them apart, and on the quit path this renderer may
+	 *  not live long enough to reason about it. */
+	killed: boolean;
 }
 
 /**

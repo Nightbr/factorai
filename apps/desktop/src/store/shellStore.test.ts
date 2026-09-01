@@ -75,6 +75,47 @@ describe('close', () => {
 	});
 });
 
+describe('the two ways a shell dies', () => {
+	beforeEach(reset);
+
+	it('removes the chip when the shell ended itself', () => {
+		const tab = useShellStore.getState().open('s1', 'p1', '/repo');
+		useShellStore.getState().attach(tab.key, 'pty-1');
+		useShellStore.getState().closeByTerminal('pty-1');
+		expect(keys('s1')).toEqual([]);
+	});
+
+	it('keeps the chip, dead and holding its cwd, when we killed it', () => {
+		const tab = useShellStore.getState().open('s1', 'p1', '/repo');
+		useShellStore.getState().attach(tab.key, 'pty-1');
+		useShellStore.getState().setTitle('pty-1', 'zsh');
+		useShellStore.getState().markDead('pty-1');
+		const [shell] = useShellStore.getState().bySession.s1 ?? [];
+		expect(shell?.dead).toBe(true);
+		expect(shell?.terminalId).toBeNull();
+		// The cwd and the name are the whole point of keeping it.
+		expect(shell?.cwd).toBe('/repo');
+		expect(shell?.title).toBe('zsh');
+	});
+
+	it('comes back to life on a respawn', () => {
+		const tab = useShellStore.getState().open('s1', 'p1', '/repo');
+		useShellStore.getState().attach(tab.key, 'pty-1');
+		useShellStore.getState().markDead('pty-1');
+		useShellStore.getState().attach(tab.key, 'pty-2');
+		const [shell] = useShellStore.getState().bySession.s1 ?? [];
+		expect(shell?.dead).toBe(false);
+		expect(shell?.terminalId).toBe('pty-2');
+	});
+
+	it("ignores an agent's exit, which arrives on the same event", () => {
+		const tab = useShellStore.getState().open('s1', 'p1', '/repo');
+		useShellStore.getState().attach(tab.key, 'pty-1');
+		useShellStore.getState().closeByTerminal('pty-belonging-to-an-agent');
+		expect(keys('s1')).toEqual([tab.key]);
+	});
+});
+
 describe('closeSession', () => {
 	beforeEach(reset);
 

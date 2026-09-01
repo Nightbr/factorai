@@ -17,10 +17,11 @@ const CHIP_WIDTH = 120;
 /**
  * One shell in the footer's strip.
  *
- * `DESIGN.md`'s Tab Chips with one extension: a `×` on hover or focus, whose
- * space is reserved so nothing shifts when it appears. The **dead** state — a
- * chip whose process the app's quit killed — arrives with slice 4, which is
- * what gives a chip a life after its PTY.
+ * `DESIGN.md`'s Tab Chips with two extensions: a `×` on hover or focus, whose
+ * space is reserved so nothing shifts when it appears, and a **dead** state —
+ * a chip whose process the app's quit killed keeps its border and drops to
+ * muted text, reading like a stopped session tab. Clicking a dead chip spawns a
+ * new shell in the directory the old one had.
  */
 export function ShellChip({
 	tab,
@@ -44,6 +45,12 @@ export function ShellChip({
 				active
 					? 'border-border bg-secondary text-foreground'
 					: 'border-border/50 text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
+			} ${
+				// A dead chip keeps its border and loses its text, the way a stopped
+				// session tab reads — it is still a place, it just has no process in
+				// it. Never `opacity`: that would fade the border too, and the border
+				// is what says the chip is still there to click.
+				tab.dead ? 'text-muted-foreground/60' : ''
 			}`}
 			style={{ width: CHIP_WIDTH }}
 		>
@@ -52,7 +59,7 @@ export function ShellChip({
 				role="tab"
 				aria-selected={active}
 				onClick={onSelect}
-				title={label}
+				title={tab.dead ? `${label} — click to open a new shell here` : label}
 				className="min-w-0 flex-1 truncate text-left font-medium text-xs"
 			>
 				{label}
