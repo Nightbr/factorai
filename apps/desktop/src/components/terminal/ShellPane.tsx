@@ -22,13 +22,19 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	/** The chip whose dead terminal has already been thrown away — see below. */
 	const respawning = useRef<string | null>(null);
-	const shells = useShellStore((s) => s.bySession[sessionId]);
 	const activeKey = useShellStore((s) => s.activeBySession[sessionId] ?? null);
-	const active = shells?.find((t) => t.key === activeKey) ?? null;
+	// **Primitives, never the tab object.** The store hands out a new object on
+	// every title, and a shell retitles itself on every command it runs — so an
+	// effect keyed on identity would tear down and re-run mid-build, and its
+	// `focus()` would pull the caret out of whatever you were typing in.
+	const tab = useShellStore((s) => s.bySession[sessionId]?.find((t) => t.key === activeKey));
+	const dead = tab?.dead ?? false;
+	const projectId = tab?.projectId ?? null;
+	const cwd = tab?.cwd ?? null;
 
 	useEffect(() => {
 		const container = containerRef.current;
-		if (!container || !active) return;
+		if (!container || !activeKey || !projectId || !cwd) return;
 
 		// A dead chip that has just been clicked: throw the finished terminal away
 		// so `attachStream` will spawn again. Its scrollback goes with it, which
@@ -40,21 +46,21 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 		// store hands out a new tab object on every title. Disposing on the second
 		// run would throw away the terminal whose `shell_spawn` is still in
 		// flight, and the resolved spawn would then write into a disposed xterm.
-		if (active.dead && respawning.current !== active.key) {
-			respawning.current = active.key;
-			disposeTerminal(active.key);
-		} else if (!active.dead && respawning.current === active.key) {
+		if (dead && respawning.current !== activeKey) {
+			respawning.current = activeKey;
+			disposeTerminal(activeKey);
+		} else if (!dead && respawning.current === activeKey) {
 			// Live again: the next death is a new respawn.
 			respawning.current = null;
 		}
 
 		const entry = getOrCreateTerm(
-			active.key,
+			activeKey,
 			container,
 			// Read from the store at call time, not captured: a chip respawned
 			// after its process died keeps its key and gets a new PTY (F23).
 			() =>
-				useShellStore.getState().bySession[sessionId]?.find((t) => t.key === active.key)
+				useShellStore.getState().bySession[sessionId]?.find((t) => t.key === activeKey)
 					?.terminalId ?? undefined,
 		);
 		// True after a collapse: the pane unmounted and took its children with it,
@@ -78,18 +84,10 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 		attachStream(
 			entry,
 			(cols, rows) =>
-				cmd
-					.shellSpawn({
-						sessionId,
-						projectId: active.projectId,
-						cwd: active.cwd,
-						cols,
-						rows,
-					})
-					.then((id) => {
-						useShellStore.getState().attach(active.key, id);
-						return id;
-					}),
+				cmd.shellSpawn({ sessionId, projectId, cwd, cols, rows }).then((id) => {
+					useShellStore.getState().attach(activeKey, id);
+					return id;
+				}),
 			'Failed to open a shell',
 		);
 
@@ -106,12 +104,11 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 			ro.disconnect();
 			entry.host.style.visibility = 'hidden';
 		};
-		// `active.dead` deliberately: a click on a dead chip has to re-run this
-		// effect, and the identity of `active` alone would not change if the store
-		// only flipped a flag on it.
-	}, [sessionId, active]);
+		// `dead` is in the list deliberately: a click on a dead chip has to re-run
+		// this effect, and the key alone does not change when it is respawned.
+	}, [sessionId, activeKey, dead, projectId, cwd]);
 
-	if (!active) return null;
+	if (!activeKey) return null;
 
 	// `p-2` and `overflow-hidden` for the reason the agent's pane has them: the
 	// 8px is the slack a row's text spills into at a fractional zoom.

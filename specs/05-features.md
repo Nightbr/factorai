@@ -4565,6 +4565,15 @@ itself with the CLI's own idle marker — one stray `printf` does it — must la
 its chip and leave the session's status alone, and
 `a_shells_title_names_it_and_never_moves_a_status` is the test that says so.
 
+**A shell's host does leave the document, unlike an agent's.** The agent's pane
+is shared across a tab switch, so its pooled hosts stay connected and keep their
+place in WebKit's wheel-event region (F5, 2026-08-28). The shell pane only
+exists while a chip is active, so collapsing it — or leaving the session —
+detaches its hosts, and on macOS the wheel over a restored shell may need one
+click before it scrolls. Judged acceptable rather than fixed: you click into a
+shell to type in it anyway. The fix, if it stops being acceptable, is the
+offscreen pane a routine's terminal already uses.
+
 **A dispose races an in-flight spawn**, and a dead chip's respawn is where it
 shows. A spawn is async and `disposeTerminal` is not, so a terminal can be
 thrown away while its `shell_spawn` is still in flight; the resolved promise
