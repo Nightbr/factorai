@@ -3,6 +3,51 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A shell in the session's footer (TODO item 47, spec `05-features.md` F23, ADR-0031,
+  `DESIGN.md` § Tab Chips)** — 2026-09-01, user ask, designed and shipped the same day. The session
+  pane was one PTY running `claude`, so `git log` or `cargo test` meant leaving the app. A
+  permanent 30px strip under the terminal opens the user's own `$SHELL` in the session's checkout,
+  with chips for the ones you have open and a draggable split above them.
+
+  **The identity problem was smaller than it looked, and the three that mattered were not the
+  obvious one.** `TerminalId` was already a fresh uuid with the session id as a *field*, so no new
+  id space was needed. What was needed was a `kind`, because three passes over the handle map said
+  "terminal" and meant "session": `next_session_id` would have offered a shell to a "new session"
+  click, `live_session_ids` would have pinned a phantom row against the indexer's reap, and the
+  `OSC 0` status parse would have read a shell's own title — most prompts set one — as Claude
+  working. ADR-0031 records that narrowing.
+
+  **One stream, two readings.** For an agent an `OSC 0` title is a status (F10, ADR-0015); for a
+  shell it is a *name* for its chip. `a_shells_title_names_it_and_never_moves_a_status` runs a real
+  PTY that titles itself with the CLI's own idle marker — the worst case, and one stray `printf`
+  produces it — and asserts the chip is labelled and no status event is emitted.
+
+  **Nothing about a shell raises a dialog, and that is the trade.** It is outside `working_count()`
+  and outside `needsCloseConfirm`, so quitting or closing the session `SIGKILL`s a running build
+  without asking. `MasterPty::process_group_leader()` (portable-pty 0.8, `tcgetpgrp` on the master
+  fd) would have made "a command is actually running" exact, and was declined on the product call:
+  a second reason for that dialog to appear is a step back towards the dialog nobody reads. The
+  mechanism is written down in ADR-0031 for whoever revisits it.
+
+  **`exit` removes a chip; a quit leaves it dead.** The exit code cannot separate a `SIGTERM`'d
+  bash from `exit 143`, and on the quit path the renderer may not outlive the event — so
+  `terminal:exit` gained `killed`, set by `kill()` *before* it signals so the waiter cannot report
+  an exit ahead of it. Chips persist without their `terminalId`, which names nothing after a
+  relaunch; the active chip is deliberately not persisted, or a restored footer would spawn a shell
+  at launch nobody asked for.
+
+  **Chips, not tabs, and fixed at 120px.** `DESIGN.md` chose chips partly because they do not
+  change width as you switch — and a chip labelled from a live title would resize on every command,
+  which is the same defect by another route. The label truncates into a constant box instead.
+
+  **The bug the manual pass caught**: clicking a dead chip put an error toast on screen. A spawn is
+  async and a dispose is not, so the effect's second StrictMode run threw away the terminal whose
+  `shell_spawn` was still in flight and the resolved promise wrote into it —
+  `undefined is not an object (evaluating 'this._renderer.value.dimensions')`, from inside xterm's
+  viewport. A pooled terminal now carries a `disposed` flag checked after every await, on the
+  shared path, because **restart** disposes exactly the same way and had the same race waiting in
+  it.
+
 - **Pin a session to the top of its project's list (TODO item 46, spec `05-features.md` F2 §
   "Pinning a session", `02-data-model.md` § `session_pins`, migration 0015)** — 2026-09-01, user
   ask. The session you keep coming back to sank under whatever you touched most recently, and the
