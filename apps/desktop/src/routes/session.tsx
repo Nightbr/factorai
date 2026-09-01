@@ -2,7 +2,15 @@ import type { SessionSummary, TerminalId } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { BookOpen, GitBranch, GitCommitHorizontal, Play, TriangleAlert, X } from 'lucide-react';
+import {
+	BookOpen,
+	GitBranch,
+	GitCommitHorizontal,
+	Pin,
+	Play,
+	TriangleAlert,
+	X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/CloseSessionConfirm';
 import { StatusDot } from '@components/layout/StatusDot';
@@ -248,6 +256,22 @@ function SessionView() {
 						onSelect={pickWorktree}
 						onRevert={isLinked ? revertWorktree : null}
 					/>
+				)}
+				{/* **A mark, not a control** (F2). The session you are looking at says
+				    whether it is pinned, because the sidebar shows ten rows and a pin
+				    you made three days ago is otherwise a fact only the list knows.
+				    Pinning and unpinning stay on the row, where the list you are
+				    reordering is on screen — a toggle here would reorder something you
+				    cannot see. */}
+				{session?.pinned && (
+					<span
+						className="flex shrink-0 items-center gap-1 text-primary text-xs"
+						title="Pinned to the top of this project's sessions"
+						data-testid="session-pinned"
+					>
+						<Pin className="size-3 shrink-0" aria-hidden />
+						pinned
+					</span>
 				)}
 				{/* The full id is one hover away rather than spending header width on
 				    36 characters nobody reads. */}

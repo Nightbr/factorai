@@ -7,7 +7,12 @@ import type { SessionSummary } from '@factorai/types';
 import type { LiveTerminal } from '@store/terminalStore';
 import { describe, expect, it } from 'vitest';
 
-function session(id: string, updatedAt: number, subagentOf: string | null = null): SessionSummary {
+function session(
+	id: string,
+	updatedAt: number,
+	subagentOf: string | null = null,
+	pinned = false,
+): SessionSummary {
 	return {
 		id,
 		projectId: 'p',
@@ -23,6 +28,7 @@ function session(id: string, updatedAt: number, subagentOf: string | null = null
 		routineId: null,
 		routineName: null,
 		routineStartedAt: null,
+		pinned,
 	};
 }
 
@@ -106,6 +112,61 @@ describe('orderSessions', () => {
 		);
 
 		expect(ordered.map((s) => s.id)).toEqual(['parent', 'top']);
+	});
+
+	it('puts a pinned session above everything, running sessions included', () => {
+		// The pin is the outermost key: it says "exempt this row from recency",
+		// and a live session that displaced it would take the top slot away
+		// exactly when the project is busy.
+		const ordered = orderSessions(
+			[session('fresh', 900), session('running', 5), session('bookmark', 1, null, true)],
+			live('running'),
+		);
+
+		expect(ordered.map((s) => s.id)).toEqual(['bookmark', 'running', 'fresh']);
+	});
+
+	it('orders several pinned sessions among themselves by recency', () => {
+		// One ordering rule for the whole list: the pin decides which side of the
+		// divider a row is on, not how the rows inside a block sort.
+		const ordered = orderSessions(
+			[
+				session('newer-pin', 500, null, true),
+				session('older-pin', 100, null, true),
+				session('unpinned', 900),
+			],
+			{},
+		);
+
+		expect(ordered.map((s) => s.id)).toEqual(['newer-pin', 'older-pin', 'unpinned']);
+	});
+
+	it('never drops a pinned session to honour the cap', () => {
+		// A pin you can be pushed out of view by is not a pin, so the limit caps
+		// the unpinned remainder. Twelve pins in a ten-slot list show twelve rows
+		// — the user's own doing, and visible.
+		const many = [
+			...Array.from({ length: 25 }, (_, i) => session(`s${i}`, 1000 + i)),
+			...Array.from({ length: 12 }, (_, i) => session(`pin-${i}`, i, null, true)),
+		];
+
+		const ordered = orderSessions(many, {});
+
+		expect(ordered).toHaveLength(12);
+		expect(ordered.every((s) => s.pinned)).toBe(true);
+	});
+
+	it('gives the unpinned rows the slots the pins did not take', () => {
+		const many = [
+			...Array.from({ length: 25 }, (_, i) => session(`s${i}`, 1000 + i)),
+			session('bookmark', 1, null, true),
+		];
+
+		const ordered = orderSessions(many, {});
+
+		expect(ordered).toHaveLength(SIDEBAR_SESSION_LIMIT);
+		expect(ordered[0]?.id).toBe('bookmark');
+		expect(ordered[1]?.id).toBe('s24');
 	});
 
 	it('does not let sub-agents crowd the cap either', () => {

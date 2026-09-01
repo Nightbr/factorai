@@ -14,7 +14,8 @@ commands/
   sidebar.rs          # list_sidebar, reorder_sidebar,
                       #   create_group, rename_group, remove_group
   sessions.rs         # list_sessions, get_session_tail, search_sessions,
-                      #   session_transcript_path, delete_session
+                      #   session_transcript_path, set_session_pinned,
+                      #   delete_session
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds,
                       #   watch_file, unwatch_file
@@ -149,6 +150,15 @@ clear_session_worktree(session_id: String) -> ()
 // and this is the half that does not trust it. A path that is not one of them,
 // or whose directory is gone, is InvalidInput.
 set_session_worktree(session_id: String, project_path: String, path: String) -> ()
+// Pin or unpin a session (F2, migration 0015). A pinned session leads its
+// project's list — sidebar and project page — where recency can no longer push
+// it below the fold; `list_sessions`' ORDER BY is where that happens, keyed on
+// the *group's* pin so a pinned parent takes its sub-agents with it. Emits
+// `sessions:changed` for the project, like every other write that reorders a
+// list. **NotFound for a session that is not indexed**: a live session with no
+// transcript yet has no row to keep the pin on, and is already at the top of the
+// list by the live-first rule.
+set_session_pinned(session_id: String, pinned: bool) -> ()
 // The one write into the agent's store that is not fork (ADR-0027, F2): moves
 // `<store dir>/<id>.jsonl` and the `<id>/` sub-agent directory to the OS trash,
 // then drops the session's rows — sessions, messages_fts, session_worktrees,

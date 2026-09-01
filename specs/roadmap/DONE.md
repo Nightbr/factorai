@@ -3,6 +3,56 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Pin a session to the top of its project's list (TODO item 46, spec `05-features.md` F2 §
+  "Pinning a session", `02-data-model.md` § `session_pins`, migration 0015)** — 2026-09-01, user
+  ask. The session you keep coming back to sank under whatever you touched most recently, and the
+  only way to keep one to hand was to leave a tab open. Right-click a sidebar row → `Pin session`,
+  or the pin button that appears on hover; the row leads the list until you unpin it.
+
+  **One bit, deliberately, three weeks after migration 0011 removed exactly such a bit from
+  `projects`.** A project list is ten stable rows you can drag into the order you want, which is
+  why the pin there lost to an ordinal. A session list is dozens of rows sorted by a recency that
+  moves every turn, with rows arriving from the indexer and leaving when a transcript does — no
+  hand order to preserve, so the whole requirement is *exempt this row from recency*. Both
+  migrations say this in their comments, because the next reader arrives holding the other one.
+
+  **`session_pins` is the one session-adjacent table that carries a foreign key.**
+  `session_worktrees` (0007) and `session_routines` (0013) are written at spawn, before Claude has
+  written a transcript and therefore before the `sessions` row exists — 0007 shipped that
+  constraint and removed it a day later. A pin can only be made from a row already in a list, so
+  the constraint holds and `ON DELETE CASCADE` becomes the whole of a pin's lifetime: neither
+  `delete_session` nor `Indexer::reap_deleted` had to learn the table exists. A session restored
+  from the trash comes back unpinned, which is the one visible consequence of that choice.
+
+  **The sort key is the group's pin, not the row's**, and that is the half worth remembering.
+  `list_sessions` joins `session_pins` twice — the row's own pin and its parent's — because
+  `groupSessions` in the renderer nests and never sorts. Order only the pinned parents and the
+  sub-agents stay where recency left them, drawn nested under a session they no longer follow.
+
+  **Pinned rows are never what the sidebar's cap drops.** `orderSessions` sorts pinned → open →
+  recency and then slices to `max(10, pinnedCount)`, so the ten slots cap the unpinned remainder:
+  twelve pins list twelve rows. A pin you can be pushed out of view by is not a pin. Ranking
+  `open` above `pinned` was considered and rejected for the same reason — it takes the top slot
+  away exactly when the project is busy.
+
+  **The boundary is the mark, not a per-row icon.** A rule between the two blocks in the sidebar;
+  on the project page, where `divide-y` already draws a rule under every row, the two captions
+  `PINNED` / `RECENT`, drawn only when both blocks exist. Two pins with nothing between them and
+  the rest of the list read as a broken sort. The pin button stays visible on a pinned row, so it
+  doubles as that row's own statement, and the session view's header carries a `pinned` mark — a
+  mark, not a control: a toggle there would reorder a list you cannot see.
+
+  **The project page has no toggle**, by decision rather than omission: its rows carry no context
+  menu at all today (same as the delete item), and giving them one meant either duplicating the
+  destructive action or shipping a menu with a single entry. It honours the order and names the
+  blocks.
+
+  Verified in the real window as well as the suites — pin, order, divider, header mark, unpin —
+  because the hover-and-focus reveal on the button is not something `tsc` has an opinion about.
+  Four Rust integration tests (`tests/session_pins.rs`), four `orderSessions` cases, three
+  `@smoke` specs including the mock bridge reordering the way the SQL does, so a fixture that
+  merely flipped the flag cannot pass.
+
 - **`AGENTS.md` split into a portable document, path-scoped rules and on-demand skills
   (`annex-A-cli-agent-patterns.md` § A.9)** — 2026-08-31, user ask. The file had reached 512
   lines and was loaded whole into every session, most of it irrelevant to whatever the session

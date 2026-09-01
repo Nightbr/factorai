@@ -158,6 +158,14 @@ pub struct SessionSummary {
 	/// only copy of that moment is in the renderer's memory. This is what keeps
 	/// it once the session has a title of its own, and across a reload.
 	pub routine_started_at: Option<i64>,
+	/// Whether the user pinned this session to the top of its project's list
+	/// (F2, migration 0015).
+	///
+	/// **This session's own pin, not its group's.** A sub-agent sorts with the
+	/// session that spawned it and cannot be pinned itself, so this is always
+	/// `false` on a sub-agent row even while it travels above unpinned sessions
+	/// because its parent is pinned.
+	pub pinned: bool,
 }
 
 /// One full-text search result. Mirrors `@factorai/types` `SearchHit`.

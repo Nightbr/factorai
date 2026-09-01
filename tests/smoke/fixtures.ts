@@ -217,6 +217,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		routineId: null,
 		routineName: null,
 		routineStartedAt: null,
+		pinned: false,
 	};
 	return {
 		projects: [project],
@@ -483,6 +484,7 @@ export function fixtureWithSubagents(): TestFixture {
 		routineId: null,
 		routineName: null,
 		routineStartedAt: null,
+		pinned: false,
 	});
 
 	const agents = [
@@ -911,6 +913,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 		routineId: null,
 		routineName: null,
 		routineStartedAt: null,
+		pinned: false,
 	}));
 
 	return {
@@ -933,6 +936,7 @@ export function fixtureTwoProjectsManySessions(): TestFixture {
 					routineId: null,
 					routineName: null,
 					routineStartedAt: null,
+					pinned: false,
 				},
 			],
 		},

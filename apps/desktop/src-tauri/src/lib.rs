@@ -284,6 +284,7 @@ pub fn run() {
 			commands::sessions::get_session_tail,
 			commands::sessions::session_transcript_path,
 			commands::sessions::search_sessions,
+			commands::sessions::set_session_pinned,
 			commands::sessions::delete_session,
 			commands::files::list_dir,
 			commands::files::read_file,

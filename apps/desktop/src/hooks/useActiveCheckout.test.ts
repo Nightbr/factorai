@@ -45,6 +45,7 @@ function session(over: Partial<SessionSummary> = {}): SessionSummary {
 		routineId: null,
 		routineName: null,
 		routineStartedAt: null,
+		pinned: false,
 		...over,
 	};
 }

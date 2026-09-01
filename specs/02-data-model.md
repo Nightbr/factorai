@@ -509,6 +509,30 @@ would quietly rewrite history to say those sessions were started by hand.
 Cleanup of the session side joins `reap_deleted`, which is where sessions are
 actually deleted and which already exempts live ones.
 
+### `session_pins` — the sessions you pinned to the top of a list
+
+| col        | type    | notes                                          |
+| ---------- | ------- | ---------------------------------------------- |
+| session_id | TEXT PK | FK → `sessions(id)` ON DELETE CASCADE          |
+| pinned_at  | INTEGER | epoch ms, when the pin was made                |
+
+**The one session-adjacent table that carries a foreign key**, and the contrast
+with the two above it is the point. `session_worktrees` and `session_routines`
+are written at spawn, strictly before the `sessions` row exists, so a constraint
+would fail on every insert they exist for. A pin can only be made from a row that
+is already in a list — so the constraint holds, and `ON DELETE CASCADE` is then
+the whole of a pin's lifetime: `delete_session` and `reap_deleted` both remove
+the `sessions` row and neither has to know this table is here.
+
+**`pinned_at` is not what the list sorts on.** Pinned rows order among themselves
+by recency like every other row (F2) — the pin decides which side of the boundary
+a row sits on, not the order inside it. The column is kept because "pinned since
+when" is the question asked of a mark left weeks ago.
+
+**One bit, where a project's position is an ordinal.** Migration 0011 replaced
+exactly such a bit on `projects` with `sort_order`; migration 0015's comment says
+why a session list is the opposite shape and does not want one. See F2.
+
 ### Indexes
 
 ```sql

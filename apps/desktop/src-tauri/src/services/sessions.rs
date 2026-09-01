@@ -76,6 +76,57 @@ pub fn set_worktree(db: &Db, session_id: &str, path: &str, now_ms: i64) -> AppRe
 	})
 }
 
+/// Pin or unpin a session, and return the project whose list changed (F2,
+/// migration 0015).
+///
+/// **The project id comes back rather than being looked up again by the caller**,
+/// because the command has to emit `sessions:changed` for it and the join that
+/// resolves it is the same one the write needs to have found a row at all. A
+/// session that is not in the index is `NotFound`, mapped the way
+/// [`delete`] maps it: only "no such row" is a missing session, and a locked
+/// database must not be reported as one.
+///
+/// A project id of `None` means the session's store directory belongs to no
+/// project in the workspace — the pin is written, and there is no list on screen
+/// to tell about it.
+///
+/// Idempotent in both directions: `INSERT OR IGNORE` keeps the original
+/// `pinned_at` when a row is pinned twice, so a double-click does not reset the
+/// timestamp, and unpinning something unpinned deletes nothing.
+pub fn set_pinned(
+	db: &Db,
+	session_id: &str,
+	pinned: bool,
+	now_ms: i64,
+) -> AppResult<Option<String>> {
+	db.with(|conn| {
+		let project_id = conn
+			.query_row(
+				"SELECT d.project_id
+				 FROM sessions s
+				 JOIN discovered_projects d ON d.id = s.discovered_id
+				 WHERE s.id = ?1",
+				rusqlite::params![session_id],
+				|row| row.get::<_, Option<String>>(0),
+			)
+			.map_err(|e| match e {
+				rusqlite::Error::QueryReturnedNoRows => {
+					AppError::NotFound(format!("no indexed session {session_id}"))
+				}
+				other => AppError::from(other),
+			})?;
+		if pinned {
+			conn.execute(
+				"INSERT OR IGNORE INTO session_pins(session_id, pinned_at) VALUES (?1, ?2)",
+				rusqlite::params![session_id, now_ms],
+			)?;
+		} else {
+			conn.execute("DELETE FROM session_pins WHERE session_id = ?1", [session_id])?;
+		}
+		Ok(project_id)
+	})
+}
+
 /// Forget which checkout a session was working in (F21).
 ///
 /// **The human's revert.** The badge's control is an undo of a move the agent

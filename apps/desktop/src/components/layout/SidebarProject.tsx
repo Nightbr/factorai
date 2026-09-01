@@ -28,6 +28,7 @@ import {
 	IconButton,
 } from '@factorai/ui';
 import { useDeleteSession } from '@hooks/useDeleteSession';
+import { useSetSessionPinned } from '@hooks/useSetSessionPinned';
 import { useSessionMarks } from '@hooks/useSessionMarks';
 import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
@@ -53,19 +54,32 @@ import {
 	FolderOutput,
 	FolderPlus,
 	ClockFading,
+	Pin,
+	PinOff,
 	Plus,
 	Route,
 	Trash2,
 	X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 
 /** How many sessions an expanded project shows. Enough to cover "the one I was
  *  just in", short enough that expanding two projects doesn't bury the list. */
 export const SIDEBAR_SESSION_LIMIT = 10;
 
 /**
- * Newest-first, but anything with a live PTY first of all.
+ * Pinned first, then anything with a live PTY, then newest-first (F2).
+ *
+ * **Three keys, and the pin is the outermost one.** A pin says "exempt this row
+ * from recency", so a live session cannot displace it — the status dot still
+ * says which session is working, and it says so from wherever the pin put the
+ * row. Ranking `open` first instead would take the pin's top slot away exactly
+ * when the project is busy, which is when you need a bookmark most.
+ *
+ * **Pinned rows are never what the cap drops.** A pin you can be pushed out of
+ * view by is not a pin, so the limit caps the unpinned remainder and a project
+ * with more pins than slots shows all of them. That is the user's own doing and
+ * visible on screen, unlike a mark that silently stopped working.
  *
  * Sub-agents are left out: they belong to the session that spawned them, and
  * the sidebar's ten slots are for sessions you can actually go back into.
@@ -79,15 +93,17 @@ export function orderSessions(
 	open: Record<string, unknown>,
 	limit = SIDEBAR_SESSION_LIMIT,
 ): SessionSummary[] {
-	return sessions
+	const ordered = sessions
 		.filter((s) => s.subagentOf === null)
 		.sort((a, b) => {
+			if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
 			const aOpen = a.id in open ? 1 : 0;
 			const bOpen = b.id in open ? 1 : 0;
 			if (aOpen !== bOpen) return bOpen - aOpen;
 			return b.updatedAt - a.updatedAt;
-		})
-		.slice(0, limit);
+		});
+	const pinnedCount = ordered.filter((s) => s.pinned).length;
+	return ordered.slice(0, Math.max(limit, pinnedCount));
 }
 
 /**
@@ -606,7 +622,10 @@ function SessionList({ project }: { project: Project }) {
 								? `Started by routine — ${routineOrigins[p.sessionId].routineName}`
 								: 'New session — it takes its title from your first message'
 						}
-						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						// `pr-8`, like the indexed rows below: they reserve that space for
+						// the pin button, and a status dot that sits 24px further right on
+						// these two rows makes the column read as ragged.
+						className="flex items-center gap-2 py-1.5 pr-8 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						{routineOrigins[p.sessionId] && (
@@ -629,15 +648,25 @@ function SessionList({ project }: { project: Project }) {
 					</Link>
 				</li>
 			))}
-			{sessions.map((session) => (
-				<SessionRow
-					key={session.id}
-					session={session}
-					projectId={project.id}
-					mark={open[session.id]}
-					subagentCount={subagentCounts[session.id] ?? 0}
-					clock24={clock24}
-				/>
+			{sessions.map((session, i) => (
+				<Fragment key={session.id}>
+					{/* **The divider is the mark, not a per-row icon.** Two pins in a
+					    list read as a broken sort unless something says where the
+					    exemption from recency ends, and a rule costs one row of height
+					    where a pin glyph on every pinned row costs a column on all of
+					    them. Only drawn between the two blocks: no pins, or nothing but
+					    pins, and there is no boundary to show. */}
+					{session.pinned === false && i > 0 && sessions[i - 1]?.pinned === true && (
+						<li aria-hidden className="mx-2 my-1 border-border/60 border-t" />
+					)}
+					<SessionRow
+						session={session}
+						projectId={project.id}
+						mark={open[session.id]}
+						subagentCount={subagentCounts[session.id] ?? 0}
+						clock24={clock24}
+					/>
+				</Fragment>
 			))}
 			{hidden > 0 && (
 				// Not a scroll-forever list: the rest live on the project page.
@@ -681,6 +710,11 @@ interface SessionRowProps {
  */
 function SessionRow({ session, projectId, mark, subagentCount, clock24 }: SessionRowProps) {
 	const deleteSession = useDeleteSession();
+	const setPinned = useSetSessionPinned();
+	// A pin that failed says so on the row, the same way a failed copy does: the
+	// menu has closed by the time the command returns, and the alternative is a
+	// list that quietly did not reorder.
+	const [pinFailed, setPinFailed] = useState(false);
 	const [confirming, setConfirming] = useState(false);
 	// In flight: the button says so and neither button can be pressed again. A
 	// delete stops a PTY and then waits for it to actually exit, which is a
@@ -699,6 +733,16 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 
 	const title = session.title.trim() || session.id.slice(0, 8);
 	const running = mark !== undefined && mark.status !== 'stopped';
+
+	async function togglePin() {
+		setPinFailed(false);
+		try {
+			await setPinned(session.id, projectId, !session.pinned);
+		} catch {
+			setPinFailed(true);
+			setTimeout(() => setPinFailed(false), 1400);
+		}
+	}
 
 	async function copyTranscriptPath() {
 		try {
@@ -728,10 +772,14 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 	}
 
 	return (
-		<li>
-			{/* Two items. Clicking the row is still what opens the session, so this
-			    stays the menu of things the row itself cannot do: where the
-			    transcript is, and deleting it. Anything beyond those would be a
+		// `group` and `relative` for the pin button, which is overlaid on the row
+		// rather than laid out beside the `Link`. A sibling in a flex row would end
+		// the `Link` short of the row's right edge, and the hover and active
+		// backgrounds — which the `Link` paints — would stop with it.
+		<li className="group relative">
+			{/* Three items. Clicking the row is still what opens the session, so this
+			    stays the menu of things the row itself cannot do: pinning it, where
+			    the transcript is, and deleting it. Anything beyond those would be a
 			    decoy around the only entry here that cannot be undone from inside
 			    the app, which is why the destructive one sits below a separator. */}
 			<ContextMenu>
@@ -747,7 +795,9 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 								? `${title} · ran ${formatStamp(new Date(session.routineStartedAt), clock24)}`
 								: title
 						}
-						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						// `pr-8` reserves the pin button's column, so a long title
+						// truncates before it rather than sliding underneath.
+						className="flex items-center gap-2 py-1.5 pr-8 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						{session.routineId && (
@@ -792,6 +842,15 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 				    a menu of eight items of different lengths ragging; two short items
 				    in a 224px box just read as a mis-sized menu. */}
 				<ContextMenuContent>
+					{/* First, because it is the only reversible thing here you would
+					    reach for twice. */}
+					<ContextMenuItem
+						data-testid={`pin-session-${session.id}`}
+						onSelect={() => void togglePin()}
+					>
+						{session.pinned ? <PinOff /> : <Pin />}
+						{session.pinned ? 'Unpin session' : 'Pin session'}
+					</ContextMenuItem>
 					{/* The transcript file, not the session id. It is what you hand to
 					    another agent, to `jq`, or to a bug report, and finding it by
 					    hand means knowing how Claude encodes a project path into a
@@ -817,6 +876,28 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 					</ContextMenuItem>
 				</ContextMenuContent>
 			</ContextMenu>
+
+			{/* **Visible on hover and focus, and permanently once pinned.** The
+			    right-click menu is the same path every other row action takes, but a
+			    feature reachable only by right-click is one nobody finds — and on a
+			    pinned row this button doubles as the per-row statement of *which*
+			    rows the divider above covers. `focus-within` is not enough: the
+			    button is not inside the `Link`, so tabbing to the row has to reveal
+			    it through its own `focus-visible`. */}
+			<IconButton
+				data-testid={`pin-session-button-${session.id}`}
+				aria-label={session.pinned ? `Unpin ${title}` : `Pin ${title}`}
+				aria-pressed={session.pinned}
+				title={pinFailed ? 'Could not change the pin' : session.pinned ? 'Unpin' : 'Pin to top'}
+				onClick={() => void togglePin()}
+				className={`absolute top-1/2 right-1.5 -translate-y-1/2 ${
+					session.pinned
+						? 'text-primary opacity-100'
+						: 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
+				} ${pinFailed ? 'text-destructive' : ''}`}
+			>
+				{session.pinned ? <PinOff /> : <Pin />}
+			</IconButton>
 
 			{/* Always asks. This is the only action in the app that removes the
 			    user's own work, and the row it starts from is one pixel of travel

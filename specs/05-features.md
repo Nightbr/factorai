@@ -416,12 +416,17 @@ title, relative timestamp, turn count, and a status badge.
 **UI.** Sidebar (or full pane when on `/projects/$id`). Click → open
 session view. Keyboard: ↑/↓ to navigate, Enter to open.
 
-An expanded project lists its **10 most relevant** sessions inline: anything
-with a live PTY first, then most-recently-active. Running-first is the point —
-what an agent is doing *now* matters more than what you touched last, so a live
-session stays at the top even when it is the stalest by timestamp. Anything
-beyond the ten is an `N more…` link to the project page, rather than an
-unbounded list in a narrow column.
+An expanded project lists its **10 most relevant** sessions inline: **pinned
+first**, then anything with a live PTY, then most-recently-active. Running-first
+is the point of the second key — what an agent is doing *now* matters more than
+what you touched last, so a live session stays above an idle one even when it is
+the stalest by timestamp. Anything beyond the ten is an `N more…` link to the
+project page, rather than an unbounded list in a narrow column.
+
+**Pinned rows are never what the cap drops.** The ten slots cap the *unpinned*
+remainder, so a project with twelve pins lists twelve rows — the user's own
+doing, and visible on screen. A pin you can be pushed out of view by is not a
+pin.
 
 **Backend.** `list_sessions(project_id)`.
 
@@ -482,6 +487,65 @@ rows live.
 
 **Edge cases.**
 - Session file is huge (>100MB) → still index, just lazily.
+
+### Pinning a session
+
+**Right-click a session row → `Pin session`, or the pin button on the row.** A
+pinned session leads its project's list — in the sidebar's inline list and on the
+project page — where recency can no longer push it below the fold. It is the
+answer to "the session I keep coming back to keeps sinking", which until now was
+solved by leaving a tab open.
+
+**One bit, not an ordinal.** A project's position in the sidebar is a stored
+ordinal you drag (F1, ADR-0023/0025); a session's is not, and the difference is
+the shape of the list. A session list is dozens of rows sorted by a recency that
+moves every turn, with rows arriving from the indexer and leaving when a
+transcript does — there is no hand order to preserve, so the whole requirement
+is *exempt this row from recency*. Migration 0015's comment says this, because
+the next reader arrives holding migration 0011, which removed exactly such a bit
+from `projects`.
+
+**Ordering.** Pinned first, then live, then recency — and **pinned rows order
+among themselves by recency too**, so the list keeps one ordering rule and the
+pin only decides which side of the boundary a row is on.
+
+**A pinned parent takes its sub-agents with it.** The sort key is the *group's*
+pin, not the row's: `list_sessions` orders by it and the renderer's
+`groupSessions` only nests, so a sub-agent travels above unpinned sessions while
+never being pinned itself. Sub-agents cannot be pinned — they are not sessions
+you go back into.
+
+**Where the control is.** The sidebar's row: the context menu's first item, and a
+pin button that appears on hover or focus and **stays visible once pinned**,
+where it doubles as the row's mark. The project page has no toggle; it honours
+the order and names the two blocks (`Pinned` / `Recent`, drawn only when both
+exist). The session view's header shows a `pinned` mark for the session you are
+looking at — a mark, not a control, since a toggle there would reorder a list you
+cannot see.
+
+**The boundary is the mark, not a per-row icon.** In the sidebar a rule between
+the two blocks; on the project page, where every row already has a rule under it,
+the two captions. Two pins with nothing between them and the rest of the list
+read as a broken sort.
+
+**Backend.** `set_session_pinned(session_id, pinned)`, then `sessions:changed`
+for the project — every list on screen is a `list_sessions` too. `pinned` rides
+on `SessionSummary`, joined in the same query for the reason the checkout and
+routine marks are: every row that draws it needs it on first paint.
+
+**Indexed sessions only.** A session spawned but never messaged has no
+transcript (ADR-0008) and so no row to keep a pin on; it is already at the top of
+the list by the live-first rule, so a pin there would buy nothing. Pinning one is
+`NotFound` rather than a silent no-op — a pin that quietly did not happen is a
+mark you would believe you had made.
+
+**Lifetime.** `session_pins` (migration 0015) is the one session-adjacent table
+that carries a foreign key: unlike `session_worktrees` and `session_routines`,
+which are written at spawn before the `sessions` row exists, a pin can only be
+made from a row that is already listed. `ON DELETE CASCADE` is then the whole of
+its lifetime — deleting a session takes its pin, and so does the indexer's reap
+when a transcript disappears. A session restored from the trash comes back
+unpinned.
 
 ### Copying a session's transcript path
 

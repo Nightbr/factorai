@@ -56,6 +56,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// now write one. NULL means a human wrote it — meaningful rather than
 	// missing, since every row that predates this column came from the editor.
 	("0014_routine_provenance", include_str!("migrations/0014_routine_provenance.sql")),
+	// A pinned session sits above recency in its project's list (F2). The one
+	// session-adjacent table that *can* carry a foreign key — the file says why,
+	// and why it is not 0011's project pin coming back.
+	("0015_session_pins", include_str!("migrations/0015_session_pins.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

@@ -43,17 +43,27 @@ pub fn list_sessions_in(
 		// second lookup, and the name can be NULL for a live row — deleting a
 		// routine nulls the link instead of cascading, so a session it started
 		// keeps its icon and loses only the name.
+		// `pin` is the row's own pin and `ppin` its parent's (F2, migration 0015).
+		// **Two joins because the sort key is the group's pin, not the row's**: a
+		// pinned parent has to take its sub-agents with it, or the list nests rows
+		// that are no longer under the session they belong to. `groupSessions` in
+		// the renderer nests and never sorts, deliberately, so ordering the group
+		// is this query's job — the same reason the parent-recency key below is
+		// here rather than there.
 		"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
 		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.touched_paths,
-		        sr.routine_id, r.name, sr.created_at
+		        sr.routine_id, r.name, sr.created_at, pin.session_id IS NOT NULL
 		 FROM sessions s
 		 JOIN discovered_projects d ON d.id = s.discovered_id
 		 LEFT JOIN sessions p ON p.id = s.subagent_of
 		 LEFT JOIN session_worktrees w ON w.session_id = s.id
 		 LEFT JOIN session_routines sr ON sr.session_id = s.id
 		 LEFT JOIN routines r ON r.id = sr.routine_id
+		 LEFT JOIN session_pins pin ON pin.session_id = s.id
+		 LEFT JOIN session_pins ppin ON ppin.session_id = s.subagent_of
 		 WHERE d.project_id = ?1
-		 ORDER BY COALESCE(p.updated_at, s.updated_at) DESC,
+		 ORDER BY (COALESCE(ppin.session_id, pin.session_id) IS NULL),
+		          COALESCE(p.updated_at, s.updated_at) DESC,
 		          (s.subagent_of IS NULL) DESC,
 		          s.updated_at DESC",
 	)?;
@@ -88,6 +98,7 @@ pub fn list_sessions_in(
 				routine_id: row.get(11)?,
 				routine_name: row.get(12)?,
 				routine_started_at: row.get(13)?,
+				pinned: row.get(14)?,
 			})
 		})?
 		.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -264,6 +275,41 @@ pub fn set_session_worktree(
 		&wanted.to_string_lossy(),
 		crate::epoch_ms(),
 	)
+}
+
+/// Pin or unpin a session, then `sessions:changed` for its project (F2,
+/// migration 0015).
+///
+/// A pin exempts a session from recency: it sits above the rest of its project's
+/// list in the sidebar and on the project page, where it cannot be pushed below
+/// the fold by whatever you touched most recently.
+///
+/// **Only an indexed session can be pinned.** A session spawned but never
+/// messaged has no transcript and so no row (ADR-0008), and the renderer draws
+/// those rows from its own store — they are already at the top of the list by the
+/// live-first rule, so there is nothing a pin would buy. `NotFound` rather than a
+/// silent no-op, because a pin that quietly did not happen is a mark you would
+/// believe you had made.
+///
+/// The event rather than a return value, for the reason `delete_session` gives:
+/// every list on screen is a `list_sessions` too, and the one you clicked in is
+/// not the only one that just became wrong.
+#[tauri::command]
+pub fn set_session_pinned(
+	app: tauri::AppHandle,
+	state: State<'_, AppState>,
+	session_id: String,
+	pinned: bool,
+) -> AppResult<()> {
+	let project_id =
+		crate::services::sessions::set_pinned(&state.db, &session_id, pinned, crate::epoch_ms())?;
+	if let Some(project_id) = project_id {
+		let _ = app.emit(
+			"sessions:changed",
+			crate::models::SessionsChanged { project_id, session_ids: vec![session_id] },
+		);
+	}
+	Ok(())
 }
 
 /// Delete a session (F2, ADR-0027): its transcript to the OS trash, its rows out

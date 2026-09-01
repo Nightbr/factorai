@@ -147,6 +147,13 @@ export interface SessionSummary {
 	 *  The durable half of its label: it survives the session gaining a title of
 	 *  its own, and a reload. */
 	routineStartedAt: number | null;
+	/** Whether you pinned this session to the top of its project's list (F2).
+	 *
+	 *  The row's **own** pin. A sub-agent is never pinned itself and cannot be —
+	 *  it is not a session you go back into — but it does travel above unpinned
+	 *  rows when the session that spawned it is pinned, because the backend orders
+	 *  the group and `groupSessions` only nests. */
+	pinned: boolean;
 }
 
 export interface SessionPage {

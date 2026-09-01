@@ -104,6 +104,16 @@ export const cmd = {
 	 *  not the file is still on disk — that case is one reason to ask. */
 	sessionTranscriptPath: (sessionId: string) =>
 		invoke<string>('session_transcript_path', { sessionId }),
+	/** Pin or unpin a session (F2). A pinned session leads its project's list in
+	 *  the sidebar and on the project page, where recency can no longer push it
+	 *  below the fold.
+	 *
+	 *  Indexed sessions only: a live session with no transcript yet has no row to
+	 *  keep the pin on, and is already at the top of the list by the live-first
+	 *  rule. Emits `sessions:changed`, so every list refetches through the path it
+	 *  already has. */
+	setSessionPinned: (sessionId: string, pinned: boolean) =>
+		invoke<void>('set_session_pinned', { sessionId, pinned }),
 	/** Delete a session (F2, ADR-0027): its transcript to the OS trash, its rows
 	 *  out of the index, then `sessions:changed`. The only write into the agent's
 	 *  store that is not fork.
@@ -748,6 +758,36 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				limit: 0,
 				total: 0,
 			}) as unknown as T;
+		}
+		case 'set_session_pinned': {
+			const sessionId = String(args?.sessionId ?? '');
+			const pinned = Boolean(args?.pinned);
+			if (fx) {
+				// **The mock reorders, not just re-flags.** The real ordering is in the
+				// command's `ORDER BY` — pinned group first, then recency — so a fixture
+				// that only flipped the bit would let a smoke test pass on a list the
+				// app never draws that way. Sub-agents stay under their parent, which
+				// is the half of the sort that is easiest to lose.
+				const byProject = fx.sessionsByProject ?? {};
+				for (const [projectId, list] of Object.entries(byProject)) {
+					if (!list.some((s) => s.id === sessionId)) continue;
+					const flagged = list.map((s) => (s.id === sessionId ? { ...s, pinned } : s));
+					const groupPinned = (s: (typeof flagged)[number]) =>
+						flagged.find((x) => x.id === (s.subagentOf ?? s.id))?.pinned ?? false;
+					byProject[projectId] = [...flagged].sort((a, b) => {
+						const pin = Number(groupPinned(b)) - Number(groupPinned(a));
+						if (pin !== 0) return pin;
+						const leader = (s: (typeof flagged)[number]) =>
+							flagged.find((x) => x.id === (s.subagentOf ?? s.id)) ?? s;
+						const byGroup = leader(b).updatedAt - leader(a).updatedAt;
+						if (byGroup !== 0) return byGroup;
+						const parentFirst = Number(a.subagentOf !== null) - Number(b.subagentOf !== null);
+						if (parentFirst !== 0) return parentFirst;
+						return b.updatedAt - a.updatedAt;
+					});
+				}
+			}
+			return undefined as unknown as T;
 		}
 		case 'delete_session': {
 			const sessionId = String(args?.sessionId ?? '');

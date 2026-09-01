@@ -16,6 +16,7 @@ import { useTerminalStore } from '@store/terminalStore';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createRoute, useNavigate } from '@tanstack/react-router';
 import { Bot, ChevronRight, MessagesSquare, Plus } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { rootRoute } from './__root';
 
@@ -95,6 +96,19 @@ function RowMeta({ session }: { session: SessionSummary }) {
 	);
 }
 
+/** A heading inside the session list, naming the block under it (F2).
+ *
+ *  A list item, not a `<h*>` outside the `<ul>`: the two blocks are one list
+ *  with one set of dividers, and lifting a heading out of it would mean two
+ *  bordered cards where the design has one. */
+function SectionLabel({ children }: { children: ReactNode }) {
+	return (
+		<li className="bg-secondary/30 px-4 py-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+			{children}
+		</li>
+	);
+}
+
 /** The two lists a project has (F22). In the URL rather than component state so
  *  the context menu's `New routine` — and later the MCP tool — can land you on
  *  the right one. */
@@ -138,6 +152,12 @@ function ProjectView() {
 	const canStart = project ? !project.missing : false;
 
 	const groups = useMemo(() => groupSessions(sessionsQ.data ?? []), [sessionsQ.data]);
+	// **Split, not re-sorted.** `list_sessions` already returns pinned groups
+	// first (F2, migration 0015) and `groupSessions` only nests, so this is where
+	// the boundary between the two blocks is, not where the order is decided.
+	// Sorting again here would be a second copy of the SQL `ORDER BY`.
+	const pinnedGroups = useMemo(() => groups.filter((g) => g.session.pinned), [groups]);
+	const restGroups = useMemo(() => groups.filter((g) => !g.session.pinned), [groups]);
 
 	// Live sessions this project has that the index hasn't seen — without these
 	// rows the session you just started vanishes from the list the moment you
@@ -298,7 +318,28 @@ function ProjectView() {
 								</div>
 							</li>
 						))}
-						{groups.map((group) => (
+						{/* **Captions rather than a per-row mark.** Every row in this list
+						    already has a rule under it (`divide-y`), so a thicker line would
+						    not read as a section boundary — the words do. Only drawn when
+						    both blocks exist: with nothing pinned, or nothing else, there is
+						    no boundary to name. Pinning happens in the sidebar (F2); this
+						    list honours the order it produces. */}
+						{pinnedGroups.length > 0 && restGroups.length > 0 && (
+							<SectionLabel>Pinned</SectionLabel>
+						)}
+						{pinnedGroups.map((group) => (
+							<SessionRow
+								key={group.session.id}
+								group={group}
+								projectId={id}
+								expanded={expanded.has(group.session.id)}
+								onToggle={() => toggle(group.session.id)}
+							/>
+						))}
+						{pinnedGroups.length > 0 && restGroups.length > 0 && (
+							<SectionLabel>Recent</SectionLabel>
+						)}
+						{restGroups.map((group) => (
 							<SessionRow
 								key={group.session.id}
 								group={group}
