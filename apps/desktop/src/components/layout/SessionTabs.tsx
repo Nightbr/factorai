@@ -5,6 +5,7 @@ import {
 } from '@components/dialog/CloseSessionConfirm';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { RoutineOrigin } from '@components/routines/RoutineOrigin';
+import { closeSessionShells } from '@components/terminal/shells';
 import { disposeTerminal, restartSession } from '@components/terminal/Terminal';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -164,6 +165,7 @@ export function SessionTabs() {
 				// missed — and that event now keeps the tab anyway.
 				detach(sessionId);
 				disposeTerminal(sessionId);
+				closeSessionShells(sessionId);
 				// Only navigate if you were looking at the session you just closed.
 				if (activeId === sessionId) {
 					void navigate({ to: '/projects/$id', params: { id: projectId } });

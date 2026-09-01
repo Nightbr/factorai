@@ -1,3 +1,4 @@
+import { closeSessionShells } from '@components/terminal/shells';
 import { disposeTerminal } from '@components/terminal/Terminal';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, events } from '@lib/tauri';
@@ -109,6 +110,7 @@ export function useDeleteSession(): (sessionId: string, projectId: string) => Pr
 			// wait above is the part that matters.
 			detach(sessionId);
 			disposeTerminal(sessionId);
+			closeSessionShells(sessionId);
 
 			await cmd.deleteSession(sessionId);
 

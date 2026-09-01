@@ -185,7 +185,7 @@ export function proposeGeometry(
  * we run the DOM renderer deliberately (see the WebGL note at construction),
  * whose rows are re-rendered elements rather than a painted surface.
  */
-function fitToHost(entry: PooledTerm): void {
+export function fitToHost(entry: PooledTerm): void {
 	const { term, host } = entry;
 	const screen = host.querySelector('.xterm-screen');
 	if (!(screen instanceof HTMLElement)) return;
@@ -225,14 +225,31 @@ interface PooledTerm {
 	/** Set once `attachPty` has run, so the spawn + output listeners are wired
 	 *  exactly once per pooled terminal. */
 	ptyAttached: boolean;
+	/** Which PTY this terminal's keystrokes and resizes go to, read at call time
+	 *  rather than captured.
+	 *
+	 *  A function because the id changes underneath a pooled xterm — a restart
+	 *  gives a session a new PTY, and a dead shell chip respawns into one (F23) —
+	 *  and because the two kinds read it from different stores. */
+	terminalId: () => string | undefined;
 }
 
+/** Keyed by session id for an agent, and by a `shell:<uuid>` for a footer shell
+ *  (F23). Two key spaces in one map because everything below this line is about
+ *  an xterm and a host element, and neither cares which it is; the prefix is
+ *  what keeps them from ever colliding. */
 const pool = new Map<string, PooledTerm>();
 
 /** Push a window size to the PTY, ignoring the `NotFound` a terminal that has
  *  already exited returns — a resize losing that race is not worth surfacing. */
 function pushSize(terminalId: string, cols: number, rows: number): void {
 	void cmd.terminalResize(terminalId, cols, rows).catch(() => undefined);
+}
+
+/** The PTY a session's agent is running in, or `undefined` between a restart's
+ *  dispose and the next spawn. */
+function agentTerminalId(sessionId: string): string | undefined {
+	return useTerminalStore.getState().bySession[sessionId]?.terminalId;
 }
 
 /**
@@ -280,15 +297,19 @@ function pushSize(terminalId: string, cols: number, rows: number): void {
  * above coming back. Worth revisiting only with a profile of a session count
  * that actually hurts.
  */
-function showOnly(container: HTMLElement, active: PooledTerm): void {
+export function showOnly(container: HTMLElement, active: PooledTerm): void {
 	for (const entry of pool.values()) {
 		if (entry.host.parentElement !== container) continue;
 		entry.host.style.visibility = entry === active ? '' : 'hidden';
 	}
 }
 
-function getOrCreateTerm(sessionId: string, container: HTMLElement): PooledTerm {
-	const existing = pool.get(sessionId);
+export function getOrCreateTerm(
+	key: string,
+	container: HTMLElement,
+	terminalId: () => string | undefined,
+): PooledTerm {
+	const existing = pool.get(key);
 	if (existing) return existing;
 
 	const host = document.createElement('div');
@@ -347,8 +368,8 @@ function getOrCreateTerm(sessionId: string, container: HTMLElement): PooledTerm 
 			t.registerLinkProvider(
 				createFileLinkProvider(
 					t,
-					() => fileLinkWiring.get(sessionId)?.context() ?? { bases: [], home: null },
-					(event, link) => fileLinkWiring.get(sessionId)?.activate(event, link),
+					() => fileLinkWiring.get(key)?.context() ?? { bases: [], home: null },
+					(event, link) => fileLinkWiring.get(key)?.activate(event, link),
 				),
 			),
 		dispose: () => undefined,
@@ -360,13 +381,13 @@ function getOrCreateTerm(sessionId: string, container: HTMLElement): PooledTerm 
 	// but reliable.
 	term.open(host);
 
-	const entry: PooledTerm = { host, term, cleanup: [], ptyAttached: false };
-	pool.set(sessionId, entry);
+	const entry: PooledTerm = { host, term, cleanup: [], ptyAttached: false, terminalId };
+	pool.set(key, entry);
 
 	// Forward keystrokes to the live PTY. Reads the terminal id from the store
 	// at call time so it follows the current PTY even after a restart.
 	const dataSub = term.onData((d) => {
-		const tid = useTerminalStore.getState().bySession[sessionId]?.terminalId;
+		const tid = entry.terminalId();
 		if (tid) void cmd.terminalWrite(tid, d);
 	});
 	entry.cleanup.push(() => dataSub.dispose());
@@ -376,7 +397,7 @@ function getOrCreateTerm(sessionId: string, container: HTMLElement): PooledTerm 
 	// forwarded here. Keeping this in ONE place means callers only ever have to
 	// call `fit()` — they never compute cols/rows or talk to the PTY themselves.
 	const resizeSub = term.onResize(({ cols, rows }) => {
-		const tid = useTerminalStore.getState().bySession[sessionId]?.terminalId;
+		const tid = entry.terminalId();
 		if (tid) pushSize(tid, cols, rows);
 	});
 	entry.cleanup.push(() => resizeSub.dispose());
@@ -401,12 +422,36 @@ function attachPty(
 	projectCwd: string | null,
 	initialPrompt?: string,
 ): void {
+	attachStream(
+		entry,
+		(cols, rows) => ensureTerminal(sessionId, projectId, projectCwd, cols, rows, initialPrompt),
+		'Failed to spawn claude',
+	);
+}
+
+/**
+ * Wire a pooled terminal to a PTY: spawn it, then pipe `terminal:data` in and
+ * announce `terminal:exit`.
+ *
+ * Shared by the agent above and the footer shell (F23), which differ only in
+ * which command mints the id — everything after that is one byte stream and one
+ * exit, keyed by terminal id on both sides of the bridge.
+ *
+ * Call this only AFTER the host is in the DOM and `fit()` has run, for the
+ * reason in `attachPty`'s note.
+ */
+export function attachStream(
+	entry: PooledTerm,
+	spawn: (cols: number, rows: number) => Promise<string>,
+	failLabel: string,
+	onExit?: (code: number | null) => void,
+): void {
 	if (entry.ptyAttached) return;
 	entry.ptyAttached = true;
 
 	const { term } = entry;
 
-	ensureTerminal(sessionId, projectId, projectCwd, term.cols, term.rows, initialPrompt)
+	spawn(term.cols, term.rows)
 		.then(async (id) => {
 			// Reconcile once the id is known. The PTY can be out of sync already: it
 			// may predate this terminal (reused across a hot reload or a remount), or
@@ -421,12 +466,13 @@ function attachPty(
 					term.write(
 						`\r\n\x1b[90m[process exited${ev.code !== null ? `: ${ev.code}` : ''}]\x1b[0m\r\n`,
 					);
+					onExit?.(ev.code);
 				}
 			});
 			entry.cleanup.push(unData, unExit);
 		})
 		.catch((e) => {
-			term.write(`\r\n\x1b[31mFailed to spawn claude: ${formatError(e)}\x1b[0m\r\n`);
+			term.write(`\r\n\x1b[31m${failLabel}: ${formatError(e)}\x1b[0m\r\n`);
 		});
 }
 
@@ -506,7 +552,9 @@ export function startRoutineSession(fire: RoutineFireEvent): void {
 	useTerminalStore
 		.getState()
 		.setRoutineOrigin(fire.sessionId, fire.routineId, fire.routineName, Date.now());
-	const entry = getOrCreateTerm(fire.sessionId, getRoutinePane());
+	const entry = getOrCreateTerm(fire.sessionId, getRoutinePane(), () =>
+		agentTerminalId(fire.sessionId),
+	);
 	fitToHost(entry);
 	attachPty(entry, fire.sessionId, fire.projectId, fire.cwd, fire.prompt);
 }
@@ -650,7 +698,7 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		const container = containerRef.current;
 		if (!container) return;
 
-		const entry = getOrCreateTerm(sessionId, container);
+		const entry = getOrCreateTerm(sessionId, container, () => agentTerminalId(sessionId));
 		// Only ever true for a terminal built against a *previous* pane — the
 		// session route's pane survives a tab switch, so switching session moves
 		// nothing. Coming back from the project route does, and there is no way

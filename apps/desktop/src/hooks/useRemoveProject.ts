@@ -1,3 +1,4 @@
+import { closeSessionShells } from '@components/terminal/shells';
 import { disposeTerminal } from '@components/terminal/Terminal';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
@@ -65,6 +66,7 @@ export function useRemoveProject(): (projectId: string) => Promise<void> {
 				// event is missed. The later event finds nothing to remove.
 				detach(sessionId);
 				disposeTerminal(sessionId);
+				closeSessionShells(sessionId);
 			}
 
 			// Any tab this project still has is stopped — a live one was killed and

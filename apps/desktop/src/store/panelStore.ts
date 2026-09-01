@@ -54,6 +54,25 @@ export function clampDetailHeight(height: number): number {
 	return Math.min(MAX_DETAIL_HEIGHT, Math.max(MIN_DETAIL_HEIGHT, Math.round(height)));
 }
 
+/** Shorter than this and the shell is a two-line window that scrolls its own
+ *  prompt off; taller and the agent it sits under stops being readable. */
+export const MIN_SHELL_HEIGHT = 96;
+export const MAX_SHELL_HEIGHT = 800;
+
+/** About sixteen rows plus the 30px strip — enough for a test summary or a
+ *  `git status` without dragging, which is what the footer is for (F23).
+ *
+ *  **One value for every session, not one per session.** A height you dragged is
+ *  layout (ADR-0013), and a per-session map would be a persisted record keyed by
+ *  ids that outlive the sessions in it — the thing `expandedByProject` refuses
+ *  to persist for the same reason. */
+export const DEFAULT_SHELL_HEIGHT = 260;
+
+export function clampShellHeight(height: number): number {
+	if (!Number.isFinite(height)) return DEFAULT_SHELL_HEIGHT;
+	return Math.min(MAX_SHELL_HEIGHT, Math.max(MIN_SHELL_HEIGHT, Math.round(height)));
+}
+
 /**
  * `current` plus every path in `paths`.
  *
@@ -119,12 +138,17 @@ interface PanelState {
 	 *  is a preference about how much history you want to see at once, and it
 	 *  survives a reload the same way `width` does (F18). */
 	detailHeight: number;
+	/** Height of the shell split under a session's terminal, in px (F23).
+	 *  Persisted, and **one value for every session** — see
+	 *  `DEFAULT_SHELL_HEIGHT`. */
+	shellHeight: number;
 
 	toggle: () => void;
 	setOpen: (open: boolean) => void;
 	setTab: (tab: PanelTab) => void;
 	setWidth: (width: number) => void;
 	setDetailHeight: (height: number) => void;
+	setShellHeight: (height: number) => void;
 	toggleExpanded: (checkout: string, path: string) => void;
 	/** Expand all of these, idempotently. Revealing a path needs this rather
 	 *  than `toggleExpanded`: most of the ancestors are usually open already,
@@ -148,7 +172,10 @@ interface PanelState {
 /** Exactly what `partialize` writes, and therefore what `migrate` is handed and
  *  must hand back. Named so the two cannot drift: a field added to one and not
  *  the other is a migration that silently drops a preference. */
-type PersistedPanelState = Pick<PanelState, 'open' | 'width' | 'tab' | 'detailHeight'>;
+type PersistedPanelState = Pick<
+	PanelState,
+	'open' | 'width' | 'tab' | 'detailHeight' | 'shellHeight'
+>;
 
 /** `factorai.panel` as v2 wrote it. Only the v2→v3 migration below sees this
  *  shape, and it exists so the field it drops can be named rather than cast. */
@@ -164,12 +191,14 @@ export const usePanelStore = create<PanelState>()(
 			selectedPaths: new Set<string>(),
 			anchorPath: null,
 			detailHeight: DEFAULT_DETAIL_HEIGHT,
+			shellHeight: DEFAULT_SHELL_HEIGHT,
 
 			toggle: () => set((s) => ({ open: !s.open })),
 			setOpen: (open) => set({ open }),
 			setTab: (tab) => set({ tab }),
 			setWidth: (width) => set({ width: clampPanelWidth(width) }),
 			setDetailHeight: (height) => set({ detailHeight: clampDetailHeight(height) }),
+			setShellHeight: (height) => set({ shellHeight: clampShellHeight(height) }),
 
 			toggleExpanded: (checkout, path) =>
 				set((s) => {
@@ -266,6 +295,7 @@ export const usePanelStore = create<PanelState>()(
 				width: s.width,
 				tab: s.tab,
 				detailHeight: s.detailHeight,
+				shellHeight: s.shellHeight,
 			}),
 		},
 	),

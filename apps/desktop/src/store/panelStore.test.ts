@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
 	clampDetailHeight,
 	clampPanelWidth,
+	clampShellHeight,
 	DEFAULT_DETAIL_HEIGHT,
 	DEFAULT_PANEL_WIDTH,
+	DEFAULT_SHELL_HEIGHT,
 	MAX_DETAIL_HEIGHT,
 	MAX_PANEL_WIDTH,
+	MAX_SHELL_HEIGHT,
 	MIN_DETAIL_HEIGHT,
 	MIN_PANEL_WIDTH,
+	MIN_SHELL_HEIGHT,
 	withExpanded,
 } from './panelStore';
 
@@ -34,6 +38,25 @@ describe('clampPanelWidth', () => {
 		// the panel to zero.
 		expect(clampPanelWidth(Number.NaN)).toBe(DEFAULT_PANEL_WIDTH);
 		expect(clampPanelWidth(Number.POSITIVE_INFINITY)).toBe(DEFAULT_PANEL_WIDTH);
+	});
+});
+
+describe('clampShellHeight', () => {
+	it('passes through heights inside the range', () => {
+		expect(clampShellHeight(300)).toBe(300);
+		expect(clampShellHeight(MIN_SHELL_HEIGHT)).toBe(MIN_SHELL_HEIGHT);
+		expect(clampShellHeight(MAX_SHELL_HEIGHT)).toBe(MAX_SHELL_HEIGHT);
+	});
+
+	it('clamps a drag past either end', () => {
+		// Dragged to nothing, the shell is still running and still consuming its
+		// PTY — an invisible pane is not a closed one (F23).
+		expect(clampShellHeight(0)).toBe(MIN_SHELL_HEIGHT);
+		expect(clampShellHeight(9000)).toBe(MAX_SHELL_HEIGHT);
+	});
+
+	it('falls back to the default for a non-finite height', () => {
+		expect(clampShellHeight(Number.NaN)).toBe(DEFAULT_SHELL_HEIGHT);
 	});
 });
 
