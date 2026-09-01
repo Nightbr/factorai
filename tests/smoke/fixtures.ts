@@ -24,6 +24,7 @@ import type {
 	PdfContents,
 	Project,
 	Routine,
+	RoutineFireEvent,
 	SearchHit,
 	SessionPage,
 	SessionSummary,
@@ -48,6 +49,11 @@ export interface TestFixture {
 	/** Routines per project id (F22). The create/update/delete mocks mutate it,
 	 *  so a spec can add one and see the list it lands in. */
 	routinesByProject?: Record<string, Routine[]>;
+	/** Fires the runner has decided on and nothing has started yet (F22,
+	 *  ADR-0030) — what `routine_pending_fires` answers on mount. The launch-time
+	 *  catch-up fire arrives this way and no other: a `routine:fire` event emitted
+	 *  from Rust's `setup()` has no listener yet. */
+	pendingRoutineFires?: RoutineFireEvent[];
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
 	/** Session id `start_session` hands back for a new-session click (F6). The

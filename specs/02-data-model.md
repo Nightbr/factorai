@@ -478,6 +478,15 @@ tick for the rest of the day. `last_run_at` is when a session actually started.
 `last_skipped_at` is when one was dropped for an overlap, and is what lets the
 list say *skipped 10:00, still running*. Folding them together loses an answer.
 
+**Deciding a fire writes none of them** ([ADR-0030](../docs/adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md)).
+An occurrence is consumed when its session **starts**, is skipped, or is given up
+on — never when the runner merely decides on it, because the thing that starts it
+is in the other process and the emit asking it to could reach nobody. Until one
+of those three happens the occurrence is held open by a `routine_claims` row, and
+that row is what keeps the next tick from deciding it a second time. This is what
+made a lost fire look like a successful one: `last_run_at` said 10:17 with no
+error and no session anywhere.
+
 **A routine that has never fired is measured from `created_at`.** Saving one at
 10:00 whose schedule says 10:00 does not immediately fire the occurrence it was
 written a moment too late for.
@@ -508,6 +517,38 @@ would quietly rewrite history to say those sessions were started by hand.
 
 Cleanup of the session side joins `reap_deleted`, which is where sessions are
 actually deleted and which already exempts live ones.
+
+### `routine_claims` — a fire decided but not yet started
+
+| col        | type    | notes                                                  |
+| ---------- | ------- | ------------------------------------------------------ |
+| session_id | TEXT PK | the id the runner minted for this fire; **no FK**      |
+| routine_id | TEXT    | FK → `routines(id)` ON DELETE CASCADE                  |
+| occurrence | INTEGER | the occurrence being claimed, epoch ms                 |
+| claimed_at | INTEGER | epoch ms — what the grace period is measured against   |
+
+**Added by migration `0016`; see
+[ADR-0030](../docs/adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md).**
+The runner decides when a routine is due and the *renderer* spawns the PTY
+(ADR-0026 § 2), with a `routine:fire` event the only thing joining the two.
+Tauri does not buffer an emit, and the tick that catches up what was missed while
+the app was closed runs from `setup()` — before the webview has loaded the bundle
+— so the fire that matters most reached nobody, and the row claimed it had run.
+A claim is the state between the two halves.
+
+**Normally empty.** A row lives for the seconds between the decision and the
+spawn: it is deleted when the session starts — `session_routines`, the history, is
+written in the same breath — or when the runner gives up on it. So a row that
+survives a restart is exactly the fire worth retrying, and this table never grows.
+
+**`ON DELETE CASCADE`, unlike `session_routines`'s `SET NULL`.** That table
+records something that happened and has to outlive the schedule. A claim for a
+deleted routine cannot be started at all: there is no prompt left to start it
+with.
+
+**No foreign key on `session_id`**, for the reason above it: the `sessions` row is
+derived from a transcript that does not exist yet — here the process does not
+exist yet either.
 
 ### `session_pins` — the sessions you pinned to the top of a list
 

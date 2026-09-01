@@ -243,6 +243,12 @@ export const cmd = {
 	 *  concurrency cap included. **Always answers**: `started` with the session
 	 *  id, or why nothing started. */
 	runRoutineNow: (id: string) => invoke<RunNowResult>('run_routine_now', { id }),
+	/** The fires the runner decided on that nothing has started yet (F22,
+	 *  ADR-0030). Asked for once on mount: `routine:fire` reaches whoever is
+	 *  listening when it is emitted, and the launch tick — which is what catches
+	 *  up a fire missed while the app was closed — runs before this window has
+	 *  registered a single listener. */
+	routinePendingFires: () => invoke<RoutineFireEvent[]>('routine_pending_fires'),
 	/** The session id to open for a "new session" in this project — a fresh
 	 *  uuid, or a live one that has never been messaged. See ADR-0008. */
 	startSession: (projectId: string) => invoke<string>('start_session', { projectId }),
@@ -542,6 +548,8 @@ interface TestFixture {
 	/** Routines per project id (F22). Mutated by the create/update/delete mocks,
 	 *  so a test can add one and see the list it lands in. */
 	routinesByProject?: Record<string, Routine[]>;
+	/** Fires waiting to be started (F22, ADR-0030). */
+	pendingRoutineFires?: RoutineFireEvent[];
 	/** The `settings` table (F11). Mutated by `set_setting`, so a test can Save
 	 *  and then assert on what the next read returns. */
 	settings?: Partial<Record<SettingKey, string>>;
@@ -1036,6 +1044,11 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			}
 			return undefined as unknown as T;
 		}
+		case 'routine_pending_fires':
+			// Nothing waits in browser-only mode unless a fixture says so — which is
+			// how a spec exercises the drain, since the event half of this path
+			// cannot be replayed to a listener that was not there.
+			return (fx?.pendingRoutineFires ?? []) as unknown as T;
 		case 'run_routine_now':
 			// Nothing spawns in browser-only mode, and there is no runner to ask —
 			// so the honest answer is the one a capped run gives.

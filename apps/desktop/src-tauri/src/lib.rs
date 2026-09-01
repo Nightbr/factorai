@@ -280,6 +280,7 @@ pub fn run() {
 			commands::routines::delete_routine,
 			commands::routines::set_routine_enabled,
 			commands::routines::run_routine_now,
+			commands::routines::routine_pending_fires,
 			commands::sessions::list_sessions,
 			commands::sessions::get_session_tail,
 			commands::sessions::session_transcript_path,

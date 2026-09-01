@@ -213,6 +213,13 @@ set_routine_enabled(id: String, enabled: bool) -> ()
 // Fires now, through the same path the runner uses, including the overlap skip
 // and the concurrency cap. Returns the session id, or None when it was skipped.
 run_routine_now(id: String) -> Option<SessionId>
+// The fires the runner decided on that nothing has started yet (ADR-0030). The
+// renderer asks once on mount, because `routine:fire` reaches whoever is
+// listening at the instant it is emitted and the launch tick — the one that
+// catches up what was missed while the app was closed — runs before this window
+// has a single listener. Sweeps as it reads: a claim past its grace period or its
+// catch-up window is dropped, with the reason left on the routine's row.
+routine_pending_fires() -> Vec<FireEvent>
 // Name + description per skill, from `<project>/.claude/skills/` and
 // `~/.claude/skills/`. A read-only scan (ADR-0004); the editor's list beside the
 // prompt field is its only caller.
@@ -313,6 +320,14 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 service, and it fires **after** the write to `session_worktrees`, never before:
 the renderer's job is to render a fact, and an event that arrives ahead of its
 row is a fact the next reload disagrees with (F21).
+
+**`routine:fire` is the one event that is not allowed to be the only copy of what
+it says** (ADR-0030). An emit reaches whoever is listening at that instant and
+nobody else, and this one is emitted from `setup()` on launch — before the webview
+has loaded the bundle. So it is a *reminder* of a `routine_claims` row: re-emitted
+every tick until the session starts, and readable on demand through
+`routine_pending_fires`. Any future event that asks the renderer to *do* something,
+rather than to render something, inherits the same requirement.
 
 PTY output is base64-encoded bytes, not UTF-8 strings — Claude prints ANSI
 that contains invalid UTF-8 boundaries when chunked. The renderer decodes
@@ -741,13 +756,25 @@ exists, so a task spawned there panics with *"there is no reactor running"* on t
 main thread before the window appears. The loop blocks on a sleep and does no
 async work, so it wants no runtime at all.
 
-- **It mints the session id** and writes `last_run_at`, `last_session_id` and the
-  `session_routines` row *before* emitting `routine:fire`, the same write-then-emit
-  ordering `session:worktree` follows and for the same reason: an event ahead of
-  its row is a fact the next reload disagrees with.
+- **It mints the session id** and writes a `routine_claims` row *before* emitting
+  `routine:fire`, the same write-then-emit ordering `session:worktree` follows and
+  for the same reason: an event ahead of its row is a fact the next reload
+  disagrees with.
+- **A fire is claimed, then recorded — never both at once** (ADR-0030).
+  `last_run_at`, `last_session_id` and the `session_routines` row are written by
+  `Runner::mark_started`, which `terminal_spawn` calls: the one place in the app a
+  PTY comes into existence, and therefore the only honest answer to *did it
+  start*. Until then the occurrence is unconsumed and the claim holds it, so a
+  fire nobody picked up is retried rather than recorded as a run that happened.
 - **It does not spawn.** The renderer does, into a hidden pooled terminal with no
   tab (ADR-0026 § 2). So a fire needs a live renderer, which is the same window
   the schedule already needs open.
+- **A fire nobody started is re-emitted, then given up on.** Every tick re-emits
+  claims older than one tick, and the renderer drains all of them on mount — which
+  is what makes the launch-time catch-up fire arrive at a listener that exists at
+  all. A claim past `CLAIM_GRACE_MS` (five minutes) or past its routine's
+  catch-up window is dropped with the reason on the row: silence was the original
+  bug, and the row is the only surface that can explain it while you are away.
 - **Overlap skips.** A routine whose previous session is still live does not fire;
   the skip is recorded so the list can say so.
 - **A cap with a queue**, `routines.max_concurrent` from `settings`. Ten projects

@@ -21,9 +21,19 @@ pub fn start_session(state: State<'_, AppState>, project_id: String) -> AppResul
 	Ok(state.terminals.next_session_id(&project_id, &folder))
 }
 
+/// Spawn the PTY for a session.
+///
+/// **Also where a routine's fire becomes a run** (F22, ADR-0030). This is the
+/// one place in the app a PTY comes into existence, so it is the only honest
+/// answer to *did the session start* — and ADR-0026 § 7 asks for the fire to be
+/// recorded exactly then. `mark_started` finds no claim for every session a
+/// human started, which is all of them but a routine's.
 #[tauri::command]
 pub fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<String> {
-	state.terminals.spawn(opts)
+	let session_id = opts.session_id.clone();
+	let terminal_id = state.terminals.spawn(opts)?;
+	state.routines.mark_started(&session_id, crate::epoch_ms());
+	Ok(terminal_id)
 }
 
 #[tauri::command]

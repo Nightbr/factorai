@@ -41,6 +41,16 @@ pub const DEFAULT_CATCHUP_HOURS: i64 = 6;
 /// thundering herd.
 pub const DEFAULT_MAX_CONCURRENT: i64 = 2;
 
+/// How long a claimed fire may go unstarted before the runner gives up on it
+/// (ADR-0030).
+///
+/// The renderer normally starts one within a second of the claim — the same tick
+/// on a running window, the first paint after a launch. Five minutes is what a
+/// slow start, a webview reload or a `location.reload()` mid-fire can take
+/// without anything being wrong; past it, nothing is coming, and the row is
+/// better off saying so than holding an occurrence open forever.
+pub const CLAIM_GRACE_MS: i64 = 5 * 60 * 1000;
+
 // ---------------------------------------------------------------- scheduling
 
 /// What the scheduler decided about one routine this tick.
@@ -66,12 +76,18 @@ pub struct Planned {
 /// `live` is the set of session ids with a live PTY. `cap` is how many routine
 /// sessions may be running at once, and `running` how many already are.
 ///
+/// `claimed` is the set of routines with a fire already in flight — decided and
+/// emitted, not yet started (ADR-0030). **Those are not due again**: the
+/// occurrence a claim is for is deliberately unconsumed, so the claim is the
+/// only thing between it and a second decision thirty seconds later.
+///
 /// **Everything past the cap is left for the next tick, in due order.** That is
 /// the queue: a fire beyond the cap runs *late*, it is not skipped. Only an
 /// overlap skips, and a skip does not consume a slot because it starts nothing.
 pub fn plan(
 	routines: &[Routine],
 	live: &HashSet<String>,
+	claimed: &HashSet<String>,
 	now_ms: i64,
 	default_catchup_hours: i64,
 	cap: i64,
@@ -79,6 +95,7 @@ pub fn plan(
 ) -> Vec<Planned> {
 	let mut due: Vec<(i64, &Routine)> = routines
 		.iter()
+		.filter(|r| !claimed.contains(&r.id))
 		.filter_map(|r| due_occurrence(r, now_ms, default_catchup_hours).map(|at| (at, r)))
 		.collect();
 	// Oldest first: if the cap holds some back, the ones that have been waiting
@@ -637,6 +654,93 @@ pub fn link_session(
 	Ok(())
 }
 
+/// A fire the runner decided on and nobody has started yet (ADR-0030).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claim {
+	pub session_id: String,
+	pub routine_id: String,
+	pub occurrence: i64,
+	pub claimed_at: i64,
+}
+
+/// Claim an occurrence for a session id, before anything is told to start it.
+///
+/// This is what makes a fire survive an emit that reaches nobody. It writes
+/// **nothing** on `routines`: the occurrence stays unconsumed until a PTY
+/// exists, which is the whole point — a fire the window never picked up must
+/// still be a fire the next tick can retry.
+pub fn claim(
+	conn: &Connection,
+	session_id: &str,
+	routine_id: &str,
+	occurrence: i64,
+	now_ms: i64,
+) -> AppResult<()> {
+	conn.execute(
+		"INSERT INTO routine_claims(session_id, routine_id, occurrence, claimed_at)
+		 VALUES (?1, ?2, ?3, ?4)
+		 ON CONFLICT(session_id) DO UPDATE SET claimed_at = excluded.claimed_at",
+		params![session_id, routine_id, occurrence, now_ms],
+	)?;
+	Ok(())
+}
+
+/// Every fire in flight, oldest claim first — the order they should be retried
+/// in, for the reason the cap's queue is in due order.
+pub fn claims(conn: &Connection) -> AppResult<Vec<Claim>> {
+	let mut stmt = conn.prepare(
+		"SELECT session_id, routine_id, occurrence, claimed_at FROM routine_claims
+		 ORDER BY claimed_at, session_id",
+	)?;
+	let rows = stmt
+		.query_map([], |row| {
+			Ok(Claim {
+				session_id: row.get(0)?,
+				routine_id: row.get(1)?,
+				occurrence: row.get(2)?,
+				claimed_at: row.get(3)?,
+			})
+		})?
+		.collect::<rusqlite::Result<Vec<_>>>()?;
+	Ok(rows)
+}
+
+/// The routines with a fire in flight — what [`plan`] must not decide again.
+pub fn claimed_routine_ids(conn: &Connection) -> AppResult<HashSet<String>> {
+	let mut stmt = conn.prepare("SELECT routine_id FROM routine_claims")?;
+	let ids = stmt
+		.query_map([], |row| row.get::<_, String>(0))?
+		.collect::<rusqlite::Result<HashSet<_>>>()?;
+	Ok(ids)
+}
+
+/// One claim by the session it was minted for.
+pub fn claim_for(conn: &Connection, session_id: &str) -> AppResult<Option<Claim>> {
+	Ok(conn
+		.query_row(
+			"SELECT session_id, routine_id, occurrence, claimed_at FROM routine_claims
+			 WHERE session_id = ?1",
+			params![session_id],
+			|row| {
+				Ok(Claim {
+					session_id: row.get(0)?,
+					routine_id: row.get(1)?,
+					occurrence: row.get(2)?,
+					claimed_at: row.get(3)?,
+				})
+			},
+		)
+		.optional()?)
+}
+
+/// Forget a claim — because it started, or because nothing is coming for it.
+/// The row is in-flight state, never history: `session_routines` is the history,
+/// and it is written at the same moment this row goes.
+pub fn drop_claim(conn: &Connection, session_id: &str) -> AppResult<()> {
+	conn.execute("DELETE FROM routine_claims WHERE session_id = ?1", params![session_id])?;
+	Ok(())
+}
+
 /// How many of the currently live sessions a routine started.
 ///
 /// Counted from the table rather than remembered, so it survives a renderer
@@ -670,10 +774,15 @@ pub fn numeric_setting(conn: &Connection, key: crate::models::SettingKey, defaul
 /// **It decides; it does not spawn.** The renderer performs the spawn, into a
 /// hidden pooled terminal with no tab, so a fire needs a live renderer — which
 /// is the same window the schedule already needs open. What this owns is the
-/// clock, the rules and the writes, in that order: every row is written
-/// *before* `routine:fire` goes out, the same write-then-emit ordering
+/// clock, the rules and the writes, in that order.
+///
+/// **A fire is claimed, emitted, and only then recorded** (ADR-0030). The claim
+/// row goes in before `routine:fire` — the write-then-emit ordering
 /// `session:worktree` follows, because an event ahead of its row is a fact the
-/// next reload disagrees with.
+/// next reload disagrees with — but `routines.last_run_at` is written by
+/// [`Runner::mark_started`], from the spawn itself. The event alone could not
+/// carry it: an emit with no listener is dropped, and the launch tick emits
+/// before the webview has loaded any listeners at all.
 pub struct Runner {
 	db: crate::db::Db,
 	app: tauri::AppHandle,
@@ -695,6 +804,47 @@ pub struct FireEvent {
 	/// The project's folder. Resolved here because the runner already had to
 	/// read the row to know the project exists at all.
 	pub cwd: String,
+}
+
+/// The event that asks the renderer to start one fire. Built in two places —
+/// the decision and the retry — which is the reason it is a function.
+fn fire_event(routine: &Routine, session_id: &str, cwd: String) -> FireEvent {
+	FireEvent {
+		routine_id: routine.id.clone(),
+		routine_name: routine.name.clone(),
+		project_id: routine.project_id.clone(),
+		session_id: session_id.to_string(),
+		prompt: routine.prompt.clone(),
+		cwd,
+	}
+}
+
+/// Why a claimed fire is past saving, or `None` while it is still worth
+/// emitting (ADR-0030).
+///
+/// Two ways to run out, and they answer different questions. The grace period is
+/// *is a window going to pick this up* — five minutes of a live renderer not
+/// starting it means none is coming. The catch-up window is the routine's own
+/// rule about lateness, and it applies here for the same reason it applies to a
+/// missed occurrence: whether a run is still wanted is the schedule's decision,
+/// not the plumbing's. `FRESH_MS` is the floor, so `catchup_hours = 0` — *never
+/// run late* — does not expire a claim in the seconds between deciding it and
+/// spawning it.
+fn claim_expiry(
+	routine: &Routine,
+	claim: &Claim,
+	now_ms: i64,
+	default_catchup_hours: i64,
+) -> Option<&'static str> {
+	if now_ms - claim.claimed_at > CLAIM_GRACE_MS {
+		return Some("no window started it, so nothing ran");
+	}
+	let hours = routine.catchup_hours.unwrap_or(default_catchup_hours).max(0);
+	let window = hours.saturating_mul(3_600_000).max(FRESH_MS);
+	if now_ms - claim.occurrence > window {
+		return Some("its catch-up window closed before anything started it");
+	}
+	None
 }
 
 /// What `Run now` did — **and why, when it did nothing** (2026-08-29, user
@@ -775,6 +925,14 @@ impl Runner {
 	/// feature's — a `Run now` that ignored them would be a second set of rules
 	/// for the same act, and the one most likely to be clicked twice.
 	pub fn run_now(&self, routine: &Routine, now_ms: i64) -> RunNowResult {
+		// A fire already on its way is not a reason to make a second one: the
+		// session it is for is about to exist, and this is the button most likely
+		// to be pressed while waiting for something to appear.
+		let in_flight =
+			self.db.with(claimed_routine_ids).map(|ids| ids.contains(&routine.id)).unwrap_or(false);
+		if in_flight {
+			return RunNowResult::skipped("a fire for it is already starting");
+		}
 		let live = (self.live)();
 		if routine.last_session_id.as_deref().is_some_and(|id| live.contains(id)) {
 			let _ = self.db.with(|conn| record_skip(conn, &routine.id, now_ms, now_ms));
@@ -832,7 +990,8 @@ impl Runner {
 				DEFAULT_CATCHUP_HOURS,
 			);
 			let running = running_count(conn, &live)?;
-			let planned = plan(&routines, &live, now_ms, default_catchup, cap, running);
+			let claimed = claimed_routine_ids(conn)?;
+			let planned = plan(&routines, &live, &claimed, now_ms, default_catchup, cap, running);
 			let by_id: std::collections::HashMap<String, Routine> =
 				routines.into_iter().map(|r| (r.id.clone(), r)).collect();
 			Ok((planned, by_id))
@@ -852,6 +1011,16 @@ impl Runner {
 					let _ = self.fire(routine, occurrence, now_ms);
 				}
 			}
+		}
+
+		// Then the fires that were decided but never started — the launch tick's
+		// own, emitted before the webview had a listener, and anything a reload
+		// interrupted. Older than one tick, so this is never the pass above
+		// shouting twice.
+		use tauri::Emitter;
+		for event in self.pending_fires(now_ms, TICK_SECS as i64 * 1000) {
+			tracing::info!(routine = %event.routine_name, "re-emitting a routine fire nobody started");
+			let _ = self.app.emit("routine:fire", event);
 		}
 		Ok(())
 	}
@@ -873,28 +1042,120 @@ impl Runner {
 		};
 
 		let session_id = uuid::Uuid::new_v4().to_string();
-		let written = self.db.with(|conn| {
-			link_session(conn, &session_id, &routine.id, now_ms)?;
-			record_fire(conn, &routine.id, occurrence, &session_id, now_ms)
-		});
-		if let Err(e) = written {
-			tracing::warn!(error = %e, routine = %routine.name, "could not record a routine fire");
+		let claimed =
+			self.db.with(|conn| claim(conn, &session_id, &routine.id, occurrence, now_ms));
+		if let Err(e) = claimed {
+			tracing::warn!(error = %e, routine = %routine.name, "could not claim a routine fire");
 			return Err(e.to_string());
 		}
 
 		use tauri::Emitter;
-		let _ = self.app.emit(
-			"routine:fire",
-			FireEvent {
-				routine_id: routine.id.clone(),
-				routine_name: routine.name.clone(),
-				project_id: routine.project_id.clone(),
-				session_id: session_id.clone(),
-				prompt: routine.prompt.clone(),
-				cwd: folder,
-			},
-		);
+		let _ = self.app.emit("routine:fire", fire_event(routine, &session_id, folder));
 		Ok(session_id)
+	}
+
+	/// A claimed fire now has a process. Record the run and tell the list.
+	///
+	/// **Called from `terminal_spawn`, not from an acknowledgement the renderer
+	/// sends.** The PTY coming into existence is the fact being recorded, Rust is
+	/// where it happens, and a round trip to ask the renderer to confirm what
+	/// Rust just did is one more message that can be lost — which is the bug
+	/// this whole path exists to fix. Every human-started session reaches here
+	/// too and finds no claim, which is the cheap half of the same rule: one
+	/// place where "a session started" is known.
+	pub fn mark_started(&self, session_id: &str, now_ms: i64) {
+		let claim = match self.db.with(|conn| claim_for(conn, session_id)) {
+			Ok(Some(claim)) => claim,
+			// The ordinary case: a session a human started.
+			Ok(None) => return,
+			Err(e) => {
+				tracing::warn!(error = %e, session_id, "could not read a routine claim");
+				return;
+			}
+		};
+		// In this order, so a failure part-way leaves the claim behind for the
+		// next tick to retry rather than a fire nothing recorded.
+		let recorded = self.db.with(|conn| {
+			record_fire(conn, &claim.routine_id, claim.occurrence, session_id, now_ms)?;
+			link_session(conn, session_id, &claim.routine_id, now_ms)?;
+			drop_claim(conn, session_id)?;
+			Ok(get(conn, &claim.routine_id, now_ms)?.project_id)
+		});
+		match recorded {
+			Ok(project_id) => announce(&self.app, &project_id),
+			Err(e) => tracing::warn!(error = %e, session_id, "could not record a routine fire"),
+		}
+	}
+
+	/// The fires still waiting for a window to start them — and the sweep of the
+	/// ones past saving.
+	///
+	/// `min_age_ms` is the whole difference between the two callers. The tick asks
+	/// for claims older than one tick, so it re-emits what was missed without
+	/// re-emitting what it decided a moment ago; the renderer's drain on mount
+	/// asks for all of them, which is what makes a launch-time catch-up fire
+	/// arrive at a listener that exists.
+	pub fn pending_fires(&self, now_ms: i64, min_age_ms: i64) -> Vec<FireEvent> {
+		let pending = match self.db.with(claims) {
+			Ok(pending) => pending,
+			Err(e) => {
+				tracing::warn!(error = %e, "could not read routine claims");
+				return Vec::new();
+			}
+		};
+		let default_catchup = self
+			.db
+			.with(|conn| {
+				Ok(numeric_setting(
+					conn,
+					crate::models::SettingKey::RoutinesCatchupHours,
+					DEFAULT_CATCHUP_HOURS,
+				))
+			})
+			.unwrap_or(DEFAULT_CATCHUP_HOURS);
+
+		let mut out = Vec::new();
+		for claim in pending {
+			let routine = match self.db.with(|conn| get(conn, &claim.routine_id, now_ms)) {
+				Ok(routine) => routine,
+				// The routine went while its fire was in flight. Nothing to start
+				// it from, and nothing to record the failure on.
+				Err(_) => {
+					self.forget(&claim.session_id);
+					continue;
+				}
+			};
+			if let Some(reason) = claim_expiry(&routine, &claim, now_ms, default_catchup) {
+				self.forget(&claim.session_id);
+				self.record_failure(&routine, claim.occurrence, reason);
+				continue;
+			}
+			let folder = match self.project_folder(&routine.project_id) {
+				Ok(Some(folder)) => folder,
+				Ok(None) => {
+					self.forget(&claim.session_id);
+					self.record_failure(&routine, claim.occurrence, "the project folder is gone");
+					continue;
+				}
+				Err(e) => {
+					tracing::warn!(error = %e, routine = %routine.name, "could not read a project");
+					continue;
+				}
+			};
+			if now_ms - claim.claimed_at < min_age_ms {
+				continue;
+			}
+			out.push(fire_event(&routine, &claim.session_id, folder));
+		}
+		out
+	}
+
+	/// Drop a claim, logging rather than propagating: a claim that cannot be
+	/// deleted is retried, and the sweep has to get through the rest of the list.
+	fn forget(&self, session_id: &str) {
+		if let Err(e) = self.db.with(|conn| drop_claim(conn, session_id)) {
+			tracing::warn!(error = %e, session_id, "could not drop a routine claim");
+		}
 	}
 
 	/// Record why a fire could not start, and hand the reason back so a caller
@@ -1083,7 +1344,7 @@ mod tests {
 		r.last_fire_at = Some(at(2026, 8, 20, 6, 0));
 		r.last_session_id = Some("s-live".into());
 		let live = HashSet::from(["s-live".to_string()]);
-		let planned = plan(&[r], &live, at(2026, 8, 20, 7, 0) + 1000, 6, 2, 0);
+		let planned = plan(&[r], &live, &HashSet::new(), at(2026, 8, 20, 7, 0) + 1000, 6, 2, 0);
 		assert_eq!(
 			planned,
 			vec![Planned {
@@ -1102,7 +1363,7 @@ mod tests {
 			r.id = format!("r{i}");
 			rs.push(r);
 		}
-		let planned = plan(&rs, &HashSet::new(), now, 6, 2, 0);
+		let planned = plan(&rs, &HashSet::new(), &HashSet::new(), now, 6, 2, 0);
 		// Two start; the other two are not recorded at all, so the next tick
 		// finds the same occurrence and runs them late.
 		assert_eq!(planned.len(), 2);
@@ -1110,7 +1371,7 @@ mod tests {
 		assert_eq!(planned[0].routine_id, "r0");
 
 		// One slot left because one is already running.
-		let planned = plan(&rs, &HashSet::new(), now, 6, 2, 1);
+		let planned = plan(&rs, &HashSet::new(), &HashSet::new(), now, 6, 2, 1);
 		assert_eq!(planned.len(), 1);
 	}
 
@@ -1126,7 +1387,7 @@ mod tests {
 
 		// One slot, and the overlapping routine does not take it: it starts
 		// nothing, so the other still runs on the same tick.
-		let planned = plan(&[overlapping, fresh], &live, now, 6, 1, 0);
+		let planned = plan(&[overlapping, fresh], &live, &HashSet::new(), now, 6, 1, 0);
 		assert_eq!(planned.len(), 2);
 		let action = |id: &str| {
 			planned.iter().find(|p| p.routine_id == id).map(|p| p.action.clone()).unwrap()
@@ -1416,5 +1677,93 @@ mod tests {
 			Ok(())
 		})
 		.unwrap();
+	}
+
+	#[test]
+	fn a_fire_in_flight_is_not_decided_again() {
+		let now = at(2026, 8, 20, 7, 0) + 1000;
+		let r = routine("0 * * * *", at(2026, 8, 19, 0, 0));
+		// Nothing is recorded on the row until the session starts (ADR-0030), so
+		// without the claim the 07:00 occurrence is due on every tick until it
+		// does — which is a `claude` per thirty seconds.
+		let claimed = HashSet::from([r.id.clone()]);
+		assert!(plan(std::slice::from_ref(&r), &HashSet::new(), &claimed, now, 6, 2, 0).is_empty());
+		assert_eq!(plan(&[r], &HashSet::new(), &HashSet::new(), now, 6, 2, 0).len(), 1);
+	}
+
+	#[test]
+	fn a_claim_lives_until_the_session_starts_or_is_given_up_on() {
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			let r = create(conn, &input(), None, now)?;
+			claim(conn, "s-new", &r.id, now, now + 5)?;
+
+			let pending = claims(conn)?;
+			assert_eq!(pending.len(), 1);
+			assert_eq!(pending[0].occurrence, now);
+			assert_eq!(pending[0].claimed_at, now + 5);
+			assert_eq!(claimed_routine_ids(conn)?, HashSet::from([r.id.clone()]));
+			assert_eq!(claim_for(conn, "s-new")?.map(|c| c.routine_id), Some(r.id.clone()));
+			assert_eq!(claim_for(conn, "s-other")?, None);
+
+			// Nothing on the routine yet: the occurrence is unconsumed on purpose.
+			let during = get(conn, &r.id, now)?;
+			assert_eq!(during.last_fire_at, None);
+			assert_eq!(during.last_run_at, None);
+
+			drop_claim(conn, "s-new")?;
+			assert!(claims(conn)?.is_empty());
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_claim_for_a_deleted_routine_goes_with_it() {
+		let (_tmp, db) = db();
+		db.with(|conn| {
+			let now = at(2026, 8, 20, 12, 0);
+			let r = create(conn, &input(), None, now)?;
+			claim(conn, "s-new", &r.id, now, now)?;
+			// CASCADE, unlike `session_routines`'s SET NULL: a session that ran
+			// is history worth keeping, a fire with no prompt left to start it
+			// from is not.
+			delete(conn, &r.id)?;
+			assert!(claims(conn)?.is_empty());
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_claim_expires_when_no_window_takes_it() {
+		let occurrence = at(2026, 8, 20, 9, 0);
+		let r = routine("0 9 * * *", at(2026, 8, 19, 0, 0));
+		let c = |claimed_at| Claim {
+			session_id: "s".into(),
+			routine_id: r.id.clone(),
+			occurrence,
+			claimed_at,
+		};
+
+		// The renderer's ordinary case: claimed a second ago, still worth emitting.
+		assert_eq!(claim_expiry(&r, &c(occurrence), occurrence + 1000, 6), None);
+		// A window that never came back for it.
+		assert!(claim_expiry(&r, &c(occurrence), occurrence + CLAIM_GRACE_MS + 1, 6).is_some());
+
+		// Re-claimed just now, but the occurrence itself is older than the
+		// routine's catch-up window — the schedule's own rule about lateness, not
+		// the plumbing's.
+		let late = occurrence + 7 * 3_600_000;
+		assert!(claim_expiry(&r, &c(late), late, 6).is_some());
+		assert_eq!(claim_expiry(&r, &c(late), late, 12), None);
+
+		// `catchup_hours = 0` is "never run late", and must still not expire a
+		// claim in the seconds between deciding it and spawning it.
+		let mut never_late = r.clone();
+		never_late.catchup_hours = Some(0);
+		assert_eq!(claim_expiry(&never_late, &c(occurrence), occurrence + 1000, 6), None);
+		assert!(claim_expiry(&never_late, &c(occurrence), occurrence + FRESH_MS + 1, 6).is_some());
 	}
 }

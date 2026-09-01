@@ -116,6 +116,14 @@ Concretely:
    make that fire eligible for catch-up. Re-running an agent that already did
    half the work — committed, pushed, opened a PR — is worse than skipping it,
    and the runner cannot tell those apart.
+   → **Amended 2026-09-01 by
+   [ADR-0030](0030-a-routine-fire-is-claimed-before-it-is-recorded.md)**: this
+   paragraph was right and the first implementation of it was not. It recorded a
+   fire when the runner *decided* on it, which is a different moment — and the
+   emit asking the renderer to spawn reached nobody on launch, so every catch-up
+   fire was written down as a run that never happened. A fire is now claimed
+   first and recorded from `terminal_spawn`. The rule above is unchanged; it is
+   finally what the code does.
 
 ## Consequences
 

@@ -18,7 +18,7 @@ use tauri::State;
 
 use crate::error::AppResult;
 use crate::models::{Routine, RoutineInput};
-use crate::services::routines::{self, RoutinePatch, RunNowResult};
+use crate::services::routines::{self, FireEvent, RoutinePatch, RunNowResult};
 use crate::state::AppState;
 
 /// A project's routines, oldest first.
@@ -102,4 +102,20 @@ pub fn run_routine_now(state: State<'_, AppState>, id: String) -> AppResult<RunN
 	let now = crate::epoch_ms();
 	let routine = state.db.with(|conn| routines::get(conn, &id, now))?;
 	Ok(state.routines.run_now(&routine, now))
+}
+
+/// The fires the runner decided on that no window has started (F22, ADR-0030).
+///
+/// **The renderer calls this once, on mount.** A `routine:fire` event reaches
+/// whoever is listening at the instant it is emitted, and the tick that catches
+/// up what was missed while the app was closed runs from `setup()` — before the
+/// webview has loaded the bundle, let alone registered a listener. So the first
+/// thing the shell does is ask what is already waiting, which is the same list
+/// the tick re-emits from thirty seconds later.
+///
+/// Sweeps as it reads: a claim past its grace period or its catch-up window is
+/// dropped here, with the reason on the routine's row.
+#[tauri::command]
+pub fn routine_pending_fires(state: State<'_, AppState>) -> Vec<FireEvent> {
+	state.routines.pending_fires(crate::epoch_ms(), 0)
 }

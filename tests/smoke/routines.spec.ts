@@ -242,3 +242,43 @@ test.describe('a routine an agent touched', () => {
 		).toHaveAttribute('title', /Last changed by an agent session/);
 	});
 });
+
+/**
+ * The fire the window has to ask for (F22 § "The fire", ADR-0030).
+ *
+ * The runner's first tick is immediate — it is what catches up a fire missed
+ * while the app was closed — and it runs from Rust's `setup()`, before this
+ * window has loaded a line of JavaScript. `routine:fire` reaches whoever is
+ * listening at the instant it is emitted, so that fire reached nobody: two of
+ * three fires of one daily routine were lost that way, each recorded on the row
+ * as a run that happened (2026-09-01, user report).
+ *
+ * So the first thing the shell does is ask what is already waiting. This is the
+ * only half of the path a smoke test can drive, and it is the half that broke.
+ */
+test.describe('a fire decided before the window existed', () => {
+	test('@smoke is drained on mount and starts its session', async ({ page }) => {
+		await installMockBridge(page, {
+			...fixture(),
+			pendingRoutineFires: [
+				{
+					routineId: NIGHTLY.id,
+					routineName: NIGHTLY.name,
+					projectId: FOO_ID,
+					sessionId: 'ffffffff-0000-4000-8000-00000000000f',
+					prompt: NIGHTLY.prompt,
+					cwd: '/home/alice/code/foo',
+				},
+			],
+		});
+		await page.goto('/');
+
+		await page.getByRole('button', { name: 'Expand foo' }).click();
+		const rows = page.getByTestId(`sidebar-sessions-${FOO_ID}`).getByRole('link');
+		// Named for its routine, above the indexed rows, and with the icon that
+		// says a routine started it — which is also the whole of the ambient
+		// signal that something is running while you are looking elsewhere.
+		await expect(rows.first()).toContainText(NIGHTLY.name);
+		await expect(rows.first()).toHaveAttribute('title', /Started by routine/);
+	});
+});

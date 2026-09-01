@@ -60,6 +60,11 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// session-adjacent table that *can* carry a foreign key — the file says why,
 	// and why it is not 0011's project pin coming back.
 	("0015_session_pins", include_str!("migrations/0015_session_pins.sql")),
+	// A routine fire is claimed before it is recorded (F22, ADR-0030), because the
+	// emit that asked the renderer to spawn it could reach nobody — which is what
+	// silently lost every launch-time catch-up fire. The file says what the row is
+	// for and why it is never history.
+	("0016_routine_claims", include_str!("migrations/0016_routine_claims.sql")),
 ];
 
 /// Thread-safe handle to the SQLite connection.

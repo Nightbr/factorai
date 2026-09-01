@@ -4148,7 +4148,7 @@ are not decoration.
 ### The fire
 
 1. `RoutineRunner` (Rust) ticks on the wall clock, finds what is due, mints a
-   session id, writes `last_run_at` and `session_routines`, and emits
+   session id, **claims** the occurrence in `routine_claims`, and emits
    `routine:fire`.
 2. The renderer mounts a pooled `Terminal` for that id whose host is **never
    shown** and which puts **no entry in `tabs`**.
@@ -4156,6 +4156,29 @@ are not decoration.
    `--resume <id> "<prompt>"` on the other branch of the existing transcript
    probe (`03-backend-rust.md` § "Session ids"). Not typed into the PTY: that is
    a race against the CLI's startup which lands in a trust dialog when it loses.
+4. `terminal_spawn` — the one place a PTY is born — records the fire: `last_run_at`,
+   `last_session_id`, `session_routines`, and the claim is dropped.
+
+**Step 4 is not bookkeeping, it is the fix for the way this feature failed**
+(2026-09-01, user report: *"seems routines are not started"*, and the row said
+*last run 4h ago*). Steps 1 and 4 used to be one step, so a fire was recorded as
+having run at the moment it was *decided* — and the event asking the renderer to
+start it is not delivered to a listener that does not exist yet. The tick that
+makes routines usable at all runs from Rust's `setup()`, long before the webview
+has loaded any JavaScript, so **every catch-up fire on launch was emitted into an
+empty room** and then written down as a run: no session, no transcript, no error,
+and a row claiming success. Two of three fires of one daily routine were lost that
+way before anyone could see it.
+
+So the fire is claimed first and recorded last, which is what
+[ADR-0030](../docs/adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md)
+holds, and what ADR-0026 § 7 always said out loud. Between the two, the
+occurrence is **unconsumed**: the claim is what stops the next tick deciding it
+again, the tick re-emits any claim older than one tick, and the renderer asks for
+every waiting claim as the first thing it does on mount. A claim nothing has
+started after five minutes — or after its own catch-up window closes — is dropped
+with the reason on the row, because a routine that did not run has to be able to
+say so from the list.
 
 From there it is a session like any other. Status comes from the same OSC title
 parse (F10), the IDE bridge starts with it (F20), the indexer picks it up when
@@ -4273,10 +4296,16 @@ routines while writing one.
   fire**: it runs late, which is what a cron user expects under load.
 - **Catch-up coalesces.** Five missed hourly runs inside the window are **one**
   run, not five.
-- **A fire counts as run the moment the session starts.** So a run that
+- **A fire counts as run the moment the session starts** — the moment the PTY
+  exists, not the moment the runner decided on it (ADR-0030). So a run that
   kill-on-quit (ADR-0005) takes is not eligible for catch-up: re-running an agent
   that already committed and pushed is worse than skipping it, and nothing can
-  tell those two apart afterwards. The list still shows it as interrupted.
+  tell those two apart afterwards. The list still shows it as interrupted. And a
+  fire that never reached a window is not a run at all — it is retried, and then
+  it is an error on the row.
+- **`Run now` declines while a fire is already in flight**, alongside the overlap
+  skip: the session it is for is seconds from existing, and this is the button
+  most likely to be pressed while waiting for something to appear.
 - **Disabling stops future fires and nothing else.** It never kills a running
   session — that is not what a switch means.
 - **Deleting asks first, and also leaves the running session alone.** Its origin
@@ -4302,8 +4331,8 @@ somebody is watching the button.
 
 ### Storage
 
-`routines` and `session_routines` — see `02-data-model.md`. Two things about the
-shape matter here: the origin lives in **its own table with no foreign key**,
+`routines`, `session_routines` and `routine_claims` — see `02-data-model.md`. Two
+things about the shape matter here: the origin lives in **its own table with no foreign key**,
 because a brand-new session has no `sessions` row and the runner writes at spawn
 (the trap migration 0007 found), and the schedule lives in SQLite rather than a
 renderer store because Rust reads it (ADR-0013).
