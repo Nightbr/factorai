@@ -28,6 +28,11 @@ paths:
   not under `pnpm dev`" is almost always a stripped env — compare
   `/proc/<pid>/environ` against your shell before blaming the app.
   `env | grep -c .mount_` should print `0`.
+- **`cargo test` runs `tests/*.rs`; a filtered run does not.** `--lib`, `-p`, or
+  a name filter runs only the in-crate unit tests and omits the integration
+  targets while still printing `ok`, so the gate is the plain command. Triage a
+  failure with `--no-fail-fast` — cargo stops at the first red binary and hides
+  the rest. See the `quality-gate` skill.
 
 Longer form, including the two bugs behind the env rule: the
 `backend-conventions` skill.

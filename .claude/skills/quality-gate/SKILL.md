@@ -19,6 +19,10 @@ pnpm deps:unused
 cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
+Run each **exactly as written**: a scoped or filtered stand-in — `cargo test
+--lib`, an install without `--frozen-lockfile` — reads green over the coverage it
+skips.
+
 For UI / behaviour work, also: launch the app (`pnpm dev`) and **use the
 feature** in the actual window. Type checking does not validate UX.
 Screenshots in a commit are great.
