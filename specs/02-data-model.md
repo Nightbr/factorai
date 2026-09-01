@@ -182,7 +182,18 @@ renderer is the only place that cares about block shape, and TS handles
   1. last event whose `message.content` is `[{type:'text', text:"#rename: ..."}]`
      (legacy fallback)
   2. last event with a top-level `title` field
-  3. first user-text content, trimmed to 60 chars
+  3. the first user message that carries intent, trimmed to 60 chars. Claude
+     Code wraps what the user did in marker tags, handled two ways:
+     - **Commands** are unwrapped to how they were typed, sigil kept: a
+       `<bash-input>git pull</bash-input>` → `!git pull`, and a
+       `<command-name>/foo</command-name>` with an optional `<command-args>` →
+       `/foo args`.
+     - **Injected context** — the `<local-command-caveat>`, a
+       `<system-reminder>`, the IDE's `<ide_opened_file>` note — is not the
+       user's words and is stripped. Any prose left in the same message titles
+       the session; a message that was only context is skipped so the next user
+       message is used instead.
+     The raw text still feeds FTS unchanged.
   4. session UUID's first 8 chars (last-resort)
 - **`cwd`** is the first non-null `cwd` we see. Used to resolve the
   encoded project path to a real path authoritatively (see Q4 below).

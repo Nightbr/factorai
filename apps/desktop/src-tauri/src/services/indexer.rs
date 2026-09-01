@@ -11,7 +11,9 @@ use crate::commands::projects::reconcile;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{IndexerPhase, IndexerProgress, SessionsChanged};
-use crate::services::jsonl::{derive_title, flatten_message_text, tool_use_paths, EventIter};
+use crate::services::jsonl::{
+	derive_title, flatten_message_text, title_display, tool_use_paths, EventIter,
+};
 
 /// Which version of `index_session` wrote a `sessions` row.
 ///
@@ -24,7 +26,12 @@ use crate::services::jsonl::{derive_title, flatten_message_text, tool_use_paths,
 /// 2 — `touched_paths`, the same signal widened to shell commands and kept as a
 ///     list, because that harvest is loose enough that one value is mostly noise
 ///     (F21, migration 0010).
-const PARSE_VERSION: i64 = 2;
+/// 3 — `title` reads transcript marker tags instead of showing them raw: a
+///     `!`-command or slash command is unwrapped to how it was typed, and
+///     injected context (the local-command caveat, `<system-reminder>`, the IDE
+///     note) is skipped in favour of the first user message that carried intent
+///     (specs/02-data-model.md § "Persistence implications").
+const PARSE_VERSION: i64 = 3;
 
 /// How many recent paths a session keeps. See migration 0010 for why a list at
 /// all, and why the number is not doing any selecting.
@@ -444,7 +451,7 @@ impl Indexer {
 		}
 
 		debug!(%session_id, "indexing session");
-		let mut first_user_text: Option<String> = None;
+		let mut title_source: Option<String> = None;
 		let mut first_ts: Option<i64> = None;
 		let mut last_ts: Option<i64> = None;
 		let mut turn_count: i64 = 0;
@@ -511,8 +518,11 @@ impl Indexer {
 				}
 				let text = flatten_message_text(&msg.content);
 				if !text.is_empty() {
-					if first_user_text.is_none() && msg.role == "user" {
-						first_user_text = Some(text.clone());
+					// The first user message that carries intent titles the session;
+					// a message that is only injected context yields nothing and the
+					// next one is tried. See jsonl::title_display.
+					if title_source.is_none() && msg.role == "user" {
+						title_source = title_display(&text);
 					}
 					fts_rows.push((msg.role.clone(), text));
 				}
@@ -534,7 +544,7 @@ impl Indexer {
 		let title = custom_title
 			.filter(|t| !t.trim().is_empty())
 			.or(ai_title.filter(|t| !t.trim().is_empty()))
-			.unwrap_or_else(|| derive_title(first_user_text.as_deref(), &session_id));
+			.unwrap_or_else(|| derive_title(title_source.as_deref(), &session_id));
 
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;

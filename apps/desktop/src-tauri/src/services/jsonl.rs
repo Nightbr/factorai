@@ -217,15 +217,97 @@ fn ends_path(byte: u8) -> bool {
 }
 
 /// Title derivation per specs/02-data-model.md § "Persistence implications".
-pub fn derive_title(first_user_text: Option<&str>, session_id: &str) -> String {
-	if let Some(text) = first_user_text {
+/// `title_source` is the display form of the first user message that carried
+/// intent — see [`title_display`], which the indexer applies while choosing it.
+/// With none, the session UUID's prefix is the last resort.
+pub fn derive_title(title_source: Option<&str>, session_id: &str) -> String {
+	if let Some(text) = title_source {
 		let trimmed = text.trim();
 		if !trimmed.is_empty() {
-			let cap = trimmed.chars().take(60).collect::<String>();
-			return cap;
+			return trimmed.chars().take(60).collect();
 		}
 	}
 	session_id.chars().take(8).collect()
+}
+
+/// The title text a single user message contributes, or `None` when it carries
+/// nothing to title a session by.
+///
+/// Claude Code wraps what the user did in marker tags, and two kinds reach the
+/// first user message wanting opposite treatment:
+///
+/// - **Commands** are intent worth a title, shown as they were typed with the
+///   sigil kept: `<bash-input>git pull</bash-input>` → `!git pull`, and
+///   `<command-name>/foo</command-name>` (+ optional `<command-args>`) →
+///   `/foo args`.
+/// - **Context** — the local-command caveat, a `<system-reminder>`, the IDE's
+///   open-file note — is machinery, not something the user said. It is stripped;
+///   whatever prose is left titles the session, and a message that was nothing
+///   but context yields `None` so the next user message is tried instead.
+///
+/// The raw text still feeds FTS unchanged. See specs/02-data-model.md
+/// § "Persistence implications".
+pub fn title_display(text: &str) -> Option<String> {
+	if let Some(cmd) = tag_inner(text, "bash-input").map(str::trim).filter(|c| !c.is_empty()) {
+		return Some(format!("!{cmd}"));
+	}
+	if let Some(name) = tag_inner(text, "command-name")
+		.map(|n| n.trim().trim_start_matches('/'))
+		.filter(|n| !n.is_empty())
+	{
+		let mut out = format!("/{name}");
+		if let Some(args) = tag_inner(text, "command-args").map(str::trim).filter(|a| !a.is_empty())
+		{
+			out.push(' ');
+			out.push_str(args);
+		}
+		return Some(out);
+	}
+	// Older/argless slash shapes carry only the message; keep the command, sigilled.
+	if let Some(msg) = tag_inner(text, "command-message")
+		.map(|m| m.trim().trim_start_matches('/'))
+		.filter(|m| !m.is_empty())
+	{
+		return Some(format!("/{msg}"));
+	}
+	let stripped = strip_context_tags(text);
+	let trimmed = stripped.trim();
+	(!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+/// The context-marker blocks Claude Code injects around a user message — the
+/// paired `<tag>…</tag>` shapes that are machinery rather than user intent —
+/// removed, so what the user actually wrote is left to title by. A tag with no
+/// closing partner is left in place rather than swallowing the rest of the text.
+fn strip_context_tags(text: &str) -> String {
+	const CONTEXT_TAGS: [&str; 6] = [
+		"local-command-caveat",
+		"local-command-stdout",
+		"local-command-stderr",
+		"system-reminder",
+		"ide_opened_file",
+		"ide_selection",
+	];
+	let mut out = text.to_owned();
+	for tag in CONTEXT_TAGS {
+		let open = format!("<{tag}>");
+		let close = format!("</{tag}>");
+		while let Some(start) = out.find(&open) {
+			let Some(rel) = out[start + open.len()..].find(&close) else {
+				break;
+			};
+			let end = start + open.len() + rel + close.len();
+			out.replace_range(start..end, "");
+		}
+	}
+	out
+}
+
+/// The text between the first `<tag>` and its matching `</tag>`, if both appear.
+fn tag_inner<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+	let start = text.find(&format!("<{tag}>"))? + tag.len() + 2;
+	let end = start + text[start..].find(&format!("</{tag}>"))?;
+	Some(&text[start..end])
 }
 
 #[cfg(test)]
@@ -340,6 +422,70 @@ mod tests {
 	fn derive_title_falls_back_to_session_prefix() {
 		let title = derive_title(None, "abc12345-rest");
 		assert_eq!(title, "abc12345");
+	}
+
+	/// The 60-char cap counts the sigil too, so a long command is still bounded.
+	#[test]
+	fn derive_title_caps_a_long_source() {
+		let long = format!("!{}", "a".repeat(120));
+		let title = derive_title(Some(&long), "id");
+		assert_eq!(title.chars().count(), 60);
+		assert!(title.starts_with("!a"));
+	}
+
+	/// A `!`-command is titled by its command, sigil kept, not the wrapper tag —
+	/// even when the transcript trails the captured stdout/stderr in the same text.
+	#[test]
+	fn title_display_unwraps_bash_input() {
+		assert_eq!(
+			title_display("<bash-input>git pull</bash-input>").as_deref(),
+			Some("!git pull")
+		);
+		let with_output = "<bash-input>git status</bash-input>\n<bash-stdout>clean</bash-stdout>";
+		assert_eq!(title_display(with_output).as_deref(), Some("!git status"));
+	}
+
+	/// A slash command keeps its `/`, normalises to exactly one, and appends args —
+	/// whichever order the `command-*` tags appear in.
+	#[test]
+	fn title_display_unwraps_slash_command() {
+		// A name already carrying its slash keeps exactly one.
+		let named = "<command-message>foo</command-message><command-name>/foo</command-name>";
+		assert_eq!(title_display(named).as_deref(), Some("/foo"));
+
+		// A bare name gets a slash added, and args follow after a space.
+		let with_args = "<command-name>foo</command-name><command-args>bar baz</command-args>";
+		assert_eq!(title_display(with_args).as_deref(), Some("/foo bar baz"));
+
+		// Message-only shape still reads as a slash command.
+		assert_eq!(
+			title_display("<command-message>foo</command-message>").as_deref(),
+			Some("/foo")
+		);
+	}
+
+	/// Injected context is stripped: a note the user did not type does not title a
+	/// session, and one that only wraps context contributes nothing at all.
+	#[test]
+	fn title_display_strips_injected_context() {
+		// Prose after an IDE note titles by the prose.
+		let ide = "<ide_opened_file>The user opened /path/to/file in the IDE.</ide_opened_file>\nadd a test for this";
+		assert_eq!(title_display(ide).as_deref(), Some("add a test for this"));
+
+		// A message that is only context yields nothing, so the caller tries the next.
+		let caveat = "<local-command-caveat>Caveat: messages below were generated while running local commands.</local-command-caveat>";
+		assert_eq!(title_display(caveat), None);
+		let reminder =
+			"<system-reminder>\nThe user named this session \"my session\".\n</system-reminder>";
+		assert_eq!(title_display(reminder), None);
+	}
+
+	/// Plain prose that merely mentions a tag name (no closing tag) is not a
+	/// wrapper and passes through untouched.
+	#[test]
+	fn title_display_leaves_plain_prose_alone() {
+		let prose = "how should a <bash-input> tag look in the title?";
+		assert_eq!(title_display(prose).as_deref(), Some(prose));
 	}
 
 	// Real Claude events that the strict v1 parser was rejecting.
