@@ -88,12 +88,21 @@ pub fn resolve_within_any(roots: &[PathBuf], requested: &str) -> AppResult<PathB
 /// Used to answer "which checkout is the agent working in" from a path it just
 /// sent (F21). Longest wins because a checkout nested inside another — legal,
 /// if unusual — would otherwise resolve to its parent.
+///
+/// **Roots are canonicalised before the comparison, exactly as
+/// [`resolve_within_any`] does**, and `path` reaches here already canonical
+/// (every caller resolves it through that function first). Without this the two
+/// sides can name the same directory through different symlinks — a checkout
+/// under macOS's `/var -> /private/var`, say — share no path prefix, and the
+/// containment silently reads as "not inside", so the worktree signal never
+/// fires. A root that cannot be canonicalised is dropped rather than fatal, the
+/// same call this makes for the security boundary above.
 pub fn containing_root(roots: &[PathBuf], path: &Path) -> Option<PathBuf> {
 	roots
 		.iter()
+		.filter_map(|root| root.canonicalize().ok())
 		.filter(|root| path.starts_with(root))
 		.max_by_key(|root| root.as_os_str().len())
-		.cloned()
 }
 
 /// Canonicalise as much of `path` as exists, then append the rest.
@@ -261,5 +270,21 @@ mod tests {
 		let dir = tempdir().unwrap();
 		let got = resolve_within(dir.path(), dir.path().to_str().unwrap()).unwrap();
 		assert_eq!(got, dir.path().canonicalize().unwrap());
+	}
+
+	#[test]
+	fn containing_root_matches_a_root_named_through_a_symlink() {
+		// The `/var -> /private/var` shape in miniature: the checkout is named to
+		// us through a symlink, while the request has already been canonicalised
+		// past it. The two must still be recognised as the same tree, or the F21
+		// worktree signal silently never fires.
+		let dir = tempdir().unwrap();
+		let real = dir.path().join("checkout");
+		fs::create_dir_all(real.join("src")).unwrap();
+		let link = dir.path().join("via-link");
+		std::os::unix::fs::symlink(&real, &link).unwrap();
+
+		let file = real.join("src").canonicalize().unwrap();
+		assert_eq!(containing_root(&[link], &file), Some(real.canonicalize().unwrap()));
 	}
 }
