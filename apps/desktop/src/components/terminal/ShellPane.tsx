@@ -20,6 +20,8 @@ import { useShellStore } from '@store/shellStore';
  */
 export function ShellPane({ sessionId }: { sessionId: string }) {
 	const containerRef = useRef<HTMLDivElement>(null);
+	/** The chip whose dead terminal has already been thrown away — see below. */
+	const respawning = useRef<string | null>(null);
 	const shells = useShellStore((s) => s.bySession[sessionId]);
 	const activeKey = useShellStore((s) => s.activeBySession[sessionId] ?? null);
 	const active = shells?.find((t) => t.key === activeKey) ?? null;
@@ -32,7 +34,19 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
 		// so `attachStream` will spawn again. Its scrollback goes with it, which
 		// is right — the shell it belonged to is gone, and a prompt that answers
 		// nothing is worse than an empty pane.
-		if (active.dead) disposeTerminal(active.key);
+		//
+		// **Once per chip, tracked in a ref**, because this effect re-runs while
+		// `dead` is still true: StrictMode invokes it twice on mount, and the
+		// store hands out a new tab object on every title. Disposing on the second
+		// run would throw away the terminal whose `shell_spawn` is still in
+		// flight, and the resolved spawn would then write into a disposed xterm.
+		if (active.dead && respawning.current !== active.key) {
+			respawning.current = active.key;
+			disposeTerminal(active.key);
+		} else if (!active.dead && respawning.current === active.key) {
+			// Live again: the next death is a new respawn.
+			respawning.current = null;
+		}
 
 		const entry = getOrCreateTerm(
 			active.key,

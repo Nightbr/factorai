@@ -225,6 +225,15 @@ interface PooledTerm {
 	/** Set once `attachPty` has run, so the spawn + output listeners are wired
 	 *  exactly once per pooled terminal. */
 	ptyAttached: boolean;
+	/** `disposeTerminal` has thrown this xterm away.
+	 *
+	 *  A spawn is async and a dispose is not, so the two race: a restart, or a
+	 *  click on a dead shell chip (F23), can dispose a terminal whose
+	 *  `shell_spawn` is still in flight — and the `.then` would then write into a
+	 *  disposed xterm, which surfaces as
+	 *  `undefined is not an object (evaluating 'this._renderer.value.dimensions')`
+	 *  from xterm's own viewport. Checked after every await in `attachStream`. */
+	disposed: boolean;
 	/** Which PTY this terminal's keystrokes and resizes go to, read at call time
 	 *  rather than captured.
 	 *
@@ -381,7 +390,14 @@ export function getOrCreateTerm(
 	// but reliable.
 	term.open(host);
 
-	const entry: PooledTerm = { host, term, cleanup: [], ptyAttached: false, terminalId };
+	const entry: PooledTerm = {
+		host,
+		term,
+		cleanup: [],
+		ptyAttached: false,
+		disposed: false,
+		terminalId,
+	};
 	pool.set(key, entry);
 
 	// Forward keystrokes to the live PTY. Reads the terminal id from the store
@@ -453,25 +469,38 @@ export function attachStream(
 
 	spawn(term.cols, term.rows)
 		.then(async (id) => {
+			// The spawn was awaited; the terminal may not have survived it. Writing
+			// into a disposed xterm throws from inside its own viewport, and the
+			// dispose is exactly what a restart or a dead-chip respawn does.
+			if (entry.disposed) return;
 			// Reconcile once the id is known. The PTY can be out of sync already: it
 			// may predate this terminal (reused across a hot reload or a remount), or
 			// a `fit()` may have landed while the spawn was in flight, when the store
 			// had no id yet for `onResize` to push to.
 			pushSize(id, term.cols, term.rows);
 			const unData = await events.onTerminalData((ev) => {
-				if (ev.id === id) term.write(base64ToBytes(ev.bytesB64));
+				if (!entry.disposed && ev.id === id) term.write(base64ToBytes(ev.bytesB64));
 			});
 			const unExit = await events.onTerminalExit((ev) => {
-				if (ev.id === id) {
+				if (!entry.disposed && ev.id === id) {
 					term.write(
 						`\r\n\x1b[90m[process exited${ev.code !== null ? `: ${ev.code}` : ''}]\x1b[0m\r\n`,
 					);
 					onExit?.(ev.code);
 				}
 			});
+			// Registering a listener is itself awaited, so check once more before
+			// handing it to a cleanup list nothing will run — otherwise a disposed
+			// terminal leaves two live subscriptions behind.
+			if (entry.disposed) {
+				unData();
+				unExit();
+				return;
+			}
 			entry.cleanup.push(unData, unExit);
 		})
 		.catch((e) => {
+			if (entry.disposed) return;
 			term.write(`\r\n\x1b[31m${failLabel}: ${formatError(e)}\x1b[0m\r\n`);
 		});
 }
@@ -481,6 +510,7 @@ export function attachStream(
 export function disposeTerminal(sessionId: string): void {
 	const entry = pool.get(sessionId);
 	if (!entry) return;
+	entry.disposed = true;
 	for (const fn of entry.cleanup) fn();
 	entry.term.dispose();
 	entry.host.remove();

@@ -4565,6 +4565,16 @@ itself with the CLI's own idle marker — one stray `printf` does it — must la
 its chip and leave the session's status alone, and
 `a_shells_title_names_it_and_never_moves_a_status` is the test that says so.
 
+**A dispose races an in-flight spawn**, and a dead chip's respawn is where it
+shows. A spawn is async and `disposeTerminal` is not, so a terminal can be
+thrown away while its `shell_spawn` is still in flight; the resolved promise
+then writes into a disposed xterm and it throws from inside xterm's own viewport
+(`undefined is not an object (evaluating 'this._renderer.value.dimensions')`).
+A pooled terminal therefore carries a `disposed` flag, checked after every await
+in `attachStream` — including before its listeners are handed to a cleanup list
+nothing will run. The same race exists on a **restart**, which disposes exactly
+the same way, so the guard is on the shared path rather than on this one.
+
 **Edge cases.**
 - `$SHELL` points at something unrunnable → the spawn fails and the error is
   printed in the pane, the same as a missing `claude`.
