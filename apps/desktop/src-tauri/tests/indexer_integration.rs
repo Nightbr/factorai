@@ -869,7 +869,7 @@ fn a_row_from_an_older_parser_is_reparsed_exactly_once() {
 		// current, so the next scan skips it and the backfill terminates. The
 		// literal tracks `indexer::PARSE_VERSION`, which is private: a test crate
 		// asserting on it by name would make the constant part of the API.
-		assert_eq!(version, 2);
+		assert_eq!(version, 3);
 		Ok(())
 	})
 	.expect("read version");
