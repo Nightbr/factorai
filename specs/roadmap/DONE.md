@@ -3,6 +3,58 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Splits in the footer shell — up to five panes per chip (TODO item 49, spec
+  `05-features.md` F24, F23 amended, `DESIGN.md` § Tab Chips)** — 2026-09-02, user ask, the day
+  after item 47, designed and shipped the same day. A chip in the session's footer is now a
+  **group**: `Split` puts another shell beside the one you have, up to five, with draggable
+  dividers between them. The chip keeps every F23 meaning — click to switch, click again to
+  collapse, a dead one respawns — and the split happens inside it.
+
+  **The model was chosen against two drawn alternatives, not argued from one.** Three interactive
+  mockups (linked from the F24 discussion; the artifact is the user's) put "a chip holds a group",
+  "chips are panes and all are visible" and "pin chips into the row" side by side. The first won
+  because it is the only one with a background shell — a long build can sit in its own chip, out
+  of sight and out of the width budget — and the losers are written into F24 § "Alternatives
+  considered" so they are not re-proposed. The gesture is a **labelled `Split` button in the
+  strip**, disabled with its reason in a tooltip (no chip, five already, no room at 160px), for
+  the reason F23 made the strip permanent: a control revealed on hover cannot introduce a feature.
+
+  **The chip's label stopped being the `OSC 0` title, one day after it started.** User feedback
+  mid-interview: a name a prompt theme decides is not a name — oh-my-zsh writes the cwd, starship
+  writes nothing, one `printf` overwrites it. The chip now reads a terminal glyph and the basename
+  of `$SHELL`, VS Code's look, from a new `shell_name` command asked once at boot and persisted so
+  a restored chip has its name before the answer lands. `terminal:title`, `TerminalTitleEvent`,
+  `TitleScanner::push_title`, `TerminalStatusDto.title` and `shellStore.setTitle` went with the
+  rule; the test that a shell's title never moves a status kept that half, waiting on the data
+  stream instead of the title event for the bytes to have arrived. The fixed 120px chip went too —
+  it existed for a label that retitled, and a static one hugs its box.
+
+  **The bug the design pass found**: F23's chip `×` only dropped the store entry, and the PTY ran
+  on until the session closed. Both `×`s — the chip's and the new corner one on a pane — now call
+  `terminal_kill`, under the no-dialog trade ADR-0031 records: a three-pane chip's `×` kills three
+  shells without asking.
+
+  **Layout is fractions, and the store never sees a pixel.** Widths are per-chip fractions of the
+  row, held in memory only and reset by a split or a close; the row draws them as `flex-grow`, a
+  `PanelResizer` on its `right` edge moves width between two neighbours, and the same component
+  gained an optional `onReset` — double-click, or `Enter` while focused, so the pointer gesture
+  has its keyboard twin. The cap is five or what fits at 160px, whichever is lower; the strip
+  measures its own width, which is the row's, rather than being told. No pane header: a hover
+  shows a `×` in the pane's corner, and focus is a 1px amber line on the pane's top edge,
+  `:focus-within` on the wrapper, absent when the agent has the caret.
+
+  **`factorai.shells` went to version 2** with a migration that turns a v1 shell into a one-pane
+  chip keeping the v1 key — the pool was keyed by it, and the cwd is what a dead chip was
+  keeping. Chip keys have their own `chip:` prefix so the pool can never be handed one.
+
+  **Verification, and its limit.** The browser lane drove the mock renderer through one pane,
+  three, a drag and its double-click reset, the five-pane cap and the collapsed chip, and the
+  smoke suite pins the split, the corner kill and the cap. The Tauri dev build booted with the
+  new command and no panic. Clicks in the real window were **not** possible from the agent's
+  session on this Mac — `osascript` and `screencapture` were both refused (Accessibility and
+  Screen Recording) — so a real `zsh` in two panes at once is the one thing the human should try
+  first.
+
 - **A shell in the session's footer (TODO item 47, spec `05-features.md` F23, ADR-0031,
   `DESIGN.md` § Tab Chips)** — 2026-09-01, user ask, designed and shipped the same day. The session
   pane was one PTY running `claude`, so `git log` or `cargo test` meant leaving the app. A

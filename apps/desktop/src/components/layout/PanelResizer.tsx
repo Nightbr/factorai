@@ -20,6 +20,10 @@ interface PanelResizerProps {
 	label: string;
 	/** Each panel has its own sensible range, so clamping is the caller's. */
 	clamp: (size: number) => number;
+	/** Back to the default size — a double-click, or `Enter` while the handle
+	 *  has focus, so the pointer gesture has its keyboard twin. A row of shell
+	 *  panes equalises this way (F24); a handle without a default omits it. */
+	onReset?: () => void;
 }
 
 /** Whether an edge drags horizontally. `top`/`bottom` handles drag vertically. */
@@ -41,7 +45,7 @@ function isInverted(edge: ResizerEdge): boolean {
  * component told which axis it is on rather than a second component that would
  * drift from this one.
  */
-export function PanelResizer({ size, onSize, edge, label, clamp }: PanelResizerProps) {
+export function PanelResizer({ size, onSize, edge, label, clamp, onReset }: PanelResizerProps) {
 	const drag = useRef<{ origin: number; size: number } | null>(null);
 	const horizontal = isHorizontal(edge);
 	const inverted = isInverted(edge);
@@ -75,7 +79,13 @@ export function PanelResizer({ size, onSize, edge, label, clamp }: PanelResizerP
 			onPointerCancel={() => {
 				drag.current = null;
 			}}
+			onDoubleClick={onReset}
 			onKeyDown={(e) => {
+				if (e.key === 'Enter' && onReset) {
+					e.preventDefault();
+					onReset();
+					return;
+				}
 				const [back, forward] = horizontal
 					? (['ArrowLeft', 'ArrowRight'] as const)
 					: (['ArrowUp', 'ArrowDown'] as const);

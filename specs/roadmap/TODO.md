@@ -31,7 +31,8 @@ heading rather than a settings feature — read them for what is left.
 **A position is where a slot happened to be free, never a claim about priority** — with one
 exception, **item 42 (routines)**, which was asked for at high priority on 2026-08-28 and sits
 third because of it. **Item 47 (the footer shell) shipped on 2026-09-01, the day it was asked
-for**, and its entry is in `DONE.md`. Items 12–14 —
+for, and item 49 (splits in that footer) on 2026-09-02, likewise**; their entries are in
+`DONE.md`. Items 12–14 —
 the `Cmd+P` / `Cmd+Shift+F` / `Cmd+G` navigation trio — are high priority despite sitting
 mid-list, and everything past 21 is simply the order things were asked for.
 
@@ -1363,32 +1364,3 @@ per-project tab system is the eventual third and is not blocked by it.
 is read as the target here, but the left sidebar has its own ceiling —
 `MAX_SIDEBAR_WIDTH = 480` (`sidebarStore.ts:24`) — and if that is the one that feels cramped it is
 a one-line change with none of the above behind it. Confirm before building the wrong half.
-
-## 49. Splits in the footer shell — up to five panes per chip (F24)
-
-**User feedback, 2026-09-02**, the day after item 47 shipped: "up to five terminals stacked
-horizontally on the panel". The UX was decided the same day in an interview over three drawn
-models — interactive mockup at
-<https://claude.ai/code/artifact/86c63175-370d-45e3-aca4-ee70ab511ad8> — and F24 records the
-outcome and the two models that lost. Decided in the same interview, and landing first because
-the split's chip depends on it: **the chip's label stops being the `OSC 0` title** and becomes a
-terminal glyph plus the shell's basename, VS Code's look. A name a prompt theme decides is not a
-name.
-
-- [ ] **The label.** `shell_name()` in Rust; `SquareTerminal` + `zsh` on the chip, content-sized;
-      `terminal:title`, `TerminalTitleEvent`, `TitleScanner::push_title`, `TerminalStatusDto.title`
-      and `shellStore.setTitle` deleted; `DESIGN.md` § Tab Chips rewritten. F23 amended in place.
-- [ ] **The store.** `ShellTab` becomes a group of `panes[]` with a `focus`; `factorai.shells`
-      version 2 with a migration from one-pane tabs; chip keys get their own prefix.
-- [ ] **The row.** `ShellPane` renders the active chip's panes side by side, one pooled xterm per
-      pane, `PanelResizer` between them on the `left`/`right` edge, double-click to equalise, 160px
-      minimum, widths in memory.
-- [ ] **The strip.** A labelled `Split` quiet button beside `+ Terminal`, disabled with a reason:
-      no active chip, five already, or no room at 160px.
-- [ ] **Pane chrome.** Corner `×` on hover at two or more panes; 1px amber top edge on
-      `:focus-within`. Both `×`s call `terminal_kill` — item 47's chip `×` only dropped the store
-      entry, and the PTY ran on until the session closed.
-- [ ] **Restore.** A dead group respawns every pane on one click.
-- [ ] Tests: the store's migration and group operations; a Rust test that `shell_name` is
-      `user_shell`'s basename; smoke: split to two, close one, cap at five. Then the gate and the
-      real window.

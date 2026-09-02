@@ -53,4 +53,58 @@ test.describe('shell footer', () => {
 		expect(calls.some((c) => c.name === 'terminal_kill')).toBe(false);
 		expect(calls.some((c) => c.name === 'shell_kill_for_session')).toBe(false);
 	});
+
+	test('@smoke Split puts a pane beside the first, and the corner × kills it', async ({ page }) => {
+		// Wide enough that room is never the reason a split is refused.
+		await page.setViewportSize({ width: 1600, height: 900 });
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		const footer = page.getByTestId('shell-footer');
+		const split = footer.getByRole('button', { name: 'Split' });
+
+		// Nothing to split before there is a shell, and the control says so
+		// rather than doing nothing.
+		await expect(split).toBeDisabled();
+		await footer.getByRole('button', { name: 'Terminal' }).click();
+		await split.click();
+
+		const hosts = page.getByTestId('shell-pane-host');
+		await expect(hosts).toHaveCount(2);
+		// Still one chip, now saying it holds two.
+		const chip = footer.getByRole('tab');
+		await expect(chip).toHaveCount(1);
+		await expect(chip).toContainText('2');
+
+		// The `×` is in the pane's corner, on hover, and closing is a kill (F24):
+		// F23's chip `×` dropped the store entry and left the process running.
+		await hosts.nth(1).hover();
+		await hosts.nth(1).getByRole('button', { name: 'Close this shell' }).click();
+		await expect(hosts).toHaveCount(1);
+		await expect(chip).toHaveText('zsh');
+		const calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
+		expect(calls.filter((c) => c.name === 'terminal_kill')).toHaveLength(1);
+	});
+
+	test('@smoke five panes is the cap, and Split says so', async ({ page }) => {
+		await page.setViewportSize({ width: 1800, height: 900 });
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		const footer = page.getByTestId('shell-footer');
+		const split = footer.getByRole('button', { name: 'Split' });
+
+		await footer.getByRole('button', { name: 'Terminal' }).click();
+		for (let i = 1; i < 5; i++) {
+			await split.click();
+			await expect(page.getByTestId('shell-pane-host')).toHaveCount(i + 1);
+		}
+		await expect(split).toBeDisabled();
+		// The reason is on the control's wrapper: a disabled button gets no
+		// pointer events in WebKit, so the tooltip has to live one level up.
+		await expect(footer.locator('[title="Five panes is the most a chip holds"]')).toBeVisible();
+		await expect(footer.getByRole('tab')).toContainText('5');
+	});
 });

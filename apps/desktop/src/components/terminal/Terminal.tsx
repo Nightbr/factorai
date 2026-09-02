@@ -218,7 +218,7 @@ export function fitToHost(entry: PooledTerm): void {
 // Terminals are NEVER killed on unmount — they live in `terminalStore` and are
 // torn down only by `kill_all()` on quit (ADR-0005) or an explicit restart.
 
-interface PooledTerm {
+export interface PooledTerm {
 	host: HTMLDivElement;
 	term: XTerm;
 	cleanup: Array<() => void>;

@@ -1111,7 +1111,11 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		case 'terminal_spawn':
 			return (fx?.terminalSpawnId ?? 'mock-terminal-id') as unknown as T;
 		case 'shell_spawn':
-			return (fx?.shellSpawnId ?? 'mock-shell-id') as unknown as T;
+			// Distinct per spawn unless a fixture pins one: two panes of one chip
+			// (F24) each have a PTY, and a store keyed by terminal id would fold
+			// them into one if the mock handed both the same name.
+			mockShellSpawns += 1;
+			return (fx?.shellSpawnId ?? `mock-shell-id-${mockShellSpawns}`) as unknown as T;
 		case 'shell_name':
 			return 'zsh' as unknown as T;
 		case 'terminal_write':
@@ -1126,6 +1130,9 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			throw new Error(`mockInvoke: unknown command "${name}"`);
 	}
 }
+
+/** How many shells the mock bridge has "spawned", for their ids. */
+let mockShellSpawns = 0;
 
 const mockListeners = new Map<string, Set<(payload: unknown) => void>>();
 

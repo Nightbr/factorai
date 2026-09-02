@@ -1,5 +1,5 @@
 import { IconButton } from '@factorai/ui';
-import { SquareTerminal, X } from 'lucide-react';
+import { Columns2, SquareTerminal, X } from 'lucide-react';
 import { type ShellTab, useShellStore } from '@store/shellStore';
 
 /**
@@ -33,6 +33,18 @@ export function ShellChip({
 	// `shell` only before Rust has ever answered `shell_name`, which is before
 	// any chip can exist — the strip's control is disabled until it has.
 	const label = useShellStore((s) => s.shellName) ?? 'shell';
+	const count = tab.panes.length;
+	const dead = tab.panes.every((p) => p.dead);
+	// What the tooltip says: the name, how many panes when more than one, and
+	// what a click on a dead chip does, which is the one click that is not a
+	// switch.
+	const title = [
+		label,
+		count > 1 ? `${count} panes` : null,
+		dead ? `click to open ${count > 1 ? 'new shells' : 'a new shell'} here` : null,
+	]
+		.filter(Boolean)
+		.join(' · ');
 	return (
 		<div
 			// `group` so the `×` can appear on a hover of the whole chip rather than
@@ -47,7 +59,7 @@ export function ShellChip({
 				// session tab reads — it is still a place, it just has no process in
 				// it. Never `opacity`: that would fade the border too, and the border
 				// is what says the chip is still there to click.
-				tab.dead ? 'text-muted-foreground/60' : ''
+				dead ? 'text-muted-foreground/60' : ''
 			}`}
 		>
 			<button
@@ -55,11 +67,22 @@ export function ShellChip({
 				role="tab"
 				aria-selected={active}
 				onClick={onSelect}
-				title={tab.dead ? `${label} — click to open a new shell here` : label}
+				title={title}
 				className="flex items-center gap-1.5 whitespace-nowrap font-medium text-xs"
 			>
 				<SquareTerminal className="size-3" />
 				{label}
+				{/* A chip that holds a row says so: a columns glyph and the count,
+				    at the label's own size — the scale has no third one (F24). */}
+				{count > 1 && (
+					<span
+						className="flex items-center gap-0.5 text-muted-foreground"
+						aria-label={`${count} panes`}
+					>
+						<Columns2 className="size-3" />
+						{count}
+					</span>
+				)}
 			</button>
 			{/* Always rendered, so the label's box never changes width when the
 			    pointer arrives — `invisible` rather than unmounted for that reason.
