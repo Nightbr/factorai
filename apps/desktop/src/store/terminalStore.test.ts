@@ -10,7 +10,6 @@ function dto(sessionId: string, over: Partial<TerminalStatusDto> = {}): Terminal
 		status: 'waiting_input',
 		lastActivity: 0,
 		kind: 'agent',
-		title: null,
 		cwd: '/tmp',
 		...over,
 	};

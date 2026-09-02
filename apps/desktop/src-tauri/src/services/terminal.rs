@@ -139,26 +139,9 @@ pub struct TerminalStatusDto {
 	/// shell shares its footer session's id — so a boot adoption that did not
 	/// know the difference would file a shell over the agent it is drawn under.
 	pub kind: TerminalKind,
-	/// The last title a shell set for itself, so a reload can label its chip
-	/// without waiting for the next one. Always `None` for an agent, whose
-	/// titles are a status rather than a name.
-	pub title: Option<String>,
 	/// Where this terminal is running. A shell chip that outlives its process
 	/// respawns here (F23).
 	pub cwd: String,
-}
-
-/// The title a **shell** terminal set for itself, which is what its chip is
-/// labelled with (F23).
-///
-/// Not emitted for an agent terminal: there the same bytes decide a status
-/// instead (F10, ADR-0015), and Claude's title is a spinner frame rather than a
-/// name anybody wants on a chip.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalTitleEvent {
-	pub id: TerminalId,
-	pub title: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -273,7 +256,6 @@ pub struct TerminalExitEvent {
 type DataCb = Arc<dyn Fn(TerminalDataEvent) + Send + Sync>;
 type StatusCb = Arc<dyn Fn(TerminalStatusEvent) + Send + Sync>;
 type ExitCb = Arc<dyn Fn(TerminalExitEvent) + Send + Sync>;
-type TitleCb = Arc<dyn Fn(TerminalTitleEvent) + Send + Sync>;
 type IdeOpenCb = Arc<dyn Fn(IdeOpenFileEvent) + Send + Sync>;
 type IdeStatusCb = Arc<dyn Fn(IdeStatusEvent) + Send + Sync>;
 /// Asks for the user's configured `claude` path, once per spawn (F11).
@@ -357,10 +339,6 @@ struct TerminalHandle {
 	/// Set by [`TerminalManager::kill`] before it signals, and read by the
 	/// waiter when it reports the exit. See `TerminalExitEvent::killed`.
 	killed: AtomicBool,
-	/// The last `OSC 0` title, for a shell only (F23). Held so a renderer that
-	/// reloads can label the chip from `terminal_list` instead of waiting for
-	/// the shell to retitle itself, which it may not do until you press Enter.
-	title: Mutex<Option<String>>,
 	last_activity: AtomicI64,
 	/// The directory this session runs in, and the root every IDE-bridge path is
 	/// checked against. Kept on the handle because the bridge's scope has to
@@ -389,7 +367,6 @@ pub struct TerminalManager {
 	on_data: DataCb,
 	on_status: StatusCb,
 	on_exit: ExitCb,
-	on_title: TitleCb,
 	/// Claude's config dir, for locating session transcripts. Spawn decisions
 	/// read the filesystem rather than the index, so they can't go stale.
 	claude_dir: PathBuf,
@@ -438,7 +415,6 @@ impl TerminalManager {
 		let app_exit = app.clone();
 		let app_ide = app.clone();
 		let app_ide_status = app.clone();
-		let app_title = app.clone();
 		let app_worktree = app;
 		Self {
 			terminals: Arc::new(DashMap::new()),
@@ -458,9 +434,6 @@ impl TerminalManager {
 			}),
 			on_exit: Arc::new(move |e| {
 				let _ = app_exit.emit("terminal:exit", e);
-			}),
-			on_title: Arc::new(move |e| {
-				let _ = app_title.emit("terminal:title", e);
 			}),
 			binary_override: None,
 			user_binary: None,
@@ -484,10 +457,6 @@ impl TerminalManager {
 			on_data,
 			on_status,
 			on_exit,
-			// A no-op rather than a fourth parameter: a title only names a
-			// shell chip, and no test that predates F23 has one. `set_title_cb`
-			// is how a test that wants them asks, matching `set_ide_status_cb`.
-			on_title: Arc::new(|_| {}),
 			claude_dir,
 			binary_override: None,
 			user_binary: None,
@@ -540,12 +509,6 @@ impl TerminalManager {
 	#[cfg(test)]
 	pub fn set_ide_status_cb(&mut self, cb: IdeStatusCb) {
 		self.on_ide_status = cb;
-	}
-
-	/// Watch shell terminals' titles (F23). For tests only, same as above.
-	#[cfg(test)]
-	pub fn set_title_cb(&mut self, cb: TitleCb) {
-		self.on_title = cb;
 	}
 
 	pub fn live_count(&self) -> usize {
@@ -655,7 +618,6 @@ impl TerminalManager {
 					status: *h.status.lock(),
 					last_activity: h.last_activity.load(Ordering::Relaxed),
 					kind: h.kind,
-					title: h.title.lock().clone(),
 					cwd: h.cwd.to_string_lossy().into_owned(),
 				}
 			})
@@ -890,18 +852,10 @@ impl TerminalManager {
 			Some(vec![shell.to_string_lossy().into_owned()]),
 			TerminalKind::Shell,
 		)?;
-
-		// **Name the chip before the shell has said anything.** A chip labelled
-		// from `OSC 0` has no label at all until the prompt sets one, and a shell
-		// that never sets one — `sh`, or a bare `PS1` — would stay nameless for
-		// its whole life. The basename is the fallback F23 specifies, and it goes
-		// through the same path a real title does so there is one way a chip is
-		// named rather than two.
-		if let Some(name) = shell.file_name().map(|n| n.to_string_lossy().into_owned()) {
-			if let Some(handle) = self.terminals.get(&id).map(|e| e.value().clone()) {
-				set_title(&id, &handle, name, &self.on_title);
-			}
-		}
+		// Nothing names the chip from here. It is labelled with this shell's
+		// basename, which the renderer asked `shell_name` for before it called
+		// (F23 as amended by F24), and the shell's own `OSC 0` titles are read
+		// by nobody.
 		Ok(id)
 	}
 
@@ -1114,7 +1068,6 @@ impl TerminalManager {
 			// records only that the process exists.
 			status: Mutex::new(TerminalStatus::Working),
 			killed: AtomicBool::new(false),
-			title: Mutex::new(None),
 			last_activity: AtomicI64::new(now_ms()),
 			cwd: cwd_path.clone(),
 			ide,
@@ -1143,7 +1096,6 @@ impl TerminalManager {
 			handle.clone(),
 			self.on_data.clone(),
 			self.on_status.clone(),
-			self.on_title.clone(),
 		);
 		// Wait thread: owns the child and blocks on `wait()`; emits on_exit
 		// when it terminates. Owning (not sharing) the child is what keeps
@@ -1271,7 +1223,6 @@ fn spawn_reader(
 	handle: Arc<TerminalHandle>,
 	on_data: DataCb,
 	on_status: StatusCb,
-	on_title: TitleCb,
 ) {
 	let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(FLUSH_BYTES)));
 	let eof = Arc::new(AtomicBool::new(false));
@@ -1294,20 +1245,14 @@ fn spawn_reader(
 					Ok(0) => break,
 					Ok(n) => {
 						handle_r.last_activity.store(now_ms(), Ordering::Relaxed);
-						// One stream, two readings of the same `OSC 0`. For an
-						// agent the title is Claude's state (F10, ADR-0015); for
-						// a shell it is a name for its chip, and classifying it
-						// would report the user's prompt as Claude working.
-						match handle_r.kind {
-							TerminalKind::Agent => {
-								if let Some(next) = titles.push(&tmp[..n]) {
-									set_status(&id_r, &handle_r, next, &on_status);
-								}
-							}
-							TerminalKind::Shell => {
-								if let Some(next) = titles.push_title(&tmp[..n]) {
-									set_title(&id_r, &handle_r, next, &on_title);
-								}
+						// One stream, one reading. For an agent the `OSC 0` title
+						// is Claude's state (F10, ADR-0015). A shell's is read by
+						// nobody: its chip is labelled with the shell's name (F23
+						// as amended by F24), and classifying its titles would
+						// report the user's prompt as Claude working.
+						if handle_r.kind == TerminalKind::Agent {
+							if let Some(next) = titles.push(&tmp[..n]) {
+								set_status(&id_r, &handle_r, next, &on_status);
 							}
 						}
 						buf_r.lock().extend_from_slice(&tmp[..n]);
@@ -1374,22 +1319,6 @@ fn set_status(
 	}
 	let last_activity = handle.last_activity.load(Ordering::Relaxed);
 	(on_status)(TerminalStatusEvent { id: id.clone(), status: next, last_activity });
-}
-
-/// Record a shell's new title and announce it, if it actually changed (F23).
-///
-/// Guarded the same way `set_status` is, and for the same reason: a prompt that
-/// re-emits its title on every keystroke would otherwise cross the bridge once
-/// per character to say nothing new.
-fn set_title(id: &TerminalId, handle: &Arc<TerminalHandle>, next: String, on_title: &TitleCb) {
-	{
-		let mut t = handle.title.lock();
-		if t.as_deref() == Some(next.as_str()) {
-			return;
-		}
-		*t = Some(next.clone());
-	}
-	(on_title)(TerminalTitleEvent { id: id.clone(), title: next });
 }
 
 fn emit_data(id: &TerminalId, bytes: &[u8], on_data: &DataCb) {
@@ -1784,23 +1713,29 @@ mod tests {
 		let _ = mgr.kill(&id);
 	}
 
-	/// The same bytes, read two ways (F10 vs F23). A shell that titles itself
-	/// with Claude's own idle marker — the worst case, and one `starship` or a
-	/// stray `printf` can produce — must name its chip and leave the session's
-	/// status alone.
+	/// The same bytes, and only one reading (F10; F23 as amended by F24). A
+	/// shell writes `OSC 0` titles too — most prompts do, on every command —
+	/// and one that titles itself with Claude's own idle marker — the worst
+	/// case, and one `starship` or a stray `printf` can produce — must leave
+	/// the session's status alone. Nothing reads a shell's title any more, so
+	/// the test waits for the title's bytes on the data stream instead: the
+	/// assertion means nothing until the reader has seen them.
 	#[test]
-	fn a_shells_title_names_it_and_never_moves_a_status() {
+	fn a_shells_title_never_moves_a_status() {
 		let statuses: Arc<StdMutex<Vec<TerminalStatusEvent>>> = Arc::new(StdMutex::new(Vec::new()));
-		let titles: Arc<StdMutex<Vec<TerminalTitleEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+		let seen: Arc<StdMutex<Vec<u8>>> = Arc::new(StdMutex::new(Vec::new()));
 		let sc = statuses.clone();
-		let tc = titles.clone();
-		let mut mgr = TerminalManager::with_callbacks(
+		let dc = seen.clone();
+		let mgr = TerminalManager::with_callbacks(
 			PathBuf::from("/nonexistent-claude-dir"),
-			Arc::new(|_| {}),
+			Arc::new(move |e: TerminalDataEvent| {
+				if let Ok(bytes) = B64.decode(e.bytes_b64) {
+					dc.lock().unwrap().extend_from_slice(&bytes);
+				}
+			}),
 			Arc::new(move |e| sc.lock().unwrap().push(e)),
 			Arc::new(|_| {}),
 		);
-		mgr.set_title_cb(Arc::new(move |e| tc.lock().unwrap().push(e)));
 
 		let id = mgr
 			.spawn_inner(
@@ -1816,13 +1751,14 @@ mod tests {
 
 		// Poll, for the reason `a_title_written_by_a_real_child_moves_the_status`
 		// polls: the read is fast, the scheduler is not.
+		let marker = b"~/dev/factorai";
 		let deadline = std::time::Instant::now() + Duration::from_secs(5);
-		let got = loop {
-			if let Some(e) = titles.lock().unwrap().first() {
-				break Some(e.title.clone());
+		let arrived = loop {
+			if seen.lock().unwrap().windows(marker.len()).any(|w| w == marker) {
+				break true;
 			}
 			if std::time::Instant::now() > deadline {
-				break None;
+				break false;
 			}
 			std::thread::sleep(Duration::from_millis(25));
 		};
@@ -1830,7 +1766,7 @@ mod tests {
 		let status_events = statuses.lock().unwrap().len();
 		let _ = mgr.kill(&id);
 
-		assert_eq!(got.as_deref(), Some("\u{2733} ~/dev/factorai"), "the chip's label");
+		assert!(arrived, "the shell's title never reached the reader");
 		assert_eq!(status_events, 0, "a shell's title must not be classified as Claude's state");
 	}
 

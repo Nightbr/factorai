@@ -136,6 +136,24 @@ pub fn user_shell() -> PathBuf {
 	}
 }
 
+/// What a footer chip calls the shell `user_shell` names: its basename, `zsh`
+/// for `/bin/zsh` (`specs/05-features.md` § F23 as amended by F24). One value
+/// per app, asked once by the renderer, because the label is the same on every
+/// chip and never changes.
+pub fn shell_name() -> String {
+	shell_basename(&user_shell())
+}
+
+/// The basename, or `shell` for a path that has none. `$SHELL=/` is not a shell
+/// anybody has, but a chip with no text on it is a worse answer than a generic
+/// one.
+fn shell_basename(shell: &Path) -> String {
+	shell
+		.file_name()
+		.map(|n| n.to_string_lossy().into_owned())
+		.unwrap_or_else(|| "shell".to_string())
+}
+
 /// Ask one shell. `None` for every failure mode — unspawnable, timed out, no
 /// sentinels, nothing usable between them — because they all mean the same
 /// thing to the caller.
@@ -328,5 +346,14 @@ mod tests {
 		assert_eq!(which_in(&path, "not-executable"), None);
 		// And `sh` is on the real PATH but not on this one.
 		assert_eq!(which_in(&path, "sh"), None);
+	}
+
+	/// What a footer chip says (F23 as amended by F24): the shell's basename,
+	/// and a word rather than nothing when the path has none.
+	#[test]
+	fn a_chip_is_named_after_the_shells_basename() {
+		assert_eq!(shell_basename(Path::new("/bin/zsh")), "zsh");
+		assert_eq!(shell_basename(Path::new("/opt/homebrew/bin/fish")), "fish");
+		assert_eq!(shell_basename(Path::new("/")), "shell");
 	}
 }

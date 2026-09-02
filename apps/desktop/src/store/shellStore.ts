@@ -22,9 +22,6 @@ export interface ShellTab {
 	cwd: string;
 	/** `null` while a spawn is in flight, and again once the process is gone. */
 	terminalId: TerminalId | null;
-	/** The shell's own `OSC 0`, which labels the chip. Rust seeds it with the
-	 *  shell's basename at spawn, so a chip is never nameless. */
-	title: string | null;
 	/** The process is gone and factorai is the one that killed it — the app
 	 *  quitting, in practice. The chip stays, muted, and respawns on a click.
 	 *
@@ -56,9 +53,14 @@ interface ShellState {
 	open: (sessionId: string, projectId: string, cwd: string) => ShellTab;
 	/** Record the PTY a shell spawned into, live again if it was dead. */
 	attach: (key: string, terminalId: TerminalId) => void;
-	/** Label a chip from its `terminal:title`. Keyed by terminal id because that
-	 *  is what the event carries; a title for a PTY nothing owns is ignored. */
-	setTitle: (terminalId: TerminalId, title: string) => void;
+	/** What every chip is labelled: the basename of the shell `shell_spawn`
+	 *  runs (F23 as amended by F24). Asked of Rust once at boot and **persisted**,
+	 *  so a chip restored from a previous run has its name before the answer
+	 *  comes back — a label that arrives a frame late steps the chip's width,
+	 *  which is the one thing a chip must not do. `null` only before the first
+	 *  answer ever, when there are no chips to label. */
+	shellName: string | null;
+	setShellName: (name: string) => void;
 	/** The shell ended itself — its chip goes. */
 	closeByTerminal: (terminalId: TerminalId) => void;
 	/** We killed it — the chip stays, dead, holding its cwd. */
@@ -80,6 +82,8 @@ export const useShellStore = create<ShellState>()(
 		(set) => ({
 			bySession: {},
 			activeBySession: {},
+			shellName: null,
+			setShellName: (name) => set({ shellName: name }),
 			open: (sessionId, projectId, cwd) => {
 				const tab: ShellTab = {
 					key: `${SHELL_KEY_PREFIX}${crypto.randomUUID()}`,
@@ -87,7 +91,6 @@ export const useShellStore = create<ShellState>()(
 					projectId,
 					cwd,
 					terminalId: null,
-					title: null,
 					dead: false,
 				};
 				set((s) => ({
@@ -103,12 +106,6 @@ export const useShellStore = create<ShellState>()(
 				set((s) => ({
 					bySession: mapTabs(s.bySession, (t) =>
 						t.key === key ? { ...t, terminalId, dead: false } : t,
-					),
-				})),
-			setTitle: (terminalId, title) =>
-				set((s) => ({
-					bySession: mapTabs(s.bySession, (t) =>
-						t.terminalId === terminalId ? { ...t, title } : t,
 					),
 				})),
 			markDead: (terminalId) =>
@@ -145,6 +142,7 @@ export const useShellStore = create<ShellState>()(
 			// back, the process does not, and a click brings one back in the same
 			// directory.
 			partialize: (s) => ({
+				shellName: s.shellName,
 				bySession: mapTabs(s.bySession, (t) => ({ ...t, terminalId: null, dead: true })),
 			}),
 		},

@@ -317,6 +317,7 @@ pub fn run() {
 			commands::terminal::terminal_list,
 			commands::terminal::shell_spawn,
 			commands::terminal::shell_kill_for_session,
+			commands::terminal::shell_name,
 			commands::terminal::app_quit_confirmed,
 		])
 		.run(tauri::generate_context!())

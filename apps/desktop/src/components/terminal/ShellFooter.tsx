@@ -34,6 +34,7 @@ export function ShellFooter({
 	const setActive = useShellStore((s) => s.setActive);
 	const tabs = useShellStore((s) => s.bySession[sessionId]);
 	const activeKey = useShellStore((s) => s.activeBySession[sessionId] ?? null);
+	const shellName = useShellStore((s) => s.shellName);
 
 	return (
 		<div
@@ -78,8 +79,11 @@ export function ShellFooter({
 				size="sm"
 				className="shrink-0 gap-1.5 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
 				// A shell with nowhere to run is refused by the backend anyway; not
-				// offering the button at all is the honest version of that.
-				disabled={!cwd}
+				// offering the button at all is the honest version of that. And a
+				// chip opened before `shell_name` has answered would be a chip with
+				// no label, whose width steps when the name lands — the answer
+				// arrives at boot, so this half is a guard nobody sees.
+				disabled={!cwd || !shellName}
 				onClick={() => cwd && open(sessionId, projectId, cwd)}
 			>
 				<Plus /> Terminal

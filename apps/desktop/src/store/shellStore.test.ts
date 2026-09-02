@@ -41,16 +41,16 @@ describe('setActive', () => {
 	});
 });
 
-describe('setTitle', () => {
+describe('shellName', () => {
 	beforeEach(reset);
 
-	it('labels by terminal id, and ignores a PTY nothing owns', () => {
+	it('is one value for every chip, not a field on any of them', () => {
+		useShellStore.getState().setShellName('fish');
 		const tab = useShellStore.getState().open('s1', 'p1', '/repo');
-		useShellStore.getState().attach(tab.key, 'pty-1');
-		useShellStore.getState().setTitle('pty-1', 'cargo test');
-		useShellStore.getState().setTitle('pty-other', 'not ours');
-		const [shell] = useShellStore.getState().bySession.s1 ?? [];
-		expect(shell?.title).toBe('cargo test');
+		expect(useShellStore.getState().shellName).toBe('fish');
+		// The label is not on the tab: a tab has a place and a process, and its
+		// name is the shell's, which is the same for all of them (F24).
+		expect('title' in tab).toBe(false);
 	});
 });
 
@@ -88,14 +88,12 @@ describe('the two ways a shell dies', () => {
 	it('keeps the chip, dead and holding its cwd, when we killed it', () => {
 		const tab = useShellStore.getState().open('s1', 'p1', '/repo');
 		useShellStore.getState().attach(tab.key, 'pty-1');
-		useShellStore.getState().setTitle('pty-1', 'zsh');
 		useShellStore.getState().markDead('pty-1');
 		const [shell] = useShellStore.getState().bySession.s1 ?? [];
 		expect(shell?.dead).toBe(true);
 		expect(shell?.terminalId).toBeNull();
-		// The cwd and the name are the whole point of keeping it.
+		// The cwd is the whole point of keeping it.
 		expect(shell?.cwd).toBe('/repo');
-		expect(shell?.title).toBe('zsh');
 	});
 
 	it('comes back to life on a respawn', () => {

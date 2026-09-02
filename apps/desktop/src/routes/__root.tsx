@@ -72,6 +72,15 @@ function RootLayout() {
 			// Nothing to surface: with no adopted terminals the app behaves exactly
 			// as it did before this call existed.
 			.catch((e) => console.error('terminal_list failed', e));
+		// What every shell chip is labelled (F23 as amended by F24). Asked once
+		// and persisted, so on every launch but the first the chips already have
+		// their name when they paint; this call is the refresh for a `$SHELL`
+		// that changed since. Nothing to surface on failure: the persisted name
+		// stands, and before there is one the strip's control stays disabled.
+		void cmd
+			.shellName()
+			.then((name) => useShellStore.getState().setShellName(name))
+			.catch((e) => console.error('shell_name failed', e));
 	}, []);
 
 	// **Tell the backend what is on screen** (F20). The IDE bridge answers two
@@ -160,7 +169,6 @@ function RootLayout() {
 	useEffect(() => {
 		let unStatus: (() => void) | undefined;
 		let unExit: (() => void) | undefined;
-		let unTitle: (() => void) | undefined;
 		events
 			.onTerminalStatus((e) => useTerminalStore.getState().setStatus(e.id, e.status))
 			.then((fn) => {
@@ -180,19 +188,9 @@ function RootLayout() {
 			.then((fn) => {
 				unExit = fn;
 			});
-		// A shell renaming itself, which is what labels its chip (F23). Global for
-		// the reason the two above are: a chip is drawn on a route that may not be
-		// mounted, and a title that only arrived while you were looking would leave
-		// every backgrounded shell wearing a stale name.
-		events
-			.onTerminalTitle((e) => useShellStore.getState().setTitle(e.id, e.title))
-			.then((fn) => {
-				unTitle = fn;
-			});
 		return () => {
 			unStatus?.();
 			unExit?.();
-			unTitle?.();
 		};
 	}, []);
 

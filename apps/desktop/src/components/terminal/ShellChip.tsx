@@ -1,18 +1,6 @@
 import { IconButton } from '@factorai/ui';
-import { X } from 'lucide-react';
-import type { ShellTab } from '@store/shellStore';
-
-/**
- * A chip's fixed width, in px (`specs/05-features.md` § F23).
- *
- * **Fixed, and that is the whole reason chips work here.** `DESIGN.md`'s Tab
- * Chips are bordered on every chip precisely so a chip does not change width as
- * you switch — and a chip labelled with a live `OSC 0` title would resize every
- * time the shell retitled itself, which most prompts do on every command. So the
- * label truncates into a constant box instead, and the strip stays still while
- * `cargo test` runs.
- */
-const CHIP_WIDTH = 120;
+import { SquareTerminal, X } from 'lucide-react';
+import { type ShellTab, useShellStore } from '@store/shellStore';
 
 /**
  * One shell in the footer's strip.
@@ -22,6 +10,13 @@ const CHIP_WIDTH = 120;
  * a chip whose process the app's quit killed keeps its border and drops to
  * muted text, reading like a stopped session tab. Clicking a dead chip spawns a
  * new shell in the directory the old one had.
+ *
+ * **Labelled with a terminal glyph and the shell's name, and never anything
+ * else** (`specs/05-features.md` § F23 as amended by F24). The first version
+ * read the shell's own `OSC 0` title — whatever the prompt theme decided — and
+ * fixed the chip at 120px so a retitle could not step it sideways. A static
+ * name needs no constant: the chip hugs `zsh`, and stays put because `zsh`
+ * does.
  */
 export function ShellChip({
 	tab,
@@ -35,7 +30,9 @@ export function ShellChip({
 	onSelect: () => void;
 	onClose: () => void;
 }) {
-	const label = chipLabel(tab);
+	// `shell` only before Rust has ever answered `shell_name`, which is before
+	// any chip can exist — the strip's control is disabled until it has.
+	const label = useShellStore((s) => s.shellName) ?? 'shell';
 	return (
 		<div
 			// `group` so the `×` can appear on a hover of the whole chip rather than
@@ -52,7 +49,6 @@ export function ShellChip({
 				// is what says the chip is still there to click.
 				tab.dead ? 'text-muted-foreground/60' : ''
 			}`}
-			style={{ width: CHIP_WIDTH }}
 		>
 			<button
 				type="button"
@@ -60,8 +56,9 @@ export function ShellChip({
 				aria-selected={active}
 				onClick={onSelect}
 				title={tab.dead ? `${label} — click to open a new shell here` : label}
-				className="min-w-0 flex-1 truncate text-left font-medium text-xs"
+				className="flex items-center gap-1.5 whitespace-nowrap font-medium text-xs"
 			>
+				<SquareTerminal className="size-3" />
 				{label}
 			</button>
 			{/* Always rendered, so the label's box never changes width when the
@@ -76,16 +73,4 @@ export function ShellChip({
 			</IconButton>
 		</div>
 	);
-}
-
-/**
- * What a chip says: the shell's own `OSC 0`, which Rust seeds with the shell's
- * basename at spawn so a chip is never nameless — see `spawn_shell`.
- *
- * A title is read from the same stream an agent's *status* comes from, and for
- * a shell it is a name; F23 and ADR-0031 hold why those are two readings of one
- * stream rather than one rule with an exception.
- */
-function chipLabel(tab: ShellTab): string {
-	return tab.title ?? 'shell';
 }

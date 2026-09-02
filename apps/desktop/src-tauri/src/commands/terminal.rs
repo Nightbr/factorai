@@ -58,6 +58,14 @@ pub fn shell_kill_for_session(state: State<'_, AppState>, session_id: String) ->
 	Ok(())
 }
 
+/// The basename of the shell `shell_spawn` runs — `zsh`, `bash`, `fish` — so a
+/// chip can be labelled before its process exists and after it is gone (F23 as
+/// amended by F24). One value per app: `$SHELL`, else `/bin/zsh`.
+#[tauri::command]
+pub fn shell_name() -> String {
+	crate::services::shell_path::shell_name()
+}
+
 #[tauri::command]
 pub fn terminal_write(state: State<'_, AppState>, id: String, data: String) -> AppResult<()> {
 	state.terminals.write(&id, data.as_bytes())

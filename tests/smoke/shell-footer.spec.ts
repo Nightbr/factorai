@@ -40,6 +40,9 @@ test.describe('shell footer', () => {
 		const chip = page.getByTestId('shell-footer').getByRole('tab');
 		await expect(page.getByTestId('shell-pane')).toBeVisible();
 		await expect(chip).toHaveCount(1);
+		// The label is the shell's name and nothing the shell prints (F24): the
+		// mock bridge answers `shell_name` with `zsh`, and the chip says so.
+		await expect(chip).toHaveText('zsh');
 
 		await chip.click();
 		// The pane is gone and the chip is not: collapsing leaves the shell

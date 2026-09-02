@@ -36,7 +36,6 @@ import type {
 	TerminalId,
 	TerminalStatusDto,
 	TerminalStatusEvent,
-	TerminalTitleEvent,
 	UiSnapshot,
 	SidebarOrder,
 	SidebarRow,
@@ -267,6 +266,9 @@ export const cmd = {
 	/** Kill every shell in one session's footer. Called when that session is
 	 *  closed; the agent is killed by `terminalKill` as it always was. */
 	shellKillForSession: (sessionId: string) => invoke<void>('shell_kill_for_session', { sessionId }),
+	/** The basename of the shell `shellSpawn` runs, which is what labels every
+	 *  chip (F23 as amended by F24). One value per app, asked once at boot. */
+	shellName: () => invoke<string>('shell_name'),
 	appQuitConfirmed: () => invoke<void>('app_quit_confirmed'),
 };
 
@@ -437,9 +439,6 @@ export const events = {
 		listen<TerminalStatusEvent>('terminal:status', cb),
 	onTerminalExit: (cb: (p: TerminalExitEvent) => void) =>
 		listen<TerminalExitEvent>('terminal:exit', cb),
-	/** A shell renamed itself, which is what its chip is labelled with (F23). */
-	onTerminalTitle: (cb: (p: TerminalTitleEvent) => void) =>
-		listen<TerminalTitleEvent>('terminal:title', cb),
 	onQuitRequested: (cb: (p: QuitRequestedEvent) => void) =>
 		listen<QuitRequestedEvent>('app:quit-requested', cb),
 	/** The agent asked to show a file, through the IDE bridge (F20). */
@@ -1113,6 +1112,8 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return (fx?.terminalSpawnId ?? 'mock-terminal-id') as unknown as T;
 		case 'shell_spawn':
 			return (fx?.shellSpawnId ?? 'mock-shell-id') as unknown as T;
+		case 'shell_name':
+			return 'zsh' as unknown as T;
 		case 'terminal_write':
 		case 'terminal_resize':
 		case 'terminal_kill':

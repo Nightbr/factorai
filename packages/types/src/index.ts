@@ -251,10 +251,6 @@ export interface TerminalStatusDto {
 	status: TerminalStatus;
 	lastActivity: number;
 	kind: TerminalKind;
-	/** The last title a shell set for itself, so a reload can label its chip
-	 *  without waiting for the next one. Always null for an agent, whose titles
-	 *  are a status rather than a name. */
-	title: string | null;
 	/** Where this terminal is running. A shell chip that outlives its process
 	 *  respawns here (F23). */
 	cwd: string;
@@ -548,18 +544,6 @@ export interface TerminalExitEvent {
 	 *  exit code cannot tell them apart, and on the quit path this renderer may
 	 *  not live long enough to reason about it. */
 	killed: boolean;
-}
-
-/**
- * The title a **shell** terminal set for itself, which is what labels its chip
- * (F23). Mirrors `services::terminal::TerminalTitleEvent`.
- *
- * Never emitted for an agent: there the same `OSC 0` decides a status instead
- * (F10, ADR-0015), and Claude's title is a spinner frame rather than a name.
- */
-export interface TerminalTitleEvent {
-	id: TerminalId;
-	title: string;
 }
 
 // ── Git (F13) ──────────────────────────────────────────────────────────────

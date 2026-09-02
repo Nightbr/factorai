@@ -63,27 +63,14 @@ impl TitleScanner {
 		self.scan(bytes, classify)
 	}
 
-	/// The **text** of the last complete title in the chunk, for a terminal
-	/// whose title names it rather than describing its state.
-	///
-	/// A shell terminal's chip is labelled from this (`specs/05-features.md`
-	/// § F23). Deliberately a second entry point rather than a flag on
-	/// [`push`]: the two callers want different things out of the same bytes,
-	/// and only one of them may touch a session's status — a shell sets its own
-	/// title, so classifying one would report the user's prompt as Claude
-	/// working (F10, ADR-0015).
-	pub fn push_title(&mut self, bytes: &[u8]) -> Option<String> {
-		self.scan(bytes, |payload| {
-			let text = String::from_utf8_lossy(payload).trim().to_string();
-			(!text.is_empty()).then_some(text)
-		})
-	}
-
 	/// Walk the chunk, hand every complete `OSC 0`/`OSC 2` payload to `pick`,
 	/// and answer with the last one it accepted.
 	///
-	/// Generic over `pick` so both entry points share one scan: the carry
-	/// handling is the delicate part and having it once is the point.
+	/// Generic over `pick` rather than hard-wired to `classify`: F23's first
+	/// version had a second entry point here that read a title's *text* to
+	/// label a shell's chip, and the carry handling — the delicate part — was
+	/// shared. F24 removed that reader; the shape stays so the next one shares
+	/// it too.
 	fn scan<T>(&mut self, bytes: &[u8], pick: impl Fn(&[u8]) -> Option<T>) -> Option<T> {
 		// Work over carry + new bytes so a sequence split across reads is seen
 		// whole. The common case is an empty carry and no copy.
