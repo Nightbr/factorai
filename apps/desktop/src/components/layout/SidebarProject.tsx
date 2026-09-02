@@ -107,6 +107,20 @@ export function orderSessions(
 }
 
 /**
+ * How many top-level sessions the cap left out — the number the `N more…` link
+ * says (F2).
+ *
+ * Counted against the top-level rows, not the raw response. `orderSessions`
+ * drops sub-agents because they are not sessions you can go back into, so
+ * subtracting its length from the whole response counted every sub-agent as a
+ * hidden row: a project with four sessions and one sub-agent said `1 more…`,
+ * and the link led to a page that listed the same four.
+ */
+export function countHidden(sessions: SessionSummary[], shown: number): number {
+	return sessions.filter((s) => s.subagentOf === null).length - shown;
+}
+
+/**
  * Sub-agents per parent session id.
  *
  * Pure and exported for the reason `orderSessions` is: the delete dialog names
@@ -606,7 +620,7 @@ function SessionList({ project }: { project: Project }) {
 	if (sessionsQ.isPending) return <Row muted>Loading…</Row>;
 	if (sessions.length === 0 && pending.length === 0) return <Row muted>No sessions yet</Row>;
 
-	const hidden = (sessionsQ.data?.length ?? 0) - sessions.length;
+	const hidden = countHidden(sessionsQ.data ?? [], sessions.length);
 
 	return (
 		<ul className="mb-1" data-testid={`sidebar-sessions-${project.id}`}>

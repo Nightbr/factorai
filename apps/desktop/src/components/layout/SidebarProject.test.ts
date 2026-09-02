@@ -1,5 +1,6 @@
 import {
 	SIDEBAR_SESSION_LIMIT,
+	countHidden,
 	countSubagents,
 	orderSessions,
 } from '@components/layout/SidebarProject';
@@ -210,5 +211,44 @@ describe('countSubagents', () => {
 		expect(countSubagents([session('agent-1', 100, 'deleted-parent')])).toEqual({
 			'deleted-parent': 1,
 		});
+	});
+});
+
+describe('countHidden', () => {
+	it('counts the top-level sessions the cap left out', () => {
+		const many = Array.from({ length: SIDEBAR_SESSION_LIMIT + 3 }, (_, i) => session(`s${i}`, i));
+
+		const shown = orderSessions(many, {});
+
+		expect(countHidden(many, shown.length)).toBe(3);
+	});
+
+	it('does not count sub-agents as hidden rows', () => {
+		// Four sessions and one sub-agent fit the cap with room to spare. The
+		// sidebar said "1 more…" here, and the link led to a page listing the
+		// same four — the agent only appears nested under its parent.
+		const few = [
+			session('a', 1),
+			session('b', 2),
+			session('c', 3),
+			session('d', 4, null, true),
+			session('agent-1', 5, 'a'),
+		];
+
+		const shown = orderSessions(few, {});
+
+		expect(shown).toHaveLength(4);
+		expect(countHidden(few, shown.length)).toBe(0);
+	});
+
+	it('leaves sub-agents out of the count even when real sessions overflow', () => {
+		const many = [
+			...Array.from({ length: SIDEBAR_SESSION_LIMIT + 2 }, (_, i) => session(`s${i}`, i)),
+			...Array.from({ length: 5 }, (_, i) => session(`agent-${i}`, 900 + i, 's0')),
+		];
+
+		const shown = orderSessions(many, {});
+
+		expect(countHidden(many, shown.length)).toBe(2);
 	});
 });

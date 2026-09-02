@@ -421,7 +421,10 @@ first**, then anything with a live PTY, then most-recently-active. Running-first
 is the point of the second key — what an agent is doing *now* matters more than
 what you touched last, so a live session stays above an idle one even when it is
 the stalest by timestamp. Anything beyond the ten is an `N more…` link to the
-project page, rather than an unbounded list in a narrow column.
+project page, rather than an unbounded list in a narrow column. `N` counts
+top-level sessions only: sub-agents are not in the sidebar's list, so they are
+not in its count either — four sessions and one sub-agent is four rows and no
+link, not four rows and `1 more…`.
 
 **Pinned rows are never what the cap drops.** The ten slots cap the *unpinned*
 remainder, so a project with twelve pins lists twelve rows — the user's own
