@@ -4497,14 +4497,18 @@ not that session, which is the whole of ADR-0031.
     borrowed from the Session Tabs signature.
   - A **dead** chip — one whose process was killed by the app quitting — keeps
     its border and drops to muted text, reading like a stopped session tab.
-  - **Fixed width, ~120px, the label truncating into it** with the full text on
-    hover. Chips were chosen partly because they do not change width as you
-    switch, and a chip labelled with a live `OSC 0` title would resize every
-    time the title changed. The fixed width is what keeps the reason true.
-- **A chip is labelled from the shell's own `OSC 0`/`OSC 2` title**, falling
-  back to the shell's basename. Most prompts set the title to the cwd or the
-  running command, so a chip reads `cargo test` while one runs. Reading the
-  title for a *name* is not F10 reading it for a *status* — see below.
+  - **Content-sized** (amended 2026-09-02, F24). Chips were chosen partly
+    because they do not change width as you switch, and the first version fixed
+    them at 120px because a chip labelled with a live `OSC 0` title would have
+    resized every time the title changed. The label is now static, so the box
+    hugs it and the property holds without the constant.
+- **A chip is labelled with a terminal glyph and the shell's basename** —
+  `zsh`, `bash`, `fish` — and never changes (amended 2026-09-02, F24; user
+  feedback). The first version labelled a chip from the shell's own `OSC 0`
+  title, which is whatever the prompt theme decided: oh-my-zsh writes the cwd,
+  starship writes nothing, one stray `printf` overwrites it. A name a theme
+  decides is not a name. The glyph is lucide's `SquareTerminal`, the look VS
+  Code's terminal list has; the basename comes from `shell_name`, asked once.
 
 **Where it appears.** Live session views only. Not the project page, and not a
 sub-agent transcript: F3 gives that view no terminal and no process, and a
@@ -4545,11 +4549,13 @@ focus — F12 refused `Ctrl+B` on the same reasoning — so switching panes and
 chips is by click, and roadmap item 5 is where a set of bindings gets decided at
 once. The strip's controls stay reachable by `Tab`.
 
-**Backend.** `shell_spawn(opts)` and `shell_kill_for_session(sessionId)`.
-Writing, resizing, killing and `terminal:data` are the existing commands and the
-existing event, which are keyed by terminal id and need no shell-specific twin.
-A new `terminal:title` event carries a shell's title; it is never emitted for an
-agent.
+**Backend.** `shell_spawn(opts)`, `shell_kill_for_session(sessionId)` and
+`shell_name()`, which answers the basename of the shell `shell_spawn` would run
+so a chip can be labelled before its process exists. Writing, resizing, killing
+and `terminal:data` are the existing commands and the existing event, which are
+keyed by terminal id and need no shell-specific twin. There is no title event:
+the first version had `terminal:title`, and F24 removed it with the `OSC 0`
+label.
 
 - **argv is bare `$SHELL`** — a PTY with no arguments is already an interactive
   shell, so `~/.zshrc` is sourced the way it is in any terminal emulator.
@@ -4568,11 +4574,11 @@ agent.
   session's transcript", which for a shell is a question about a different
   process that happens to share its id.
 
-**One stream, two readings of the same `OSC 0`.** For an agent the title is
-Claude's state (F10, ADR-0015); for a shell it is a name. A shell that titles
-itself with the CLI's own idle marker — one stray `printf` does it — must label
-its chip and leave the session's status alone, and
-`a_shells_title_names_it_and_never_moves_a_status` is the test that says so.
+**One stream, and a shell's `OSC 0` is not read at all.** For an agent the
+title is Claude's state (F10, ADR-0015); for a shell it is noise — most prompts
+write one on every command. A shell that titles itself with the CLI's own idle
+marker — one stray `printf` does it — must leave the session's status alone,
+and `a_shells_title_never_moves_a_status` is the test that says so.
 
 **A shell's host does leave the document, unlike an agent's.** The agent's pane
 is shared across a tab switch, so its pooled hosts stay connected and keep their
@@ -4600,4 +4606,143 @@ the same way, so the guard is on the shared path rather than on this one.
   starting in `$HOME`, which is the rule `spawn_refuses_a_cwd_that_does_not_exist`
   already enforces for agents.
 
-**Roadmap.** Item 47.
+**Roadmap.** Item 47. The static label and the splits: F24, item 49.
+
+## F24 — Splits in the footer shell
+
+**Behavior.** A chip in the session's shell footer (F23) can hold up to **five**
+shells side by side. The chip keeps every meaning F23 gave it — one click
+switches to it, a click on the active chip collapses the split, a dead chip
+respawns — and a *split* happens inside the active chip. This is the model
+iTerm2 and VS Code share: a tab is a layout, a pane is a process.
+
+Asked for on 2026-09-02, the day after F23 shipped, as "up to five terminals
+stacked horizontally on the panel". The UX was decided the same day in an
+interview over three drawn models — the roadmap entry links the mockup — and
+the two that lost are recorded under "Alternatives considered" so they are not
+re-proposed.
+
+**Vocabulary.** A **chip** is what the footer strip shows, and is now a *group*.
+A **pane** is one shell: one PTY, one pooled xterm, one cwd. A chip holds one to
+five panes in a **row**. Everything F23 says about "a shell" — spawned in the
+session's checkout, killed with the session, outside the quit guard, `exit`
+removes it — is true of a pane.
+
+**UI.**
+
+- **A second labelled control in the strip: `Split`**, a `quiet` `Button` to the
+  right of `+ Terminal`, same shape, lucide `Columns2` glyph. It adds a pane to
+  the *active* chip. It is **disabled, with the reason in its tooltip**, when
+  there is no active chip ("Select a shell to split it"), when the chip already
+  holds five ("Five panes is the most a chip holds"), or when the row has no
+  room for another pane at the minimum width ("No room for another pane"). The
+  gesture lives in the strip and not on the pane because F23's reason for the
+  strip applies: a control revealed on hover cannot be found by somebody who
+  does not already know the feature exists. `+ Terminal` is unchanged and still
+  opens a new one-pane chip.
+- **A new pane is appended at the right, and every pane goes back to an equal
+  width.** The gesture is a strip button that belongs to no pane, so "split the
+  focused pane in half" would put the new pane somewhere the click did not
+  point at. A width you dragged is lost on a split; that is the cost.
+- **Dividers.** A 4px `PanelResizer` between panes — the existing component on
+  its `left`/`right` edge, so ←/→ move it by keyboard for free — with a
+  **double-click that equalises** the row. Widths are **fractions of the row,
+  held in memory per chip and not persisted**: a row that comes back after a
+  relaunch comes back with fresh processes and comes back equal. If they are
+  ever persisted they are layout, not a preference (ADR-0013).
+- **Minimum pane width is 160px**, about twenty columns; below that a terminal
+  wraps every line it prints. The cap is therefore **five, or what fits,
+  whichever is lower**: the strip disables `Split` early rather than making a
+  pane nobody can read, and a drag cannot take a pane under the minimum.
+  Nothing scrolls sideways.
+- **No pane header.** Panes keep their full height; the 22px a header would
+  cost is the shell's, and at one pane it would repeat the chip. At **two or
+  more panes, hovering a pane shows a single `×` in its top-right corner** — an
+  `IconButton` on a `bg-card` square so it reads over any terminal content,
+  `invisible` until hover or `focus-within`. At one pane the chip's `×` is the
+  close and the corner control is not drawn.
+- **Focus is a 1px amber line on the focused pane's top edge**, drawn only
+  while a shell has DOM focus (`:focus-within` on the pane's wrapper). When the
+  agent has focus, no pane is marked. Amber is right here and not a spend: the
+  focus ring is one of the four uses `DESIGN.md` § "The One Amber Rule" grants
+  it. Clicking anywhere in a pane focuses it; there is no other way in v1.
+- **The chip reads the terminal glyph, the shell's name and, at two or more
+  panes, a columns glyph with the count.** The name is static (F23, amended),
+  so the chip's width never steps. The tooltip says `zsh · 3 panes`.
+- **Direction is horizontal only.** No vertical stacking and no nesting: a
+  vertical split would take height from the agent, which is the pane that
+  matters on this screen, and a tree of splits is a tmux, not a footer.
+- **No keyboard chord and no reordering in v1.** F23's rule that every plain
+  key belongs to the focused terminal stands; focus moves by click; the `×`s,
+  dividers and chips stay reachable by `Tab`. Bindings land with roadmap item 5.
+  Order is creation order; a dnd-kit reorder with a keyboard path (ADR-0016) is
+  a follow-up if it is missed.
+
+**Lifecycle.**
+
+- **A new pane starts where a new chip does**: the session's checkout when it
+  has one (F21), the project root otherwise. A shell's live cwd is not tracked,
+  so "split with the focused pane's directory" is not offered; `OSC 7` would
+  make it possible later without changing the UI.
+- **Closing a pane kills its process.** The corner `×`, and `exit`, remove the
+  pane; the remaining panes re-equalise; focus moves to the pane that was to
+  its left, or the first. Closing the last pane closes the chip. **Closing a
+  chip kills every pane in it.** F23 left the chip's `×` dropping the chip from
+  the store and nothing else, which leaked the PTY until the session closed;
+  F24 makes both `×`s call `terminal_kill` on what they close, with the
+  no-dialog trade ADR-0031 records: a chip's `×` on a three-pane chip kills
+  three shells without asking.
+- **A dead chip is a dead group.** The app quitting kills every pane; the chip
+  comes back collapsed, holding one cwd per pane, and **one click respawns every
+  pane at once**, in the same order and at equal widths. The group is what the
+  user built; half of it is not it. Pane keys persist and terminal ids do not,
+  the rule F23 already follows.
+- **Switching chips detaches the previous chip's hosts**, which F23 already
+  accepts for the collapse: a pane's xterm is a pooled terminal keyed by the
+  pane's key, each in its own host, and a chip's panes leave the document when
+  the chip is not active.
+
+**Backend.** Nothing new for the split itself: a pane is a `shell_spawn`, a
+kill is `terminal_kill`, and `shell_kill_for_session` still kills every pane in
+a session because every pane carries the session id (ADR-0031). The one new
+command is `shell_name() -> String`, the basename of the shell `shell_spawn`
+runs, so a chip is labelled before its process exists and after it is gone.
+**Removed with the static label**: the `terminal:title` event, the
+`TerminalTitleEvent` type, `TitleScanner::push_title`, and the `title` field
+on `TerminalStatusDto`. A shell's `OSC 0` is now read by nobody; the test that
+a shell's title never moves a status keeps that half.
+
+**Store.** `ShellTab` becomes a group — `key` (`chip:<uuid>`), `sessionId`,
+`projectId`, `shell`, `panes`, `focus` — and a pane is `key` (`shell:<uuid>`),
+`cwd`, `terminalId`, `dead`. The xterm pool is keyed by pane keys; chip keys
+have their own prefix so the two can never be confused. `factorai.shells` goes
+to **version 2** with a migration: a v1 tab becomes a one-pane chip whose pane
+keeps the v1 key, so nothing a user had is lost. Widths live in a non-persisted
+map keyed by chip.
+
+**Edge cases.**
+- The window narrows under a five-pane row → panes shrink to the minimum and
+  the row clips at the right rather than scrolling; widen the window or close a
+  pane. `Split` is disabled meanwhile.
+- A pane's spawn fails → the error prints in that pane, as F23 does; the other
+  panes are unaffected.
+- A pane's spawn races its chip's close → each pane's pooled terminal carries
+  the `disposed` flag F23 added, checked after every await. Nothing new.
+
+**Alternatives considered** (2026-09-02, drawn and rejected).
+- **Chips are panes, and every chip is on screen.** The literal reading:
+  `+ Terminal` adds a pane to the row, five shells per session total, chip
+  click means focus, collapse becomes its own control. Rejected because it has
+  no background shell — a long build either takes a column or the whole row is
+  collapsed — and because every new shell narrows the ones you were reading.
+- **Pin chips into the row.** Chips as F23 has them, with a pin that adds one
+  to a visible set. Rejected because it makes two kinds of chip told apart by a
+  hidden glyph, and because what clicking an unpinned chip does depends on how
+  many are pinned.
+- **A pane header** carrying title and `×`. Rejected once the label became
+  static: a header saying `zsh` on every pane repeats the chip and costs 22px.
+- **`OSC 0` for a pane's name.** F23's first rule. Rejected as a name a prompt
+  theme decides. The foreground command via `tcgetpgrp`, which ADR-0031 names,
+  is the honest upgrade if names are wanted later, and it changes no UI.
+
+**Roadmap.** Item 49.

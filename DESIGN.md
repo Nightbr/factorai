@@ -625,19 +625,21 @@ others. The border is on all of them because a chip that only becomes a box when
 selected changes width as you switch, and its label steps sideways. Bare text tabs were tried
 first and read as a heading, because the row sits directly under one.
 
-**The session footer's shells are chips too, at a fixed width** (F23). Same
-12px label, same `rounded-md`, same border on every chip — plus a `×` inside the
-chip, `invisible` until hover or `focus-within`, its space always reserved so
-the label's box does not move when the pointer arrives. No chip elsewhere in the
-app closes; the affordance is the Session Tabs signature's, borrowed rather than
-invented.
+**The session footer's shells are chips too** (F23, F24). Same 12px label,
+same `rounded-md`, same border on every chip — plus a `SquareTerminal` glyph
+before the label, a `×` inside the chip, `invisible` until hover or
+`focus-within`, its space always reserved so the label's box does not move when
+the pointer arrives, and at two or more panes a columns glyph with the count. No
+chip elsewhere in the app closes; the affordance is the Session Tabs
+signature's, borrowed rather than invented.
 
-The width is **fixed at 120px and the label truncates into it**, which is the
-part worth keeping. A shell chip is labelled from the terminal's own `OSC 0`
-title, and most prompts rewrite that on every command — so a chip sized to its
-label would resize whenever a build started, which is exactly the stepping-
-sideways this section chose chips to avoid. A constant box keeps the property;
-the full title is on hover.
+The label is **static — the shell's basename, `zsh` — and the chip hugs it.**
+The first version fixed the width at 120px because the label was the terminal's
+own `OSC 0` title, which most prompts rewrite on every command, and a chip sized
+to that label would have resized whenever a build started — the stepping-
+sideways this section chose chips to avoid. A name that never changes keeps the
+property without the constant, and 50px of empty box behind `zsh` was the
+constant's whole cost.
 
 ### Empty Hero
 

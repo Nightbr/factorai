@@ -16,7 +16,7 @@ commands/
   sessions.rs         # list_sessions, get_session_tail, search_sessions,
                       #   session_transcript_path, set_session_pinned,
                       #   delete_session
-  terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill, shell_spawn
+  terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill, shell_spawn, shell_name
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds,
                       #   watch_file, unwatch_file
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
@@ -240,6 +240,10 @@ shell_spawn(opts: ShellSpawnOpts) -> TerminalId  // session_id, project_id, cwd,
 // A shell's whole lifetime is the footer it is drawn in. The agent is killed by
 // the caller's own `terminal_kill`, on the id it already holds.
 shell_kill_for_session(session_id: String) -> ()
+// The basename of the shell `shell_spawn` runs — `zsh`, `bash`, `fish` — so a
+// chip can be labelled before its process exists and after it is gone (F23 as
+// amended by F24). One value per app: `$SHELL`, else `/bin/zsh`.
+shell_name() -> String
 // Probes for the claude binary so the UI can explain a missing CLI rather than
 // failing at spawn time. Honours the F11 override, so this and the spawn path
 // can never name different binaries — which is why it lives in `settings.rs`
@@ -319,7 +323,6 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `terminal:data`        | `{ id, bytes: base64 }`              | TerminalManager     |
 | `terminal:status`      | `{ id, status, lastActivity }`       | TerminalManager     |
 | `terminal:exit`        | `{ id, code, killed }`               | TerminalManager     |
-| `terminal:title`       | `{ id, title }`                      | TerminalManager (F23, shells only) |
 | `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
 | `routine:fire`         | `{ routineId, routineName, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |
 | `routines:changed`     | `{ projectId }`                      | routines service (F22 slice 3) |
@@ -409,11 +412,12 @@ Owns the `DashMap<TerminalId, Terminal>`. On `terminal_spawn`:
 runs bare `$SHELL` through the same `spawn_inner`, so the cwd refusal, the
 `child_env` diff, the reader and the waiter are shared — and skips steps 1, 2
 and the bridge entirely. The handle carries a `kind`, and three passes filter on
-it: `next_session_id`, `live_session_ids` and `working_count`. A shell's title
-is emitted as `terminal:title` for its chip instead of being classified as a
-status, because a shell sets titles too and classifying one would report the
-user's prompt as Claude working. `shell_kill_for_session` is the whole of a
-shell's lifetime rule.
+it: `next_session_id`, `live_session_ids` and `working_count`. A shell's `OSC 0`
+is read by nobody: it is not classified as a status, because a shell sets titles
+too and classifying one would report the user's prompt as Claude working, and
+since F24 it is not a name either — the chip is labelled with the shell's
+basename from `shell_name`. `shell_kill_for_session` is the whole of a shell's
+lifetime rule.
 
 5. **Status is parsed out of that same byte stream, not polled.** The reader
    scans each chunk for `OSC 0` titles and derives `working` / `waiting_input`
