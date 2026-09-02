@@ -101,16 +101,19 @@ export function ShellFooter({
 			    outweighs the chips beside it. No `aria-label`: the visible word is
 			    the accessible name.
 
-			    **`size-3` on the glyph, matching the 12px label, and lifted 1px.**
-			    The scale's 3.5 is sized for a 14px label. And centring is not
-			    alignment: the flex line centres the glyph's box against the text's
-			    line box, whose baseline sits below its centre — measured in the
-			    running app, the `+`'s bar landed at y=935.5 against the word's
-			    optical centre of 934. The pixel is that difference, not a taste. */}
+			    **`size-3` on the glyph, matching the 12px label, and not lifted.**
+			    The scale's 3.5 is sized for a 14px label. F23 lifted the `+` by a
+			    pixel from a measurement of it alone; once `Split` put a second
+			    glyph beside a second word (F24) both read high, and measuring the
+			    line box against the font's metrics said why: with a 12px face on a
+			    16px line the flex centre already sits 0.3px above the cap centre,
+			    so the lift moved the glyph 1.3px above the letters it belongs to.
+			    The chip's glyphs never had the lift, and they were the ones that
+			    read right. */}
 			<Button
 				variant="quiet"
 				size="sm"
-				className="shrink-0 gap-1.5 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
+				className="shrink-0 gap-1.5 font-normal text-xs [&_svg]:size-3"
 				disabled={!canOpen}
 				onClick={() => cwd && open(sessionId, projectId, cwd)}
 			>
@@ -124,7 +127,7 @@ export function ShellFooter({
 				<Button
 					variant="quiet"
 					size="sm"
-					className="gap-1.5 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
+					className="gap-1.5 font-normal text-xs [&_svg]:size-3"
 					disabled={!canOpen || splitReason !== null}
 					onClick={() => active && cwd && split(active.key, cwd)}
 				>
