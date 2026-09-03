@@ -1,8 +1,9 @@
 import { Dialog, DialogClose, DialogContent, DialogTitle, IconButton } from '@factorai/ui';
-import { Check, Copy, ExternalLink, X } from 'lucide-react';
+import { Check, Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import type { DiffMode, ViewerPosition } from '@hooks/useFileViewer';
-import { openExternally } from '@lib/tauri';
+import { isMacOS } from '@lib/platform';
+import { cmd, openExternally } from '@lib/tauri';
 
 // Monaco is the heaviest thing in the app, and the viewer is the only thing
 // that needs it. Lazy-loading keeps it out of the initial bundle: the chunk is
@@ -48,15 +49,35 @@ export function FileViewerModal({
 	onOpenPath,
 }: FileViewerModalProps) {
 	const [copied, setCopied] = useState(false);
+	const [revealFailed, setRevealFailed] = useState(false);
 
 	if (!path) return null;
 	const { name, parent } = splitPath(path);
+	// The platform's own name for this, because a control labelled something
+	// other than the menu item a reader already knows is a control they have to
+	// read twice. See `lib/platform` for why the sniff is reliable in a webview.
+	const revealTarget = isMacOS() ? 'Finder' : 'file manager';
+	const revealLabel = revealFailed ? 'Reveal failed' : `Reveal in ${revealTarget}`;
 
 	async function copyPath() {
 		if (!path) return;
 		await navigator.clipboard.writeText(path);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1200);
+	}
+
+	async function reveal() {
+		if (!path) return;
+		try {
+			await cmd.revealInFileManager(path);
+		} catch {
+			// Say so rather than doing nothing visible, the same call
+			// `ImageView`'s copy button makes: the two ways this fails are a file
+			// deleted while it was on screen and a desktop with no file manager
+			// at all, and neither is distinguishable from a dead button.
+			setRevealFailed(true);
+			setTimeout(() => setRevealFailed(false), 1400);
+		}
 	}
 
 	return (
@@ -86,6 +107,14 @@ export function FileViewerModal({
 						onClick={() => void copyPath()}
 					>
 						{copied ? <Check className="text-primary" /> : <Copy />}
+					</IconButton>
+					<IconButton
+						size="md"
+						aria-label={revealLabel}
+						title={revealLabel}
+						onClick={() => void reveal()}
+					>
+						<FolderOpen className={revealFailed ? 'text-destructive' : undefined} />
 					</IconButton>
 					<IconButton
 						size="md"

@@ -1050,10 +1050,26 @@ written self-contained and modal-agnostic, and `FileViewerModal` is just its
 first host.
 
 - Header: file name, dimmed parent directory, then copy-path,
-  open-in-default-app and close — all three **in flow on one row**.
-  `DialogContent` takes `hideClose` for this: its built-in close button is
-  absolutely positioned at `right-4 top-4` and can never share a baseline
-  with a dialog's own toolbar.
+  reveal-in-file-manager, open-in-default-app and close — all four **in flow
+  on one row**. `DialogContent` takes `hideClose` for this: its built-in close
+  button is absolutely positioned at `right-4 top-4` and can never share a
+  baseline with a dialog's own toolbar.
+- **Reveal is a different question from Open in default app**, which is why it
+  is a second control and not a rename of the first. Open hands the file to
+  whatever application owns its type; reveal answers *where does this live* —
+  and only usefully if the file itself is **selected**, so the reader is not
+  left finding the row again in a directory of two hundred.
+  `reveal_in_file_manager` (specs/03-backend-rust.md § `reveal`, ADR-0033) does
+  the selecting; the label takes the platform's own name for the thing,
+  "Reveal in Finder" on macOS and "Reveal in file manager" elsewhere, because a
+  control named something other than the menu item a reader already knows is
+  one they have to read twice.
+- **A failed reveal says so on the button** — the label becomes "Reveal
+  failed" and the icon takes the destructive colour for 1.4s, the idiom
+  `ImageView`'s copy button already uses. The two ways it fails are a file
+  deleted while it was on screen and a desktop with no file manager at all,
+  and neither is distinguishable from a dead button. There is still no toast
+  (roadmap item 7).
 - Footer: language · size · line count · `read-only`, plus the markdown
   toggle when relevant.
 - Monaco config: line numbers on, minimap **off** (noise at modal width),

@@ -145,6 +145,12 @@ export const cmd = {
 	 *  order given. Never rejects: everything that isn't an openable path comes
 	 *  back `missing`. */
 	pathKinds: (paths: string[]) => invoke<PathKind[]>('path_kinds', { paths }),
+	/** Show a path in the desktop's file manager with the file **selected**
+	 *  (F7, ADR-0033). Not `openExternally`, which hands the file to the
+	 *  application that owns its type; this answers where it lives. Rejects on
+	 *  a path that has gone, and on a desktop with no `FileManager1` it falls
+	 *  back to opening the parent folder without the selection. */
+	revealInFileManager: (path: string) => invoke<void>('reveal_in_file_manager', { path }),
 	/** Watch the file the viewer just opened, so an edit made while it is on
 	 *  screen arrives as `file:changed` (F7). One watch at a time: this replaces
 	 *  whatever was being watched, and the *directory* is what is watched, so an
@@ -887,6 +893,12 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		// No filesystem to watch in the browser. The call is still recorded, so a
 		// spec can assert the viewer subscribes on open and releases on close, and
 		// `__FACTORAI_EMIT__('file:changed', …)` stands in for the watch firing.
+		case 'reveal_in_file_manager':
+			// There is no file manager to reach from a browser tab. Resolving
+			// rather than rejecting keeps a smoke test able to click the button
+			// and assert the path that was asked for, which is this button's whole
+			// renderer-side contract.
+			return undefined as unknown as T;
 		case 'watch_file':
 			return undefined as unknown as T;
 		case 'unwatch_file':

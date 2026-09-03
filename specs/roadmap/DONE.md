@@ -3,6 +3,49 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Reveal in file manager, from the viewer's header (TODO item 51, spec `05-features.md` F7 and
+  `03-backend-rust.md` § `reveal`, ADR-0033)** — 2026-09-03, user ask, shipped the same day. The
+  viewer could hand a file to the application that owns its type and it could copy the path. It
+  could not answer the third question a reader has about a file on screen — *where does this
+  live* — the one you ask before dragging it somewhere or looking at what sits beside it.
+
+  **The selection is the feature, not the folder.** Pointing the existing "Open in default app" at
+  `path.parent()` would have been one line and would have left the reader finding the row again in
+  a directory of two hundred. So it is `open -R` on macOS and
+  `org.freedesktop.FileManager1.ShowItems` on Linux — the freedesktop interface Nautilus, Dolphin,
+  Nemo, Thunar and PCManFM all implement, and the only one of the obvious three that selects.
+  `xdg-open` on the parent is the fallback for a desktop without it, and it is a fallback
+  precisely because it loses the selection.
+
+  **`--print-reply` is load-bearing and its output is thrown away.** Without it the call goes out
+  with no reply expected, the bus answers a missing `FileManager1` to nobody, `dbus-send` exits 0,
+  and the fallback would never have run on the desktops that need it. `--reply-timeout=3000` is
+  what keeps that wait bounded: the name is bus-activatable, so a cold file manager is a process
+  start.
+
+  **Not `tauri-plugin-opener`, and the reason is `child_env`.** Every arm of this starts a GTK
+  application — `xdg-open` by exec'ing one, `dbus-send` by activating one on the bus — and handing
+  one our own environment is the AppImage failure `child_env` was written for: `LD_LIBRARY_PATH`
+  into a squashfs mount holding *our* WebKitGTK, which a file manager that loads it cannot find
+  helper processes for. A plugin's child inherits our environment with no seam for that diff.
+  `EnvChanges::apply_to_command` is the `std::process::Command` half of the type the terminal
+  already applies to a PTY builder, so `child_env` now has a second consumer and the same tests
+  cover both. ADR-0033 records the trade, including when the plugin becomes the better one.
+
+  **Validating the path here is what lets the button speak.** A file manager handed a path that
+  has gone opens the user's home directory on some desktops and does nothing on others, and
+  "nothing happened" is the one outcome a reader cannot tell from a bug in this app. `InvalidInput`
+  on a relative path, `NotFound` on a missing one, and the button says `Reveal failed` for 1.4s —
+  `ImageView`'s copy idiom, since there is still no toast (item 7). `symlink_metadata`, so
+  revealing a symlink reveals the link: that is the row that was clicked.
+
+  **The label is the platform's word, not ours** — "Reveal in Finder" on macOS, "Reveal in file
+  manager" elsewhere. A control named something other than the menu item a reader already knows is
+  one they read twice. The smoke test matches it by prefix for that reason, and asserts the one
+  thing the renderer owns: the absolute path, verbatim. It can assert it at all because this goes
+  through `invoke` and the mock bridge records it — `plugin-shell`'s `open` returns early in
+  browser-only mode, which is why "Open in default app" has never had a test.
+
 - **The footer's terminals belong to the project, not the session (TODO item 50, spec
   `05-features.md` F23, ADR-0032, `DESIGN.md` § Tab Chips)** — 2026-09-03, user ask, designed and
   shipped the same day. F23 gave a shell the session id of the footer it was drawn in and killed it

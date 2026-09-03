@@ -297,6 +297,7 @@ pub fn run() {
 			commands::files::read_image,
 			commands::files::read_pdf,
 			commands::files::path_kinds,
+			commands::files::reveal_in_file_manager,
 			commands::files::watch_file,
 			commands::files::unwatch_file,
 			commands::ide::ide_report_ui,

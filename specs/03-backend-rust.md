@@ -18,7 +18,7 @@ commands/
                       #   delete_session
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill, shell_spawn, shell_name
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds,
-                      #   watch_file, unwatch_file
+                      #   watch_file, unwatch_file, reveal_in_file_manager
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
                       #   (+ git_worktrees — F21, planned)
   ide.rs              # the IDE bridge's command surface (F20)
@@ -43,6 +43,8 @@ services/
   files.rs            # list_dir, read_file, read_image, read_pdf, path_kinds
   file_watch.rs       # FileWatch — the one watch on the file the viewer has
                       #   open (F7), replaced on open and dropped on close
+  reveal.rs           # show a path in the desktop's file manager with the
+                      #   file selected — `open -R` / FileManager1 (ADR-0033)
   child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
                       #   strip, and CLAUDE_CODE_CHILD_SESSION
   shell_path.rs       # ask the login shell what the user's PATH really is
@@ -285,6 +287,12 @@ path_kinds(paths: Vec<String>) -> Vec<PathKind>                       // file | 
 // stopped anything.
 watch_file(path: String) -> ()
 unwatch_file(path: String) -> bool
+// Show a path in the desktop's file manager with the file **selected** (F7,
+// ADR-0033) — a different question from `plugin-shell`'s `open`, which hands
+// the file to the application that owns its type. NotFound on a path that has
+// gone, InvalidInput on a relative one, Process when the desktop has no way to
+// be asked at all.
+reveal_in_file_manager(path: String) -> ()
 // NOTE: file_diff(path, original, modified) -> DiffPayload was specced and
 // never built. Monaco's createDiffEditor (ADR-0007) diffs two strings itself,
 // so a Rust hunk list has no consumer. Dropped in ADR-0009; the diff viewer is
@@ -965,6 +973,49 @@ in the order given so the caller can zip it against its own candidate list.
   named is not that.
 
 Read-only, like the rest of our disk access (ADR-0004).
+
+### `reveal`
+
+`reveal_in_file_manager(path)` shows a path in the desktop's own file manager
+**with the file selected** (F7). One function, two platform arms, and the
+selection is the whole point of it — opening the containing folder and leaving
+the reader to find the row again in a directory of two hundred is most of the
+work still to do.
+
+- **macOS:** `open -R`, which is Finder's own reveal.
+- **Linux:** `org.freedesktop.FileManager1.ShowItems` on the session bus, the
+  freedesktop interface Nautilus, Dolphin, Nemo, Thunar and PCManFM implement,
+  spoken through `dbus-send` rather than a D-Bus crate — one method call with no
+  reply to read is not worth a dependency. `--print-reply` is load-bearing and
+  not for its output: without it the message goes out with no reply expected, a
+  missing `FileManager1` is answered to nobody, `dbus-send` exits 0, and the
+  fallback below never runs on the desktops that need it. `--reply-timeout`
+  bounds the wait, because the name is bus-activatable and a cold file manager
+  is a process start.
+- **The Linux fallback is `xdg-open` on the parent directory**, for a desktop
+  with no `FileManager1`. It loses the selection, which is why it is the
+  fallback and not the implementation.
+
+**Both children get `child_env`'s diff**, through
+`EnvChanges::apply_to_command` — the `std::process::Command` half of the same
+type the terminal applies to a PTY builder. Everything here ends up starting a
+GTK application, `xdg-open` by exec'ing one and `dbus-send` by activating one on
+the bus, and handing that our own environment is exactly the AppImage failure
+`child_env` documents: `LD_LIBRARY_PATH` pointing into a squashfs mount holding
+*our* WebKitGTK, which a file manager that loads it cannot find helper processes
+for.
+
+**The path is validated here rather than at the file manager.** A relative path
+is `InvalidInput` — resolving one would resolve it against *our* cwd, which is
+not the project's — and a path that has gone is `NotFound`, because a file
+manager handed one opens the user's home directory on some desktops and does
+nothing at all on others, and "nothing happened" is the one outcome a reader
+cannot tell from a bug in this app. `symlink_metadata`, so revealing a symlink
+reveals the link and not its target: that is the row that was clicked.
+
+The `file://` URI is percent-encoded from the path's **bytes**. A Unix path is
+not required to be UTF-8, and a lossy conversion would name a different file
+rather than fail.
 
 ### `git`
 

@@ -141,6 +141,22 @@ impl EnvChanges {
 		}
 	}
 
+	/// The same changes, applied to a [`std::process::Command`].
+	///
+	/// [`Self::apply_to`] takes portable-pty's builder because a session is a
+	/// PTY. A one-shot child that needs no terminal — the reveal in
+	/// [`super::reveal`] — is spawned directly, and needs the same diff for the
+	/// same reason: it starts a GTK application, which is what the AppImage
+	/// strip above exists for.
+	pub fn apply_to_command(self, cmd: &mut std::process::Command) {
+		for key in self.remove {
+			cmd.env_remove(key);
+		}
+		for (key, value) in self.set {
+			cmd.env(key, value);
+		}
+	}
+
 	/// Pin `PATH` to `path` — the login shell's, not ours. See
 	/// [`super::shell_path`] for why ours is the wrong answer in a GUI process.
 	///

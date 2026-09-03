@@ -61,6 +61,30 @@ test.describe('file viewer', () => {
 		expect(await readCalls(page)).toEqual([{ path: `${ROOT}/Cargo.toml`, maxBytes: 'undefined' }]);
 	});
 
+	test('@smoke the header asks the file manager to reveal the open file', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		// Matched by prefix: the label carries the platform's own name for the
+		// file manager, so it reads "Reveal in Finder" on macOS.
+		await page
+			.getByTestId('file-viewer')
+			.getByRole('button', { name: /^Reveal in / })
+			.click();
+
+		// The absolute path, verbatim, is the renderer's whole share of this.
+		// What a desktop then does with it belongs to `services::reveal`, and
+		// there is no file manager behind a browser tab to assert against.
+		const asked = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'reveal_in_file_manager')
+				.map((c) => String(c.args?.path)),
+		);
+		expect(asked).toEqual([`${ROOT}/Cargo.toml`]);
+	});
+
 	test('@smoke Esc closes the viewer and clears the URL', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

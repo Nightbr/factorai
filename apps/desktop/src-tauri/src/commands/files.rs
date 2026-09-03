@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::error::AppResult;
 use crate::models::{DirListing, FileContents, ImageContents, PathKind, PdfContents};
-use crate::services::files;
+use crate::services::{files, reveal};
 use crate::state::AppState;
 
 /// List one directory for the project file tree. `root` is the project root,
@@ -49,6 +49,18 @@ pub fn read_pdf(path: String, max_bytes: Option<usize>) -> AppResult<PdfContents
 #[tauri::command]
 pub fn path_kinds(paths: Vec<String>) -> Vec<PathKind> {
 	files::path_kinds(&paths)
+}
+
+/// Show `path` in the desktop's file manager, with the file selected (F7).
+///
+/// Not the same question as "Open in default app", which hands the file to
+/// whatever application owns its type: this one answers *where does this live*,
+/// and the answer is only useful if the file itself is highlighted. See
+/// `services::reveal` for the per-platform calls and ADR-0033 for why they are
+/// ours rather than a plugin's.
+#[tauri::command]
+pub fn reveal_in_file_manager(path: String) -> AppResult<()> {
+	reveal::reveal(&path)
 }
 
 /// `file:changed` — the file the viewer has open is no longer what the renderer
