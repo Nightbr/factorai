@@ -3,6 +3,76 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The footer's terminals belong to the project, not the session (TODO item 50, spec
+  `05-features.md` F23, ADR-0032, `DESIGN.md` § Tab Chips)** — 2026-09-03, user ask, designed and
+  shipped the same day. F23 gave a shell the session id of the footer it was drawn in and killed it
+  when that session closed. Two days of use said those are two different lifetimes: a session is a
+  unit of conversation and closing one is routine — the header's `×`, the tab strip's, a delete —
+  while a shell holds a `cargo test` loop or a dev server that is not finished when the
+  conversation is. F24 had just raised the cost: a chip is a group of up to five panes somebody
+  deliberately built, and one session close destroyed the group.
+
+  **`Option<String>` did the work a filter had been doing.** `TerminalHandle.session_id` is `None`
+  for a shell now, so the passes that mean "the session" are asked by the compiler instead of
+  remembering to check `kind`. ADR-0031 had named three and covered them with a test; the fourth
+  was live and unnoticed — `resync_ide_status` iterates *every* handle, so a footer shell was
+  emitting `IdeStatusEvent { connected: false }` under the session id it had borrowed, clearing
+  that session's real bridge error or not depending on the order `DashMap` handed the entries over.
+  A `kind` filter would have needed somebody to think of it; a missing id could not be read.
+
+  **The footer had to leave the route to keep its promise.** "The row follows you across the
+  project" is the whole feel of the rescope, and a footer rendered per route tears every pane's
+  host out of the document on each navigation — a remeasure, and on macOS one click before the
+  wheel works, on panes that never went anywhere. It lives in `AppShell`'s content column, drawn
+  wherever the route has a project, which is also how the project page and the sub-agent transcript
+  got it for free. **The sub-agent exclusion was a deliberate reversal**: F23 refused it because a
+  footer there would be a live process on a surface whose premise is that there is not one, and
+  that reasoning belonged to session scoping. What was left was a strip appearing and vanishing as
+  you walk the sidebar.
+
+  **The `missing` flag is the wrong thing to kill on, and the pane's own cwd is the right one.** A
+  shell whose directory has gone has nowhere left to work, but `projects.missing` is one
+  `is_dir()` per indexer scan and it flips back when a folder returns — an unmounted volume or a
+  sleeping external drive would take a running build with it, irreversibly, and a linked checkout
+  on another volume is fine while the project root is away. `reap_shells_with_missing_cwd` asks
+  each pane.
+
+  **A reload had been orphaning every shell, and closing that needed both halves.**
+  `terminalStore.adoptLive` skips shells by design — the map is keyed by session id — so a renderer
+  reload left each PTY running and unreachable until the app quit, and clicking the chip started a
+  second shell beside it. A pane's key now round-trips through Rust as an opaque `clientKey`, so
+  `terminal_list` re-binds it; and `ensureShell` returns an adopted id instead of spawning, which
+  is the half that actually stops the second shell. The store's re-bind alone would have looked
+  right and fixed nothing.
+
+  **The migration re-keys rather than drops.** Every chip already carried its `projectId`, so a
+  session's chips move to their project with panes, cwds and order intact (`factorai.shells` v3).
+  Dropping was the earlier call and was reversed when F24 landed a day before: the group is what
+  the user built. The cost is accepted — a project whose sessions each had a chip restores them all
+  into one strip, dead, with the `×` right there.
+
+  **The quit confirm was re-decided and left alone.** Shells stay outside `working_count()`
+  (ADR-0020, ADR-0031). The rescope makes the window in which a quit `SIGKILL`s a build *longer*,
+  and removes the case that made the trade bite.
+
+  **What the manual pass caught, and it was not the feature.** The chip's tooltip had gained a
+  directory per pane, one per line — every chip in a project reads the same static `zsh` since F24,
+  so the tooltip is the only thing telling two apart. **WebKitGTK renders a `title` as a GTK
+  tooltip and shows only its first line**, so it looked right in a browser and said nothing in the
+  app. One line joined with ` · ` now, the project root omitted from the list because a `.` on
+  every chip distinguishes nothing, and `chipTooltip` owns it so the two-checkout case is a unit
+  test rather than a repository with a worktree.
+
+  **And `scripts/qa` was clicking the wrong window.** `wmctrl -lG` and `xdotool` both report the
+  frame's position, and under mutter that disagreed with the client area by (47, 73) on a window
+  whose `_NET_FRAME_EXTENTS` said the titlebar was 36px. Every click landed 73px low; three aimed
+  at the footer of a 900px window fell off its bottom edge into the release factorai maximised
+  behind it — the second time this class of bug has sent a click into another app. `_resolve_wid.sh`
+  takes the origin from `xwininfo` now, which reports the client area by definition, and `click.sh`
+  refuses twice before pressing: once when the coordinate is outside the content area, and once
+  when the point under the pointer does not belong to our window. A click goes to whoever owns the
+  point, so a bad origin does not miss — it clicks something else.
+
 - **Splits in the footer shell — up to five panes per chip (TODO item 49, spec
   `05-features.md` F24, F23 amended, `DESIGN.md` § Tab Chips)** — 2026-09-02, user ask, the day
   after item 47, designed and shipped the same day. A chip in the session's footer is now a

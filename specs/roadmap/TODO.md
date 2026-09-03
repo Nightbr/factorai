@@ -32,8 +32,8 @@ heading rather than a settings feature — read them for what is left.
 exception, **item 42 (routines)**, which was asked for at high priority on 2026-08-28 and sits
 third because of it. **Item 47 (the footer shell) shipped on 2026-09-01, the day it was asked
 for, and item 49 (splits in that footer) on 2026-09-02, likewise**; their entries are in
-`DONE.md`. **Item 50 rescopes that footer from the session to the project** and was asked for on
-2026-09-03; it is the live work on this surface. Items 12–14 —
+`DONE.md`. **Item 50 rescoped that footer from the session to the project** on 2026-09-03, also
+the day it was asked for; its entry is in `DONE.md` too. Items 12–14 —
 the `Cmd+P` / `Cmd+Shift+F` / `Cmd+G` navigation trio — are high priority despite sitting
 mid-list, and everything past 21 is simply the order things were asked for.
 
@@ -1366,60 +1366,3 @@ is read as the target here, but the left sidebar has its own ceiling —
 `MAX_SIDEBAR_WIDTH = 480` (`sidebarStore.ts:24`) — and if that is the one that feels cramped it is
 a one-line change with none of the above behind it. Confirm before building the wrong half.
 
-## 50. The footer's terminals belong to the project, not the session
-
-**User ask, 2026-09-03**, two days after F23 shipped and one after F24. The footer shell is
-session-scoped: it carries the session id of the footer it is drawn in and dies when that session
-closes (`shell_kill_for_session`, ADR-0031). Those are two different lifetimes. A session closes
-routinely — the header's `×`, the tab strip's, a delete — and every one of those gestures is about
-the agent, while a shell holds a `cargo test` loop or a dev server that is not finished when the
-conversation is. F24 raised the cost: a chip is now a group of up to five panes the user
-deliberately built, and one session close destroys the group.
-
-The design was settled in an interview on 2026-09-03; **F23 and ADR-0032 are written and are the
-contract** — read them before the code, not this entry. Rust first, then the renderer, so no window
-exists where the store is re-keyed while `shell_kill_for_session` is still wired to a session
-close.
-
-- [ ] **Rust: a shell has no session id.** `TerminalHandle.session_id` → `Option<String>`, `None`
-      for `TerminalKind::Shell`; `ShellSpawnOpts` drops `session_id` and gains `client_key`;
-      `TerminalStatusDto.session_id` → `Option<String>` and gains `client_key`.
-      `shell_kill_for_session` → `shell_kill_for_project`. The four passes that mean "the session"
-      (`next_session_id`, `live_session_ids`, `working_count`, `resync_ide_status`) are then asked
-      by the compiler rather than by a filter — extend
-      `a_shell_is_never_mistaken_for_a_session` to cover the fourth, which is a live defect today:
-      it emits `IdeStatusEvent { connected: false }` under the session id a shell borrowed.
-- [ ] **Rust: reap a pane whose own cwd has gone.** Not the project's `missing` flag — one
-      `is_dir()` per indexer scan, and it flips back — but each `Shell` handle's own `cwd`. The
-      indexer holds no `TerminalManager`; wire it the way its other callbacks are, rather than
-      putting a kill decision in the renderer on a 2s poll.
-- [ ] **Store v3, re-keyed.** `bySession` → `byProject`, `activeBySession` → `activeByProject`.
-      The v2→v3 migration moves each chip to the `projectId` it already carries, keeping its
-      panes, cwds and order. Unit-test the migration: a v2 payload with two sessions of one
-      project comes back as one project's strip.
-- [ ] **Hoist the footer into `AppShell`.** `ShellPane` + `PanelResizer` + `ShellFooter` in the
-      content column, drawn when the route has a project, inside the section so the file panel
-      keeps its full height. cwd from `useActiveCheckout`, which already answers app-wide — it is
-      what roots the file panel there today. This is what makes a pane's host survive a session
-      switch, so the row genuinely follows you instead of remounting.
-- [ ] **The project page and the sub-agent transcript get the footer**, and `/` and `/search` do
-      not. The sub-agent exclusion is a deliberate reversal — F23 records why it no longer holds.
-- [ ] **The chip tooltip carries each pane's cwd**, relative to the project root. Every chip in a
-      project reads the same static `zsh` since F24, and two chips in two checkouts is now
-      ordinary. `DESIGN.md` § Tab Chips has the rule.
-- [ ] **Nothing about a session kills a shell.** Drop the `closeSessionShells` calls from the
-      session header, `SessionTabs`, `useDeleteSession`; `useRemoveProject` calls the project
-      version once instead of once per session.
-- [ ] **Adopt live shells on a renderer reload.** `terminalStore.adoptLive` skips shells by
-      design, so today a reload orphans every live shell's PTY until the app quits. With
-      `clientKey` back from `terminal_list`, re-bind each pane. The split still comes back
-      collapsed: adoption restores processes, not layout.
-- [ ] **Smoke coverage for the four scope claims** in `tests/smoke/shell-footer.spec.ts`: chips
-      visible from a second session of the same project; a chip survives closing the session it
-      was opened from; the project page draws the footer and opens a terminal; a sub-agent view
-      draws it. Plus one for the split following a session switch, which is the claim the hoist
-      exists for.
-
-**Not in scope.** The quit confirm. Shells stay outside `working_count()` — re-decided under the
-new scope and kept, for ADR-0031's reason. The rescope makes that window longer and removes the
-case that made it bite.
