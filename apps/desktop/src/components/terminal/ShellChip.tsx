@@ -1,6 +1,6 @@
 import { IconButton } from '@factorai/ui';
 import { Columns2, SquareTerminal, X } from 'lucide-react';
-import { shellCwdLabel } from '@lib/shellCwd';
+import { chipTooltip } from '@lib/shellCwd';
 import { type ShellTab, useShellStore } from '@store/shellStore';
 
 /**
@@ -42,8 +42,8 @@ export function ShellChip({
 	const count = tab.panes.length;
 	const dead = tab.panes.every((p) => p.dead);
 	// What the tooltip says: the name, how many panes when more than one, what a
-	// click on a dead chip does — the one click that is not a switch — and then
-	// **each pane's directory, one per line**.
+	// click on a dead chip does — the one click that is not a switch — and the
+	// directories its panes are in.
 	//
 	// The directories are load-bearing rather than decorative (F23, ADR-0032).
 	// Every chip in a project reads the same static `zsh`, so once the footer
@@ -51,16 +51,18 @@ export function ShellChip({
 	// a chip in the project root from one in a worktree. They go here and not in
 	// the chip because the chip's fixed content width is what keeps its label
 	// from stepping sideways, and a path is the least stable string there is.
-	const summary = [
+	//
+	// **One line, and `\n` is not an option**: WebKitGTK renders a `title` as a
+	// GTK tooltip and shows only its first line, so a directory per line was
+	// invisible in the real window while looking right in a browser (measured
+	// 2026-09-03). `chipTooltip` owns that rule, and the omission of the project
+	// root with it.
+	const title = chipTooltip({
 		label,
-		count > 1 ? `${count} panes` : null,
-		dead ? `click to open ${count > 1 ? 'new shells' : 'a new shell'} here` : null,
-	]
-		.filter(Boolean)
-		.join(' · ');
-	const title = [summary, ...tab.panes.map((p) => `  ${shellCwdLabel(p.cwd, projectRoot)}`)].join(
-		'\n',
-	);
+		cwds: tab.panes.map((p) => p.cwd),
+		projectRoot,
+		dead,
+	});
 	return (
 		<div
 			// `group` so the `×` can appear on a hover of the whole chip rather than

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shellCwdLabel } from '@lib/shellCwd';
+import { chipTooltip, shellCwdLabel } from '@lib/shellCwd';
 
 describe('shellCwdLabel', () => {
 	it('writes the project root as a dot', () => {
@@ -31,5 +31,43 @@ describe('shellCwdLabel', () => {
 
 	it('falls back to the absolute path when the project has no root on disk', () => {
 		expect(shellCwdLabel('/home/me/repo/src', null)).toBe('/home/me/repo/src');
+	});
+});
+
+describe('chipTooltip', () => {
+	const root = '/home/me/repo';
+
+	it('is just the shell name for one pane in the project root', () => {
+		// The common case, and the reason the root is omitted: `zsh · .` on every
+		// chip of a single-checkout project says nothing.
+		expect(chipTooltip({ label: 'zsh', cwds: [root], projectRoot: root, dead: false })).toBe('zsh');
+	});
+
+	it('names the directories that are not the root, deduplicated, on one line', () => {
+		// **One line** — WebKitGTK shows only a title's first line. And one entry
+		// per place: three panes in one subdirectory are one place.
+		expect(
+			chipTooltip({
+				label: 'zsh',
+				cwds: [root, `${root}/crates/core`, `${root}/crates/core`, '/home/me/repo-wt-demo'],
+				projectRoot: root,
+				dead: false,
+			}),
+		).toBe('zsh · 4 panes · crates/core, /home/me/repo-wt-demo');
+	});
+
+	it('counts panes without naming a place when they are all in the root', () => {
+		expect(
+			chipTooltip({ label: 'fish', cwds: [root, root, root], projectRoot: root, dead: false }),
+		).toBe('fish · 3 panes');
+	});
+
+	it('says what a click on a dead chip does, in the plural it earns', () => {
+		expect(chipTooltip({ label: 'zsh', cwds: [root], projectRoot: root, dead: true })).toBe(
+			'zsh · click to open a new shell here',
+		);
+		expect(chipTooltip({ label: 'zsh', cwds: [root, root], projectRoot: root, dead: true })).toBe(
+			'zsh · 2 panes · click to open new shells here',
+		);
 	});
 });

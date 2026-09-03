@@ -644,10 +644,16 @@ constant's whole cost.
 **So the tooltip is what tells two of them apart**, and since the footer became
 the project's it has to. Every chip in a project reads the same `zsh`, and two
 chips in two checkouts of one repository are now an ordinary thing to have open;
-the tooltip therefore names each pane's directory relative to the project root
-under the `zsh · 3 panes` line. It goes there rather than in the chip because
+the tooltip therefore names the panes' directories relative to the project root,
+after the `zsh · 3 panes` part. It goes there rather than in the chip because
 the paragraph above is the reason chips were chosen at all — a checkout mark
 inside the box would spend the width that keeps the label from stepping.
+
+**A `title` is one line here.** WebKitGTK draws it as a GTK tooltip and renders
+only the first line, so `\n` between the directories showed nothing in the app
+while looking right in a browser. Anything a tooltip has to say in this shell is
+joined with ` · ` — which is also why the project root is left out of that list
+rather than printed as a `.` nobody can act on.
 
 ### Empty Hero
 

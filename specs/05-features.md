@@ -4529,13 +4529,21 @@ every pass over the handle map is asked by the compiler which kind it means.
 - **The tooltip is what tells two chips apart, so it carries their
   directories** (2026-09-03). Every chip in a project reads the same static
   `zsh`, and a project-scoped footer is exactly where two of them sit side by
-  side in different checkouts. F24's `zsh · 3 panes` therefore gains one line
-  per pane, each pane's cwd written **relative to the project root** — `.` for
-  the root itself, `crates/core` for a subdirectory, and the path as given for a
-  linked checkout outside it. At most five lines, since a chip holds at most
-  five panes. No badge and no second glyph: the fixed-content width above is
-  what keeps a chip from stepping sideways, and a checkout mark inside it would
-  spend that width on the case F21 says is 5%.
+  side in different checkouts. F24's `zsh · 3 panes` therefore gains the panes'
+  directories, written **relative to the project root** — `crates/core` for a
+  subdirectory, and the path as given for a linked checkout outside it. No badge
+  and no second glyph: the fixed-content width above is what keeps a chip from
+  stepping sideways, and a checkout mark inside it would spend that width on the
+  case F21 says is 5%.
+  - **One line, deduplicated, and the project root is omitted.** A directory per
+    line was the first shape and it is not available: WebKitGTK renders a
+    `title` as a GTK tooltip and shows **only its first line**, so the
+    directories were invisible in the real window while looking right in a
+    browser (measured 2026-09-03, the manual pass on this item). And a `.` on
+    every chip of a single-checkout project distinguishes nothing — what the
+    tooltip exists for is the chip that is somewhere else, so
+    `zsh · 3 panes · crates/core, ../repo-wt-demo` is the full shape and plain
+    `zsh` is the common one.
 
 **Where it appears.** Every view that has a project: the project page (both
 tabs), a session view, and a **sub-agent transcript**. Not `/` and not
