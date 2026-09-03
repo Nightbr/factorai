@@ -1,5 +1,6 @@
 import { IconButton } from '@factorai/ui';
 import { Columns2, SquareTerminal, X } from 'lucide-react';
+import { shellCwdLabel } from '@lib/shellCwd';
 import { type ShellTab, useShellStore } from '@store/shellStore';
 
 /**
@@ -21,11 +22,16 @@ import { type ShellTab, useShellStore } from '@store/shellStore';
 export function ShellChip({
 	tab,
 	active,
+	projectRoot,
 	onSelect,
 	onClose,
 }: {
 	tab: ShellTab;
 	active: boolean;
+	/** What the panes' directories are written relative to in the tooltip. The
+	 *  project's own folder, not the route's checkout: a chip opened in a
+	 *  worktree is exactly the one the tooltip has to distinguish. */
+	projectRoot: string | null;
 	/** Selecting the chip you are already on collapses the split (F23). */
 	onSelect: () => void;
 	onClose: () => void;
@@ -35,16 +41,26 @@ export function ShellChip({
 	const label = useShellStore((s) => s.shellName) ?? 'shell';
 	const count = tab.panes.length;
 	const dead = tab.panes.every((p) => p.dead);
-	// What the tooltip says: the name, how many panes when more than one, and
-	// what a click on a dead chip does, which is the one click that is not a
-	// switch.
-	const title = [
+	// What the tooltip says: the name, how many panes when more than one, what a
+	// click on a dead chip does — the one click that is not a switch — and then
+	// **each pane's directory, one per line**.
+	//
+	// The directories are load-bearing rather than decorative (F23, ADR-0032).
+	// Every chip in a project reads the same static `zsh`, so once the footer
+	// stopped belonging to a session there was nothing on screen distinguishing
+	// a chip in the project root from one in a worktree. They go here and not in
+	// the chip because the chip's fixed content width is what keeps its label
+	// from stepping sideways, and a path is the least stable string there is.
+	const summary = [
 		label,
 		count > 1 ? `${count} panes` : null,
 		dead ? `click to open ${count > 1 ? 'new shells' : 'a new shell'} here` : null,
 	]
 		.filter(Boolean)
 		.join(' · ');
+	const title = [summary, ...tab.panes.map((p) => `  ${shellCwdLabel(p.cwd, projectRoot)}`)].join(
+		'\n',
+	);
 	return (
 		<div
 			// `group` so the `×` can appear on a hover of the whole chip rather than

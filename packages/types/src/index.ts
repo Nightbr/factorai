@@ -237,20 +237,25 @@ export type TerminalStatus = 'working' | 'waiting_input' | 'stopped';
  * What a PTY *is*, which is not what it is doing. Mirrors
  * `services::terminal::TerminalKind`.
  *
- * `shell` is the footer terminal under a session (F23). It carries that
- * session's id so the footer can find it and so it dies with it, and it is
- * **not** that session: `bySession` is keyed by session id, so adopting a shell
- * without checking this would file it over the agent it is drawn under.
+ * `shell` is the terminal in a project's footer (F23). It carries a project id
+ * and **no session id at all** (ADR-0032): it outlives every session of that
+ * project, and `bySession` — keyed by session id, meaning "the agent" — would
+ * otherwise have filed one over the agent it happened to be drawn under.
  */
 export type TerminalKind = 'agent' | 'shell';
 
 export interface TerminalStatusDto {
 	id: TerminalId;
-	sessionId: string;
+	/** Null for a shell, which has no session (ADR-0032). */
+	sessionId: string | null;
 	projectId: string;
 	status: TerminalStatus;
 	lastActivity: number;
 	kind: TerminalKind;
+	/** The renderer's own pane key for a shell, handed straight back so a
+	 *  reloaded renderer can re-bind this PTY to the pane it belongs to
+	 *  (ADR-0032). Null for an agent, which is found by its session id. */
+	clientKey: string | null;
 	/** Where this terminal is running. A shell chip that outlives its process
 	 *  respawns here (F23). */
 	cwd: string;
@@ -265,9 +270,13 @@ export interface TerminalStatusDto {
  * of it means anything here.
  */
 export interface ShellSpawnOpts {
-	/** The session whose footer this shell is drawn in. It decides which shells
-	 *  die with which session, and nothing else. */
-	sessionId: string;
+	/** This renderer's key for the pane the shell fills — a `shell:<uuid>`.
+	 *  Round-tripped through Rust and never read there; it is what a reloaded
+	 *  renderer matches a live PTY against (ADR-0032). */
+	clientKey: string;
+	/** The project this shell belongs to, and the whole of its lifetime rule.
+	 *  There is no session id: nothing about a session kills a shell
+	 *  (ADR-0032). */
 	projectId: string;
 	/** Required, unlike an agent's: the caller knows which checkout the footer
 	 *  is under (F21) and there is no transcript to fall back to. */

@@ -278,14 +278,15 @@ export const useTerminalStore = create<TerminalState>()(
 				set((s) => {
 					const bySession = { ...s.bySession };
 					for (const t of live) {
-						// **Shells are skipped, and this map is why** (F23). A
-						// footer shell carries the session id of the footer it is
-						// drawn in, and this map is keyed by session id meaning
-						// "the agent" — so adopting one would file a shell's PTY
+						// **A shell contributes no session id, so there is nothing
+						// to skip** (F23, ADR-0032). This map is keyed by session id
+						// meaning "the agent", and a shell used to carry the id of
+						// the footer it was drawn in — so adopting one filed its PTY
 						// over its agent's, and every surface reading `bySession`
-						// would then write into, kill, and report the status of
-						// the wrong process.
-						if (t.kind !== 'agent') continue;
+						// then wrote into, killed and reported the status of the
+						// wrong process. A shell is now adopted by `shellStore`
+						// instead, keyed by the pane key Rust round-tripped.
+						if (t.sessionId === null) continue;
 						bySession[t.sessionId] = {
 							terminalId: t.id,
 							projectId: t.projectId,

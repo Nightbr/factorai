@@ -68,7 +68,16 @@ function RootLayout() {
 	useEffect(() => {
 		void cmd
 			.terminalList()
-			.then((live) => useTerminalStore.getState().adoptLive(live))
+			.then((live) => {
+				useTerminalStore.getState().adoptLive(live);
+				// **And the project footer's shells** (ADR-0032). One call, two
+				// stores: the agents are keyed by session id and the shells by the
+				// pane key Rust round-tripped, and neither can see the other's.
+				// Without this half a live shell came back as a dead chip while its
+				// PTY ran on unreachable, and clicking the chip spawned a second one
+				// beside it.
+				useShellStore.getState().adoptLive(live);
+			})
 			// Nothing to surface: with no adopted terminals the app behaves exactly
 			// as it did before this call existed.
 			.catch((e) => console.error('terminal_list failed', e));

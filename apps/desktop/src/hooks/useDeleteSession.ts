@@ -1,4 +1,3 @@
-import { closeSessionShells } from '@components/terminal/shells';
 import { disposeTerminal } from '@components/terminal/Terminal';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, events } from '@lib/tauri';
@@ -110,7 +109,9 @@ export function useDeleteSession(): (sessionId: string, projectId: string) => Pr
 			// wait above is the part that matters.
 			detach(sessionId);
 			disposeTerminal(sessionId);
-			closeSessionShells(sessionId);
+			// **The project's shells are left running** (ADR-0032). Deleting a
+			// session is a statement about a transcript; the `cargo test` in the
+			// footer is not part of it.
 
 			await cmd.deleteSession(sessionId);
 

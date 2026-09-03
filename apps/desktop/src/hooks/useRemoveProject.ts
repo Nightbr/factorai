@@ -1,4 +1,4 @@
-import { closeSessionShells } from '@components/terminal/shells';
+import { closeProjectShells } from '@components/terminal/shells';
 import { disposeTerminal } from '@components/terminal/Terminal';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
@@ -66,8 +66,13 @@ export function useRemoveProject(): (projectId: string) => Promise<void> {
 				// event is missed. The later event finds nothing to remove.
 				detach(sessionId);
 				disposeTerminal(sessionId);
-				closeSessionShells(sessionId);
 			}
+
+			// **The one gesture that kills a project's shells** (ADR-0032). Once per
+			// project rather than once per session: a shell belongs to the project,
+			// not to whichever session it happened to be opened under, and Rust owns
+			// the question of which PTYs those are.
+			closeProjectShells(projectId);
 
 			// Any tab this project still has is stopped — a live one was killed and
 			// detached above. It has to go too: a tab is only removed by closing, and

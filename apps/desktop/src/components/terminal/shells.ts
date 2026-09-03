@@ -3,31 +3,33 @@ import { cmd } from '@lib/tauri';
 import { type ShellPaneTab, type ShellTab, useShellStore } from '@store/shellStore';
 
 /**
- * Tear down every shell in a session's footer (`specs/05-features.md` § F23).
+ * Tear down every shell in a project's footer (`specs/05-features.md` § F23,
+ * ADR-0032).
  *
- * **A shell's whole lifetime is the footer it is drawn in**, so every gesture
- * that ends a session calls this: the header's `×`, the tab strip's, deleting
- * the session, and removing its project. Deliberately *not* called by a
- * restart — that replaces the agent above the footer and has nothing to say
- * about the shells under it.
+ * **One caller: `Remove project`.** A shell's lifetime is the project's, so
+ * nothing about a session reaches this — not the header's `×`, not the tab
+ * strip's, not deleting the session, not a restart. Each of those is a gesture
+ * about the agent, and F23's first version killed a running build on every one
+ * of them.
  *
  * The kill is one command rather than one per pane because Rust owns the
- * question of which PTYs belong to a session, and a renderer that had a stale
+ * question of which PTYs belong to a project, and a renderer that had a stale
  * list would leave one running (ADR-0031).
  *
- * Nothing is confirmed and nothing is asked, which is the trade ADR-0031
- * records: a build running in a shell dies with the session that hosted it.
+ * Nothing is confirmed here and nothing is asked, which is the trade ADR-0031
+ * records — `Remove project` has its own confirm, and it is the surface that
+ * should carry one.
  */
-export function closeSessionShells(sessionId: string): void {
-	const chips = useShellStore.getState().bySession[sessionId] ?? [];
+export function closeProjectShells(projectId: string): void {
+	const chips = useShellStore.getState().byProject[projectId] ?? [];
 	// Dispose before the store forgets them: the pooled xterm is keyed by the
 	// pane's key, and once the entry is gone there is nothing left to name it.
 	for (const chip of chips) for (const pane of chip.panes) disposeTerminal(pane.key);
-	useShellStore.getState().closeSession(sessionId);
+	useShellStore.getState().closeProject(projectId);
 	// The PTYs outlive the renderer's state, so a failure here is a real leak —
-	// but the session is already going and there is no surface left to say so on.
-	void cmd.shellKillForSession(sessionId).catch((e) => {
-		console.error('shell_kill_for_session failed', e);
+	// but the project is already going and there is no surface left to say so on.
+	void cmd.shellKillForProject(projectId).catch((e) => {
+		console.error('shell_kill_for_project failed', e);
 	});
 }
 

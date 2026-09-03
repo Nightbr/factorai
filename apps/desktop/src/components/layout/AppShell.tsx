@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { FileTreePanel } from '@components/files/FileTreePanel';
+import { ShellDock } from '@components/terminal/ShellDock';
 import { isMacOS } from '@lib/platform';
 import { clampSidebarWidth, useSidebarStore } from '@store/sidebarStore';
 import { PanelResizer } from './PanelResizer';
@@ -54,7 +55,15 @@ export function AppShell({ children }: AppShellProps) {
 					label="Resize sidebar"
 					clamp={clampSidebarWidth}
 				/>
-				<section className="min-w-0 flex-1 overflow-hidden">{children}</section>
+				{/* The route above, the project's shell footer below (F23, ADR-0032).
+				    Inside this column and not spanning the window, so the file panel
+				    keeps its full height and the footer is the width of the thing it
+				    belongs to. The dock renders nothing where the route has no
+				    project. */}
+				<section className="flex min-w-0 flex-1 flex-col overflow-hidden">
+					<div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+					<ShellDock />
+				</section>
 				{/* Renders nothing when collapsed; follows the route's project. */}
 				<FileTreePanel />
 			</div>

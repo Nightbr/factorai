@@ -259,13 +259,15 @@ export const cmd = {
 		invoke<void>('terminal_resize', { id, cols, rows }),
 	terminalKill: (id: TerminalId) => invoke<void>('terminal_kill', { id }),
 	terminalList: () => invoke<TerminalStatusDto[]>('terminal_list'),
-	/** Open a shell in a session's footer (F23). A separate command from
+	/** Open a shell in a project's footer (F23). A separate command from
 	 *  `terminalSpawn` because a shell runs no transcript probe, stands up no
 	 *  IDE bridge and no tool server, and starts no routine. */
 	shellSpawn: (opts: ShellSpawnOpts) => invoke<TerminalId>('shell_spawn', { opts }),
-	/** Kill every shell in one session's footer. Called when that session is
-	 *  closed; the agent is killed by `terminalKill` as it always was. */
-	shellKillForSession: (sessionId: string) => invoke<void>('shell_kill_for_session', { sessionId }),
+	/** Kill every shell in one project's footer (ADR-0032). Called by
+	 *  `Remove project` and by nothing about a session — closing one says
+	 *  nothing about the shells under it. The agent is killed by `terminalKill`
+	 *  as it always was. */
+	shellKillForProject: (projectId: string) => invoke<void>('shell_kill_for_project', { projectId }),
 	/** The basename of the shell `shellSpawn` runs, which is what labels every
 	 *  chip (F23 as amended by F24). One value per app, asked once at boot. */
 	shellName: () => invoke<string>('shell_name'),
@@ -1121,7 +1123,7 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		case 'terminal_write':
 		case 'terminal_resize':
 		case 'terminal_kill':
-		case 'shell_kill_for_session':
+		case 'shell_kill_for_project':
 		case 'app_quit_confirmed':
 			return undefined as unknown as T;
 		case 'terminal_list':

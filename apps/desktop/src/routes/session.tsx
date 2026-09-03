@@ -17,19 +17,13 @@ import { CloseSessionConfirm, needsCloseConfirm } from '@components/dialog/Close
 import { StatusDot } from '@components/layout/StatusDot';
 import { CheckoutMenu } from '@components/session/CheckoutMenu';
 import { SubAgentTranscript } from '@components/session/SubAgentTranscript';
-import { PanelResizer } from '@components/layout/PanelResizer';
-import { ShellFooter } from '@components/terminal/ShellFooter';
-import { ShellPane } from '@components/terminal/ShellPane';
-import { closeSessionShells } from '@components/terminal/shells';
 import { disposeTerminal, restartSession, Terminal } from '@components/terminal/Terminal';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useGitBranch } from '@hooks/useGitBranch';
 import { useSetSessionPinned } from '@hooks/useSetSessionPinned';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
-import { clampShellHeight, usePanelStore } from '@store/panelStore';
 import { usePrefsStore } from '@store/prefsStore';
-import { useShellStore } from '@store/shellStore';
 import { useTerminalStore } from '@store/terminalStore';
 import { rootRoute } from './__root';
 
@@ -145,15 +139,6 @@ function SessionView() {
 	// store rather than here because the tab strip restarts sessions too (F16),
 	// and it cannot reach a `useState` in this component.
 	const restartEpoch = useTerminalStore((s) => s.restartEpoch[sessionId] ?? 0);
-	// The footer's split (F23). `hasShell` rather than the list itself: this only
-	// decides whether the pane and its handle are rendered, and subscribing to
-	// the array would re-render the whole route on every title a shell sets.
-	// **The active chip, not the list.** A collapsed footer keeps its shells
-	// running with no pane on screen (F23), so "is the split showing" is a
-	// question about which chip is selected.
-	const shellOpen = useShellStore((s) => Boolean(s.activeBySession[sessionId]));
-	const shellHeight = usePanelStore((s) => s.shellHeight);
-	const setShellHeight = usePanelStore((s) => s.setShellHeight);
 	// Read as two scalars and assembled in the handler, not through a selector
 	// that builds an object — that would hand zustand a new reference on every
 	// store read.
@@ -218,7 +203,10 @@ function SessionView() {
 			console.error('terminal_kill failed', e);
 		}
 		disposeTerminal(sessionId);
-		closeSessionShells(sessionId);
+		// **The project's shells are left running** (ADR-0032). Closing a session
+		// is a gesture about the agent above the footer, and F23's first version
+		// killed a build in it on every one of those.
+		//
 		// The project route names its param `id`; only the session route calls it
 		// `projectId` (see useActiveProject, which reads both).
 		void navigate({ to: '/projects/$id', params: { id: projectId } });
@@ -400,50 +388,27 @@ function SessionView() {
 					</Button>
 				)}
 			</header>
+			{/* The project's shell footer is not here — it is in `AppShell`, so it
+			    is drawn on this route, the project page and a sub-agent transcript
+			    alike, and a pane's host survives a session switch instead of being
+			    torn out of the document (F23, ADR-0032). */}
 			{isSubAgent ? (
 				<SubAgentTranscript sessionId={sessionId} />
 			) : (
-				<>
-					<div className="min-h-0 flex-1">
-						<Terminal
-							key={restartEpoch}
-							sessionId={sessionId}
-							projectId={projectId}
-							projectCwd={projectCwd}
-							// Where a relative path in the output resolves from (F19).
-							// Recorded in the transcript, so it is only ever different from
-							// the project root for a resumed session started in a
-							// subdirectory — which is exactly the case the fallback exists
-							// for.
-							sessionCwd={session?.cwd ?? null}
-						/>
-					</div>
-					{/* The footer's shells (F23). The split is docked at the bottom and
-					    grows upwards, so the handle is on its top edge — the same
-					    arrangement as the graph's commit detail. */}
-					{shellOpen && (
-						<>
-							<PanelResizer
-								size={shellHeight}
-								onSize={setShellHeight}
-								edge="top"
-								label="Resize shell"
-								clamp={clampShellHeight}
-							/>
-							<div style={{ height: shellHeight }} className="shrink-0 overflow-hidden">
-								<ShellPane sessionId={sessionId} />
-							</div>
-						</>
-					)}
-					<ShellFooter
+				<div className="min-h-0 flex-1">
+					<Terminal
+						key={restartEpoch}
 						sessionId={sessionId}
 						projectId={projectId}
-						// The session's checkout when its agent signalled one (F21),
-						// the project root otherwise: a shell beside an agent working
-						// in a worktree is useless pointed at a different tree.
-						cwd={root ?? projectCwd}
+						projectCwd={projectCwd}
+						// Where a relative path in the output resolves from (F19).
+						// Recorded in the transcript, so it is only ever different from
+						// the project root for a resumed session started in a
+						// subdirectory — which is exactly the case the fallback exists
+						// for.
+						sessionCwd={session?.cwd ?? null}
 					/>
-				</>
+				</div>
 			)}
 			{/* The same dialog the tab strip opens — one component, so the two
 			    call sites cannot drift apart. A dead session needs no confirm, so

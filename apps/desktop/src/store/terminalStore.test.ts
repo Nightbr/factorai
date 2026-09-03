@@ -10,6 +10,7 @@ function dto(sessionId: string, over: Partial<TerminalStatusDto> = {}): Terminal
 		status: 'waiting_input',
 		lastActivity: 0,
 		kind: 'agent',
+		clientKey: null,
 		cwd: '/tmp',
 		...over,
 	};
@@ -21,12 +22,21 @@ const ids = () => useTerminalStore.getState().tabs.map((t) => t.sessionId);
 describe('adoptLive', () => {
 	beforeEach(reset);
 
-	it("skips a shell, which shares its footer session's id (F23)", () => {
-		useTerminalStore
-			.getState()
-			.adoptLive([dto('s1'), dto('s1', { id: 'pty-shell', kind: 'shell' })]);
-		// Not "the shell is absent" — the point is that the *agent's* PTY is
-		// still the one this session writes to and kills.
+	it('files no shell into the agent map (F23, ADR-0032)', () => {
+		// A shell reports `sessionId: null`, so there is no id for it to be filed
+		// under. It used to carry the id of the footer it was drawn in, and
+		// adopting one put its PTY over the agent's — after which this session
+		// wrote into, killed and reported the status of the wrong process.
+		useTerminalStore.getState().adoptLive([
+			dto('s1'),
+			{
+				...dto('s1'),
+				id: 'pty-shell',
+				kind: 'shell',
+				sessionId: null,
+				clientKey: 'shell:1',
+			},
+		]);
 		expect(useTerminalStore.getState().bySession.s1?.terminalId).toBe('pty-s1');
 	});
 

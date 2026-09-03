@@ -241,6 +241,40 @@ export function fixtureOneProjectOneSession(): TestFixture {
 }
 
 /**
+ * One project with **two** sessions, for the footer's scope claims (F23,
+ * ADR-0032).
+ *
+ * The chips belong to the project, so what needs two sessions is every
+ * assertion about a chip surviving a gesture aimed at one of them: opened under
+ * the first, still there under the second, and still there after the first is
+ * closed.
+ */
+export function fixtureTwoSessionsOneProject(): TestFixture {
+	const base = fixtureOneProjectOneSession();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const first = base.sessionsByProject?.[project.id]?.[0];
+	if (!first) throw new Error('base fixture has no session');
+
+	const second: SessionSummary = {
+		...first,
+		id: 'session-uuid-002',
+		title: 'Wire the settings modal',
+		updatedAt: Date.now() - 120_000,
+	};
+
+	return {
+		...base,
+		projects: [{ ...project, sessionCount: 2 }],
+		sessionsByProject: { [project.id]: [first, second] },
+		sessionPages: {
+			...base.sessionPages,
+			[second.id]: { id: second.id, events: [], offset: 0, limit: 100, total: 3 },
+		},
+	};
+}
+
+/**
  * One project whose repository has a second checkout, and a session working in
  * it (F21).
  *

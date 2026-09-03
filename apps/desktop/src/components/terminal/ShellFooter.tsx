@@ -7,10 +7,10 @@ import { splitDisabledReason } from '@lib/shellLayout';
 import { useShellStore } from '@store/shellStore';
 
 /**
- * The strip along the bottom of a live session (`specs/05-features.md` § F23,
- * F24).
+ * The strip along the bottom of every view of a project
+ * (`specs/05-features.md` § F23, F24; ADR-0032).
  *
- * **Always present, with no shells open.** It costs the agent a row of its grid
+ * **Always present, with no shells open.** It costs the view a row of its grid
  * and it is the only thing that says the footer exists; a control revealed on
  * hover, or one that only appears once you have already used the feature,
  * cannot be found by somebody who has not. Both controls are **labelled** for
@@ -23,15 +23,17 @@ import { useShellStore } from '@store/shellStore';
  * misalignment rather than as two separate surfaces.
  */
 export function ShellFooter({
-	sessionId,
 	projectId,
 	cwd,
+	projectRoot,
 }: {
-	sessionId: string;
 	projectId: string;
-	/** Where a new shell starts: the session's checkout when it has one (F21),
-	 *  the project root otherwise. A split pane starts there too (F24). */
+	/** Where a new shell starts: the session's checkout when the route has one
+	 *  (F21), the project root otherwise. A split pane starts there too (F24),
+	 *  and each pane keeps the directory it was opened in. */
 	cwd: string | null;
+	/** What a chip's tooltip writes its panes' directories relative to. */
+	projectRoot: string | null;
 }) {
 	const stripRef = useRef<HTMLDivElement>(null);
 	// The strip is as wide as the row above it — both fill the session column —
@@ -41,8 +43,8 @@ export function ShellFooter({
 	const open = useShellStore((s) => s.open);
 	const split = useShellStore((s) => s.split);
 	const setActive = useShellStore((s) => s.setActive);
-	const chips = useShellStore((s) => s.bySession[sessionId]);
-	const activeKey = useShellStore((s) => s.activeBySession[sessionId] ?? null);
+	const chips = useShellStore((s) => s.byProject[projectId]);
+	const activeKey = useShellStore((s) => s.activeByProject[projectId] ?? null);
 	const shellName = useShellStore((s) => s.shellName);
 	const active = chips?.find((c) => c.key === activeKey) ?? null;
 
@@ -78,6 +80,7 @@ export function ShellFooter({
 					key={chip.key}
 					tab={chip}
 					active={chip.key === activeKey}
+					projectRoot={projectRoot}
 					// **Clicking the chip you are on collapses the split**, leaving the
 					// shells running: the agent gets its full height back while a long
 					// build finishes, and nothing is lost by looking away.
@@ -87,7 +90,7 @@ export function ShellFooter({
 					// would make that take two clicks for no reason anyone could infer.
 					onSelect={() =>
 						setActive(
-							sessionId,
+							projectId,
 							chip.key === activeKey && !chip.panes.every((p) => p.dead) ? null : chip.key,
 						)
 					}
@@ -115,7 +118,7 @@ export function ShellFooter({
 				size="sm"
 				className="shrink-0 gap-1.5 font-normal text-xs [&_svg]:size-3"
 				disabled={!canOpen}
-				onClick={() => cwd && open(sessionId, projectId, cwd)}
+				onClick={() => cwd && open(projectId, cwd)}
 			>
 				<Plus /> Terminal
 			</Button>

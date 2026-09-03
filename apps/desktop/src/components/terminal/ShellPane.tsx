@@ -31,13 +31,15 @@ import { type ShellPaneTab, type ShellTab, useShellStore } from '@store/shellSto
  *
  * Switching chips unmounts this row, which detaches every pane's host; F23
  * already accepts that for the collapse, and the hosts come back into their
- * boxes and are measured again when the chip returns.
+ * boxes and are measured again when the chip returns. **Navigating between
+ * sessions does not**, since ADR-0032 put the footer in the app shell: the row
+ * is the project's, so it is the same element and the same hosts.
  */
-export function ShellPane({ sessionId }: { sessionId: string }) {
-	const activeKey = useShellStore((s) => s.activeBySession[sessionId] ?? null);
-	const chip = useShellStore((s) => s.bySession[sessionId]?.find((c) => c.key === activeKey));
+export function ShellPane({ projectId }: { projectId: string }) {
+	const activeKey = useShellStore((s) => s.activeByProject[projectId] ?? null);
+	const chip = useShellStore((s) => s.byProject[projectId]?.find((c) => c.key === activeKey));
 	if (!chip) return null;
-	return <PaneRow sessionId={sessionId} chip={chip} />;
+	return <PaneRow chip={chip} />;
 }
 
 /**
@@ -45,7 +47,7 @@ export function ShellPane({ sessionId }: { sessionId: string }) {
  * measured once on mount and then watched. A chip switch keeps this element —
  * the row is the same box whichever chip fills it — so the observer survives.
  */
-function PaneRow({ sessionId, chip }: { sessionId: string; chip: ShellTab }) {
+function PaneRow({ chip }: { chip: ShellTab }) {
 	const rowRef = useRef<HTMLDivElement>(null);
 	const [rowWidth, setRowWidth] = useState(0);
 	const dragged = useShellStore((s) => s.widthsByChip[chip.key]);
@@ -86,7 +88,6 @@ function PaneRow({ sessionId, chip }: { sessionId: string; chip: ShellTab }) {
 							/>
 						)}
 						<PaneHost
-							sessionId={sessionId}
 							projectId={chip.projectId}
 							chipKey={chip.key}
 							pane={pane}
@@ -102,6 +103,39 @@ function PaneRow({ sessionId, chip }: { sessionId: string; chip: ShellTab }) {
 }
 
 /**
+ * The PTY this pane is on, spawning one only if it has none.
+ *
+ * **The reuse branch is what a renderer reload needs** (ADR-0032). A reload
+ * empties the xterm pool while every PTY carries on, so `attachStream` arrives
+ * here with `ptyAttached` false on a pane whose shell is still running — and
+ * spawning then would leave the first one alive and unreachable. `adoptLive`
+ * has already put its id back on the pane by the time a chip can be clicked,
+ * and this returns it instead. The same shape as `ensureTerminal` for an agent,
+ * and for the same reason.
+ *
+ * A **dead** pane has no id, so it spawns: that is the click on a dead chip.
+ */
+function ensureShell(
+	projectId: string,
+	paneKey: string,
+	cwd: string,
+	cols: number,
+	rows: number,
+): Promise<string> {
+	const existing = useShellStore
+		.getState()
+		.byProject[projectId]?.flatMap((c) => c.panes)
+		.find((p) => p.key === paneKey)?.terminalId;
+	if (existing) return Promise.resolve(existing);
+	// `clientKey` is this pane's own key, round-tripped by Rust so the next
+	// reload can find this PTY through `terminal_list`.
+	return cmd.shellSpawn({ clientKey: paneKey, projectId, cwd, cols, rows }).then((id) => {
+		useShellStore.getState().attach(paneKey, id);
+		return id;
+	});
+}
+
+/**
  * One pane: a pooled xterm in a box the row sizes.
  *
  * The lifecycle is F23's for a chip, per pane: adopt or create the pooled
@@ -110,7 +144,6 @@ function PaneRow({ sessionId, chip }: { sessionId: string; chip: ShellTab }) {
  * back on screen — throw the finished terminal away first so it spawns again.
  */
 function PaneHost({
-	sessionId,
 	projectId,
 	chipKey,
 	pane,
@@ -118,7 +151,6 @@ function PaneHost({
 	closable,
 	fraction,
 }: {
-	sessionId: string;
 	projectId: string;
 	chipKey: string;
 	pane: ShellPaneTab;
@@ -132,7 +164,6 @@ function PaneHost({
 	const entryRef = useRef<PooledTerm | null>(null);
 	/** This pane's dead terminal has already been thrown away — see below. */
 	const respawning = useRef(false);
-	const attach = useShellStore((s) => s.attach);
 	const setFocus = useShellStore((s) => s.setFocus);
 	// **Primitives, never the pane object.** The store hands out a new object
 	// when anything on the pane changes, and an effect keyed on identity would
@@ -169,7 +200,7 @@ function PaneHost({
 			() =>
 				useShellStore
 					.getState()
-					.bySession[sessionId]?.flatMap((c) => c.panes)
+					.byProject[projectId]?.flatMap((c) => c.panes)
 					.find((p) => p.key === key)?.terminalId ?? undefined,
 		);
 		entryRef.current = entry;
@@ -193,11 +224,7 @@ function PaneHost({
 
 		attachStream(
 			entry,
-			(cols, rows) =>
-				cmd.shellSpawn({ sessionId, projectId, cwd, cols, rows }).then((id) => {
-					attach(key, id);
-					return id;
-				}),
+			(cols, rows) => ensureShell(projectId, key, cwd, cols, rows),
 			'Failed to open a shell',
 		);
 
@@ -210,7 +237,7 @@ function PaneHost({
 		};
 		// `dead` is in the list deliberately: a click on a dead chip has to re-run
 		// this effect, and the key alone does not change when it is respawned.
-	}, [sessionId, projectId, key, cwd, dead, attach]);
+	}, [projectId, key, cwd, dead]);
 
 	// The chip's focused pane takes the caret: on the chip opening, on a split
 	// (the new pane is focused), and on a click, where xterm already has it and
