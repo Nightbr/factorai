@@ -625,7 +625,7 @@ others. The border is on all of them because a chip that only becomes a box when
 selected changes width as you switch, and its label steps sideways. Bare text tabs were tried
 first and read as a heading, because the row sits directly under one.
 
-**The session footer's shells are chips too** (F23, F24). Same 12px label,
+**The project footer's shells are chips too** (F23, F24). Same 12px label,
 same `rounded-md`, same border on every chip — plus a `SquareTerminal` glyph
 before the label, a `×` inside the chip, `invisible` until hover or
 `focus-within`, its space always reserved so the label's box does not move when
@@ -640,6 +640,14 @@ to that label would have resized whenever a build started — the stepping-
 sideways this section chose chips to avoid. A name that never changes keeps the
 property without the constant, and 50px of empty box behind `zsh` was the
 constant's whole cost.
+
+**So the tooltip is what tells two of them apart**, and since the footer became
+the project's it has to. Every chip in a project reads the same `zsh`, and two
+chips in two checkouts of one repository are now an ordinary thing to have open;
+the tooltip therefore names each pane's directory relative to the project root
+under the `zsh · 3 panes` line. It goes there rather than in the chip because
+the paragraph above is the reason chips were chosen at all — a checkout mark
+inside the box would spend the width that keeps the label from stepping.
 
 ### Empty Hero
 

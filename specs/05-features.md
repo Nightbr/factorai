@@ -4455,41 +4455,58 @@ suite passed while it was live.
 
 ---
 
-## F23 — A shell in the session's footer
+## F23 — A shell in the project's footer
 
-**Behavior.** A permanent strip along the bottom of a live session view opens
-the user's own shell in a PTY, beside the agent rather than instead of it. One
-`git log` or `cargo test` without leaving the app, in the directory the agent is
-already working in.
+**Behavior.** A permanent strip along the bottom of every view of a project
+opens the user's own shell in a PTY, beside the agent rather than instead of it.
+One `git log` or `cargo test` without leaving the app, in the directory the
+agent is already working in.
 
 This is **not** the deferred "launch in external terminal"
 (`06-milestones.md` § Deferred, entry 5), which hands the argv to Terminal.app
 or `xdg-open`. It is the opposite: a second PTY inside the app.
 
-**A shell is session-scoped.** It dies when the session closes and when the app
-quits, and belongs to nothing else. A shell carries the session id of the footer
-it is drawn in — that is what makes closing that session kill it — and it *is*
-not that session, which is the whole of ADR-0031.
+**A shell is project-scoped** (amended 2026-09-03, ADR-0032). The first version
+made it session-scoped: a shell carried the session id of the footer it was
+drawn in, and closing that session killed it. Two days of use said those are two
+different lifetimes. A session is a unit of *conversation* and it closes often —
+the header's `×`, the tab strip's, a delete — while a shell is a unit of
+*workspace*: a `cargo test` loop, a dev server, a `git log` you keep coming back
+to. Binding the second lifetime to the first killed the terminals you keep on a
+gesture about the agent above them, and left them unreachable from the project
+page.
+
+So a shell carries a **project** id and no session id at all. It is not that
+project either — that is what ADR-0031 said about the session id and what
+ADR-0032 keeps: `TerminalKind` is what stops anything reading a shell as
+something it is not, and `TerminalHandle.session_id` is `None` for a shell, so
+every pass over the handle map is asked by the compiler which kind it means.
 
 **UI.**
 
-- **The strip is 36px and always present** on a live session view, so the
+- **The strip is 36px and always present** on every view of a project, so the
   control can be found by someone who does not already know the feature exists.
-  The split below it only exists once a shell does. Height declared, per
+  The split above it only exists once a shell does. Height declared, per
   `DESIGN.md` § "Chrome heights are explicit" — and 36px specifically because
   the sidebar footer is 36px and the two sit level across the bottom of the
   window.
 - **The new-terminal control is labelled `+ Terminal`**, not a bare `+`
   (user feedback, 2026-09-01). A permanent strip only introduces the feature if
   what is on it says what it does. Being labelled, it is a `Button` and not an
-  `IconButton` — `ghost`, so it does not outweigh the chips beside it.
-- **The split.** Agent above, shell below, a `PanelResizer` between them —
-  the same component and clamped-height shape the graph's commit detail uses.
-  One **global** height in `panelStore`, not one per session: a height you
-  dragged is layout, not a preference (ADR-0013).
+  `IconButton` — `quiet`, so it does not outweigh the chips beside it. `Split`
+  is its sibling and F24 owns it.
+- **The split.** Whatever the route is showing above, shells below, a
+  `PanelResizer` between them — the same component and clamped-height shape the
+  graph's commit detail uses. One **global** height in `panelStore`, not one per
+  project: a height you dragged is layout, not a preference (ADR-0013).
 - **Clicking the active chip collapses the split** back to the bare strip with
   the shells still running, so a long build can be left alone without the agent
   losing the height to it.
+- **Which chip is open follows you across the project.** The active chip is
+  held per project, not per session, so switching session inside a project — or
+  stepping out to the project page — leaves the same row on screen at the same
+  height. It is the same processes in the same hosts, not a re-render of them:
+  see "Where it lives" below.
 - **Chips**, not tabs: `DESIGN.md`'s Tab Chips, with two extensions and one
   constraint.
   - A `×` inside the chip on hover or focus, its space reserved so nothing
@@ -4509,21 +4526,62 @@ not that session, which is the whole of ADR-0031.
   starship writes nothing, one stray `printf` overwrites it. A name a theme
   decides is not a name. The glyph is lucide's `SquareTerminal`, the look VS
   Code's terminal list has; the basename comes from `shell_name`, asked once.
+- **The tooltip is what tells two chips apart, so it carries their
+  directories** (2026-09-03). Every chip in a project reads the same static
+  `zsh`, and a project-scoped footer is exactly where two of them sit side by
+  side in different checkouts. F24's `zsh · 3 panes` therefore gains one line
+  per pane, each pane's cwd written **relative to the project root** — `.` for
+  the root itself, `crates/core` for a subdirectory, and the path as given for a
+  linked checkout outside it. At most five lines, since a chip holds at most
+  five panes. No badge and no second glyph: the fixed-content width above is
+  what keeps a chip from stepping sideways, and a checkout mark inside it would
+  spend that width on the case F21 says is 5%.
 
-**Where it appears.** Live session views only. Not the project page, and not a
-sub-agent transcript: F3 gives that view no terminal and no process, and a
-footer there would be a live process on a surface whose premise is that there
-is not one.
+**Where it appears.** Every view that has a project: the project page (both
+tabs), a session view, and a **sub-agent transcript**. Not `/` and not
+`/search`, where there is no project and therefore no directory a shell could
+start in — those routes keep the bottom band they have today, the sidebar
+footer alone.
+
+The sub-agent transcript is a reversal, and worth saying why. The first version
+excluded it on the reasoning that F3 gives that view no terminal and no process,
+so a footer there would be a live process on a surface whose premise is that
+there is not one. That reasoning belonged to session scoping: the shell was
+*that session's*, and a read-only transcript had no business owning one. A
+project's shell is not the transcript's, so the objection goes with the scope —
+and what is left is a strip that would appear and vanish as you walk the
+sidebar, which is worse than either answer consistently applied.
+
+**Where it lives.** In the **app shell**, not in the route: one footer inside
+`AppShell`'s content column, drawn when the route has a project, with the shell
+pane and its resizer directly above it. Rendering it per route would tear the
+pane's hosts out of the document on every navigation, which costs a remeasure
+and, on macOS, one click before the wheel works (see below) — on a pane that
+never went anywhere. It stops at the file panel rather than spanning under it,
+so the panel keeps its full height; the footer is the width of the thing it
+belongs to.
+
+The cwd comes from `useActiveCheckout`, which already answers this app-wide —
+it is what roots the file panel in `AppShell` today. On a session route it
+resolves that session's checkout (F21); on the project page it falls through to
+the project's own folder.
 
 **Lifecycle.**
 
-- **A new shell starts in the session's checkout** when it has one (F21), and
-  the project root otherwise. A shell beside an agent working in a worktree is
-  useless pointed at a different tree.
-- **`exit` removes the chip.** Ending a shell yourself is a deliberate act and
-  leaves nothing behind.
+- **A new shell starts in the directory the route is showing** — the session's
+  checkout when it has one (F21), the project root otherwise. A shell beside an
+  agent working in a worktree is useless pointed at a different tree. The cwd is
+  decided once, at spawn, and **held on the pane**: switching session does not
+  move a running shell, and a chip opened in a worktree stays in it.
+- **A shell dies with the app quitting** (ADR-0005, untouched), with
+  `Remove project`, with `exit`, with a `×`, and when its own cwd goes missing.
+  **Nothing about a session kills one**: not the header's `×`, not the tab
+  strip's, not deleting the session, not navigating away. That is the whole of
+  the rescope.
+- **`exit` removes the pane**, and its chip with it when it was the last one.
+  Ending a shell yourself is a deliberate act and leaves nothing behind.
 - **A shell killed by the app quitting comes back dead**, holding its cwd;
-  clicking the chip spawns a new shell there. **`TerminalExitEvent.killed` is
+  clicking the chip respawns every pane in it. **`TerminalExitEvent.killed` is
   what tells the two apart**, and it is decided in Rust rather than inferred
   here: the exit code cannot separate a `SIGTERM`'d bash from `exit 143`, and on
   the quit path the renderer may not outlive the event at all. `kill()` records
@@ -4533,23 +4591,42 @@ is not one.
   `terminalStore.bySession` already follows — so every restored chip is dead,
   and the active chip is deliberately *not* persisted: a footer that came back
   expanded onto a dead chip would spawn a shell at launch that nobody asked for.
+- **A renderer reload re-binds the panes it left running**, which is a leak
+  closed rather than a feature added. A reload keeps every PTY alive and throws
+  the renderer's state away, and `terminalStore.adoptLive` deliberately skips
+  shells — so a live shell came back as a dead chip and its PTY ran on
+  unreachable until the app quit. Each pane's key now round-trips through Rust
+  as an opaque `clientKey`, so `terminal_list` is enough to find the pane a live
+  shell belongs to. The split still comes back collapsed: adoption restores the
+  processes, not the layout.
+- **A shell whose own cwd has gone is killed; one whose project root has gone is
+  not.** `missing` on a project is a single `is_dir()` refreshed once per
+  indexer scan, and it flips back when the folder returns — so it is far too
+  cheap a signal to hang an irreversible kill on. An unmounted volume or a
+  sleeping external drive would take a running build with it. The reap therefore
+  asks the question of each pane's *own* cwd: a pane whose directory is gone has
+  nowhere left to work and is killed, and a pane in a linked checkout that is
+  still on disk keeps running even though the project root beside it vanished.
 
 **Nothing about a shell ever raises a dialog, and that is a deliberate trade.**
 It is outside `working_count()` and ADR-0020's quit confirm, and outside
-`needsCloseConfirm` on the session header's `×`. Quitting the app or closing the
-session therefore `SIGKILL`s a running build without asking. The alternative
-was available and was declined: `MasterPty::process_group_leader()`
-(portable-pty 0.8, `tcgetpgrp` on the master fd) answers "is a command running
-in this shell" exactly, and an "any live shell" trigger would have reintroduced
-the noise ADR-0020 removed. **Kill-on-quit is untouched** (ADR-0005): every
-shell dies with the app either way.
+`needsCloseConfirm` on the session header's `×`. Quitting the app therefore
+`SIGKILL`s a running build without asking. Re-decided under project scoping and
+kept (ADR-0032): the rescope makes that window *longer*, since a shell now
+survives every session gesture, and it also removes the case that made the trade
+bite — closing a session no longer kills anything. The alternative was available
+and was declined twice: `MasterPty::process_group_leader()` (portable-pty 0.8,
+`tcgetpgrp` on the master fd) answers "is a command running in this shell"
+exactly, and a second reason for that dialog to appear is a step back towards
+the dialog nobody reads. **Kill-on-quit is untouched** (ADR-0005): every shell
+dies with the app either way.
 
 **No keyboard chord in v1.** Every plain key belongs to whichever terminal has
 focus — F12 refused `Ctrl+B` on the same reasoning — so switching panes and
 chips is by click, and roadmap item 5 is where a set of bindings gets decided at
 once. The strip's controls stay reachable by `Tab`.
 
-**Backend.** `shell_spawn(opts)`, `shell_kill_for_session(sessionId)` and
+**Backend.** `shell_spawn(opts)`, `shell_kill_for_project(projectId)` and
 `shell_name()`, which answers the basename of the shell `shell_spawn` would run
 so a chip can be labelled before its process exists. Writing, resizing, killing
 and `terminal:data` are the existing commands and the existing event, which are
@@ -4557,6 +4634,23 @@ keyed by terminal id and need no shell-specific twin. There is no title event:
 the first version had `terminal:title`, and F24 removed it with the `OSC 0`
 label.
 
+- **`ShellSpawnOpts` carries no session id** (ADR-0032): `clientKey`,
+  `projectId`, `cwd`, `cols`, `rows`. `TerminalHandle.session_id` is
+  `Option<String>` and `None` for a shell, which is what makes the three session
+  passes ADR-0031 names — `next_session_id`, `live_session_ids`,
+  `working_count` — skip a shell by construction rather than by a filter
+  somebody has to remember to write. `TerminalStatusDto.sessionId` is nullable
+  for the same reason.
+- **`clientKey` is the renderer's pane key, and Rust never reads it.** It is
+  stored on the handle and handed back by `terminal_list` so a reloaded renderer
+  can re-find its own pane; a `shell:<uuid>` is opaque to the backend, which
+  neither parses nor validates it. `null` for every agent.
+- **`resync_ide_status` asks for the session id and now gets an `Option`**,
+  which fixes a real defect rather than accommodating one: it iterates *every*
+  handle, so a footer shell was emitting `IdeStatusEvent { connected: false }`
+  under the session id it had borrowed — clearing that session's genuine bridge
+  error, or not, depending on iteration order. A shell has no session to report
+  a bridge for, and now cannot claim one.
 - **argv is bare `$SHELL`** — a PTY with no arguments is already an interactive
   shell, so `~/.zshrc` is sourced the way it is in any terminal emulator.
   `/bin/zsh` when `$SHELL` is unset, reusing `shell_path`'s single-guess rule
@@ -4568,11 +4662,19 @@ label.
 - **No IDE bridge and no agent tool server.** Both exist to let an *agent* reach
   back into factorai and there is no model in a shell to hand a tool to. It also
   keeps `CLAUDE_CODE_SSE_PORT` out of the shell's environment, so a `claude` the
-  user starts by hand in that shell is not silently bound to the footer it was
+  user starts by hand in that shell is not silently bound to the project it was
   typed in.
 - **No transcript probe.** `resume_cwd` answers "where did Claude write this
-  session's transcript", which for a shell is a question about a different
-  process that happens to share its id.
+  session's transcript", which is a question a shell has no id to ask.
+
+**Store.** `factorai.shells` goes to **version 3**, keyed by project id:
+`byProject`, `activeByProject`. The v2→v3 migration **re-keys rather than
+drops** — every chip already carried a `projectId`, so a session's chips move to
+their project with their panes, their cwds and their order intact. F24 made a
+chip a group of up to five panes and said the group is what the user built;
+throwing that away to save a crowded strip is the wrong side of that trade. The
+cost is real and accepted: a project whose sessions each had a chip restores
+them all in one strip, dead, and the `×` is right there.
 
 **One stream, and a shell's `OSC 0` is not read at all.** For an agent the
 title is Claude's state (F10, ADR-0015); for a shell it is noise — most prompts
@@ -4580,13 +4682,16 @@ write one on every command. A shell that titles itself with the CLI's own idle
 marker — one stray `printf` does it — must leave the session's status alone,
 and `a_shells_title_never_moves_a_status` is the test that says so.
 
-**A shell's host does leave the document, unlike an agent's.** The agent's pane
-is shared across a tab switch, so its pooled hosts stay connected and keep their
-place in WebKit's wheel-event region (F5, 2026-08-28). The shell pane only
-exists while a chip is active, so collapsing it — or leaving the session —
-detaches its hosts, and on macOS the wheel over a restored shell may need one
-click before it scrolls. Judged acceptable rather than fixed: you click into a
-shell to type in it anyway. The fix, if it stops being acceptable, is the
+**A shell's host leaves the document on a collapse, and no longer on a
+navigation.** The agent's pane is shared across a tab switch, so its pooled
+hosts stay connected and keep their place in WebKit's wheel-event region (F5,
+2026-08-28). A shell pane's host used to have the same problem for a worse
+reason — the footer was inside the session route, so *moving between sessions*
+detached it — and hoisting the footer into the app shell removes that half.
+What remains is the collapse and the chip switch: a pane's host only exists
+while its chip is active, so on macOS the wheel over a restored pane may need
+one click before it scrolls. Judged acceptable rather than fixed: you click into
+a shell to type in it anyway. The fix, if it stops being acceptable, is the
 offscreen pane a routine's terminal already uses.
 
 **A dispose races an in-flight spawn**, and a dead chip's respawn is where it
@@ -4602,15 +4707,21 @@ the same way, so the guard is on the shared path rather than on this one.
 **Edge cases.**
 - `$SHELL` points at something unrunnable → the spawn fails and the error is
   printed in the pane, the same as a missing `claude`.
-- The session's checkout has been deleted → the spawn is refused rather than
-  starting in `$HOME`, which is the rule `spawn_refuses_a_cwd_that_does_not_exist`
-  already enforces for agents.
+- The cwd has been deleted → the spawn is refused rather than starting in
+  `$HOME`, which is the rule `spawn_refuses_a_cwd_that_does_not_exist` already
+  enforces for agents. A dead chip whose directory is gone therefore prints that
+  refusal in its pane on the click that tried to respawn it, and keeps its `×`.
+- The project's folder is missing → the strip is still drawn and its live panes
+  are still typeable, but `+ Terminal` is disabled: a shell with nowhere to run
+  is refused by the backend anyway, and not offering the control is the honest
+  version of that.
 
-**Roadmap.** Item 47. The static label and the splits: F24, item 49.
+**Roadmap.** Item 47, the splits and the static label F24 owns as item 49, and
+the project rescope as item 50.
 
 ## F24 — Splits in the footer shell
 
-**Behavior.** A chip in the session's shell footer (F23) can hold up to **five**
+**Behavior.** A chip in the project's shell footer (F23) can hold up to **five**
 shells side by side. The chip keeps every meaning F23 gave it — one click
 switches to it, a click on the active chip collapses the split, a dead chip
 respawns — and a *split* happens inside the active chip. This is the model
@@ -4625,8 +4736,9 @@ re-proposed.
 **Vocabulary.** A **chip** is what the footer strip shows, and is now a *group*.
 A **pane** is one shell: one PTY, one pooled xterm, one cwd. A chip holds one to
 five panes in a **row**. Everything F23 says about "a shell" — spawned in the
-session's checkout, killed with the session, outside the quit guard, `exit`
-removes it — is true of a pane.
+directory the route is showing, killed with the project rather than with a
+session (ADR-0032), outside the quit guard, `exit` removes it — is true of a
+pane.
 
 **UI.**
 
@@ -4680,8 +4792,10 @@ removes it — is true of a pane.
 
 **Lifecycle.**
 
-- **A new pane starts where a new chip does**: the session's checkout when it
-  has one (F21), the project root otherwise. A shell's live cwd is not tracked,
+- **A new pane starts where a new chip does**: the session's checkout when the
+  route has one (F21), the project root otherwise — and it keeps that cwd for
+  its life, so a pane split in a worktree stays there when you switch session
+  (F23 as amended by ADR-0032). A shell's live cwd is not tracked,
   so "split with the focused pane's directory" is not offered; `OSC 7` would
   make it possible later without changing the UI.
 - **Closing a pane kills its process.** The corner `×`, and `exit`, remove the
@@ -4703,8 +4817,9 @@ removes it — is true of a pane.
   the chip is not active.
 
 **Backend.** Nothing new for the split itself: a pane is a `shell_spawn`, a
-kill is `terminal_kill`, and `shell_kill_for_session` still kills every pane in
-a session because every pane carries the session id (ADR-0031). The one new
+kill is `terminal_kill`, and one command kills every pane in a footer at once
+because every pane carries the same id its footer is keyed by — the session's
+when F24 shipped, the project's since ADR-0032. The one new
 command is `shell_name() -> String`, the basename of the shell `shell_spawn`
 runs, so a chip is labelled before its process exists and after it is gone.
 **Removed with the static label**: the `terminal:title` event, the
@@ -4712,13 +4827,14 @@ runs, so a chip is labelled before its process exists and after it is gone.
 on `TerminalStatusDto`. A shell's `OSC 0` is now read by nobody; the test that
 a shell's title never moves a status keeps that half.
 
-**Store.** `ShellTab` becomes a group — `key` (`chip:<uuid>`), `sessionId`,
-`projectId`, `shell`, `panes`, `focus` — and a pane is `key` (`shell:<uuid>`),
-`cwd`, `terminalId`, `dead`. The xterm pool is keyed by pane keys; chip keys
-have their own prefix so the two can never be confused. `factorai.shells` goes
-to **version 2** with a migration: a v1 tab becomes a one-pane chip whose pane
-keeps the v1 key, so nothing a user had is lost. Widths live in a non-persisted
-map keyed by chip.
+**Store.** `ShellTab` becomes a group — `key` (`chip:<uuid>`), `projectId`,
+`panes`, `focus` — and a pane is `key` (`shell:<uuid>`), `cwd`, `terminalId`,
+`dead`. It carried a `sessionId` too when F24 shipped; ADR-0032 removed it.
+The xterm pool is keyed by pane keys; chip keys have their own prefix so the two
+can never be confused. `factorai.shells` went to **version 2** here, with a
+migration turning a v1 tab into a one-pane chip that keeps the v1 key, and to
+**version 3** with the project rescope — see F23 § "Store". Widths live in a
+non-persisted map keyed by chip.
 
 **Edge cases.**
 - The window narrows under a five-pane row → panes shrink to the minimum and

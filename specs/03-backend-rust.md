@@ -232,14 +232,17 @@ terminal_write(id: TerminalId, data: String) -> ()
 terminal_resize(id: TerminalId, cols: u16, rows: u16) -> ()
 terminal_kill(id: TerminalId) -> ()
 terminal_list() -> Vec<TerminalStatusDto>       // both kinds; `kind` says which
-// The footer shell (F23, ADR-0031). Separate from `terminal_spawn` because it
-// shares only the PTY: no transcript probe, no IDE bridge, no tool server, no
-// routine to mark started. `cwd` is required — there is no transcript to fall
-// back to.
-shell_spawn(opts: ShellSpawnOpts) -> TerminalId  // session_id, project_id, cwd, cols, rows
-// A shell's whole lifetime is the footer it is drawn in. The agent is killed by
-// the caller's own `terminal_kill`, on the id it already holds.
-shell_kill_for_session(session_id: String) -> ()
+// The footer shell (F23, ADR-0031, ADR-0032). Separate from `terminal_spawn`
+// because it shares only the PTY: no transcript probe, no IDE bridge, no tool
+// server, no routine to mark started. `cwd` is required — there is no transcript
+// to fall back to. No session id: a shell belongs to the project (ADR-0032).
+// `client_key` is the renderer's pane key, round-tripped so a reloaded renderer
+// can re-find the pane a live shell belongs to; Rust never reads it.
+shell_spawn(opts: ShellSpawnOpts) -> TerminalId  // client_key, project_id, cwd, cols, rows
+// A shell's whole lifetime is the project it was opened in. Called by
+// `Remove project` and by nothing about a session. The agent is killed by the
+// caller's own `terminal_kill`, on the id it already holds.
+shell_kill_for_project(project_id: String) -> ()
 // The basename of the shell `shell_spawn` runs — `zsh`, `bash`, `fish` — so a
 // chip can be labelled before its process exists and after it is gone (F23 as
 // amended by F24). One value per app: `$SHELL`, else `/bin/zsh`.
@@ -408,16 +411,19 @@ Owns the `DashMap<TerminalId, Terminal>`. On `terminal_spawn`:
 3. Open PTY via `portable_pty::native_pty_system().openpty(size)`.
 4. Spawn child, attach reader on a blocking thread, forward chunks into a
    tokio mpsc, fan out as `terminal:data` events.
-**A second kind of PTY, since F23: the footer shell** (ADR-0031). `spawn_shell`
-runs bare `$SHELL` through the same `spawn_inner`, so the cwd refusal, the
-`child_env` diff, the reader and the waiter are shared — and skips steps 1, 2
-and the bridge entirely. The handle carries a `kind`, and three passes filter on
-it: `next_session_id`, `live_session_ids` and `working_count`. A shell's `OSC 0`
-is read by nobody: it is not classified as a status, because a shell sets titles
-too and classifying one would report the user's prompt as Claude working, and
-since F24 it is not a name either — the chip is labelled with the shell's
-basename from `shell_name`. `shell_kill_for_session` is the whole of a shell's
-lifetime rule.
+**A second kind of PTY, since F23: the footer shell** (ADR-0031, ADR-0032).
+`spawn_shell` runs bare `$SHELL` through the same `spawn_inner`, so the cwd
+refusal, the `child_env` diff, the reader and the waiter are shared — and skips
+steps 1, 2 and the bridge entirely. The handle carries a `kind`, and
+`session_id` is `Option<String>`, `None` for a shell — so the four passes that
+mean "the session" get asked which kind they mean rather than remembering to
+filter: `next_session_id`, `live_session_ids`, `working_count` and
+`resync_ide_status`. A shell's `OSC 0` is read by nobody: it is not classified
+as a status, because a shell sets titles too and classifying one would report
+the user's prompt as Claude working, and since F24 it is not a name either —
+the chip is labelled with the shell's basename from `shell_name`.
+`shell_kill_for_project` is the whole of a shell's lifetime rule, alongside the
+reap that kills a pane whose own cwd has gone.
 
 5. **Status is parsed out of that same byte stream, not polled.** The reader
    scans each chunk for `OSC 0` titles and derives `working` / `waiting_input`

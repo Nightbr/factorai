@@ -21,7 +21,7 @@ paths:
   `DropdownMenu` and `ContextMenu` in `@factorai/ui`, so every menu inherits
   them rather than the one whose padding somebody noticed.
 - Chrome heights are literal: top bar `h-10.5`, file panel header, sidebar
-  footer and the session's shell footer `h-9`, session tab `h-7.5`.
+  footer and the project's shell footer `h-9`, session tab `h-7.5`.
 - The refresh spinner clears on `animationiteration` and is deliberately **not**
   behind `motion-safe:` — with the animation suppressed the event never fires,
   so the state latches on forever.
