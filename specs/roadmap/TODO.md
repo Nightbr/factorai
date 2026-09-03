@@ -1406,6 +1406,11 @@ was testable from the Linux machine this was written on, and the first one is th
       each: identical output, naming the certificate rather than a cdhash, is the pass. If TCC
       turns out to want an anchor it trusts, this whole item collapses into the paid half and the
       workflow step should come back out.
+- [ ] **The import step runs on a GitHub macOS runner.** It leans on passwordless `sudo` for
+      `add-trusted-cert`, and none of it is testable from Linux — it runs for the first time on
+      the first signed tag. Re-running the macOS matrix job on its own is normal here, so a
+      failure costs a re-run rather than a release, but read the job log before assuming the
+      `.dmg` in the release is signed.
 - [ ] **The app still works signed and hardened.** `hardenedRuntime` was Tauri's default and moot
       while nothing signed; it now takes effect. Launch it, open a session, drive a PTY, open a
       file dialog, apply an update — the `manual-qa` lane, not the test suite, which cannot see

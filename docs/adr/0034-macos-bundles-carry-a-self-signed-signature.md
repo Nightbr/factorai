@@ -59,20 +59,50 @@ openssl pkcs12 -export -legacy \
   -in factorai-signing.crt -inkey factorai-signing.key \
   -out factorai-signing.p12 -password pass:<passphrase>
 
-base64 -i factorai-signing.p12 | tr -d '\n'   # -> the APPLE_CERTIFICATE secret
+# Redirected, not `base64 -i`: that flag means "ignore garbage" to GNU base64
+# and "input file" to Apple's, so the obvious spelling is wrong on one of them.
+base64 < factorai-signing.p12 | tr -d '\n'   # -> the APPLE_CERTIFICATE secret
 ```
 
-Two repository secrets carry it: `APPLE_CERTIFICATE` (that base64, one line) and
-`APPLE_CERTIFICATE_PASSWORD` (the passphrase, no newlines — the workflow passes
-it through `GITHUB_ENV`, whose `NAME=value` form cannot hold one).
+The common name is free — nothing reads it. The workflow reads the identity back
+out of the keychain it just built rather than carrying a copy of the name, so the
+certificate's name is a property of the secret and not of a file in this repo.
 
-**No `security import` step in the workflow.** `tauri-bundler` reads both
-variables itself and builds a temporary keychain from them
-(`tauri_macos_sign::Keychain::with_certificate`), deriving the signing identity
-from the certificate — so `APPLE_SIGNING_IDENTITY` is not set either. It reads
-them with `var_os`, which means the **empty** string counts as present and an
-empty certificate fails the build; the workflow therefore stages the variables in
-a guarded step rather than putting them in the action's `env:` map, so a fork
+Two repository secrets carry it: `APPLE_CERTIFICATE` (that base64, one line) and
+`APPLE_CERTIFICATE_PASSWORD` (the passphrase).
+
+**The workflow builds the keychain itself, and hands Tauri only
+`APPLE_SIGNING_IDENTITY`.** Handing it `APPLE_CERTIFICATE` instead is the
+shorter path — `tauri-bundler` reads that variable and imports the `.p12` for you
+— and it cannot work here. That branch resolves the identity through
+`tauri_macos_sign`'s `identity::list()`, which looks only for certificates whose
+common name begins with one of seven Apple prefixes (`Developer ID Application:`,
+`Apple Development:`, and five more) and additionally requires an organizational
+unit to read as a team id. A self-signed certificate matches none of them, the
+list comes back empty, and the build fails on `ResolveSigningIdentity`. Naming
+our certificate as though Apple had issued it would satisfy the parser and put a
+false authority in every signature, which is not a trade worth making. Setting
+`APPLE_SIGNING_IDENTITY` with `APPLE_CERTIFICATE` absent takes the
+`with_signing_identity` path instead, which passes the name to `codesign` and
+asks the certificate no questions.
+
+So the workflow does the `security` dance — temporary keychain, import,
+`set-key-partition-list` so codesign's use of the key does not raise a GUI prompt
+that hangs the job, and *joining* the user keychain search list rather than
+replacing it, since `with_signing_identity` passes no `--keychain`.
+
+**The certificate must also be trusted for code signing on the build machine**
+(`security add-trusted-cert -d -r trustRoot -p codeSign`). An untrusted
+self-signed certificate is not *valid for code signing*: it does not even appear
+in `security find-identity -v -p codesigning`, and codesign refuses an identity
+it cannot validate. This is trust on the builder and nowhere else — no user's
+machine trusts this certificate and none is meant to, which is why Gatekeeper is
+unaffected while grant persistence is not: the designated requirement keys off
+the certificate's hash, not off anyone trusting it.
+
+Neither variable is exported to the build step. The bundler reads
+`APPLE_CERTIFICATE` with `var_os`, so the empty string a missing secret expands to
+counts as present and would fail the build; keeping both step-scoped means a fork
 without the secrets builds ad-hoc exactly as before.
 
 **Notarization stays off** — `notarize_auth()` needs `APPLE_ID` /
@@ -124,7 +154,11 @@ pushed.** Neither could be tested from the Linux machine this was written on:
    anchor trust — but the whole decision rests on it. The test is two consecutive
    builds and `codesign -d -r- factorai.app` on each: an identical designated
    requirement, naming the certificate rather than a cdhash, is the pass.
-2. That the app still runs correctly signed and hardened — launch it, open a
+2. That the import sequence works on a GitHub macOS runner at all — it leans on
+   passwordless `sudo` for `add-trusted-cert`, and the whole step is untestable
+   from Linux. It runs for the first time on the first signed tag, which is
+   re-runnable per platform (see this workflow's header) but is still a release.
+3. That the app still runs correctly signed and hardened — launch it, open a
    session, drive a PTY, open a file dialog, apply an update. Type checking does
    not validate this and neither does CI.
 

@@ -200,43 +200,105 @@ jobs:
       # signature has no identity, so the requirement falls back to the cdhash
       # and every release orphans every permission the user has granted.
       #
-      # Staged here rather than in the action's `env:` map because
-      # `tauri-bundler` reads these with `var_os` — the empty string a missing
-      # secret expands to counts as present, and an empty certificate fails the
-      # build. A fork without the secrets must build ad-hoc, as this workflow
-      # did before.
+      # The keychain is built here rather than by handing the bundler
+      # APPLE_CERTIFICATE, which looks like the shorter path and cannot work:
+      # that branch resolves the identity through `identity::list()`, which
+      # searches only for certificates whose common name starts with one of
+      # seven Apple prefixes ("Developer ID Application:", "Apple
+      # Development:", ...) and also demands an organizational unit to read as
+      # a team id. A self-signed certificate matches none of them, the list
+      # comes back empty, and the build fails on `ResolveSigningIdentity`. The
+      # alternative — naming the certificate as if Apple had issued it — would
+      # put a false authority in every signature, so: import by hand, and pass
+      # APPLE_SIGNING_IDENTITY, which takes the `with_signing_identity` path
+      # and asks the certificate no questions.
       #
-      # There is no `security import` step and no APPLE_SIGNING_IDENTITY on
-      # purpose: the bundler builds its own temporary keychain from these two
-      # variables and derives the identity from the certificate. Notarization
-      # needs APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID or an App Store Connect
-      # key, all deliberately absent — it takes a paid Developer Program
-      # certificate, and it is not what grants App Management anyway.
-      - name: Stage the macOS signing certificate
+      # Both variables are step-scoped and deliberately NOT exported: the
+      # bundler reads APPLE_CERTIFICATE with `var_os`, so the empty string a
+      # missing secret expands to would count as present and fail the build.
+      # A fork without the secrets must build ad-hoc, as this workflow did
+      # before.
+      #
+      # Notarization needs APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID or an App
+      # Store Connect key, all deliberately absent — it takes a paid Developer
+      # Program certificate, and it is not what grants App Management anyway.
+      # Its absence is a `log::warn!` in the bundler, not an error.
+      - name: Import the macOS signing certificate
         if: matrix.platform == 'macos-latest'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          set -euo pipefail
+
           if [ -z "$APPLE_CERTIFICATE" ]; then
             echo "APPLE_CERTIFICATE is not set; this build will be ad-hoc signed."
             exit 0
           fi
-          # GITHUB_ENV's NAME=value form cannot carry a newline. The secret is
-          # one-line base64 (`base64 | tr -d '\n'`, see ADR-0034) and the
-          # passphrase is required to have none; strip anyway rather than write
-          # a file the next step silently misreads.
-          {
-            printf 'APPLE_CERTIFICATE=%s\n' "$(printf %s "$APPLE_CERTIFICATE" | tr -d '\n\r')"
-            printf 'APPLE_CERTIFICATE_PASSWORD=%s\n' "$(printf %s "$APPLE_CERTIFICATE_PASSWORD" | tr -d '\n\r')"
-          } >> "$GITHUB_ENV"
+
+          KEYCHAIN="$RUNNER_TEMP/factorai-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          P12="$RUNNER_TEMP/factorai-signing.p12"
+          PEM="$RUNNER_TEMP/factorai-signing.pem"
+
+          printf %s "$APPLE_CERTIFICATE" | base64 --decode > "$P12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # -lut: no auto-lock in the middle of a universal build.
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          security import "$P12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -f pkcs12 -T /usr/bin/codesign -A
+
+          # Without this, codesign's first use of the private key raises a GUI
+          # authorisation prompt no runner can answer, and the job hangs until
+          # it times out rather than failing.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+
+          # codesign resolves an identity through the user's keychain search
+          # list, and `with_signing_identity` passes no --keychain. So the
+          # temporary keychain has to JOIN that list, not replace it: -s
+          # rewrites it wholesale, and dropping login.keychain there breaks
+          # every other step that reads a credential.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s \
+            $(security list-keychains -d user | tr -d '" ') "$KEYCHAIN"
+
+          # A self-signed certificate is not *valid for code signing* until it
+          # is trusted for it, and codesign refuses an identity it cannot
+          # validate — `find-identity -v -p codesigning` would not even list
+          # it. Trust is set on the build machine only. No user's machine
+          # trusts this certificate and none is meant to: Gatekeeper still
+          # treats these bundles as unsigned, and the grant persistence this
+          # whole step exists for keys off the certificate's hash, not off
+          # anyone trusting it (ADR-0034).
+          security find-certificate -p "$KEYCHAIN" > "$PEM"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign \
+            -k /Library/Keychains/System.keychain "$PEM"
+
+          rm -f "$P12" "$PEM"
+
+          # One identity in a keychain that holds exactly one, read back rather
+          # than hardcoded — the certificate's common name is a property of the
+          # secret, not of this file.
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | sed -n 's/.*"\(.*\)"$/\1/p' | head -1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::the certificate imported but is not valid for code signing"
+            exit 1
+          fi
+          echo "Signing identity: $IDENTITY"
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Apple's two variables are NOT here — the step above puts them in
-          # GITHUB_ENV, and only when they are non-empty. See its comment.
+          # APPLE_SIGNING_IDENTITY is NOT here — the step above puts it in
+          # GITHUB_ENV, and only once a certificate has actually imported and
+          # proved valid for code signing. See its comment.
           #
           # Signs the updater artifacts. Without these the build still succeeds
           # but ships unsigned bundles the app will refuse to install.
