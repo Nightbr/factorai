@@ -121,14 +121,21 @@ authenticated (`claude login`).
 
 <br>
 
-**macOS builds are unsigned.** There is no Apple Developer certificate behind
-them, so Gatekeeper refuses the app on first launch with *"damaged and can't be
-opened"*. Right-click the app → **Open** → **Open**, or clear the quarantine
-attribute yourself:
+**macOS builds have no Apple Developer certificate behind them**, so Gatekeeper
+refuses the app on first launch with *"damaged and can't be opened"*. Right-click
+the app → **Open** → **Open**, or clear the quarantine attribute yourself:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/factorai.app
 ```
+
+**macOS asks for App Management the first time an update installs**, with
+*"factorai was prevented from modifying apps on your Mac"*. Installing an update
+means replacing `factorai.app`, and macOS gates that. Allow it in **System
+Settings → Privacy & Security → App Management** and it stays allowed. If it
+keeps asking on every release, or folder permissions keep coming back, you are on
+a build at or before v0.32.0 — those grants were tied to the exact build, and
+every release voided them.
 
 **Linux bundles need glibc 2.39 or newer** — Ubuntu 24.04+, Debian 13+, Fedora
 40+. They are built on Ubuntu 24.04, and a glibc-linked binary does not run on

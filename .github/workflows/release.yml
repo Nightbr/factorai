@@ -193,9 +193,51 @@ jobs:
             fs.writeFileSync(cargo, before.replace(line, `version = "${v}"`));
           ' "$VERSION"
 
+      # Apple code signing, macOS only. The certificate is **self-signed**, not
+      # a Developer ID one (ADR-0034), so Gatekeeper is unaffected and the
+      # README's right-click-Open section stands. What it buys is a *stable*
+      # designated requirement: TCC anchors every grant to it, and an ad-hoc
+      # signature has no identity, so the requirement falls back to the cdhash
+      # and every release orphans every permission the user has granted.
+      #
+      # Staged here rather than in the action's `env:` map because
+      # `tauri-bundler` reads these with `var_os` — the empty string a missing
+      # secret expands to counts as present, and an empty certificate fails the
+      # build. A fork without the secrets must build ad-hoc, as this workflow
+      # did before.
+      #
+      # There is no `security import` step and no APPLE_SIGNING_IDENTITY on
+      # purpose: the bundler builds its own temporary keychain from these two
+      # variables and derives the identity from the certificate. Notarization
+      # needs APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID or an App Store Connect
+      # key, all deliberately absent — it takes a paid Developer Program
+      # certificate, and it is not what grants App Management anyway.
+      - name: Stage the macOS signing certificate
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "APPLE_CERTIFICATE is not set; this build will be ad-hoc signed."
+            exit 0
+          fi
+          # GITHUB_ENV's NAME=value form cannot carry a newline. The secret is
+          # one-line base64 (`base64 | tr -d '\n'`, see ADR-0034) and the
+          # passphrase is required to have none; strip anyway rather than write
+          # a file the next step silently misreads.
+          {
+            printf 'APPLE_CERTIFICATE=%s\n' "$(printf %s "$APPLE_CERTIFICATE" | tr -d '\n\r')"
+            printf 'APPLE_CERTIFICATE_PASSWORD=%s\n' "$(printf %s "$APPLE_CERTIFICATE_PASSWORD" | tr -d '\n\r')"
+          } >> "$GITHUB_ENV"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Apple's two variables are NOT here — the step above puts them in
+          # GITHUB_ENV, and only when they are non-empty. See its comment.
+          #
           # Signs the updater artifacts. Without these the build still succeeds
           # but ships unsigned bundles the app will refuse to install.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

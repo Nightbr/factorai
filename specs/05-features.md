@@ -2224,8 +2224,15 @@ hook is simply inert there.
   update beats an unverified one.
 - A `.deb` install has no update path at all — which is why Linux ships
   AppImage only (ADR-0010).
-- macOS first install is still unsigned and needs the Gatekeeper dance; updates
-  applied in-place afterwards don't re-quarantine.
+- macOS first install still needs the Gatekeeper dance; updates applied
+  in-place afterwards don't re-quarantine. Bundles are signed, but with a
+  self-signed certificate (ADR-0034), which Gatekeeper treats exactly as
+  unsigned — it exists so the privacy grants a user makes survive the next
+  release rather than being orphaned by it.
+- **Installing an update needs macOS App Management**, because replacing the
+  bundle in place is a modification of an app bundle. macOS asks for it once and
+  the answer sticks; it cannot be avoided without an Apple Team ID (ADR-0034).
+  A refusal fails the install, not the app.
 
 ---
 

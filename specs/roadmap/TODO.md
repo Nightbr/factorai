@@ -958,6 +958,16 @@ Two dead ends, closed here so nobody re-explores them: a **self-signed** certifi
 Gatekeeper treats it exactly as unsigned, and an explicit **ad-hoc** `codesign` step changes
 nothing because the linker already ad-hoc signs on Apple Silicon.
 
+> **Amended 2026-09-03 by [ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md).**
+> The self-signed dead end is a dead end *for Gatekeeper only*, and that sentence reads as
+> closing the whole question. Gatekeeper trust and TCC persistence are different mechanisms:
+> macOS anchors every privacy grant to the app's designated requirement, an ad-hoc signature has
+> no identity to anchor to, and so every release orphaned every permission the user had granted.
+> A self-signed certificate fixes that and changes nothing about Gatekeeper — so **releases are
+> now signed with one**, and everything this item says about the cask, `--no-quarantine` and the
+> Developer ID wall stands untouched. **Item 51** holds what is left. The ad-hoc dead end is
+> unchanged and still a dead end.
+
 - [ ] A tap repo — `Nightbr/homebrew-factorai` — holding `Casks/factorai.rb`: version, the
       universal `.dmg`'s URL, its sha256.
 - [ ] A job in `release.yml` **after `publish`**, bumping the cask from the published asset. It has
@@ -1366,3 +1376,53 @@ is read as the target here, but the left sidebar has its own ceiling —
 `MAX_SIDEBAR_WIDTH = 480` (`sidebarStore.ts:24`) — and if that is the one that feels cramped it is
 a one-line change with none of the above behind it. Confirm before building the wrong half.
 
+
+## 51. The macOS permission loop — the free half shipped, the paid half is a decision
+
+**User report, 2026-09-03**, in the reporter's words: *"il y a un petit bug avec les droits, on me
+demande tout le temps le droit d'accéder aux mêmes dossiers. Je suis ramené dans les paramètres
+pour autoriser une bonne fois pour toutes mais après redémarrage, rebelote."* Plus a *"factorai was
+prevented from modifying apps on your Mac"* notification, and factorai's **App Management** toggle
+showing as off after they had switched it on.
+
+**Two mechanisms, one cause, and they do not have the same fix** — the diagnosis is in
+[ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md) and is not repeated
+here. In short: TCC anchors a grant to the app's designated requirement, an ad-hoc signature has
+none so it falls back to the cdhash, and every release and every F14 self-update orphans every
+grant. That is the recurring folder ask. The notification is a second thing —
+`tauri-plugin-updater` writing inside `/Applications/factorai.app` is App Management, whose only
+two escapes both key on an Apple **Team ID**.
+
+**Shipped 2026-09-03: the free half.** Releases are signed with a self-signed certificate held as
+`APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD`. Grants now anchor to the certificate, so they
+survive a release; App Management is still asked for, but asked *once* instead of once per version.
+Gatekeeper is untouched and item 36 stands as written.
+
+**Two things that must be verified on a real Mac before the first signed tag is pushed.** Neither
+was testable from the Linux machine this was written on, and the first one is the whole premise:
+
+- [ ] **The designated requirement is certificate-anchored, and TCC accepts it on a machine that
+      does not trust the certificate.** Two consecutive builds, `codesign -d -r- factorai.app` on
+      each: identical output, naming the certificate rather than a cdhash, is the pass. If TCC
+      turns out to want an anchor it trusts, this whole item collapses into the paid half and the
+      workflow step should come back out.
+- [ ] **The app still works signed and hardened.** `hardenedRuntime` was Tauri's default and moot
+      while nothing signed; it now takes effect. Launch it, open a session, drive a PTY, open a
+      file dialog, apply an update — the `manual-qa` lane, not the test suite, which cannot see
+      this.
+
+**Then a decision, which is the open half: pay the $99/yr or not.** What it buys, precisely, so the
+question is not re-derived: a Team ID, which satisfies the same-team rule and **removes the App
+Management prompt entirely** rather than making it stick; and notarization, which removes the
+Gatekeeper step and lets item 36's cask drop `--no-quarantine`. Notarization alone grants nothing
+here — the Team ID is the part that matters for this bug. Revisit when the prompt-once behaviour has
+been lived with for a while; it may be enough.
+
+**What not to try.** `NSUpdateSecurityPolicy` in our own `Info.plist` maps team identifiers, and we
+have none to name — it is available only once the paid half is, and redundant then. An explicit
+ad-hoc `codesign` step remains what item 36 says it is.
+
+**One operational consequence worth not learning the hard way.** The `.p12` joins the minisign key
+of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
+user has granted. It does not break the update path the way losing the minisign key would, so it is
+one notch less fatal — but it is not a secret to regenerate casually.
