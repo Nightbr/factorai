@@ -39,21 +39,27 @@ pub type TerminalId = String;
 
 /// What a PTY *is*, which is not the same question as what it is doing.
 ///
-/// Everything in factorai was a Claude session until F23, and three passes over
+/// Everything in factorai was a Claude session until F23, and several passes over
 /// the handle map still mean "session" when they say "terminal": the new-session
-/// reuse rule, the set of ids the indexer must not reap, and the `OSC 0` status
-/// parse. A shell has a session id only because it is drawn under one — it is
-/// not that session, and it is not any session — so it is excluded from all
-/// three by kind rather than by a name check.
+/// reuse rule, the set of ids the indexer must not reap, the `OSC 0` status
+/// parse, the bridge resync. A shell is none of them.
 ///
-/// See `specs/05-features.md` § F23 and ADR-0031.
+/// **The kind is what a PTY is; `session_id` is `None` for a shell**, which is
+/// how those passes skip one by construction rather than by a filter somebody
+/// has to remember (ADR-0032). The kind still exists because two things about a
+/// shell are decided by what it *is* rather than by an absent field: what
+/// `spawn_inner` skips, and which handles a project's kill sweeps up.
+///
+/// See `specs/05-features.md` § F23, ADR-0031 and ADR-0032.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalKind {
 	/// A `claude` process. The session id names a real transcript.
 	Agent,
-	/// The user's own shell, in the footer under a session (F23). The session
-	/// id says which footer it is drawn in, and nothing more.
+	/// The user's own shell, in the project's footer (F23). It has a project id
+	/// and no session id: it outlives every session of that project, and dies
+	/// with the project, the app, its own `exit`, a `×`, or its cwd going
+	/// missing (ADR-0032).
 	Shell,
 }
 
@@ -115,12 +121,18 @@ pub struct SpawnOpts {
 /// `cwd` is required rather than optional, unlike an agent's: the caller knows
 /// which checkout the footer is under (F21) and there is no transcript to fall
 /// back to.
+///
+/// **No session id** (ADR-0032). A shell belongs to the project; the footer it
+/// is drawn in is project chrome and the same chip is reachable from every
+/// session of that project.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellSpawnOpts {
-	/// The session whose footer this shell is drawn in. It says which shells die
-	/// with which session, and nothing else — see [`TerminalKind`].
-	pub session_id: String,
+	/// The renderer's own key for the pane this shell fills — a `shell:<uuid>`.
+	/// Round-tripped and never read here: a renderer that reloads has thrown its
+	/// state away while every PTY carried on, and this is what lets it re-find
+	/// the pane a live shell belongs to instead of leaving it orphaned.
+	pub client_key: String,
 	pub project_id: String,
 	pub cwd: String,
 	pub cols: u16,
@@ -131,14 +143,18 @@ pub struct ShellSpawnOpts {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalStatusDto {
 	pub id: TerminalId,
-	pub session_id: String,
+	/// `None` for a shell, which has no session (ADR-0032). The renderer keys
+	/// its agent map by this, so a null is what keeps a shell out of it.
+	pub session_id: Option<String>,
 	pub project_id: String,
 	pub status: TerminalStatus,
 	pub last_activity: i64,
-	/// Agent or shell (F23). The renderer keys `bySession` by session id, and a
-	/// shell shares its footer session's id — so a boot adoption that did not
-	/// know the difference would file a shell over the agent it is drawn under.
+	/// Agent or shell (F23).
 	pub kind: TerminalKind,
+	/// The renderer's pane key for a shell, so a reloaded renderer can re-bind
+	/// this PTY to the chip it belongs to (ADR-0032). `None` for an agent, which
+	/// is found by its session id instead.
+	pub client_key: Option<String>,
 	/// Where this terminal is running. A shell chip that outlives its process
 	/// respawns here (F23).
 	pub cwd: String,
@@ -317,12 +333,42 @@ pub struct RoutineStore {
 	pub update: RoutineUpdate,
 }
 
-struct TerminalHandle {
-	session_id: String,
+/// What `spawn_inner` needs, for either kind of PTY.
+///
+/// **Not `SpawnOpts` with a flag on it, and not `ShellSpawnOpts` either.** Both
+/// of those are IPC types shaped for one caller: an agent's carries a session id
+/// and a routine's first prompt, a shell's carries the renderer's pane key and
+/// no session at all. This is the union the one spawn path actually reads, and
+/// the `Option`s in it are the two questions `spawn_inner` asks — see
+/// [`TerminalKind`] and ADR-0032.
+struct PtyRequest {
+	/// `None` for a shell. Everything an agent gets and a shell does not — the
+	/// transcript probe, the tool server, the IDE bridge, the argv — hangs off
+	/// this being `Some`.
+	session_id: Option<String>,
+	/// The renderer's pane key, for a shell. Round-tripped, never read.
+	client_key: Option<String>,
 	project_id: String,
-	/// Agent or shell (F23). Read by the three passes that would otherwise
-	/// mistake a footer shell for a session — see [`TerminalKind`].
+	cwd: Option<String>,
+	cols: u16,
+	rows: u16,
+	initial_prompt: Option<String>,
 	kind: TerminalKind,
+}
+
+struct TerminalHandle {
+	/// **`None` for a shell** (ADR-0032). Every pass that means "the session" is
+	/// therefore asked what it means for a shell instead of being trusted to
+	/// filter on [`TerminalKind`] — see that type.
+	session_id: Option<String>,
+	project_id: String,
+	/// Agent or shell (F23) — see [`TerminalKind`] for what it still decides now
+	/// that a shell's missing session id decides the rest.
+	kind: TerminalKind,
+	/// The renderer's key for the pane a shell fills, held so `list` can hand it
+	/// back after a renderer reload. Opaque here: never parsed, never validated,
+	/// `None` for an agent (ADR-0032).
+	client_key: Option<String>,
 	master: Mutex<Box<dyn MasterPty + Send>>,
 	writer: Mutex<Box<dyn Write + Send>>,
 	/// A killer cloned from the child at spawn time. We deliberately do NOT
@@ -533,11 +579,10 @@ impl TerminalManager {
 	/// pass takes this so it never drops the row of a session you are watching,
 	/// whatever happened to its transcript on disk.
 	pub fn live_session_ids(&self) -> HashSet<String> {
-		self.terminals
-			.iter()
-			.filter(|e| e.value().kind == TerminalKind::Agent)
-			.map(|e| e.value().session_id.clone())
-			.collect()
+		// `filter_map` rather than a `kind` filter: a shell has no session id to
+		// contribute, so there is nothing to remember to exclude (ADR-0032).
+		// Pinning a phantom row against the reap is what this used to do wrong.
+		self.terminals.iter().filter_map(|e| e.value().session_id.clone()).collect()
 	}
 
 	/// Hand files to one session's agent as `at_mentioned` notifications (F20).
@@ -551,10 +596,11 @@ impl TerminalManager {
 	/// human just made and is watching for, so "nothing happened" has to be
 	/// something they can see rather than a line in a log.
 	pub fn mention(&self, session_id: &str, mentions: &[Mention]) -> AppResult<()> {
-		let entry =
-			self.terminals.iter().find(|e| e.value().session_id == session_id).ok_or_else(
-				|| AppError::NotFound(format!("session {session_id} is not running")),
-			)?;
+		let entry = self
+			.terminals
+			.iter()
+			.find(|e| e.value().session_id.as_deref() == Some(session_id))
+			.ok_or_else(|| AppError::NotFound(format!("session {session_id} is not running")))?;
 		let handle = entry.value();
 
 		let Some(server) = handle.ide.server() else {
@@ -598,8 +644,15 @@ impl TerminalManager {
 	pub fn resync_ide_status(&self) {
 		for entry in self.terminals.iter() {
 			let handle = entry.value();
+			// **Shells are skipped, and it took `Option` to notice.** This pass
+			// iterates every handle, so a footer shell used to announce
+			// `connected: false` under the session id it had borrowed — clearing
+			// that session's real bridge error, or not, depending on the order
+			// `DashMap` happened to hand the entries over. A shell has no session
+			// and now cannot claim one (ADR-0032).
+			let Some(session_id) = handle.session_id.clone() else { continue };
 			(self.on_ide_status)(IdeStatusEvent {
-				session_id: handle.session_id.clone(),
+				session_id,
 				connected: handle.ide.server().is_some_and(IdeServer::is_attached),
 				error: handle.ide.error(),
 			});
@@ -618,6 +671,7 @@ impl TerminalManager {
 					status: *h.status.lock(),
 					last_activity: h.last_activity.load(Ordering::Relaxed),
 					kind: h.kind,
+					client_key: h.client_key.clone(),
 					cwd: h.cwd.to_string_lossy().into_owned(),
 				}
 			})
@@ -640,11 +694,14 @@ impl TerminalManager {
 	pub fn next_session_id(&self, project_id: &str, folder: &Path) -> String {
 		for entry in self.terminals.iter() {
 			let h = entry.value();
-			if h.kind == TerminalKind::Agent
-				&& h.project_id == project_id
-				&& !claude::transcript_path(&self.claude_dir, folder, &h.session_id).exists()
+			// A shell contributes no id here because it has none: it would
+			// otherwise be handed to a "new session" click, and `claude --resume`
+			// pointed at an id no transcript will ever exist for (ADR-0031).
+			let Some(session_id) = h.session_id.as_deref() else { continue };
+			if h.project_id == project_id
+				&& !claude::transcript_path(&self.claude_dir, folder, session_id).exists()
 			{
-				return h.session_id.clone();
+				return session_id.to_string();
 			}
 		}
 		Uuid::new_v4().to_string()
@@ -841,16 +898,17 @@ impl TerminalManager {
 	pub fn spawn_shell(&self, opts: ShellSpawnOpts) -> AppResult<TerminalId> {
 		let shell = crate::services::shell_path::user_shell();
 		let id = self.spawn_inner(
-			SpawnOpts {
-				session_id: opts.session_id,
+			PtyRequest {
+				session_id: None,
+				client_key: Some(opts.client_key),
 				project_id: opts.project_id,
 				cwd: Some(opts.cwd),
 				cols: opts.cols,
 				rows: opts.rows,
 				initial_prompt: None,
+				kind: TerminalKind::Shell,
 			},
 			Some(vec![shell.to_string_lossy().into_owned()]),
-			TerminalKind::Shell,
 		)?;
 		// Nothing names the chip from here. It is labelled with this shell's
 		// basename, which the renderer asked `shell_name` for before it called
@@ -865,9 +923,14 @@ impl TerminalManager {
 	/// Split out from `spawn_with_argv` so the argv is assertable without a PTY,
 	/// which is the only part of a spawn a test can check cheaply and the part
 	/// that decides whether a session resumes or starts over.
+	///
+	/// **Takes the session id rather than the whole `SpawnOpts`**, because since
+	/// ADR-0032 there is a spawn with no `SpawnOpts` behind it: a shell's argv is
+	/// its `$SHELL`, and this function is unreachable for one.
 	fn argv_for(
 		&self,
-		opts: &SpawnOpts,
+		session_id: &str,
+		initial_prompt: Option<&str>,
 		cwd_path: &Path,
 		tools: Option<&AgentToolsServer>,
 	) -> AppResult<Vec<String>> {
@@ -890,13 +953,13 @@ impl TerminalManager {
 			v.push("--mcp-config".into());
 			v.push(tools.mcp_config_arg());
 		}
-		v.push(session_flag(&self.claude_dir, cwd_path, &opts.session_id).into());
-		v.push(opts.session_id.clone());
+		v.push(session_flag(&self.claude_dir, cwd_path, session_id).into());
+		v.push(session_id.to_string());
 		// One positional argument, whichever flag the probe chose: the CLI takes a
 		// prompt the same way in both cases, so a routine firing into a session it
 		// has run before resumes *and* says something.
-		if let Some(prompt) = opts.initial_prompt.as_ref().filter(|p| !p.is_empty()) {
-			v.push(prompt.clone());
+		if let Some(prompt) = initial_prompt.filter(|p| !p.is_empty()) {
+			v.push(prompt.to_string());
 		}
 		Ok(v)
 	}
@@ -908,36 +971,49 @@ impl TerminalManager {
 		opts: SpawnOpts,
 		argv_override: Option<Vec<String>>,
 	) -> AppResult<TerminalId> {
-		self.spawn_inner(opts, argv_override, TerminalKind::Agent)
+		self.spawn_inner(
+			PtyRequest {
+				session_id: Some(opts.session_id),
+				client_key: None,
+				project_id: opts.project_id,
+				cwd: opts.cwd,
+				cols: opts.cols,
+				rows: opts.rows,
+				initial_prompt: opts.initial_prompt,
+				kind: TerminalKind::Agent,
+			},
+			argv_override,
+		)
 	}
 
 	/// The one place a PTY comes into existence, for both kinds.
 	///
 	/// A shell takes the same cwd resolution, the same `child_env` diff and the
-	/// same reader/waiter threads as an agent, and differs in four places, all
-	/// guarded by `kind`: no transcript probe, no IDE bridge, no agent tool
-	/// server, and a title that names it rather than deciding a status.
+	/// same reader/waiter threads as an agent, and differs in three places: no
+	/// transcript probe, no IDE bridge, no agent tool server. Each of those is
+	/// now behind `req.session_id`, which a shell does not have (ADR-0032) —
+	/// so the thing that skips them is the absence of the id they need rather
+	/// than a `kind` check beside the code that would misuse it.
 	fn spawn_inner(
 		&self,
-		opts: SpawnOpts,
+		req: PtyRequest,
 		argv_override: Option<Vec<String>>,
-		kind: TerminalKind,
 	) -> AppResult<TerminalId> {
+		let kind = req.kind;
 		// Resolved before argv, because the transcript probe that decides
 		// `--resume` vs `--session-id` is keyed by the folder Claude will run in.
 		//
-		// **A shell never consults the transcript.** `resume_cwd` answers "where
-		// did Claude write this session's transcript", which for a shell is a
-		// question about a *different* process that happens to share its id: a
-		// session whose agent moved into a worktree would otherwise drag the
-		// footer's shell there too, ignoring the directory the caller asked for.
-		let cwd_path = match kind {
-			TerminalKind::Agent => self.resume_cwd(&opts.session_id),
-			TerminalKind::Shell => None,
-		}
-		.or_else(|| opts.cwd.as_deref().map(PathBuf::from))
-		.or_else(dirs::home_dir)
-		.unwrap_or_else(|| PathBuf::from("/"));
+		// **A shell never consults the transcript**, and cannot: `resume_cwd`
+		// answers "where did Claude write this session's transcript", and a shell
+		// has no session to ask about (ADR-0032). It takes the directory the
+		// caller named — the route's checkout (F21) — and holds it for life.
+		let cwd_path = req
+			.session_id
+			.as_deref()
+			.and_then(|sid| self.resume_cwd(sid))
+			.or_else(|| req.cwd.as_deref().map(PathBuf::from))
+			.or_else(dirs::home_dir)
+			.unwrap_or_else(|| PathBuf::from("/"));
 
 		// **Started before argv, because its port goes into argv.** A failure is
 		// logged and dropped, the same rule the bridge follows: a session without
@@ -948,10 +1024,10 @@ impl TerminalManager {
 		// *agent* reach back into factorai, and a shell has no model in it to
 		// hand a tool to. Standing them up anyway would put two more listeners
 		// and two more lockfiles behind every `ls`.
-		let agent_tools = match kind {
-			TerminalKind::Shell => None,
-			TerminalKind::Agent => {
-				match self.start_agent_tools(&opts.session_id, &opts.project_id, &cwd_path) {
+		let agent_tools = match req.session_id.as_deref() {
+			None => None,
+			Some(session_id) => {
+				match self.start_agent_tools(session_id, &req.project_id, &cwd_path) {
 					Ok(server) => Some(server),
 					Err(e) => {
 						warn!(error = %e, "agent tool server did not start; the session runs without it");
@@ -961,9 +1037,22 @@ impl TerminalManager {
 			}
 		};
 
-		let argv = match argv_override {
-			Some(v) => v,
-			None => self.argv_for(&opts, &cwd_path, agent_tools.as_ref())?,
+		let argv = match (argv_override, req.session_id.as_deref()) {
+			(Some(v), _) => v,
+			(None, Some(session_id)) => self.argv_for(
+				session_id,
+				req.initial_prompt.as_deref(),
+				&cwd_path,
+				agent_tools.as_ref(),
+			)?,
+			// A shell's argv is its `$SHELL` and is always passed in; an agent
+			// without a session id cannot exist, since factorai mints one before
+			// any process (ADR-0008).
+			(None, None) => {
+				return Err(AppError::InvalidInput(
+					"a PTY needs either a session to run or an argv to run".into(),
+				));
+			}
 		};
 
 		let mut cmd = CommandBuilder::new(&argv[0]);
@@ -1006,13 +1095,14 @@ impl TerminalManager {
 		// its auto-connect on, and it pins which lockfile is chosen when a VS Code
 		// is open on the same machine — the CLI otherwise connects only when
 		// exactly one candidate matches.
-		let ide = match kind {
-			// See the note on `agent_tools` above: no model, no bridge. It also
-			// keeps `CLAUDE_CODE_SSE_PORT` out of the shell's environment, so a
-			// `claude` the user starts *by hand* in that shell is not silently
-			// bound to the footer it was typed in.
-			TerminalKind::Shell => IdeSlot::None,
-			TerminalKind::Agent => match self.start_bridge(&opts.session_id, &cwd_path) {
+		let ide = match req.session_id.as_deref() {
+			// See the note on `agent_tools` above: no model, no bridge — and a
+			// bridge is a *session's*, so there is not even an id to advertise one
+			// under. It also keeps `CLAUDE_CODE_SSE_PORT` out of the shell's
+			// environment, so a `claude` the user starts *by hand* in that shell
+			// is not silently bound to the project it was typed in.
+			None => IdeSlot::None,
+			Some(session_id) => match self.start_bridge(session_id, &cwd_path) {
 				Ok(server) => {
 					cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
 					IdeSlot::Running(server)
@@ -1027,8 +1117,8 @@ impl TerminalManager {
 		let pty_system = native_pty_system();
 		let pair = pty_system
 			.openpty(PtySize {
-				cols: opts.cols.max(20),
-				rows: opts.rows.max(5),
+				cols: req.cols.max(20),
+				rows: req.rows.max(5),
 				pixel_width: 0,
 				pixel_height: 0,
 			})
@@ -1052,9 +1142,10 @@ impl TerminalManager {
 		info!(%id, argv = ?argv, cwd = ?cwd_path, "spawned terminal");
 
 		let handle = Arc::new(TerminalHandle {
-			session_id: opts.session_id.clone(),
-			project_id: opts.project_id.clone(),
+			session_id: req.session_id.clone(),
+			project_id: req.project_id.clone(),
 			kind,
+			client_key: req.client_key.clone(),
 			master: Mutex::new(pair.master),
 			writer: Mutex::new(writer),
 			killer: Mutex::new(killer),
@@ -1080,9 +1171,13 @@ impl TerminalManager {
 		// for this session will silently do nothing, and the header is the only
 		// place that can say so. A healthy one announces nothing — there is no
 		// news in "it worked".
-		if let Some(reason) = handle.ide.error() {
+		//
+		// A shell has no bridge and no session to report one for, so there is
+		// nothing here to announce — `handle.ide.error()` is `None` for one
+		// (ADR-0032).
+		if let (Some(session_id), Some(reason)) = (req.session_id.clone(), handle.ide.error()) {
 			(self.on_ide_status)(IdeStatusEvent {
-				session_id: opts.session_id.clone(),
+				session_id,
 				connected: false,
 				error: Some(reason),
 			});
@@ -1149,24 +1244,58 @@ impl TerminalManager {
 		Ok(())
 	}
 
-	/// Kill every shell drawn in one session's footer (F23).
+	/// Kill every shell in one project's footer (F23, ADR-0032).
 	///
-	/// Called when that session is closed, which is the whole of a shell's
-	/// lifetime rule: a shell dies with the footer it lives in. Agents are left
-	/// alone — closing a session kills its agent through `terminal_kill` on the
-	/// id the renderer already holds, and doing it twice from here would race
-	/// that path for no gain.
-	pub fn kill_shells_for_session(&self, session_id: &str) {
+	/// **Called by `Remove project` and by nothing about a session.** A shell's
+	/// lifetime is the project's: it survives closing, deleting and switching
+	/// away from every session of that project, because none of those is a
+	/// statement about the `cargo test` running underneath them.
+	///
+	/// Agents are left alone. Closing a session kills its agent through
+	/// `terminal_kill` on the id the renderer already holds, and doing it twice
+	/// from here would race that path for no gain — which is why this filters on
+	/// `kind` and not on the project id alone.
+	pub fn kill_shells_for_project(&self, project_id: &str) {
 		let ids: Vec<TerminalId> = self
 			.terminals
 			.iter()
 			.filter(|e| {
 				let h = e.value();
-				h.kind == TerminalKind::Shell && h.session_id == session_id
+				h.kind == TerminalKind::Shell && h.project_id == project_id
 			})
 			.map(|e| e.key().clone())
 			.collect();
-		debug!(count = ids.len(), session_id, "kill shells for session");
+		debug!(count = ids.len(), project_id, "kill shells for project");
+		for id in &ids {
+			let _ = self.kill(id);
+		}
+	}
+
+	/// Kill every shell whose own working directory has gone (F23, ADR-0032).
+	///
+	/// **The question is asked of the pane's cwd, never of the project's
+	/// `missing` flag.** That flag is one `is_dir()` per indexer scan and it
+	/// flips back when the folder returns — far too cheap a signal to hang an
+	/// irreversible kill on, since an unmounted volume or a sleeping external
+	/// drive would take a running build with it. A pane whose *own* directory is
+	/// gone has nowhere left to work, and a pane in a linked checkout that is
+	/// still on disk keeps running even when the project root beside it vanished.
+	///
+	/// Agents are not reaped here. A session's PTY dying takes its transcript's
+	/// row with it, which is the indexer's business and not this pass's.
+	pub fn reap_shells_with_missing_cwd(&self) {
+		let ids: Vec<TerminalId> = self
+			.terminals
+			.iter()
+			.filter(|e| {
+				let h = e.value();
+				h.kind == TerminalKind::Shell && !h.cwd.is_dir()
+			})
+			.map(|e| e.key().clone())
+			.collect();
+		if !ids.is_empty() {
+			debug!(count = ids.len(), "reap shells whose cwd is gone");
+		}
 		for id in &ids {
 			let _ = self.kill(id);
 		}
@@ -1671,43 +1800,84 @@ mod tests {
 		assert_eq!(got.as_deref(), Some(id.as_str()), "no waiting_input event for the title");
 	}
 
-	/// SpawnOpts for a shell test — same shape, a session id it does not own.
-	fn shell_opts(session_id: &str) -> SpawnOpts {
-		SpawnOpts {
-			session_id: session_id.into(),
-			project_id: "11111111-aaaa-4bbb-8ccc-dddddddddddd".into(),
+	/// A shell's spawn request: a project, a pane key, and **no session id at
+	/// all** (ADR-0032).
+	fn shell_req(project_id: &str) -> PtyRequest {
+		PtyRequest {
+			session_id: None,
+			client_key: Some("shell:2f0d3c1e-0000-4000-8000-000000000001".into()),
+			project_id: project_id.into(),
 			cwd: None,
 			cols: 80,
 			rows: 24,
 			initial_prompt: None,
+			kind: TerminalKind::Shell,
 		}
 	}
 
-	/// The three passes that mean "session" when they say "terminal" (F23,
-	/// ADR-0031). A shell carries a session id so its footer can find it, and
-	/// every one of these would otherwise read that id as a session: the sidebar
-	/// would show a live row for a shell, the indexer would refuse to reap a
-	/// transcript that no longer exists, and "new session" would hand the user
-	/// the shell's id to run `claude --resume` against.
+	/// An agent's, for the tests that need one beside a shell.
+	fn agent_req(session_id: &str, project_id: &str) -> PtyRequest {
+		PtyRequest {
+			session_id: Some(session_id.into()),
+			client_key: None,
+			project_id: project_id.into(),
+			cwd: None,
+			cols: 80,
+			rows: 24,
+			initial_prompt: None,
+			kind: TerminalKind::Agent,
+		}
+	}
+
+	/// The four passes that mean "session" when they say "terminal" (F23,
+	/// ADR-0031, ADR-0032). Every one of them would read a shell as a session:
+	/// the sidebar would show a live row for one, the indexer would refuse to
+	/// reap a transcript that no longer exists, "new session" would hand the
+	/// user a shell's id to run `claude --resume` against, and the bridge resync
+	/// would announce a disconnected editor for a session that has one.
+	///
+	/// **Since ADR-0032 a shell has no session id to be mistaken for**, and this
+	/// test is what says the `Option` is doing that work rather than a filter
+	/// somebody may forget on the fifth pass.
 	#[test]
 	fn a_shell_is_never_mistaken_for_a_session() {
-		let (mgr, _d, _e) = make_manager();
-		let shell_session = "99999999-8888-7777-6666-555555555555";
+		let (mut mgr, _d, _e) = make_manager();
+		let ide: Arc<StdMutex<Vec<IdeStatusEvent>>> = Arc::new(StdMutex::new(Vec::new()));
+		let ic = ide.clone();
+		mgr.set_ide_status_cb(Arc::new(move |e| ic.lock().unwrap().push(e)));
+		let project = "11111111-aaaa-4bbb-8ccc-dddddddddddd";
 		let id = mgr
 			.spawn_inner(
-				shell_opts(shell_session),
+				shell_req(project),
 				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
-				TerminalKind::Shell,
 			)
 			.expect("spawn");
 
 		assert_eq!(mgr.live_count(), 1, "the PTY exists and quitting will kill it");
 		assert_eq!(mgr.working_count(), 0, "a shell is never work in progress (ADR-0020)");
 		assert!(mgr.live_session_ids().is_empty(), "a shell pins no session against the reaper");
-		assert_ne!(
-			mgr.next_session_id("11111111-aaaa-4bbb-8ccc-dddddddddddd", Path::new("/tmp")),
-			shell_session,
-			"new session must never be handed a shell's id"
+		assert_eq!(
+			mgr.list().first().and_then(|t| t.session_id.clone()),
+			None,
+			"a shell reports no session to the renderer's agent map"
+		);
+
+		// `next_session_id` mints a fresh uuid when it finds nothing to reuse, so
+		// what is asserted is that the shell is not what it reused — and a shell
+		// has no id it *could* hand back.
+		let offered = mgr.next_session_id(project, Path::new("/tmp"));
+		assert!(
+			mgr.list().iter().all(|t| t.session_id.as_deref() != Some(offered.as_str())),
+			"new session must never be handed a live terminal that is not an agent"
+		);
+
+		// The pass that `Option` caught. It iterates every handle, so a shell
+		// used to emit `connected: false` under the session id it had borrowed —
+		// clearing that session's real bridge error depending on iteration order.
+		mgr.resync_ide_status();
+		assert!(
+			ide.lock().unwrap().is_empty(),
+			"a shell has no bridge and no session to report one for"
 		);
 
 		let _ = mgr.kill(&id);
@@ -1739,13 +1909,12 @@ mod tests {
 
 		let id = mgr
 			.spawn_inner(
-				shell_opts("99999999-8888-7777-6666-555555555555"),
+				shell_req("11111111-aaaa-4bbb-8ccc-dddddddddddd"),
 				Some(vec![
 					"/bin/sh".into(),
 					"-c".into(),
 					"printf '\\033]0;\\342\\234\\263 ~/dev/factorai\\007'; sleep 30".into(),
 				]),
-				TerminalKind::Shell,
 			)
 			.unwrap();
 
@@ -1778,18 +1947,17 @@ mod tests {
 	#[test]
 	fn an_exit_says_whether_we_killed_it() {
 		let (mgr, _d, exit) = make_manager();
+		let project = "11111111-aaaa-4bbb-8ccc-dddddddddddd";
 		let ended = mgr
 			.spawn_inner(
-				shell_opts("99999999-8888-7777-6666-555555555555"),
+				shell_req(project),
 				Some(vec!["/bin/sh".into(), "-c".into(), "exit 0".into()]),
-				TerminalKind::Shell,
 			)
 			.unwrap();
 		let killed = mgr
 			.spawn_inner(
-				shell_opts("99999999-8888-7777-6666-555555555555"),
+				shell_req(project),
 				Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]),
-				TerminalKind::Shell,
 			)
 			.unwrap();
 		let _ = mgr.kill(&killed);
@@ -1808,20 +1976,25 @@ mod tests {
 		assert_eq!(flag(&killed), Some(true), "a shell we killed");
 	}
 
-	/// A shell's whole lifetime is the footer it is drawn in (F23).
+	/// A shell's whole lifetime is the **project** it was opened in (F23,
+	/// ADR-0032). `Remove project` sweeps its shells up; the agent in the same
+	/// project is killed by its own `terminal_kill` and must not be killed twice
+	/// from here; another project's shells are not this project's business.
 	#[test]
-	fn closing_a_session_kills_its_shells_and_nothing_else() {
+	fn removing_a_project_kills_its_shells_and_nothing_else() {
 		let (mgr, _d, _e) = make_manager();
-		let mine = "99999999-8888-7777-6666-555555555555";
-		let other = "12121212-3434-5656-7878-909090909090";
+		let mine = "11111111-aaaa-4bbb-8ccc-dddddddddddd";
+		let other = "22222222-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 		let sleep = || Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]);
 
-		let agent = mgr.spawn_inner(shell_opts(mine), sleep(), TerminalKind::Agent).unwrap();
-		let ours = mgr.spawn_inner(shell_opts(mine), sleep(), TerminalKind::Shell).unwrap();
-		let theirs = mgr.spawn_inner(shell_opts(other), sleep(), TerminalKind::Shell).unwrap();
+		let agent = mgr
+			.spawn_inner(agent_req("99999999-8888-7777-6666-555555555555", mine), sleep())
+			.unwrap();
+		let ours = mgr.spawn_inner(shell_req(mine), sleep()).unwrap();
+		let theirs = mgr.spawn_inner(shell_req(other), sleep()).unwrap();
 		assert_eq!(mgr.live_count(), 3);
 
-		mgr.kill_shells_for_session(mine);
+		mgr.kill_shells_for_project(mine);
 
 		// `kill` signals; the waiter thread removes the entry when the process
 		// actually goes. Poll for that rather than assuming it has happened —
@@ -1834,9 +2007,51 @@ mod tests {
 			}
 			std::thread::sleep(Duration::from_millis(25));
 		};
-		assert!(!live.contains(&ours), "the session's own shell dies with it");
+		assert!(!live.contains(&ours), "the project's own shells die with it");
 		assert!(live.contains(&agent), "the agent is killed by its own path, not this one");
-		assert!(live.contains(&theirs), "another session's shells are untouched");
+		assert!(live.contains(&theirs), "another project's shells are untouched");
+
+		mgr.kill_all();
+	}
+
+	/// A shell whose own directory has gone is reaped; one whose project root
+	/// went is not (F23, ADR-0032).
+	///
+	/// **The distinction is the whole rule.** `missing` on a project is one
+	/// `is_dir()` per indexer scan and it flips back when a folder returns, so
+	/// an unmounted volume would kill a build running fine in a linked checkout
+	/// somewhere else. The question is asked of the pane's own cwd instead.
+	#[test]
+	fn a_shell_is_reaped_when_its_own_cwd_goes_and_not_before() {
+		let (mgr, _d, _e) = make_manager();
+		let project = "11111111-aaaa-4bbb-8ccc-dddddddddddd";
+		let doomed = tempfile::TempDir::new().unwrap();
+		let kept = tempfile::TempDir::new().unwrap();
+		let sleep = || Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]);
+
+		let mut in_doomed = shell_req(project);
+		in_doomed.cwd = Some(doomed.path().to_string_lossy().into_owned());
+		let mut in_kept = shell_req(project);
+		in_kept.cwd = Some(kept.path().to_string_lossy().into_owned());
+		let gone = mgr.spawn_inner(in_doomed, sleep()).unwrap();
+		let stays = mgr.spawn_inner(in_kept, sleep()).unwrap();
+
+		mgr.reap_shells_with_missing_cwd();
+		assert_eq!(mgr.live_count(), 2, "nothing is reaped while both directories are there");
+
+		drop(doomed);
+		mgr.reap_shells_with_missing_cwd();
+
+		let deadline = std::time::Instant::now() + Duration::from_secs(5);
+		let live: HashSet<TerminalId> = loop {
+			let live: HashSet<TerminalId> = mgr.list().into_iter().map(|t| t.id).collect();
+			if !live.contains(&gone) || std::time::Instant::now() > deadline {
+				break live;
+			}
+			std::thread::sleep(Duration::from_millis(25));
+		};
+		assert!(!live.contains(&gone), "a shell with nowhere left to work is killed");
+		assert!(live.contains(&stays), "a shell whose own directory is still there keeps running");
 
 		mgr.kill_all();
 	}
@@ -1965,17 +2180,17 @@ mod tests {
 		let mut o = opts(80, 24);
 		o.cwd = Some(tmp.path().to_string_lossy().to_string());
 		o.initial_prompt = Some("Triage the inbox".into());
-		let argv = mgr.argv_for(&o, tmp.path(), None).expect("argv");
+		let argv = mgr
+			.argv_for(&o.session_id, o.initial_prompt.as_deref(), tmp.path(), None)
+			.expect("argv");
 		assert_eq!(argv[0], "/bin/echo");
 		assert_eq!(argv[1], "--session-id");
 		assert_eq!(argv[2], o.session_id);
 		assert_eq!(argv[3], "Triage the inbox");
 
 		// An empty prompt is not an argument: it would be an empty first message.
-		o.initial_prompt = Some(String::new());
-		assert_eq!(mgr.argv_for(&o, tmp.path(), None).unwrap().len(), 3);
-		o.initial_prompt = None;
-		assert_eq!(mgr.argv_for(&o, tmp.path(), None).unwrap().len(), 3);
+		assert_eq!(mgr.argv_for(&o.session_id, Some(""), tmp.path(), None).unwrap().len(), 3);
+		assert_eq!(mgr.argv_for(&o.session_id, None, tmp.path(), None).unwrap().len(), 3);
 	}
 
 	#[test]
@@ -1991,7 +2206,9 @@ mod tests {
 		let o = opts(80, 24);
 		let tools = AgentToolsServer::start(Arc::new(|_| None)).expect("bind");
 
-		let argv = mgr.argv_for(&o, tmp.path(), Some(&tools)).expect("argv");
+		let argv = mgr
+			.argv_for(&o.session_id, o.initial_prompt.as_deref(), tmp.path(), Some(&tools))
+			.expect("argv");
 		let at = argv.iter().position(|a| a == "--mcp-config").expect("--mcp-config is passed");
 		let config: serde_json::Value = serde_json::from_str(&argv[at + 1]).expect("valid json");
 		let server = &config["mcpServers"][crate::services::agent_tools::SERVER_NAME];

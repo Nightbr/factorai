@@ -171,9 +171,14 @@ pub fn run() {
 					},
 				});
 			let live = terminals.clone();
+			let reap = terminals.clone();
 			let indexer = Arc::new(
 				Indexer::for_app(db.clone(), cd.clone(), app.handle().clone())
-					.with_live_ids(Arc::new(move || live.live_session_ids())),
+					.with_live_ids(Arc::new(move || live.live_session_ids()))
+					// A footer shell whose own directory has gone (ADR-0032). The
+					// scan is the trigger because it is already the pass that stats
+					// the filesystem — see `ReapShellsCb`.
+					.with_shell_reap(Arc::new(move || reap.reap_shells_with_missing_cwd())),
 			);
 
 			// The routine scheduler (F22, ADR-0026). It decides *when*; the
@@ -316,7 +321,7 @@ pub fn run() {
 			commands::terminal::terminal_kill,
 			commands::terminal::terminal_list,
 			commands::terminal::shell_spawn,
-			commands::terminal::shell_kill_for_session,
+			commands::terminal::shell_kill_for_project,
 			commands::terminal::shell_name,
 			commands::terminal::app_quit_confirmed,
 		])

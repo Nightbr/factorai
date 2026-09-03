@@ -45,6 +45,17 @@ pub type ChangedCb = Arc<dyn Fn(SessionsChanged) + Send + Sync>;
 /// is live", which is the right answer for a scan that has no terminals behind
 /// it at all.
 pub type LiveIdsCb = Arc<dyn Fn() -> HashSet<String> + Send + Sync>;
+/// Called once per full scan: kill any footer shell whose own working directory
+/// has gone (F23, ADR-0032). Injected for the same reason `LiveIdsCb` is — the
+/// indexer's tests build one with no `TerminalManager` behind it — and a no-op
+/// by default, which is the right answer for a scan with no terminals at all.
+///
+/// **The scan is the trigger because it is already the pass that stats the
+/// filesystem**, and the reap asks a question of the same shape one directory
+/// deeper. It deliberately does *not* read the `missing` flag that pass writes:
+/// that flag is the project root's, it flips back when a folder returns, and a
+/// kill does not.
+pub type ReapShellsCb = Arc<dyn Fn() + Send + Sync>;
 
 /// Owns the scan + watcher. Cheap to clone (Arc internals). Emit is wired
 /// via callbacks so tests can construct an Indexer without a Tauri runtime.
@@ -60,6 +71,7 @@ pub struct Indexer {
 	on_progress: ProgressCb,
 	on_changed: ChangedCb,
 	live_ids: LiveIdsCb,
+	reap_shells: ReapShellsCb,
 }
 
 /// One agent directory that belongs to a folder in the workspace: everything
@@ -96,6 +108,7 @@ impl Indexer {
 				let _ = app_changed.emit("sessions:changed", s);
 			}),
 			live_ids: Arc::new(HashSet::new),
+			reap_shells: Arc::new(|| {}),
 		}
 	}
 
@@ -108,6 +121,13 @@ impl Indexer {
 		self
 	}
 
+	/// Teach the indexer to reap footer shells whose directory has gone
+	/// (ADR-0032). A builder for the same reason as `with_live_ids`.
+	pub fn with_shell_reap(mut self, reap_shells: ReapShellsCb) -> Self {
+		self.reap_shells = reap_shells;
+		self
+	}
+
 	/// Build an indexer with explicit emit callbacks. Useful for tests that
 	/// want to capture or ignore events.
 	pub fn with_callbacks(
@@ -116,7 +136,14 @@ impl Indexer {
 		on_progress: ProgressCb,
 		on_changed: ChangedCb,
 	) -> Self {
-		Self { db, claude_dir, on_progress, on_changed, live_ids: Arc::new(HashSet::new) }
+		Self {
+			db,
+			claude_dir,
+			on_progress,
+			on_changed,
+			live_ids: Arc::new(HashSet::new),
+			reap_shells: Arc::new(|| {}),
+		}
 	}
 
 	pub fn claude_dir(&self) -> &Path {
@@ -132,6 +159,9 @@ impl Indexer {
 	pub fn full_scan(&self) -> AppResult<()> {
 		self.discover()?;
 		self.refresh_missing()?;
+		// After the stat pass, not before: a folder that came back this scan
+		// should not have its shells reaped on the strength of the last one.
+		(self.reap_shells)();
 
 		let dirs = self.db.with(|conn| linked_dirs(conn, None))?;
 		info!(count = dirs.len(), "scanning workspace projects");

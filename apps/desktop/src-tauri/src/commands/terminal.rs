@@ -36,25 +36,27 @@ pub fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<
 	Ok(terminal_id)
 }
 
-/// Open a shell in the footer under a session (F23).
+/// Open a shell in the project's footer (F23).
 ///
 /// Separate from `terminal_spawn` rather than a flag on it, because the two
 /// share only the PTY: this one runs no transcript probe, stands up no IDE
-/// bridge and no agent tool server, and never marks a routine started. See
-/// `TerminalManager::spawn_shell` and ADR-0031.
+/// bridge and no agent tool server, never marks a routine started, and has no
+/// session at all. See `TerminalManager::spawn_shell`, ADR-0031 and ADR-0032.
 #[tauri::command]
 pub fn shell_spawn(state: State<'_, AppState>, opts: ShellSpawnOpts) -> AppResult<String> {
 	state.terminals.spawn_shell(opts)
 }
 
-/// Kill every shell in one session's footer.
+/// Kill every shell in one project's footer (ADR-0032).
 ///
-/// The renderer calls this when it closes a session: a shell's whole lifetime
-/// is the footer it is drawn in. Killing the agent is still the caller's own
-/// `terminal_kill`, on the id it already holds.
+/// **The renderer calls this from `Remove project` and from nowhere else.**
+/// Closing, deleting or navigating away from a session says nothing about the
+/// shells under it — that was F23's rule and the rescope removed it. Killing a
+/// session's agent is still the caller's own `terminal_kill`, on the id it
+/// already holds.
 #[tauri::command]
-pub fn shell_kill_for_session(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
-	state.terminals.kill_shells_for_session(&session_id);
+pub fn shell_kill_for_project(state: State<'_, AppState>, project_id: String) -> AppResult<()> {
+	state.terminals.kill_shells_for_project(&project_id);
 	Ok(())
 }
 
