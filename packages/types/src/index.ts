@@ -18,6 +18,15 @@ export interface Project {
 	/** The folder is gone from disk. Set by the indexer's scan, not computed per
 	 *  `list_projects` call — that query is polled every 2s. */
 	missing: boolean;
+	/** Which Claude profile this project's **new** sessions run as (F25 slice 3).
+	 *  Null means the agent's default — which is what no assignment means, so an
+	 *  install that never assigned anything has null everywhere.
+	 *
+	 *  On the project rather than fetched separately because the right-click menu
+	 *  that changes it is drawn from this list, which the sidebar already polls. */
+	profileId: string | null;
+	/** That profile's name, for the menu. Null alongside a null `profileId`. */
+	profileName: string | null;
 }
 
 /**
@@ -154,6 +163,14 @@ export interface SessionSummary {
 	 *  rows when the session that spawned it is pinned, because the backend orders
 	 *  the group and `groupSessions` only nests. */
 	pinned: boolean;
+	/** The profile this session **is running or ran under** (F25 slice 3) — the
+	 *  one whose store holds its transcript, which is what a resume has to use
+	 *  even when the project has since been reassigned.
+	 *
+	 *  Null for a session the scan has not seen yet: no transcript, so nothing to
+	 *  have been written anywhere, and a spawn falls through to the project's
+	 *  assignment. */
+	profileName: string | null;
 }
 
 export interface SessionPage {
@@ -882,3 +899,43 @@ export interface RoutineFireEvent {
 export interface RoutinesChangedEvent {
 	projectId: string;
 }
+
+/** One Claude identity, isolated by config directory (F25, ADR-0036). Mirrors
+ *  the Rust `Profile`.
+ *
+ *  A profile is a name plus a directory. It holds no credential — the directory
+ *  does, put there by the CLI when the user logged in, which is why creating a
+ *  profile stops at making the directory empty. */
+export interface Profile {
+	id: string;
+	/** Which agent this is an identity for. `'claude'` today; the column exists
+	 *  so a second agent is a row rather than a migration. */
+	agent: string;
+	name: string;
+	configDir: string;
+	/** Every project with no assignment for this agent spawns under it. Exactly
+	 *  one per agent, enforced by a partial unique index in migration 0017. */
+	isDefault: boolean;
+	/** The directory is not on disk — unmounted, renamed, deleted. Not an error
+	 *  state: the scan skips such a profile rather than reaping its sessions, and
+	 *  the next spawn recreates the directory, where the CLI asking for a login is
+	 *  the correct and visible outcome. */
+	missing: boolean;
+	createdAt: number;
+}
+
+/** What `createProfile` accepts. `isDefault` is not part of it: promotion goes
+ *  through `setDefaultProfile`, which has to clear the old default in the same
+ *  transaction. */
+export interface ProfileInput {
+	name: string;
+	configDir: string;
+}
+
+/** `profiles:changed` — the profile list is different, so re-read it (F25).
+ *
+ *  No payload: there are a handful of rows and every reader wants all of them.
+ *  What the event buys is the half a renderer cannot do for itself — the indexer
+ *  re-reads profiles off it, which is what makes a new profile's sessions appear
+ *  at all. */
+export type ProfilesChangedEvent = Record<string, never>;

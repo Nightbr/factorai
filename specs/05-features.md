@@ -4900,3 +4900,226 @@ non-persisted map keyed by chip.
   is the honest upgrade if names are wanted later, and it changes no UI.
 
 **Roadmap.** Item 49.
+
+---
+
+## F25 — Several Claude profiles, isolated by config directory
+
+**A profile is a name plus a config directory**, and switching profile is
+`CLAUDE_CONFIG_DIR` on one spawned child. That variable is the CLI's own
+isolation boundary — credentials, `settings.json`, `projects/`, `ide/`, hooks
+and MCP config all resolve under it — so a profile is a complete separate
+identity that factorai never holds a token for.
+[ADR-0036](../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md)
+is the contract this section implements, including why holding credentials was
+rejected rather than deferred.
+
+**A profile belongs to an agent.** There is no Claude profile on a Codex agent,
+so `agent` is a column on `profiles`, and it is what "one default" and — from
+slice 3 — "one per project" are scoped by. Only `'claude'` is written today; a
+second agent is a row rather than a migration, the same shape
+`discovered_projects.agent` had before this feature took it over.
+
+### The three resolution rules
+
+- **A new session, and the shell in the project's footer**, run under the
+  project's assigned profile; with no assignment, under its agent's default.
+- **A resumed session** runs under the profile of *its own*
+  `discovered_projects` row — never the project's current assignment.
+  `--resume` against the wrong config directory finds no transcript and starts a
+  fresh conversation under an old name, which is silent.
+- **A running session cannot change profile.** The variable is read at spawn, so
+  every control that assigns one says "applies to new sessions" permanently
+  rather than in a toast that appears only sometimes.
+
+### What a spawn resolves, and why it is not only the variable
+
+`TerminalManager::config_dir_for` answers once per spawn and four things read
+it: the environment variable the CLI itself consults, the transcript probe that
+chooses `--resume` over `--session-id`, the IDE lockfile we advertise at, and the
+id `next_session_id` hands out. A session spawned under one directory and probed
+under another is this feature's silent failure mode — the probe misses, we claim
+`--session-id` for an id Claude already knows, and the conversation is replaced
+by an empty one.
+
+**The footer shell gets the variable, unlike `CLAUDE_CODE_SSE_PORT`.** That one
+is withheld from a shell so a `claude` you start by hand is not bound to a
+bridge (F23). This one is given, because a `claude` you start by hand in a
+project's own shell writing its transcript into another identity's store is the
+accident the feature exists to prevent. The two rules sit one line apart in
+`spawn_inner` for that reason.
+
+### The default profile is *no variable at all*
+
+**Setting `CLAUDE_CONFIG_DIR` to the directory the CLI would have used anyway is
+not the same as leaving it unset**, and the difference is a login. With the
+variable absent the CLI reads its configuration from `$HOME/.claude.json` — a
+file *beside* `~/.claude`, not inside it. Set the variable, even to `~/.claude`
+itself, and it reads `<dir>/.claude.json`, finds nothing, and asks the user to
+log in again.
+
+Found on a real machine the first time this shipped: every session under the
+default profile demanded a fresh login while the account sat in
+`$HOME/.claude.json` untouched. So a spawn compares the resolved directory
+against the ambient one and, when they match, **removes** the variable —
+`env_remove` rather than "skip the call", because what we inherited is not
+necessarily empty and a value leaking in from whatever launched factorai would
+hand the session a foreign identity in silence.
+
+The ambient directory is `claude_dir()`, which reads `CLAUDE_CONFIG_DIR` first
+and `CLAUDE_HOME` after it. The CLI's own variable comes first because if it is
+exported in the environment factorai was launched from, that *is* this machine's
+config directory — reading `~/.claude` instead would index one store while every
+session used another.
+
+### Storage
+
+`profiles`: `id` (uuid v4), `agent`, `name`, `config_dir` **UNIQUE**,
+`is_default`, `created_at`. Plus a partial unique index,
+`ON profiles(agent) WHERE is_default = 1`.
+
+`config_dir UNIQUE` is load-bearing rather than tidy: two profiles over one
+directory would discover the same transcripts twice while `sessions.id` — a
+primary key — can only belong to one `discovered_projects` row, so they would
+fight over every session on every scan. `missing` is **computed per query**, not
+stored: the list is short, it is read only while Settings is open, and a stored
+flag would need a scan to clear itself after a remount.
+
+**No row is seeded by the migration.** The default profile's directory is
+`CLAUDE_HOME` or `$HOME/.claude`, which static SQL cannot read, so
+`services::profiles::ensure_default` writes it at boot before the first scan.
+That is also what makes the environment variable a *seed* rather than a second
+mechanism outranking the table for the life of the install
+([Q3](07-open-questions.md)). A boot that finds a default leaves it alone; one
+that finds a profile already holding the seed directory promotes it rather than
+duplicating it.
+
+### Settings — the Profiles section
+
+A list of name, agent and directory, with the default marked. Create, rename,
+make default, delete.
+
+**This is the one section in the modal that writes as you click**, and it says
+so under the list. Everything else there is a draft the footer's Save commits;
+a profile is a row other things react to immediately — the indexer re-reads it,
+the next spawn resolves through it — and a draft would have to hold "created but
+not yet real" for a directory already made on disk. So it holds nothing in
+`SettingsValues`, can never be dirty, and never shows a nav dot.
+
+**Creating one** takes a name and a directory pre-filled as
+`~/.factorai/profiles/<slug>`, with a native picker beside it. The suggestion
+stops following the name once the field is edited by hand. The directory is
+created and **left empty**: the CLI populates it on first run and asks the user
+to log in, which is the only place authentication happens. Refused: a path
+another profile holds, a path nested inside or containing one (the same mistake
+spelled differently — two identities sharing `ide/` and `projects/`), a relative
+path, and a path that exists as a file. Names are unique per agent, because the
+only place a profile is named is a list read by eye.
+
+**Deleting one** removes the row and nothing on disk. The directory, its
+credentials and its transcripts stay; re-adding a profile on the same path
+brings its sessions back on the next scan. It is refused while the profile is
+its agent's default — promote another first — which is also what makes "zero
+defaults" unreachable from the UI.
+
+**The agent is shown now**, with one value in it, rather than appearing later as
+a column that reorganises the table.
+
+### A missing config directory
+
+Skipped by the scan, **never reaped**. `reap_deleted` deletes the session rows
+of any transcript it cannot find, so an unmounted volume would otherwise cost
+that profile its entire index and its FTS rows; skipping makes a remount free.
+The row stays, the section says the directory is not there and what will happen,
+and the next spawn recreates it empty — where the CLI asking for a login is the
+correct and visible outcome. Not an error state, and deliberately not a stored
+flag.
+
+**Edge cases.**
+- The default profile is deleted or demoted → refused. Promotion is one
+  transaction that clears the old default first, because the partial unique
+  index rejects the second one.
+- `CLAUDE_HOME` changes after first boot → nothing moves. The row is
+  authoritative, which is the point.
+- A profile's directory is a file → refused at the form.
+- Two profiles named `Work` → refused, and the message says which of the two
+  constraints objected. SQLite names the *columns* in a UNIQUE violation, never
+  the index, so the mapping matches on `profiles.config_dir` and `profiles.name`.
+
+### The scan and the watcher are per profile
+
+`discovered_projects.profile_id` (migration 0018) is what lets the same
+repository be recorded under two config directories: Claude derives its store
+directory name from the folder, so both stores name it identically, and the old
+`UNIQUE (agent, key)` rejected the second one — silently, which meant a second
+profile's transcripts never appeared at all.
+
+`Indexer` holds no config directory. It reads `profiles` on every pass, so a
+profile created a second ago is scanned without a restart, and `LinkedDir`
+carries the directory its row was found in rather than the indexer holding one of
+N. `scan_dir_path` **takes the profile as a parameter**: it derives the store key
+from the directory's name, and two profiles can hand it the same name.
+
+The watcher holds one root per profile, each remembering which profile it is, and
+reconciles that set against the table when `Control::rearm` is called — which
+`create_profile` and `delete_profile` do. That is the half of `profiles:changed`
+the renderer cannot do for itself: a new profile's transcripts are only noticed by
+something watching its directory. Creating a profile also kicks a scan, because a
+profile pointed at an existing `~/.claude-work` has history from the first moment.
+
+**A store that is merely unreachable is not an empty store.** `index_dir` returns
+without reaping when it cannot read the directory, and the watcher skips a root
+that is not there and retries on the next re-arm. Anything else would make an
+unmounted volume delete that profile's whole index.
+
+### The assignment, from either side
+
+`project_profiles` — `project_id`, `profile_id`, and `agent` denormalized so
+`UNIQUE (project_id, agent)` is a plain index rather than a trigger over a join.
+**No row means that agent's default profile**, so an install that has never
+assigned anything writes nothing, and a project can later be on a Claude profile
+and a Codex profile at once. A trigger keeps the denormalized `agent` honest,
+because a copy nothing enforces is a copy that drifts.
+
+Two surfaces write it, deliberately:
+
+- **The project's right-click menu** carries a `Profile ▸` submenu showing where
+  the project is and offering the alternatives. It is where the project's other
+  settings are reached, and it is absent entirely while only one profile exists —
+  a submenu whose only entry is the identity already in force is a dead end.
+- **The Settings row** folds open into the projects on that profile, for the
+  visit that is about an identity rather than about one project. Ticking a
+  project already on another profile **moves** it, and the row reads
+  `on: Personal` before you click — the label states the move, so a confirmation
+  per tick would only slow down assigning six projects.
+
+Both carry the same permanent note: **applies to new sessions.** Not a toast —
+the rule is `CLAUDE_CONFIG_DIR` is read at spawn, which is worth learning once
+rather than discovering the one time a session happened to be live.
+
+**Deleting a profile a project points at is refused**, not cascaded. The foreign
+key would happily drop the assignment and leave those projects spawning under the
+default, which is a silent move of somebody's work to another identity; the
+message names how many projects have to be pointed elsewhere first.
+
+### Which identity a session is, and stays
+
+`services::profiles::for_spawn` resolves session, then project, then default —
+and the first of those is why the session id reaches the resolver at all. A
+session's transcript physically lives under the config directory it was written
+in, so a resume has to run under *that* profile even when the project has since
+been reassigned; anything else finds no transcript and starts a fresh
+conversation under an old name. A session the scan has not seen yet resolves to
+the project, which is where a brand-new session belongs.
+
+The session header names the profile beside where the branch and the checkout are
+said, **and only when it is not the default** — a badge every session carries in
+a single-profile install is a label that never varies, and this one has to mean
+"not the identity you would assume". There is nothing to click: a session's
+profile cannot change.
+
+Nothing is shown on the sidebar's session rows. The project's menu is where a
+profile is read and changed, which is the answer to "which identity is this
+project on"; a per-row badge would answer a question the list is not asking.
+
+**Roadmap.** Item 45.

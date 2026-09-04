@@ -19,11 +19,25 @@ use crate::services::terminal::TerminalManager;
 use crate::services::watcher;
 use crate::state::AppState;
 
-/// Resolve the Claude config directory. Honours `CLAUDE_HOME`, falls back to
-/// `$HOME/.claude`. See specs/07-open-questions.md Q3.
+/// The Claude config directory this machine uses when nothing has been
+/// configured here — the *ambient* one.
+///
+/// Two things read it, and both want the same answer: `ensure_default` seeds the
+/// default profile from it (F25), and `TerminalManager` compares against it to
+/// decide whether a spawn needs `CLAUDE_CONFIG_DIR` set at all.
+///
+/// **`CLAUDE_CONFIG_DIR` first, because it is the CLI's own variable.** If it is
+/// exported in the environment factorai was launched from, that *is* this
+/// machine's config directory, and reading `~/.claude` instead would have us
+/// index one store while every session used another. `CLAUDE_HOME` stays honoured
+/// after it — see specs/07-open-questions.md Q3, which this refines.
 fn claude_dir() -> PathBuf {
-	if let Some(env) = std::env::var_os("CLAUDE_HOME") {
-		return PathBuf::from(env);
+	for var in ["CLAUDE_CONFIG_DIR", "CLAUDE_HOME"] {
+		if let Some(env) = std::env::var_os(var) {
+			if !env.is_empty() {
+				return PathBuf::from(env);
+			}
+		}
 	}
 	dirs::home_dir().expect("no home dir").join(".claude")
 }
@@ -54,6 +68,19 @@ pub fn run() {
 			let cd = claude_dir();
 			info!(?cd, ?data_dir, "factorai booting");
 
+			// **The default profile has to exist before anything resolves one**
+			// (F25, ADR-0036). `CLAUDE_HOME` — or `$HOME/.claude` — *seeds* it the
+			// first time and is not consulted again: the row is authoritative from
+			// then on, so a stale export in a shell profile can never outrank what
+			// Settings shows (specs/07-open-questions.md Q3).
+			let default_profile = services::profiles::ensure_default(&db, &cd)
+				.expect("failed to ensure the default claude profile");
+			info!(
+				id = %default_profile.id,
+				config_dir = %default_profile.config_dir,
+				"default claude profile"
+			);
+
 			// Ask the user's login shell what their PATH is, on its own thread.
 			// A GUI process has never run an rc file, so ours has no Homebrew and
 			// no version-manager shims in it, and a session handed that PATH
@@ -69,7 +96,15 @@ pub fn run() {
 			// auto-connects only when exactly one candidate matches, and our own
 			// litter is the easiest way to stop being that one. Only our entries,
 			// and only those whose process is gone (ADR-0017).
-			let swept = services::ide::lockfile::sweep(&cd, services::ide::lockfile::pid_is_alive);
+			// Every profile, not just the boot directory: a session's lockfile is
+			// written into the config directory *that session* runs under (F25), so
+			// our litter is spread across as many directories as there are profiles.
+			let swept: usize = services::profiles::config_dirs(&db)
+				.iter()
+				.map(|dir| {
+					services::ide::lockfile::sweep(dir, services::ide::lockfile::pid_is_alive)
+				})
+				.sum();
 			if swept > 0 {
 				info!(swept, "removed stale ide lockfiles from a previous run");
 			}
@@ -98,6 +133,16 @@ pub fn run() {
 				.with_session_cwd(Arc::new(move |session_id| {
 					services::sessions::recorded_cwds(&session_db, session_id)
 				}))
+				// Which identity a project's next session runs as (F25, ADR-0036).
+				// Read per spawn out of the same database and for the same reason as
+				// the two above: changing the default profile changes the next
+				// session without touching the ones already running.
+				.with_profile_dir({
+					let db = db.clone();
+					Arc::new(move |project_id, session_id| {
+						services::profiles::config_dir_for_spawn(&db, project_id, session_id)
+					})
+				})
 				// Which checkout each session is working in (F21). Written by the
 				// bridge's signal path only — the agent calling `setWorktree`, or an
 				// `openFile` landing in another worktree — and read back so a resumed
@@ -173,7 +218,7 @@ pub fn run() {
 			let live = terminals.clone();
 			let reap = terminals.clone();
 			let indexer = Arc::new(
-				Indexer::for_app(db.clone(), cd.clone(), app.handle().clone())
+				Indexer::for_app(db.clone(), app.handle().clone())
 					.with_live_ids(Arc::new(move || live.live_session_ids()))
 					// A footer shell whose own directory has gone (ADR-0032). The
 					// scan is the trigger because it is already the pass that stats
@@ -193,6 +238,11 @@ pub fn run() {
 				Arc::new(move || routine_live.live_session_ids()),
 			));
 
+			// The watcher's roots are one per profile and the set changes while the
+			// app runs, so the control handle lives in `AppState`: a profile write
+			// asks for a reconcile rather than the watcher polling the table (F25).
+			let watch = Arc::new(watcher::Control::default());
+
 			app.manage(AppState {
 				db,
 				indexer: indexer.clone(),
@@ -201,11 +251,12 @@ pub fn run() {
 				data_dir,
 				ui,
 				routines: routines.clone(),
+				watch: watch.clone(),
 				file_watch: Arc::new(services::file_watch::FileWatch::new()),
 			});
 
 			spawn_initial_scan(indexer.clone());
-			watcher::spawn(indexer);
+			watcher::spawn(indexer, watch.clone());
 			// Ticking starts with the window, because a routine is scheduled work
 			// in a project you can see — and the first tick is what catches up
 			// what was missed while the app was closed.
@@ -269,6 +320,13 @@ pub fn run() {
 			}
 		})
 		.invoke_handler(tauri::generate_handler![
+			commands::profiles::list_profiles,
+			commands::profiles::create_profile,
+			commands::profiles::rename_profile,
+			commands::profiles::set_default_profile,
+			commands::profiles::delete_profile,
+			commands::profiles::set_project_profile,
+			commands::profiles::suggest_profile_dir,
 			commands::projects::list_projects,
 			commands::projects::add_project,
 			commands::projects::remove_project,

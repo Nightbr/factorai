@@ -36,6 +36,8 @@ function project(name: string, { lastSessionAt = 0 as number | null } = {}): Pro
 		lastSessionAt,
 		missing: false,
 		sessionCount: 1,
+		profileId: null,
+		profileName: null,
 	};
 }
 

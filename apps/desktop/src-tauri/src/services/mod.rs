@@ -9,6 +9,7 @@ pub mod indexer;
 pub mod jsonl;
 pub mod mcp_wire;
 pub mod osc_title;
+pub mod profiles;
 pub mod reveal;
 pub mod routines;
 pub mod search;

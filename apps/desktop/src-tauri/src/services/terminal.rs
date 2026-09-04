@@ -281,6 +281,20 @@ type BinaryOverrideCb = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
 /// The directories a session is recorded as having run in, **newest first**.
 /// Usually one; two when the agent moved (F21).
 type SessionCwdCb = Arc<dyn Fn(&str) -> Vec<PathBuf> + Send + Sync>;
+/// Which Claude config directory a spawn runs under, given its project and —
+/// for a resume — its session (F25, ADR-0036).
+///
+/// Same shape and same reason as `BinaryOverrideCb`: the answer is a row in a
+/// database this module should not hold, and reading it per spawn is what makes
+/// "running sessions keep their profile, the next one uses the new one" true
+/// with nothing to invalidate.
+///
+/// **The session id is not optional decoration.** A transcript lives under the
+/// config directory it was written in, so a resume has to run under *that*
+/// profile even when the project has since been reassigned — otherwise
+/// `--resume` finds nothing and silently starts a fresh conversation. The
+/// ordering lives in `services::profiles::for_spawn`.
+type ProfileDirCb = Arc<dyn Fn(&str, Option<&str>) -> Option<PathBuf> + Send + Sync>;
 type WorktreeCb = Arc<dyn Fn(SessionWorktreeEvent) + Send + Sync>;
 
 /// Reading and writing which checkout a session is working in (F21).
@@ -440,6 +454,10 @@ pub struct TerminalManager {
 	/// caller named has to be spawned where the transcript is, or `session_flag`
 	/// claims an id Claude already knows and the conversation is lost.
 	session_cwd: Option<SessionCwdCb>,
+	/// The profile a spawn runs under (F25), read per spawn. `None` — every test
+	/// — falls back to `claude_dir`, which is what a single-profile install
+	/// resolves to anyway.
+	profile_dir: Option<ProfileDirCb>,
 	/// Which checkout each session is working in (F21). `None` means a signal is
 	/// still emitted but not remembered.
 	worktree_store: Option<WorktreeStore>,
@@ -484,6 +502,7 @@ impl TerminalManager {
 			binary_override: None,
 			user_binary: None,
 			session_cwd: None,
+			profile_dir: None,
 			worktree_store: None,
 			routine_store: None,
 			on_worktree: Arc::new(move |e| {
@@ -507,6 +526,7 @@ impl TerminalManager {
 			binary_override: None,
 			user_binary: None,
 			session_cwd: None,
+			profile_dir: None,
 			worktree_store: None,
 			routine_store: None,
 			on_worktree: Arc::new(|_| {}),
@@ -521,6 +541,29 @@ impl TerminalManager {
 	pub fn with_session_cwd(mut self, cb: SessionCwdCb) -> Self {
 		self.session_cwd = Some(cb);
 		self
+	}
+
+	/// Where to read the profile a spawn runs under, per spawn (F25). Wired to
+	/// the `profiles` table in `lib.rs`.
+	pub fn with_profile_dir(mut self, cb: ProfileDirCb) -> Self {
+		self.profile_dir = Some(cb);
+		self
+	}
+
+	/// The Claude config directory a spawn works against.
+	///
+	/// **Everything a spawn does with a config directory goes through this**, not
+	/// just the environment variable: the transcript probe that chooses
+	/// `--resume` over `--session-id`, the IDE lockfile we advertise at, and the
+	/// id `next_session_id` hands out. A session spawned under one directory and
+	/// probed under another is the silent version of this feature breaking — the
+	/// probe misses, we claim an id Claude already knows, and the conversation is
+	/// replaced by an empty one.
+	fn config_dir_for(&self, project_id: &str, session_id: Option<&str>) -> PathBuf {
+		self.profile_dir
+			.as_ref()
+			.and_then(|cb| cb(project_id, session_id))
+			.unwrap_or_else(|| self.claude_dir.clone())
 	}
 
 	/// Where to read and write a session's checkout (F21). Wired to
@@ -692,6 +735,9 @@ impl TerminalManager {
 	/// can't race the indexer's 1s debounce, because it reads the transcript
 	/// directly rather than the index.
 	pub fn next_session_id(&self, project_id: &str, folder: &Path) -> String {
+		// The project's own profile: a *new* session is what this hands out, so
+		// there is no session whose transcript could live somewhere else.
+		let claude_dir = self.config_dir_for(project_id, None);
 		for entry in self.terminals.iter() {
 			let h = entry.value();
 			// A shell contributes no id here because it has none: it would
@@ -699,7 +745,7 @@ impl TerminalManager {
 			// pointed at an id no transcript will ever exist for (ADR-0031).
 			let Some(session_id) = h.session_id.as_deref() else { continue };
 			if h.project_id == project_id
-				&& !claude::transcript_path(&self.claude_dir, folder, session_id).exists()
+				&& !claude::transcript_path(&claude_dir, folder, session_id).exists()
 			{
 				return session_id.to_string();
 			}
@@ -763,7 +809,12 @@ impl TerminalManager {
 	/// is: `openFile` on a session that is not in front marks its tab instead of
 	/// taking the window, and `getOpenEditors` reports what the viewer is
 	/// actually showing rather than a stub.
-	fn start_bridge(&self, session_id: &str, cwd: &Path) -> AppResult<IdeServer> {
+	fn start_bridge(
+		&self,
+		session_id: &str,
+		cwd: &Path,
+		claude_dir: &Path,
+	) -> AppResult<IdeServer> {
 		let ui_for_open = self.ui.clone();
 		let ui_for_editors = self.ui.clone();
 		let on_open = self.on_ide_open.clone();
@@ -836,7 +887,7 @@ impl TerminalManager {
 		let status_session = session_id.to_string();
 
 		IdeServer::start(
-			&self.claude_dir,
+			claude_dir,
 			&cwd.to_string_lossy(),
 			Arc::new(move |text| mcp.handle(text)),
 			Arc::new(move |connected| {
@@ -867,7 +918,7 @@ impl TerminalManager {
 	/// the row is stale — then it buys nothing and would only move the session
 	/// somewhere the caller did not ask for. Falling through to `opts.cwd` is the
 	/// behaviour that predates this method.
-	fn resume_cwd(&self, session_id: &str) -> Option<PathBuf> {
+	fn resume_cwd(&self, session_id: &str, claude_dir: &Path) -> Option<PathBuf> {
 		// Both recorded directories are tried, newest first. An agent that moves
 		// into a worktree mid-session takes Claude's store directory with it, so
 		// the transcript can exist *only* under where it ended up — and resuming
@@ -875,7 +926,7 @@ impl TerminalManager {
 		// already knows (F21, migration 0008).
 		self.session_cwd.as_ref()?(session_id)
 			.into_iter()
-			.find(|dir| claude::transcript_path(&self.claude_dir, dir, session_id).exists())
+			.find(|dir| claude::transcript_path(claude_dir, dir, session_id).exists())
 	}
 
 	/// Spawn `claude` for a session in a PTY. Returns the new terminal id.
@@ -932,6 +983,7 @@ impl TerminalManager {
 		session_id: &str,
 		initial_prompt: Option<&str>,
 		cwd_path: &Path,
+		claude_dir: &Path,
 		tools: Option<&AgentToolsServer>,
 	) -> AppResult<Vec<String>> {
 		let bin = match &self.binary_override {
@@ -953,7 +1005,7 @@ impl TerminalManager {
 			v.push("--mcp-config".into());
 			v.push(tools.mcp_config_arg());
 		}
-		v.push(session_flag(&self.claude_dir, cwd_path, session_id).into());
+		v.push(session_flag(claude_dir, cwd_path, session_id).into());
 		v.push(session_id.to_string());
 		// One positional argument, whichever flag the probe chose: the CLI takes a
 		// prompt the same way in both cases, so a routine firing into a session it
@@ -1000,6 +1052,12 @@ impl TerminalManager {
 		argv_override: Option<Vec<String>>,
 	) -> AppResult<TerminalId> {
 		let kind = req.kind;
+		// **Which identity this runs as** (F25, ADR-0036), resolved once and used
+		// for all four things a config directory decides: the transcript probe
+		// below, the IDE lockfile, the id in argv, and the environment variable
+		// the CLI itself reads. Resolved from the project, so it is the same answer
+		// for the agent and for the shell in its footer.
+		let claude_dir = self.config_dir_for(&req.project_id, req.session_id.as_deref());
 		// Resolved before argv, because the transcript probe that decides
 		// `--resume` vs `--session-id` is keyed by the folder Claude will run in.
 		//
@@ -1010,7 +1068,7 @@ impl TerminalManager {
 		let cwd_path = req
 			.session_id
 			.as_deref()
-			.and_then(|sid| self.resume_cwd(sid))
+			.and_then(|sid| self.resume_cwd(sid, &claude_dir))
 			.or_else(|| req.cwd.as_deref().map(PathBuf::from))
 			.or_else(dirs::home_dir)
 			.unwrap_or_else(|| PathBuf::from("/"));
@@ -1043,6 +1101,7 @@ impl TerminalManager {
 				session_id,
 				req.initial_prompt.as_deref(),
 				&cwd_path,
+				&claude_dir,
 				agent_tools.as_ref(),
 			)?,
 			// A shell's argv is its `$SHELL` and is always passed in; an agent
@@ -1084,6 +1143,37 @@ impl TerminalManager {
 		// xterm.js renders best as xterm-256color.
 		cmd.env("TERM", "xterm-256color");
 
+		// **Which Claude identity this session is** (F25, ADR-0036).
+		// `CLAUDE_CONFIG_DIR` is the CLI's own isolation boundary: credentials,
+		// `settings.json`, `projects/`, `ide/`, hooks and MCP config all come from
+		// under it. So switching profile is this one variable on one child, and no
+		// token ever passes through factorai.
+		//
+		// **Setting it to the ambient directory is not the same as leaving it
+		// unset**, which is why this is a branch and not one line. With the
+		// variable absent the CLI reads its config from `$HOME/.claude.json` — a
+		// file *beside* `~/.claude`, not inside it. Set the variable, even to
+		// `~/.claude` itself, and the CLI reads `<dir>/.claude.json` instead,
+		// finds nothing, and asks the user to log in again. Found on a real
+		// machine: every session under the default profile demanded a fresh login
+		// while the account was sitting in `$HOME/.claude.json` untouched.
+		//
+		// So the default profile is spelled **no variable at all**, and
+		// `env_remove` rather than "don't call `env`": what we inherited is not
+		// necessarily empty, and a `CLAUDE_CONFIG_DIR` leaking in from whatever
+		// launched factorai would silently hand this session a foreign identity.
+		//
+		// **The shell in the footer follows the same rule**, which is a deliberate
+		// departure from the `CLAUDE_CODE_SSE_PORT` treatment directly below. That
+		// one is withheld so a `claude` started by hand is not silently bound to a
+		// bridge; this one is given so a `claude` started by hand in a project's
+		// own shell is the same account as the project's sessions.
+		if claude_dir == self.claude_dir {
+			cmd.env_remove("CLAUDE_CONFIG_DIR");
+		} else {
+			cmd.env("CLAUDE_CONFIG_DIR", &claude_dir);
+		}
+
 		// **The IDE bridge (F20), and it must never be able to break a session.**
 		// A failure here is logged and dropped: a session with no editor attached
 		// is exactly what every session was until this landed, whereas refusing to
@@ -1102,7 +1192,7 @@ impl TerminalManager {
 			// environment, so a `claude` the user starts *by hand* in that shell
 			// is not silently bound to the project it was typed in.
 			None => IdeSlot::None,
-			Some(session_id) => match self.start_bridge(session_id, &cwd_path) {
+			Some(session_id) => match self.start_bridge(session_id, &cwd_path, &claude_dir) {
 				Ok(server) => {
 					cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
 					IdeSlot::Running(server)
@@ -1534,8 +1624,14 @@ mod tests {
 	type DataLog = Arc<StdMutex<Vec<TerminalDataEvent>>>;
 	type ExitLog = Arc<StdMutex<Vec<TerminalExitEvent>>>;
 
+	/// The config directory a manager with no store has. Named because the argv
+	/// tests now have to hand `argv_for` the same directory the manager holds —
+	/// a probe against a *different* directory would answer `--session-id` for
+	/// the wrong reason and the assertion would still pass (F25).
+	const NO_STORE: &str = "/nonexistent-claude-dir";
+
 	fn make_manager() -> (TerminalManager, DataLog, ExitLog) {
-		make_manager_in(PathBuf::from("/nonexistent-claude-dir"))
+		make_manager_in(PathBuf::from(NO_STORE))
 	}
 
 	fn make_manager_in(claude_dir: PathBuf) -> (TerminalManager, DataLog, ExitLog) {
@@ -1666,6 +1762,147 @@ mod tests {
 		// The half the exact match cannot state on a machine that has no mounts
 		// to strip: whatever arrives, none of it points into a squashfs.
 		assert!(!merged.contains("/.mount_"), "an AppImage mount reached the child: {merged}");
+	}
+
+	/// **The profile has to reach the child, and both kinds of child** (F25,
+	/// ADR-0036). Asserting on the process rather than on `config_dir_for` for
+	/// the same reason the `PATH` test above does: the failure being guarded
+	/// against is not a wrong rule, it is a right rule that never arrives — and a
+	/// session spawned without `CLAUDE_CONFIG_DIR` silently runs as the wrong
+	/// account, which nothing on screen would contradict.
+	///
+	/// The shell is in here deliberately. It is the one place this variable is
+	/// handled differently from `CLAUDE_CODE_SSE_PORT`, which a shell must *not*
+	/// get, so the two rules sit one line apart and a copy-paste that unifies
+	/// them fails here.
+	#[test]
+	fn a_child_runs_under_its_projects_profile_directory() {
+		let profile = tempfile::TempDir::new().unwrap();
+		let cfg = profile.path().to_path_buf();
+		// The exit log is unused: this test polls for the marker rather than for
+		// the child's exit — see `read_back`.
+		let (mgr, data, _exit) = make_manager();
+		let mgr = mgr.with_profile_dir(Arc::new(move |_project, _session| Some(cfg.clone())));
+		let expected = format!("CFG[{}]", profile.path().to_string_lossy());
+
+		// Polls for the marker rather than for the exit event: a shell echoes the
+		// line it was given before it runs it, so "the child has exited" and "its
+		// output has arrived" are not the same moment — waiting on the wrong one
+		// makes this pass or fail on timing.
+		let read_back = |id: &str| -> String {
+			let mut seen = String::new();
+			for _ in 0..100 {
+				seen = data
+					.lock()
+					.unwrap()
+					.iter()
+					.filter(|e| e.id == id)
+					.map(|e| {
+						String::from_utf8_lossy(&B64.decode(&e.bytes_b64).unwrap_or_default())
+							.into_owned()
+					})
+					.collect();
+				if seen.contains(&expected) {
+					break;
+				}
+				std::thread::sleep(Duration::from_millis(50));
+			}
+			seen
+		};
+
+		let agent = mgr
+			.spawn_with_argv(
+				opts(80, 24),
+				Some(vec![
+					"/bin/sh".into(),
+					"-c".into(),
+					"printf 'CFG[%s]' \"$CLAUDE_CONFIG_DIR\"".into(),
+				]),
+			)
+			.expect("spawn the agent");
+		let seen = read_back(&agent);
+		assert!(seen.contains(&expected), "expected {expected} in stream, got: {seen}");
+
+		let cwd = tempfile::TempDir::new().unwrap();
+		let shell = mgr
+			.spawn_shell(ShellSpawnOpts {
+				client_key: "shell:1".into(),
+				project_id: "11111111-aaaa-4bbb-8ccc-dddddddddddd".into(),
+				cwd: cwd.path().to_string_lossy().into_owned(),
+				cols: 80,
+				rows: 24,
+			})
+			.expect("spawn the shell");
+		// The shell has to reach its prompt before it can be typed at — the same
+		// wait `write_input_reaches_child_process` takes.
+		std::thread::sleep(Duration::from_millis(200));
+		mgr.write(&shell, b"printf 'CFG[%s]' \"$CLAUDE_CONFIG_DIR\"; exit\n").expect("write");
+		let seen = read_back(&shell);
+		assert!(seen.contains(&expected), "expected {expected} in the shell, got: {seen}");
+	}
+
+	/// **The default profile means no variable at all** (F25, ADR-0036), and
+	/// this is the test that would have caught the bug it was written for: with
+	/// `CLAUDE_CONFIG_DIR` set — even to the very directory the CLI would have
+	/// used on its own — the CLI reads `<dir>/.claude.json` instead of
+	/// `$HOME/.claude.json` and asks the user to log in again.
+	///
+	/// A leaked value is removed rather than left, so the answer does not depend
+	/// on what launched factorai. That is asserted by seeding the parent's own
+	/// environment with a value the child must not see.
+	#[test]
+	fn the_ambient_profile_leaves_the_config_variable_unset() {
+		// SAFETY: single-threaded section of this test, and the value is removed
+		// before anything else can read it. `set_var` is unsafe from Rust 2024
+		// because another thread reading the environment concurrently is UB;
+		// nothing else here touches it.
+		unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", "/leaked-from-our-parent") };
+
+		let ambient = tempfile::TempDir::new().unwrap();
+		let (mgr, data, exit) = make_manager_in(ambient.path().to_path_buf());
+		let cfg = ambient.path().to_path_buf();
+		// The resolver answers with the ambient directory, which is what the
+		// default profile resolves to on every machine that has not been
+		// configured otherwise.
+		let mgr = mgr.with_profile_dir(Arc::new(move |_project, _session| Some(cfg.clone())));
+
+		let id = mgr
+			.spawn_with_argv(
+				opts(80, 24),
+				Some(vec![
+					"/bin/sh".into(),
+					"-c".into(),
+					"printf 'CFG[%s]' \"$CLAUDE_CONFIG_DIR\"".into(),
+				]),
+			)
+			.expect("spawn");
+		// Removed the moment the child has been forked, which is the whole window
+		// the value needs to exist for. The other tests in this file run in
+		// sibling threads, so a variable left set for the length of a poll loop is
+		// a variable they could inherit.
+		unsafe { std::env::remove_var("CLAUDE_CONFIG_DIR") };
+
+		for _ in 0..100 {
+			std::thread::sleep(Duration::from_millis(50));
+			if exit.lock().unwrap().iter().any(|e| e.id == id) {
+				break;
+			}
+		}
+		let seen: String = data
+			.lock()
+			.unwrap()
+			.iter()
+			.filter(|e| e.id == id)
+			.map(|e| {
+				String::from_utf8_lossy(&B64.decode(&e.bytes_b64).unwrap_or_default()).into_owned()
+			})
+			.collect();
+
+		assert!(seen.contains("CFG[]"), "expected an empty CLAUDE_CONFIG_DIR, got: {seen}");
+		assert!(
+			!seen.contains("/leaked-from-our-parent"),
+			"a leaked value reached the child: {seen}"
+		);
 	}
 
 	#[test]
@@ -2088,7 +2325,7 @@ mod tests {
 		// The whole point: the caller would have said "the project root", and the
 		// transcript is somewhere else. Spawning where the caller said turns
 		// `--resume` into `--session-id` on an id Claude already knows.
-		assert_eq!(mgr.resume_cwd(sid), Some(work.path().to_path_buf()));
+		assert_eq!(mgr.resume_cwd(sid, store.path()), Some(work.path().to_path_buf()));
 	}
 
 	#[test]
@@ -2099,7 +2336,7 @@ mod tests {
 		// cleaned. Preferring it would move the session somewhere the caller did
 		// not ask for and buy nothing, so the caller's cwd has to win.
 		let mgr = make_manager_recording(store.path().to_path_buf(), work.path().to_path_buf());
-		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555"), None);
+		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555", store.path()), None);
 	}
 
 	#[test]
@@ -2117,7 +2354,7 @@ mod tests {
 		let began = started.path().to_path_buf();
 		let mgr = mgr.with_session_cwd(Arc::new(move |_| vec![ended.clone(), began.clone()]));
 
-		assert_eq!(mgr.resume_cwd(sid), Some(moved_to.path().to_path_buf()));
+		assert_eq!(mgr.resume_cwd(sid, store.path()), Some(moved_to.path().to_path_buf()));
 	}
 
 	#[test]
@@ -2135,7 +2372,7 @@ mod tests {
 		let began = started.path().to_path_buf();
 		let mgr = mgr.with_session_cwd(Arc::new(move |_| vec![ended.clone(), began.clone()]));
 
-		assert_eq!(mgr.resume_cwd(sid), Some(started.path().to_path_buf()));
+		assert_eq!(mgr.resume_cwd(sid, store.path()), Some(started.path().to_path_buf()));
 	}
 
 	#[test]
@@ -2145,7 +2382,7 @@ mod tests {
 		// No callback wired at all — every test manager above this point, and the
 		// behaviour that predates `session_cwd`. `resume_cwd` returns `None`, so
 		// `opts.cwd` is used.
-		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555"), None);
+		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555", store.path()), None);
 	}
 
 	#[test]
@@ -2181,7 +2418,13 @@ mod tests {
 		o.cwd = Some(tmp.path().to_string_lossy().to_string());
 		o.initial_prompt = Some("Triage the inbox".into());
 		let argv = mgr
-			.argv_for(&o.session_id, o.initial_prompt.as_deref(), tmp.path(), None)
+			.argv_for(
+				&o.session_id,
+				o.initial_prompt.as_deref(),
+				tmp.path(),
+				Path::new(NO_STORE),
+				None,
+			)
 			.expect("argv");
 		assert_eq!(argv[0], "/bin/echo");
 		assert_eq!(argv[1], "--session-id");
@@ -2189,8 +2432,16 @@ mod tests {
 		assert_eq!(argv[3], "Triage the inbox");
 
 		// An empty prompt is not an argument: it would be an empty first message.
-		assert_eq!(mgr.argv_for(&o.session_id, Some(""), tmp.path(), None).unwrap().len(), 3);
-		assert_eq!(mgr.argv_for(&o.session_id, None, tmp.path(), None).unwrap().len(), 3);
+		assert_eq!(
+			mgr.argv_for(&o.session_id, Some(""), tmp.path(), Path::new(NO_STORE), None)
+				.unwrap()
+				.len(),
+			3
+		);
+		assert_eq!(
+			mgr.argv_for(&o.session_id, None, tmp.path(), Path::new(NO_STORE), None).unwrap().len(),
+			3
+		);
 	}
 
 	#[test]
@@ -2207,7 +2458,13 @@ mod tests {
 		let tools = AgentToolsServer::start(Arc::new(|_| None)).expect("bind");
 
 		let argv = mgr
-			.argv_for(&o.session_id, o.initial_prompt.as_deref(), tmp.path(), Some(&tools))
+			.argv_for(
+				&o.session_id,
+				o.initial_prompt.as_deref(),
+				tmp.path(),
+				Path::new(NO_STORE),
+				Some(&tools),
+			)
 			.expect("argv");
 		let at = argv.iter().position(|a| a == "--mcp-config").expect("--mcp-config is passed");
 		let config: serde_json::Value = serde_json::from_str(&argv[at + 1]).expect("valid json");

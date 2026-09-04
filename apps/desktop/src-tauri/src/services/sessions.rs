@@ -309,10 +309,16 @@ mod tests {
 	}
 
 	fn insert_session_moved(db: &Db, session_id: &str, cwd: Option<&str>, last_cwd: Option<&str>) {
+		// A discovery belongs to a profile since migration 0018 (F25), and the
+		// column is NOT NULL — so the fixture seeds the one profile every install
+		// has rather than inventing an id the foreign key would reject.
+		let profile =
+			crate::services::profiles::ensure_default(db, Path::new("/nonexistent-store"))
+				.expect("seed the default profile");
 		db.with(|conn| {
 			conn.execute(
-				"INSERT INTO discovered_projects(agent, key, real_path) VALUES ('claude', ?1, ?1)",
-				[session_id],
+				"INSERT INTO discovered_projects(profile_id, key, real_path) VALUES (?1, ?2, ?2)",
+				rusqlite::params![profile.id, session_id],
 			)
 			.unwrap();
 			let discovered: i64 = conn

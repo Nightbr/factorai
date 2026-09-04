@@ -267,18 +267,104 @@ anyway, and only `reorder_sidebar` renumbers densely from zero.
 internal order. The cascade alone would drop them at the top level still carrying
 intra-group ordinals that collide with whatever is there.
 
+### `profiles` — the Claude identities on this machine
+
+| col        | type      | notes                                                            |
+| ---------- | --------- | ---------------------------------------------------------------- |
+| id         | TEXT PK   | uuid v4. Not derived from the directory, so a profile can be renamed and re-pointed without orphaning what is assigned to it |
+| agent      | TEXT      | `'claude'`. What "one default" and "one per project" are scoped by — there is no Claude profile on a Codex agent |
+| name       | TEXT      | unique per agent; the only place a profile is named is a list read by eye |
+| config_dir | TEXT      | absolute, **UNIQUE**                                              |
+| is_default | INTEGER   | exactly one per agent                                             |
+| created_at | INTEGER   | unix ms                                                           |
+
+F25 and [ADR-0036](../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md).
+A profile is a directory plus a name; `CLAUDE_CONFIG_DIR` per spawned session is
+what isolates it, so nothing here is a secret.
+
+`config_dir UNIQUE` is load-bearing rather than tidy: two profiles over one
+directory would discover the same transcripts twice while `sessions.id` — a
+primary key — can only belong to one `discovered_projects` row, so the two would
+fight over every session on every scan.
+
+**One default per agent** is a partial unique index,
+`ON profiles(agent) WHERE is_default = 1`, because a project with no assignment
+resolves through the default: two defaults is a spawn with no deterministic
+identity, not an inconsistency to tidy up later. Zero defaults is not expressible
+as a constraint and is prevented from the other side — `services::profiles`
+refuses to delete or demote the last one.
+
+**Migration 0017 seeds the row with `config_dir = ''`** and
+`services::profiles::ensure_default` fills it in at boot from `CLAUDE_HOME` or
+`$HOME/.claude`. The split has a cause: migration 0018 attributes every existing
+discovery to the default profile and `profile_id` is NOT NULL, so the row has to
+exist before any Rust runs — and static SQL cannot read an environment variable.
+Once the directory is set it is never re-read, which is what keeps `CLAUDE_HOME`
+a seed rather than a second mechanism (Q3).
+
+`missing` is **not** a column: it is computed per query. The list is short, read
+only while Settings is open, and a stored flag would need a scan to clear itself
+after a remount.
+
 ### `discovered_projects` — what the agents' stores hold
 
 | col        | type      | notes                                                            |
 | ---------- | --------- | ---------------------------------------------------------------- |
 | id         | INTEGER PK|                                                                   |
-| agent      | TEXT      | `'claude'`. Exists so a second agent is an INSERT, not a migration |
+| profile_id | TEXT FK   | `profiles(id) ON DELETE CASCADE` — which identity's store this was found in (F25, migration 0018) |
 | key        | TEXT      | the agent's own directory name — a foreign key into *their* store |
 | real_path  | TEXT      | the folder it describes; NULL when unresolvable                   |
 | project_id | TEXT FK   | `projects(id) ON DELETE SET NULL`; NULL = not in the workspace    |
 
-`UNIQUE (agent, key)`. The `ON DELETE SET NULL` is what makes removing a project
-cheap: the discovery survives, only the membership goes.
+`UNIQUE (profile_id, key)`. The `ON DELETE SET NULL` on `project_id` is what
+makes removing a project cheap: the discovery survives, only the membership goes.
+The `ON DELETE CASCADE` on `profile_id` is the whole lifetime of these rows —
+deleting a profile takes its discoveries, and through `sessions.discovered_id`
+that profile's sessions, out of the index. Nothing on disk is touched, so
+re-adding a profile on the same directory rebuilds both on the next scan.
+
+**`agent` used to be a column here and is now read through the profile** that
+owns the row. It was a copy of a fact the profile already carried, and two
+columns that must agree forever have nothing but discipline making them.
+
+**`profile_id` is never NULL.** The scan iterates profiles, so it always knows
+which one it is walking; NULL-means-default belongs to the per-project assignment
+and only there. SQLite treats NULLs as distinct, so a nullable column would make
+the scan's `ON CONFLICT(profile_id, key)` never fire and insert a duplicate row
+for every project on every pass.
+
+Migration 0018 is a **table rebuild**, which is why it runs outside the shared
+migration transaction with foreign keys off — see `STANDALONE` in `db/mod.rs`,
+and `tests/discovered_profile_migration.rs`, which exists because getting it
+wrong deletes every session row and every pin while the transcripts sit
+untouched on disk.
+
+### `project_profiles` — which identity a project's sessions run as
+
+| col         | type    | notes                                                        |
+| ----------- | ------- | ------------------------------------------------------------ |
+| project_id  | TEXT FK | `projects(id) ON DELETE CASCADE`                              |
+| profile_id  | TEXT FK | `profiles(id) ON DELETE CASCADE`                              |
+| agent       | TEXT    | denormalized from `profiles`, so the unique index below is an index |
+| assigned_at | INTEGER | unix ms                                                       |
+
+`PRIMARY KEY (project_id, profile_id)` plus `UNIQUE (project_id, agent)`. F25
+slice 3. **No row means that agent's default profile**, so an install that has
+never assigned anything writes nothing here — the same shape
+`routines.catchup_hours` uses for "inherit the app-wide setting".
+
+The denormalized `agent` is there because a project may be on one Claude profile
+*and*, when a second agent lands, one Codex profile — which is "one row per
+(project, agent)", and SQLite cannot build a unique index across the join that
+would otherwise supply it. Two `BEFORE` triggers abort a write whose `agent`
+disagrees with the profile's, rather than silently correcting it: a mismatch means
+the caller believed something false about what it was assigning.
+
+`ON DELETE CASCADE` on `profile_id` is the constraint the service layer
+deliberately does **not** rely on. `services::profiles::delete` refuses while any
+project points at the profile, because letting the cascade run would leave those
+projects spawning under the default — a silent move of someone's work to another
+identity.
 
 ### `sessions`
 

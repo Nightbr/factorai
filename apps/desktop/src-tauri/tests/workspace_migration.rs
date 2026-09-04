@@ -191,12 +191,20 @@ fn sessions_keep_their_transcripts_addressable() {
 			)
 			.expect("s1 still resolves to a store directory");
 		assert_eq!(key, "-home-me-code-foo");
-		let agent: String = conn
-			.query_row("SELECT agent FROM discovered_projects WHERE key = ?1", params![key], |r| {
-				r.get(0)
-			})
+		// Whose store it is now reads through the profile that owns the row —
+		// migration 0018 took the duplicated `agent` column off this table (F25),
+		// and every migrated discovery belongs to the seeded default profile.
+		let (agent, is_default): (String, i64) = conn
+			.query_row(
+				"SELECT p.agent, p.is_default FROM discovered_projects d
+				   JOIN profiles p ON p.id = d.profile_id
+				  WHERE d.key = ?1",
+				params![key],
+				|r| Ok((r.get(0)?, r.get(1)?)),
+			)
 			.unwrap();
 		assert_eq!(agent, "claude");
+		assert_eq!(is_default, 1, "migrated discoveries land on the default profile");
 		Ok(())
 	})
 	.unwrap();

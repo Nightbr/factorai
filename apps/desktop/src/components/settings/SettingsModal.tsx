@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { type RefObject, useRef, useState } from 'react';
 import { type BinaryProbe, ClaudeSection } from '@components/settings/ClaudeSection';
+import { ProfilesSection } from '@components/settings/ProfilesSection';
 import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
 import {
@@ -29,6 +30,7 @@ import { currentPrefs, type Prefs, usePrefsStore } from '@store/prefsStore';
 const SECTION_LABELS: Record<SettingsSection, string> = {
 	appearance: 'Appearance',
 	claude: 'Claude',
+	profiles: 'Profiles',
 	editor: 'Editor',
 	confirmations: 'Confirmations',
 	sessions: 'Sessions',
@@ -273,6 +275,10 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 							onProbed={setProbe}
 						/>
 					)}
+
+					{/* No draft, no Save: this section writes as you click, which is why
+					    it takes nothing from `draft` and gives nothing back (F25). */}
+					{section === 'profiles' && <ProfilesSection />}
 
 					{section === 'editor' && (
 						<div className="divide-y divide-border">

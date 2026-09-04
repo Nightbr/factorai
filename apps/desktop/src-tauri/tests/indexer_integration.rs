@@ -63,16 +63,29 @@ fn fixture_one_session(tmp: &Path, db: &Db) -> (PathBuf, PathBuf, PathBuf, Strin
 	(claude_dir, cwd, project_dir, session_id.to_string())
 }
 
+/// The indexer no longer holds a config directory: it reads `profiles` (F25), so
+/// a test's store has to be *the default profile's* store. `ensure_default`
+/// seeds exactly one row for it, which is what boot does.
 fn make_indexer(db: Db, claude_dir: PathBuf) -> (Indexer, Arc<Mutex<Vec<SessionsChanged>>>) {
 	let changes: Arc<Mutex<Vec<SessionsChanged>>> = Arc::new(Mutex::new(Vec::new()));
 	let changes_clone = changes.clone();
+	factorai_lib::services::profiles::ensure_default(&db, &claude_dir).expect("seed profile");
 	let idx = Indexer::with_callbacks(
 		db,
-		claude_dir,
 		Arc::new(|_| {}),
 		Arc::new(move |s| changes_clone.lock().unwrap().push(s)),
 	);
 	(idx, changes)
+}
+
+/// The default profile's id, for the tests that call `scan_dir_path` — which
+/// now names the store it is scanning rather than guessing from a directory
+/// name two profiles can share (F25).
+fn default_profile(db: &Db) -> String {
+	db.with(|conn| factorai_lib::services::profiles::default_for(conn, "claude"))
+		.expect("read profiles")
+		.expect("a default profile")
+		.id
 }
 
 fn open_db(tmp: &Path) -> Db {
@@ -1016,7 +1029,7 @@ fn the_first_session_in_a_freshly_added_folder_indexes_from_the_watcher() {
 	);
 	write_session(&project_dir, session_id, &[&user_msg]);
 
-	indexer.scan_dir_path(&project_dir).expect("scan the changed directory");
+	indexer.scan_dir_path(&default_profile(&db), &project_dir).expect("scan the changed directory");
 
 	let sessions = db
 		.with(|conn| {
@@ -1052,4 +1065,99 @@ fn row_id_for(db: &Db, display_name: &str) -> String {
 		)?)
 	})
 	.expect("row id")
+}
+
+/// **The point of F25 slice 2:** the same repository, worked on under two Claude
+/// identities, and both sets of sessions in the one project's list.
+///
+/// Before migration 0018 this could not be recorded at all — `UNIQUE (agent,
+/// key)` rejected the second store's row, because Claude's directory name is
+/// derived from the folder and both stores name it identically. The failure was
+/// silent: the second profile's transcripts simply never appeared.
+#[test]
+fn two_profiles_over_one_repository_both_index_into_the_same_project() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let personal = tmp.path().join(".claude");
+	let work = tmp.path().join(".claude-work");
+	std::fs::create_dir_all(personal.join("projects")).expect("mkdir personal");
+	std::fs::create_dir_all(work.join("projects")).expect("mkdir work");
+
+	let cwd = make_folder(tmp.path(), "shared");
+	add_project_in(&db, cwd.to_str().unwrap()).expect("add project");
+
+	// One session in each store, for the same folder.
+	let cwd_str = cwd.to_string_lossy();
+	let line = |text: &str| {
+		format!(
+			r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"{cwd_str}","message":{{"role":"user","content":"{text}"}}}}"#
+		)
+	};
+	write_session(
+		&store_dir(&personal, &cwd),
+		"aaaaaaaa-0000-4000-8000-000000000001",
+		&[&line("personal")],
+	);
+	write_session(
+		&store_dir(&work, &cwd),
+		"aaaaaaaa-0000-4000-8000-000000000002",
+		&[&line("work")],
+	);
+
+	// `ensure_default` claims the personal store; the second profile is created
+	// the way Settings creates one.
+	let (indexer, _) = make_indexer(db.clone(), personal.clone());
+	db.with(|conn| {
+		factorai_lib::services::profiles::create(
+			conn,
+			&factorai_lib::models::ProfileInput {
+				name: "Work".into(),
+				config_dir: work.to_string_lossy().into_owned(),
+			},
+			0,
+		)?;
+		Ok(())
+	})
+	.expect("create the second profile");
+
+	indexer.full_scan().expect("scan");
+
+	db.with(|conn| {
+		let discovered: i64 =
+			conn.query_row("SELECT COUNT(*) FROM discovered_projects", [], |r| r.get(0)).unwrap();
+		assert_eq!(discovered, 2, "one row per profile, same key in both");
+		let project = list_projects_in(conn).expect("list")[0].clone();
+		assert_eq!(project.session_count, 2, "both identities' sessions are in the project");
+		Ok(())
+	})
+	.unwrap();
+}
+
+/// A profile whose config directory is gone — an unmounted volume, a rename —
+/// **is skipped, and its sessions are not reaped**.
+///
+/// `reap_deleted` removes the row of any transcript it cannot find, so the
+/// natural reading of "the directory is empty" would delete that profile's
+/// entire index and its FTS rows on the next scan. A remount has to cost
+/// nothing, which means an unreadable store and an empty one are different
+/// answers.
+#[test]
+fn a_profile_whose_store_is_gone_keeps_its_sessions() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, _project_dir, session_id) = fixture_one_session(tmp.path(), &db);
+
+	let (indexer, _) = make_indexer(db.clone(), claude_dir.clone());
+	indexer.full_scan().expect("scan");
+	assert_eq!(counts(&db, &session_id), (1, 2), "indexed to begin with");
+
+	// The whole store goes, as it does when an external volume is unplugged.
+	std::fs::remove_dir_all(&claude_dir).expect("remove the store");
+	indexer.full_scan().expect("scan with the store gone");
+
+	assert_eq!(
+		counts(&db, &session_id),
+		(1, 2),
+		"the row and its FTS entries survive a store that is merely unreachable"
+	);
 }

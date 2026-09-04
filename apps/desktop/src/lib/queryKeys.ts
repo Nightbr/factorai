@@ -54,6 +54,10 @@ export const queryKeys = {
 	/** One setting Rust reads (F11). Keyed by the setting so a second key does
 	 *  not invalidate the first — and read only while the modal is open. */
 	setting: (key: SettingKey) => ['setting', key] as const,
+	/** Every Claude profile (F25). One key for the whole list rather than one per
+	 *  profile: there are a handful of rows, every reader wants all of them, and
+	 *  the default is a property *of the set* — promoting one changes two rows. */
+	profiles: () => ['profiles'] as const,
 	/** Where `claude` is and what version it reports. Invalidated when the
 	 *  override is saved, since the answer depends on it. */
 	claudeCli: () => ['claude-cli'] as const,

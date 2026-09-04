@@ -1,6 +1,7 @@
 pub mod files;
 pub mod git;
 pub mod ide;
+pub mod profiles;
 pub mod projects;
 pub mod routines;
 pub mod sessions;

@@ -87,16 +87,29 @@ const DropdownMenuContent = React.forwardRef<
 ));
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
+/**
+ * A menu row.
+ *
+ * `variant="destructive"` is for actions with no undo, and mirrors
+ * `ContextMenuItem`'s exactly — the two menus are the same object opened by
+ * different gestures, so an item that reads as dangerous in one and ordinary in
+ * the other is the drift that rule exists to prevent. It is a colour, not a
+ * confirmation: whether something asks first is the caller's decision.
+ */
 const DropdownMenuItem = React.forwardRef<
 	React.ElementRef<typeof DropdownMenuPrimitive.Item>,
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
 		inset?: boolean;
+		variant?: 'default' | 'destructive';
 	}
->(({ className, inset, ...props }, ref) => (
+>(({ className, inset, variant = 'default', ...props }, ref) => (
 	<DropdownMenuPrimitive.Item
 		ref={ref}
+		data-variant={variant}
 		className={cn(
 			'relative flex select-none items-center gap-2 rounded-sm px-2 py-1 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+			variant === 'destructive' &&
+				'text-destructive focus:bg-destructive/10 focus:text-destructive',
 			inset && 'pl-7',
 			className,
 		)}

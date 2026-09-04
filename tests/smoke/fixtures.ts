@@ -22,6 +22,7 @@ import type {
 	ImageContents,
 	ImportCandidate,
 	PdfContents,
+	Profile,
 	Project,
 	Routine,
 	RoutineFireEvent,
@@ -49,6 +50,10 @@ export interface TestFixture {
 	/** Routines per project id (F22). The create/update/delete mocks mutate it,
 	 *  so a spec can add one and see the list it lands in. */
 	routinesByProject?: Record<string, Routine[]>;
+	/** The `profiles` table (F25). Mutated by the create/rename/default/delete
+	 *  mocks, so a spec can drive the Profiles section and read back what it did.
+	 *  Absent means the one seeded default a fresh install has. */
+	profiles?: Profile[];
 	/** Fires the runner has decided on and nothing has started yet (F22,
 	 *  ADR-0030) — what `routine_pending_fires` answers on mount. The launch-time
 	 *  catch-up fire arrives this way and no other: a `routine:fire` event emitted
@@ -207,6 +212,10 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		sessionCount: 1,
 		sortOrder: 0,
 		missing: false,
+		// No assignment: the project runs under the default profile, which is what
+		// every install starts as (F25 slice 3).
+		profileId: null,
+		profileName: null,
 	};
 	const session: SessionSummary = {
 		id: 'session-uuid-001',
@@ -224,6 +233,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		routineName: null,
 		routineStartedAt: null,
 		pinned: false,
+		profileName: 'Default',
 	};
 	return {
 		projects: [project],

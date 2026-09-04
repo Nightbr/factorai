@@ -20,6 +20,17 @@ pub struct Project {
 	/// The folder is gone from disk. Set by the scan, not computed per
 	/// `list_projects` — that query is polled every 2s (F1).
 	pub missing: bool,
+	/// Which Claude profile this project's **new** sessions run as (F25 slice 3).
+	/// `None` means the agent's default, which is what no `project_profiles` row
+	/// means — so an install that has never assigned anything writes no rows.
+	///
+	/// Carried on the project rather than fetched separately because the right
+	/// click menu that changes it is drawn from this list, which the sidebar
+	/// already polls.
+	pub profile_id: Option<String>,
+	/// That profile's name, for the menu and the header. `None` alongside a
+	/// `None` id.
+	pub profile_name: Option<String>,
 }
 
 /// One row of the sidebar's tree (F1, ADR-0025). Mirrors `@factorai/types`
@@ -158,6 +169,13 @@ pub struct SessionSummary {
 	/// only copy of that moment is in the renderer's memory. This is what keeps
 	/// it once the session has a title of its own, and across a reload.
 	pub routine_started_at: Option<i64>,
+	/// The profile this session **is running or ran under** (F25 slice 3) — the
+	/// one whose store holds its transcript, which is what a resume has to use.
+	///
+	/// `None` for a session the scan has not seen yet: there is no transcript, so
+	/// there is nothing to have been written anywhere, and a spawn falls through
+	/// to the project's assignment.
+	pub profile_name: Option<String>,
 	/// Whether the user pinned this session to the top of its project's list
 	/// (F2, migration 0015).
 	///
@@ -664,6 +682,46 @@ pub struct GitCommitDetail {
 	/// `GitStatus`, because a merge can legitimately touch thousands.
 	pub total: usize,
 	pub truncated: bool,
+}
+
+/// One Claude identity, isolated by config directory (F25, [ADR-0036]).
+/// Mirrors `@factorai/types` `Profile`.
+///
+/// A profile is a directory plus a name. It holds no credential — the directory
+/// does, and the CLI put it there when the user logged in.
+///
+/// [ADR-0036]: ../../../../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+	/// uuid v4. Not derived from the directory — see migration 0017.
+	pub id: String,
+	/// Which agent this is an identity for. `'claude'` today.
+	pub agent: String,
+	pub name: String,
+	pub config_dir: String,
+	/// Every project with no assignment for this agent spawns under it. Exactly
+	/// one per agent, enforced by a partial unique index.
+	pub is_default: bool,
+	/// The directory is not on disk. Computed per query rather than stored: the
+	/// list is short, it is read only when Settings is open, and a stored flag
+	/// would need a scan to clear it after a remount.
+	///
+	/// **Missing is not an error state.** The scan skips such a profile rather
+	/// than reaping its sessions, and the next spawn creates the directory —
+	/// where the CLI asking for a login is the correct, visible outcome.
+	pub missing: bool,
+	pub created_at: i64,
+}
+
+/// What `createProfile` accepts. `isDefault` is not part of it: a profile is
+/// promoted through `set_default_profile`, which is one statement that has to
+/// clear the old default in the same transaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileInput {
+	pub name: String,
+	pub config_dir: String,
 }
 
 /// A setting Rust reads, keyed by a mirrored union rather than a free string

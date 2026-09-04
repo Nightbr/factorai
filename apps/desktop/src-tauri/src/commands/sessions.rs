@@ -52,9 +52,16 @@ pub fn list_sessions_in(
 		// here rather than there.
 		"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
 		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.touched_paths,
-		        sr.routine_id, r.name, sr.created_at, pin.session_id IS NOT NULL
+		        sr.routine_id, r.name, sr.created_at, pin.session_id IS NOT NULL,
+		        pr.name
 		 FROM sessions s
 		 JOIN discovered_projects d ON d.id = s.discovered_id
+		 -- Which identity wrote this transcript (F25 slice 3). Joined rather than
+		 -- looked up per row because the header draws it on first paint, and a
+		 -- resume has to spawn under *this* profile rather than the project's
+		 -- current assignment — a fact the renderer needs in the same breath as
+		 -- the row it labels.
+		 JOIN profiles pr ON pr.id = d.profile_id
 		 LEFT JOIN sessions p ON p.id = s.subagent_of
 		 LEFT JOIN session_worktrees w ON w.session_id = s.id
 		 LEFT JOIN session_routines sr ON sr.session_id = s.id
@@ -99,6 +106,7 @@ pub fn list_sessions_in(
 				routine_name: row.get(12)?,
 				routine_started_at: row.get(13)?,
 				pinned: row.get(14)?,
+				profile_name: row.get(15)?,
 			})
 		})?
 		.collect::<rusqlite::Result<Vec<_>>>()?;

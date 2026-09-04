@@ -16,6 +16,9 @@ import type {
 	Mention,
 	PathKind,
 	PdfContents,
+	Profile,
+	ProfileInput,
+	ProfilesChangedEvent,
 	Project,
 	QuitRequestedEvent,
 	Routine,
@@ -233,6 +236,32 @@ export const cmd = {
 	 *  beside a path that does not work. */
 	validateClaudeBinary: (path: string) =>
 		invoke<ClaudeCliStatus>('validate_claude_binary', { path }),
+	/** Every Claude profile, default first (F25). */
+	listProfiles: () => invoke<Profile[]>('list_profiles'),
+	/** Create one, making its config directory if it is missing and leaving it
+	 *  **empty** — the CLI populates it on first run and asks the user to log in,
+	 *  which is the only place authentication happens. */
+	createProfile: (input: ProfileInput) => invoke<Profile>('create_profile', { input }),
+	renameProfile: (id: string, name: string) => invoke<Profile>('rename_profile', { id, name }),
+	/** Promote a profile to its agent's default, demoting the previous one.
+	 *  **Applies to new sessions**: the config directory is read at spawn. */
+	setDefaultProfile: (id: string) => invoke<Profile>('set_default_profile', { id }),
+	/** Delete one. Removes the row and **nothing on disk** — the credentials and
+	 *  transcripts under its directory stay — and refuses while it is the
+	 *  default. */
+	deleteProfile: (id: string) => invoke<void>('delete_profile', { id }),
+	/** Point a project at a profile, or clear it with `null` so the project falls
+	 *  back to the agent's default (F25 slice 3).
+	 *
+	 *  **Applies to new sessions**: the config directory is read at spawn, so
+	 *  nothing running changes — and a session that already has a transcript keeps
+	 *  resuming under the profile that holds it, whatever this says. */
+	setProjectProfile: (projectId: string, profileId: string | null) =>
+		invoke<void>('set_project_profile', { projectId, profileId }),
+	/** Where to put a profile called `name`, for the create form to pre-fill.
+	 *  A command because the answer starts at `$HOME`, which the renderer has no
+	 *  honest way to know. */
+	suggestProfileDir: (name: string) => invoke<string>('suggest_profile_dir', { name }),
 	/** A project's routines, oldest first (F22). */
 	listRoutines: (projectId: string) => invoke<Routine[]>('list_routines', { projectId }),
 	/** Create one. Rejects a cron expression that cannot be parsed, so a
@@ -397,22 +426,27 @@ export async function copyImageFile(path: string): Promise<void> {
 }
 
 /**
- * Ask the OS for a folder, for "Add project" (F1). Resolves null when the
- * picker is cancelled — which is a normal outcome, not an error.
+ * Ask the OS for a folder. Resolves null when the picker is cancelled — which
+ * is a normal outcome, not an error.
+ *
+ * `title` is what the dialog is called: "Add project" (F1) is the default, and a
+ * profile's config directory (F25) is the second caller. The browser lane
+ * ignores it — one `folderPick` fixture answers both, because a spec drives one
+ * picker at a time.
  *
  * Lazily imported for the same reason as `openExternally`: browser-only dev and
  * Playwright have no plugin host, so a top-level import would reject rather
  * than no-op. There the fixture's `folderPick` stands in, since a native dialog
  * is otherwise unreachable from a test.
  */
-export async function pickFolder(): Promise<string | null> {
+export async function pickFolder(title = 'Add project folder'): Promise<string | null> {
 	if (!isTauri()) {
 		recordMockCall('dialog.open');
 		return testFixture()?.folderPick ?? null;
 	}
 	// plugin-dialog 2.7.x; the capability grant is `dialog:default`.
 	const { open } = await import('@tauri-apps/plugin-dialog');
-	const picked = await open({ directory: true, multiple: false, title: 'Add project folder' });
+	const picked = await open({ directory: true, multiple: false, title });
 	// `multiple: false` narrows it to one path, but the union still admits an
 	// array — cancelling gives null either way.
 	return typeof picked === 'string' ? picked : null;
@@ -472,6 +506,11 @@ export const events = {
 	 *  in a Routines tab that is already open. */
 	onRoutinesChanged: (cb: (p: RoutinesChangedEvent) => void) =>
 		listen<RoutinesChangedEvent>('routines:changed', cb),
+	/** The profile list changed (F25). Emitted by every write, and the reason
+	 *  Rust emits at all is its own listener: the indexer re-reads profiles off
+	 *  this. The renderer's own mutations invalidate optimistically already. */
+	onProfilesChanged: (cb: (p: ProfilesChangedEvent) => void) =>
+		listen<ProfilesChangedEvent>('profiles:changed', cb),
 };
 
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
@@ -570,6 +609,10 @@ interface TestFixture {
 	/** Routines per project id (F22). Mutated by the create/update/delete mocks,
 	 *  so a test can add one and see the list it lands in. */
 	routinesByProject?: Record<string, Routine[]>;
+	/** The `profiles` table (F25). Mutated by the create/rename/default/delete
+	 *  mocks, so a test can drive the section and read back what it did. Absent
+	 *  means the one seeded default, which is what a fresh install has. */
+	profiles?: Profile[];
 	/** Fires waiting to be started (F22, ADR-0030). */
 	pendingRoutineFires?: RoutineFireEvent[];
 	/** The `settings` table (F11). Mutated by `set_setting`, so a test can Save
@@ -617,6 +660,21 @@ function claudeStatusFor(path: string, fx: TestFixture | undefined): ClaudeCliSt
 		return { installed: false, binaryPath: null, version: null };
 	}
 	return { installed: true, binaryPath: path, version: fx.claudeBinaries[path] ?? null };
+}
+
+/** The profile every install has: one default, on the boot directory. What
+ *  `ensure_default` writes in Rust, so a fixture that says nothing about
+ *  profiles still describes a real state rather than an empty table. */
+function seededDefaultProfile(): Profile {
+	return {
+		id: 'profile-default',
+		agent: 'claude',
+		name: 'Default',
+		configDir: '/home/mock/.claude',
+		isDefault: true,
+		missing: false,
+		createdAt: 0,
+	};
 }
 
 async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Promise<T> {
@@ -740,6 +798,10 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				realPath: path,
 				displayName: path.split('/').filter(Boolean).pop() ?? path,
 				lastSessionAt: candidate?.lastActivityAt ?? null,
+				// A folder you just added has no profile of its own: it runs under the
+				// default until somebody says otherwise (F25 slice 3).
+				profileId: null,
+				profileName: null,
 				sessionCount: candidate?.sessionCount ?? 0,
 				missing: candidate?.missing ?? false,
 			};
@@ -1004,6 +1066,96 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 		}
 		case 'resolve_project_path':
 			return null as unknown as T;
+		case 'list_profiles':
+			return (fx?.profiles ?? [seededDefaultProfile()]) as unknown as T;
+		case 'create_profile': {
+			const input = args?.input as ProfileInput;
+			const list = fx?.profiles ?? [seededDefaultProfile()];
+			// The two refusals worth having in the browser lane, because they are
+			// the form's error paths rather than the database's: Rust enforces both
+			// with a UNIQUE index, and a test that cannot reach them cannot check
+			// that the message is shown.
+			if (list.some((p) => p.name === input.name.trim())) {
+				throw { kind: 'InvalidInput', message: 'a profile with that name already exists' };
+			}
+			if (list.some((p) => p.configDir === input.configDir.trim())) {
+				throw {
+					kind: 'InvalidInput',
+					message: 'another profile already uses that directory',
+				};
+			}
+			const created: Profile = {
+				id: `profile-${list.length + 1}`,
+				agent: 'claude',
+				name: input.name.trim(),
+				configDir: input.configDir.trim(),
+				isDefault: false,
+				missing: false,
+				createdAt: Date.now(),
+			};
+			if (fx) fx.profiles = [...list, created];
+			return created as unknown as T;
+		}
+		case 'rename_profile': {
+			const id = String(args?.id ?? '');
+			const name = String(args?.name ?? '').trim();
+			const list = fx?.profiles ?? [seededDefaultProfile()];
+			const updated = list.map((p) => (p.id === id ? { ...p, name } : p));
+			if (fx) fx.profiles = updated;
+			return updated.find((p) => p.id === id) as unknown as T;
+		}
+		case 'set_default_profile': {
+			const id = String(args?.id ?? '');
+			const list = fx?.profiles ?? [seededDefaultProfile()];
+			// One default per agent, the same invariant the partial unique index
+			// holds in Rust — so a mock that promoted without demoting would let a
+			// test pass on a state the real table cannot be in.
+			const updated = list.map((p) => ({ ...p, isDefault: p.id === id }));
+			if (fx) fx.profiles = updated;
+			return updated.find((p) => p.id === id) as unknown as T;
+		}
+		case 'delete_profile': {
+			const id = String(args?.id ?? '');
+			const list = fx?.profiles ?? [seededDefaultProfile()];
+			if (list.find((p) => p.id === id)?.isDefault) {
+				throw {
+					kind: 'InvalidInput',
+					message: 'this is the default profile — make another one the default first',
+				};
+			}
+			if (fx) fx.profiles = list.filter((p) => p.id !== id);
+			return undefined as unknown as T;
+		}
+		case 'set_project_profile': {
+			const projectId = String(args?.projectId ?? '');
+			const profileId = args?.profileId as string | null;
+			// Written back into the fixture, the way `set_setting` is: the sidebar and
+			// the picker both read the assignment off `projects`, so a mock that did
+			// not store it would show the tick springing back.
+			const profile = (fx?.profiles ?? [seededDefaultProfile()]).find((p) => p.id === profileId);
+			if (fx?.projects) {
+				fx.projects = fx.projects.map((p) =>
+					p.id === projectId
+						? {
+								...p,
+								profileId: profile?.id ?? null,
+								profileName: profile?.name ?? null,
+							}
+						: p,
+				);
+			}
+			return undefined as unknown as T;
+		}
+		case 'suggest_profile_dir': {
+			// `$HOME` is not knowable here, so the browser lane says so in the
+			// path rather than inventing one that looks real.
+			const slug = String(args?.name ?? '')
+				.trim()
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, '-')
+				.replace(/^-|-$/g, '');
+			return `/home/mock/.factorai/profiles/${slug}` as unknown as T;
+		}
 		case 'list_routines': {
 			const projectId = String(args?.projectId ?? '');
 			return (fx?.routinesByProject?.[projectId] ?? []) as unknown as T;

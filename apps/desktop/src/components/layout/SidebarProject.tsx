@@ -41,7 +41,7 @@ import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
 import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
 	AlertTriangle,
@@ -56,6 +56,7 @@ import {
 	ClockFading,
 	Pin,
 	PinOff,
+	IdCard,
 	Plus,
 	Route,
 	Trash2,
@@ -516,6 +517,8 @@ export function SidebarProject({
 							<ContextMenuSeparator />
 						</>
 					)}
+					<ProfileSubmenu project={project} />
+					<ContextMenuSeparator />
 					<ContextMenuItem
 						disabled={project.missing}
 						onSelect={() => void openExternally(project.realPath)}
@@ -576,6 +579,82 @@ export function SidebarProject({
 				</DialogContent>
 			</Dialog>
 		</li>
+	);
+}
+
+/**
+ * Which Claude identity this project's new sessions run as (F25 slice 3).
+ *
+ * **In the menu rather than in Settings** because this is a property of the
+ * project, alongside everything else you reach by right-clicking it — the global
+ * modal also offers the reverse view, one profile and the projects on it, for
+ * when you are thinking about identities rather than about one project.
+ *
+ * The note is permanent, not conditional on anything being live. The rule —
+ * `CLAUDE_CONFIG_DIR` is read at spawn — is worth learning once rather than
+ * discovering from a toast that only appears sometimes.
+ */
+function ProfileSubmenu({ project }: { project: Project }) {
+	const queryClient = useQueryClient();
+	const profiles = useQuery({
+		queryKey: queryKeys.profiles(),
+		queryFn: () => cmd.listProfiles(),
+		// Read by every project row's menu, so one fetch answers all of them; the
+		// list changes only when Settings writes it, which invalidates this key.
+		staleTime: Number.POSITIVE_INFINITY,
+		retry: false,
+	});
+	const assign = useMutation({
+		mutationFn: (profileId: string | null) => cmd.setProjectProfile(project.id, profileId),
+		// `projects` carries the assignment, and the sidebar draws this menu from
+		// it — so the label under the cursor is what invalidating refreshes.
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+			void queryClient.invalidateQueries({ queryKey: queryKeys.sidebar() });
+		},
+	});
+
+	const rows = profiles.data ?? [];
+	// Nothing to choose between: one profile is the state every install starts in,
+	// and a submenu whose only entry is the one already in force is a dead end.
+	if (rows.length < 2) return null;
+
+	return (
+		<ContextMenuSub>
+			<ContextMenuSubTrigger data-testid={`project-profile-${project.id}`}>
+				<IdCard />
+				Profile
+				<span className="ml-auto pl-2 text-muted-foreground text-xs">
+					{project.profileName ?? 'Default'}
+				</span>
+			</ContextMenuSubTrigger>
+			<ContextMenuSubContent className="w-56">
+				<ContextMenuItem
+					data-testid={`project-profile-default-${project.id}`}
+					disabled={project.profileId === null}
+					onSelect={() => assign.mutate(null)}
+				>
+					Default profile
+				</ContextMenuItem>
+				<ContextMenuSeparator />
+				{rows.map((profile) => (
+					<ContextMenuItem
+						key={profile.id}
+						data-testid={`project-profile-${project.id}-${profile.id}`}
+						disabled={profile.id === project.profileId}
+						onSelect={() => assign.mutate(profile.id)}
+					>
+						{profile.name}
+						{profile.isDefault && (
+							<span className="ml-auto pl-2 text-muted-foreground text-xs">default</span>
+						)}
+					</ContextMenuItem>
+				))}
+				<p className="px-2 pt-1.5 pb-1 text-muted-foreground text-xs">
+					Applies to new sessions. A running session keeps the profile it started under.
+				</p>
+			</ContextMenuSubContent>
+		</ContextMenuSub>
 	);
 }
 

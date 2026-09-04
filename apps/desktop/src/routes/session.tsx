@@ -5,6 +5,7 @@ import { createRoute, useNavigate } from '@tanstack/react-router';
 import {
 	BookOpen,
 	GitBranch,
+	IdCard,
 	GitCommitHorizontal,
 	Pin,
 	PinOff,
@@ -127,6 +128,22 @@ function SessionView() {
 	// index row is the authority — it says where the transcript actually lives.
 	const session = sessionsQ.data?.find((s) => s.id === sessionId);
 	const isSubAgent = session?.subagentOf != null;
+
+	// Which Claude identity this session is (F25). Named in the header only when
+	// it is *not* the default: a badge on every session in a single-profile
+	// install would be a label that never varies, and this one has to mean
+	// "not what you would assume".
+	const profilesQ = useQuery({
+		queryKey: queryKeys.profiles(),
+		queryFn: () => cmd.listProfiles(),
+		staleTime: Number.POSITIVE_INFINITY,
+		retry: false,
+	});
+	const profileName =
+		session?.profileName &&
+		!profilesQ.data?.some((p) => p.isDefault && p.name === session.profileName)
+			? session.profileName
+			: null;
 
 	// Why this session's IDE bridge is unusable, if it is (F20). Undefined is
 	// the normal case and draws nothing.
@@ -259,6 +276,27 @@ function SessionView() {
 							<span>{detachedAt.slice(0, 7)}</span>
 						</span>
 					)
+				)}
+				{/* **Which Claude identity this session is** (F25). Where the branch and
+				    the checkout are said, and for the same reason: it is a fact about
+				    what you are looking at, so it is quiet — muted, no border, not a
+				    control. There is nothing to click, because a session's profile
+				    cannot change: `CLAUDE_CONFIG_DIR` is read at spawn and the
+				    transcript lives under the directory it was written in.
+
+				    **Drawn only when it is not the default**, so a single-profile
+				    install's header is byte-identical to what it was, and the badge
+				    means "not the identity you would assume" rather than being a label
+				    every session carries. */}
+				{profileName && (
+					<span
+						className="flex min-w-0 max-w-[10rem] shrink-0 items-center gap-1 text-muted-foreground text-xs"
+						title={`Running as the ${profileName} Claude profile`}
+						data-testid="session-profile"
+					>
+						<IdCard className="size-3 shrink-0" aria-hidden />
+						<span className="truncate">{profileName}</span>
+					</span>
 				)}
 				{/* **The checkout, beside the branch and never instead of it** (F21).
 				    Two facts rather than one: they usually agree, and the cases where

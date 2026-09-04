@@ -65,7 +65,40 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// silently lost every launch-time catch-up fire. The file says what the row is
 	// for and why it is never history.
 	("0016_routine_claims", include_str!("migrations/0016_routine_claims.sql")),
+	// Several Claude identities on one machine (F25, ADR-0036). Only the table
+	// here: the default row needs `CLAUDE_HOME`, which static SQL cannot read, so
+	// `services::profiles::ensure_default` writes it at boot instead.
+	("0017_profiles", include_str!("migrations/0017_profiles.sql")),
+	// A discovered directory belongs to a profile rather than to an agent (F25
+	// slice 2), which is what lets the same repository be indexed under two
+	// config directories. A **table rebuild**, so it is in `STANDALONE` below —
+	// the file says why that is not optional.
+	("0018_discovered_profile", include_str!("migrations/0018_discovered_profile.sql")),
+	// Which identity a project's sessions run as (F25 slice 3). No row means the
+	// agent's default, so an existing install keeps working with nothing written.
+	// A plain `CREATE TABLE`, so not standalone: the rebuild was 0018's problem.
+	("0019_project_profiles", include_str!("migrations/0019_project_profiles.sql")),
 ];
+
+/// Migrations that need the connection to themselves, with foreign keys off.
+///
+/// SQLite's own 12-step `ALTER TABLE` procedure — the only way to change a
+/// table-level constraint, since `DROP COLUMN` refuses a constrained column —
+/// ends in `DROP TABLE` on the table being replaced. For a table something else
+/// references that fires every `ON DELETE CASCADE` pointing at it, and the guard
+/// (`PRAGMA foreign_keys = OFF`) is a **silent no-op inside a transaction**.
+/// Migration 0011's closing note is where this was written down as the thing the
+/// next rebuild would have to solve; 0018 is that rebuild.
+///
+/// `PRAGMA legacy_alter_table` is not an alternative: a rename rewrites
+/// `REFERENCES` clauses in other tables whenever foreign keys are *enabled*,
+/// whatever that flag says, so the rename hands the dependent table a pointer to
+/// the corpse.
+///
+/// A standalone migration pays for the privilege with a `foreign_key_check`
+/// afterwards, before enforcement comes back on — a rebuild that left a dangling
+/// reference would otherwise be discovered by an unrelated write, hours later.
+const STANDALONE: &[&str] = &["0018_discovered_profile"];
 
 /// Thread-safe handle to the SQLite connection.
 ///
@@ -94,6 +127,15 @@ impl Db {
 		Ok(db)
 	}
 
+	/// Apply what has not been applied, in order.
+	///
+	/// **One transaction per migration, not one for the batch.** The batch-wide
+	/// transaction had to go when the first standalone migration arrived — a
+	/// rebuild cannot run inside one, and committing halfway through a shared
+	/// transaction to make room for it is the same thing as this, spelled less
+	/// clearly. Each migration is still atomic, and each is recorded in `_meta`
+	/// as it lands, so a failure at 18 leaves 1..17 applied and re-running
+	/// resumes at 18 — which is what a name-keyed ledger is for.
 	fn migrate(&self) -> AppResult<()> {
 		let mut conn = self.conn.lock();
 		// Bootstrap the bookkeeping table itself.
@@ -101,9 +143,8 @@ impl Db {
 			"CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
 			[],
 		)?;
-		let tx = conn.transaction()?;
 		for (name, sql) in MIGRATIONS {
-			let already_applied: bool = tx
+			let already_applied: bool = conn
 				.query_row(
 					"SELECT 1 FROM _meta WHERE key = ?1",
 					[format!("migration:{name}")],
@@ -115,13 +156,12 @@ impl Db {
 				continue;
 			}
 			info!(%name, "applying migration");
-			tx.execute_batch(sql)?;
-			tx.execute(
-				"INSERT INTO _meta(key, value) VALUES (?1, ?2)",
-				[format!("migration:{name}"), chrono::Utc::now().to_rfc3339()],
-			)?;
+			if STANDALONE.contains(name) {
+				apply_standalone(&mut conn, name, sql)?;
+			} else {
+				apply(&mut conn, name, sql)?;
+			}
 		}
-		tx.commit()?;
 		Ok(())
 	}
 
@@ -136,4 +176,46 @@ impl Db {
 		let mut conn = self.conn.lock();
 		f(&mut conn)
 	}
+}
+
+/// One migration, in its own transaction.
+fn apply(conn: &mut Connection, name: &str, sql: &str) -> AppResult<()> {
+	let tx = conn.transaction()?;
+	tx.execute_batch(sql)?;
+	record(&tx, name)?;
+	tx.commit()?;
+	Ok(())
+}
+
+/// One migration that rebuilds a table, with foreign keys off around it — see
+/// [`STANDALONE`] for why that cannot be done from inside the migration.
+///
+/// Enforcement is restored whatever happens, including on the error path: a
+/// connection left with foreign keys off would silently accept every dangling
+/// write for the rest of the process's life.
+fn apply_standalone(conn: &mut Connection, name: &str, sql: &str) -> AppResult<()> {
+	conn.pragma_update(None, "foreign_keys", "OFF")?;
+	let outcome = apply(conn, name, sql).and_then(|()| {
+		// Step 10 of the documented procedure, and the reason a rebuild is
+		// allowed to turn enforcement off at all: a reference the rebuild broke is
+		// found here, now, rather than by an unrelated write much later.
+		let mut stmt = conn.prepare("PRAGMA foreign_key_check")?;
+		let violations = stmt.query_map([], |r| r.get::<_, String>(0))?.count();
+		if violations > 0 {
+			return Err(AppError::Db(format!(
+				"migration {name} left {violations} dangling foreign key rows"
+			)));
+		}
+		Ok(())
+	});
+	conn.pragma_update(None, "foreign_keys", "ON")?;
+	outcome
+}
+
+fn record(conn: &Connection, name: &str) -> AppResult<()> {
+	conn.execute(
+		"INSERT INTO _meta(key, value) VALUES (?1, ?2)",
+		[format!("migration:{name}"), chrono::Utc::now().to_rfc3339()],
+	)?;
+	Ok(())
 }

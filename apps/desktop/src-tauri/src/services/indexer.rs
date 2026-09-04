@@ -67,7 +67,6 @@ pub type ReapShellsCb = Arc<dyn Fn() + Send + Sync>;
 #[derive(Clone)]
 pub struct Indexer {
 	db: Db,
-	claude_dir: PathBuf,
 	on_progress: ProgressCb,
 	on_changed: ChangedCb,
 	live_ids: LiveIdsCb,
@@ -79,7 +78,14 @@ pub struct Indexer {
 struct LinkedDir {
 	discovered_id: i64,
 	project_id: String,
+	/// Which agent's store this is, read through the profile that owns the row
+	/// (F25). Kept for the `path` assertion and for the one branch a second agent
+	/// will add there.
 	agent: String,
+	/// The config directory the profile points at — **carried on the row rather
+	/// than held by the indexer**, because there are now N of them and this is
+	/// the one that this directory is inside (F25 slice 2).
+	config_dir: String,
 	key: String,
 }
 
@@ -87,20 +93,24 @@ impl LinkedDir {
 	/// Where this directory lives. The only place the scan needs to know whose
 	/// store it is reading — and so the one place a second agent adds a branch.
 	/// Until then every row is Claude's, which `discover` guarantees.
-	fn path(&self, claude_dir: &Path) -> PathBuf {
+	fn path(&self) -> PathBuf {
 		debug_assert_eq!(self.agent, crate::agents::CLAUDE);
-		claude_dir.join("projects").join(&self.key)
+		Path::new(&self.config_dir).join("projects").join(&self.key)
 	}
 }
 
 impl Indexer {
 	/// Build an indexer wired to a live Tauri AppHandle. Used in production.
-	pub fn for_app(db: Db, claude_dir: PathBuf, app: AppHandle) -> Self {
+	///
+	/// **No config directory is held.** There are as many as there are profiles
+	/// (F25), and the set changes while the app runs — so every pass reads
+	/// `profiles` instead, which is what makes a profile created a second ago get
+	/// scanned without a restart.
+	pub fn for_app(db: Db, app: AppHandle) -> Self {
 		let app_progress = app.clone();
 		let app_changed = app;
 		Self {
 			db,
-			claude_dir,
 			on_progress: Arc::new(move |p| {
 				let _ = app_progress.emit("indexer:progress", p);
 			}),
@@ -130,24 +140,14 @@ impl Indexer {
 
 	/// Build an indexer with explicit emit callbacks. Useful for tests that
 	/// want to capture or ignore events.
-	pub fn with_callbacks(
-		db: Db,
-		claude_dir: PathBuf,
-		on_progress: ProgressCb,
-		on_changed: ChangedCb,
-	) -> Self {
+	pub fn with_callbacks(db: Db, on_progress: ProgressCb, on_changed: ChangedCb) -> Self {
 		Self {
 			db,
-			claude_dir,
 			on_progress,
 			on_changed,
 			live_ids: Arc::new(HashSet::new),
 			reap_shells: Arc::new(|| {}),
 		}
-	}
-
-	pub fn claude_dir(&self) -> &Path {
-		&self.claude_dir
 	}
 
 	pub fn db(&self) -> &Db {
@@ -199,20 +199,37 @@ impl Indexer {
 		Ok(())
 	}
 
-	/// Record every directory each agent's store holds, and link it to the
+	/// Record every directory each profile's store holds, and link it to the
 	/// workspace folder it describes. No transcript is parsed in full here.
+	///
+	/// **One walk per profile** (F25 slice 2). The same repository under two
+	/// config directories is two rows keyed `(profile_id, key)`, which is what
+	/// the unique index in migration 0018 exists for: before it, the second one
+	/// could not be recorded at all.
+	///
+	/// A profile whose directory is absent contributes nothing and **is not
+	/// treated as an empty store**. Nothing here deletes, so discovery is safe
+	/// either way; the rule that matters is `index_dir`'s, which refuses to reap
+	/// a directory it cannot read.
 	pub fn discover(&self) -> AppResult<()> {
-		let found = claude::discover(&self.claude_dir);
+		let profiles = self.db.with(crate::services::profiles::list)?;
+		let found: Vec<(String, Vec<crate::agents::Discovered>)> = profiles
+			.iter()
+			.map(|p| (p.id.clone(), claude::discover(Path::new(&p.config_dir))))
+			.collect();
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			{
 				let mut stmt = tx.prepare(
-					"INSERT INTO discovered_projects(agent, key, real_path) VALUES(?1, ?2, ?3)
-					 ON CONFLICT(agent, key) DO UPDATE SET
+					"INSERT INTO discovered_projects(profile_id, key, real_path) VALUES(?1, ?2, ?3)
+					 ON CONFLICT(profile_id, key) DO UPDATE SET
 					   real_path = COALESCE(excluded.real_path, discovered_projects.real_path)",
 				)?;
-				for d in &found {
-					stmt.execute(params![d.agent, d.key, d.real_path])?;
+				for (profile_id, dirs) in &found {
+					for d in dirs {
+						debug_assert_eq!(d.agent, crate::agents::CLAUDE);
+						stmt.execute(params![profile_id, d.key, d.real_path])?;
+					}
 				}
 			}
 			reconcile(&tx)?;
@@ -253,19 +270,25 @@ impl Indexer {
 	///
 	/// A directory that isn't linked to a workspace folder is skipped, which is
 	/// how "new Claude activity in a project you never added" stays silent.
-	pub fn scan_dir_path(&self, dir: &Path) -> AppResult<()> {
+	///
+	/// **The profile is a parameter, not something derived from the path** (F25
+	/// slice 2). `key` is the directory's name, and the same repository under two
+	/// config directories produces the same one — so the caller, which knows
+	/// which watched root the event arrived under, is the only thing that can
+	/// say which store this is.
+	pub fn scan_dir_path(&self, profile_id: &str, dir: &Path) -> AppResult<()> {
 		let Some(key) = dir.file_name().and_then(|s| s.to_str()) else {
 			return Err(AppError::InvalidInput("project dir name not utf-8".into()));
 		};
 		// A directory that appeared since the last scan has no row yet. Resolving
 		// it here is what makes the *first* session in a freshly added folder show
 		// up without waiting for a restart.
-		if self.db.with(|conn| discovered_id_for(conn, key))?.is_none() {
+		if self.db.with(|conn| discovered_id_for(conn, profile_id, key))?.is_none() {
 			self.discover()?;
 		}
 		let linked = self.db.with(|conn| {
-			let sql = format!("{LINKED_SELECT} AND d.key = ?1");
-			Ok(conn.query_row(&sql, params![key], map_linked).optional()?)
+			let sql = format!("{LINKED_SELECT} AND d.profile_id = ?1 AND d.key = ?2");
+			Ok(conn.query_row(&sql, params![profile_id, key], map_linked).optional()?)
 		})?;
 		match linked {
 			Some(dir) => self.index_dir(&dir),
@@ -279,7 +302,7 @@ impl Indexer {
 	/// Parse every transcript in one linked directory that has changed since we
 	/// last looked.
 	fn index_dir(&self, dir: &LinkedDir) -> AppResult<()> {
-		let session_files: Vec<PathBuf> = match std::fs::read_dir(dir.path(&self.claude_dir)) {
+		let session_files: Vec<PathBuf> = match std::fs::read_dir(dir.path()) {
 			Ok(rd) => rd
 				.filter_map(Result::ok)
 				.map(|e| e.path())
@@ -630,8 +653,13 @@ impl Indexer {
 }
 
 /// Every agent directory whose folder is in the workspace.
-const LINKED_SELECT: &str = "SELECT d.id, d.project_id, d.agent, d.key
+///
+/// The join to `profiles` is what replaced `discovered_projects.agent` in
+/// migration 0018: the agent and the config directory are both facts about the
+/// profile that owns the row, so they are read from there rather than copied.
+const LINKED_SELECT: &str = "SELECT d.id, d.project_id, p.agent, p.config_dir, d.key
 	FROM discovered_projects d
+	JOIN profiles p ON p.id = d.profile_id
 	WHERE d.project_id IS NOT NULL";
 
 fn map_linked(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkedDir> {
@@ -639,7 +667,8 @@ fn map_linked(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkedDir> {
 		discovered_id: row.get(0)?,
 		project_id: row.get(1)?,
 		agent: row.get(2)?,
-		key: row.get(3)?,
+		config_dir: row.get(3)?,
+		key: row.get(4)?,
 	})
 }
 
@@ -658,11 +687,13 @@ fn linked_dirs(conn: &Connection, project_id: Option<&str>) -> AppResult<Vec<Lin
 	Ok(rows)
 }
 
-fn discovered_id_for(conn: &Connection, key: &str) -> AppResult<Option<i64>> {
+fn discovered_id_for(conn: &Connection, profile_id: &str, key: &str) -> AppResult<Option<i64>> {
 	Ok(conn
-		.query_row("SELECT id FROM discovered_projects WHERE key = ?1", params![key], |r| {
-			r.get::<_, i64>(0)
-		})
+		.query_row(
+			"SELECT id FROM discovered_projects WHERE profile_id = ?1 AND key = ?2",
+			params![profile_id, key],
+			|r| r.get::<_, i64>(0),
+		)
 		.optional()?)
 }
 

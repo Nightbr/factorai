@@ -30,6 +30,7 @@ function session(
 		routineName: null,
 		routineStartedAt: null,
 		pinned,
+		profileName: null,
 	};
 }
 

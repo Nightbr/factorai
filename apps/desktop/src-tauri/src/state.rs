@@ -22,6 +22,10 @@ pub struct AppState {
 	/// The routine scheduler (F22). Held so `run_routine_now` fires through the
 	/// same path the tick does, rather than growing a second one.
 	pub routines: Arc<RoutineRunner>,
+	/// The filesystem watcher's roots, one per profile (F25). Held so a profile
+	/// write can ask for a reconcile — a new profile's transcripts are noticed by
+	/// something watching its directory, and nothing else can arrange that.
+	pub watch: Arc<crate::services::watcher::Control>,
 	/// The watch on whatever file the viewer has open (F7). One at a time, and
 	/// the renderer owns its lifetime — it watches on open and releases on
 	/// close, so an app with no viewer open holds no watch at all.

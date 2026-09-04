@@ -21,8 +21,12 @@ fn open_db(tmp: &Path) -> Db {
 	Db::open(&tmp.join("data")).expect("open db")
 }
 
+/// The indexer no longer holds a config directory: it reads `profiles` (F25), so
+/// a test's store has to be *the default profile's* store. `ensure_default`
+/// seeds exactly one row for it, which is what boot does.
 fn make_indexer(db: Db, claude_dir: PathBuf) -> Indexer {
-	Indexer::with_callbacks(db, claude_dir, Arc::new(|_| {}), Arc::new(|_| {}))
+	factorai_lib::services::profiles::ensure_default(&db, &claude_dir).expect("seed profile");
+	Indexer::with_callbacks(db, Arc::new(|_| {}), Arc::new(|_| {}))
 }
 
 /// A `~/.claude/projects/<encoded>/<session>.jsonl` for `cwd`, as Claude would

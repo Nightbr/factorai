@@ -17,6 +17,7 @@ import type { Prefs } from '@store/prefsStore';
 export const SETTINGS_SECTIONS = [
 	'appearance',
 	'claude',
+	'profiles',
 	'editor',
 	'confirmations',
 	'sessions',
@@ -47,6 +48,12 @@ export interface SettingsValues extends Prefs {
 	routinesCatchupHours: string;
 	routinesMaxConcurrent: string;
 }
+
+/** **`profiles` holds no value in `SettingsValues`, deliberately.** It is the one
+ *  section that writes as you click rather than into the draft, so it can never
+ *  be dirty and never has a dot — see `ProfilesSection`. `dirtySections` is a
+ *  function of the draft, so a section absent from `SECTION_FOR` simply never
+ *  appears in its answer. */
 
 /** Which section each value belongs to. A `Record` over the keys rather than a
  *  list per section, so a preference added to `SettingsValues` and not placed

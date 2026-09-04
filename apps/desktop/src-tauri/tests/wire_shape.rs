@@ -36,6 +36,8 @@ fn project() -> Project {
 		last_session_at: Some(900),
 		session_count: 2,
 		missing: false,
+		profile_id: Some("prof-work".into()),
+		profile_name: Some("Work".into()),
 	}
 }
 
@@ -58,6 +60,12 @@ fn a_project_row_matches_the_typescript_type() {
 	assert!(json["project"].get("pinned").is_none());
 	assert!(json["project"].get("sortOrder").is_none());
 	assert!(json["project"].get("sort_order").is_none());
+	// The project's Claude profile (F25 slice 3). Camel on the wire like
+	// everything else, and the pair travels together: a name with no id is a
+	// label nothing can be changed through.
+	assert_eq!(json["project"]["profileId"], "prof-work");
+	assert_eq!(json["project"]["profileName"], "Work");
+	assert!(json["project"].get("profile_id").is_none());
 }
 
 #[test]

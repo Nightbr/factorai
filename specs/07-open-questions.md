@@ -46,12 +46,36 @@ implementation sketch lives in `03-backend-rust.md`.
 
 ---
 
-## Q3 — `~/.claude/` location → **respect `CLAUDE_HOME`, no settings UI**
+## Q3 — `~/.claude/` location → **profiles own it; `CLAUDE_HOME` seeds the first one**
 
-**Decision.** Read `CLAUDE_HOME` env at boot; fall back to
-`dirs::home_dir()/.claude`. No `claudeProjectsDir` override in the
-settings UI for MVP. Adding one later is trivial — the path is read in
-one place (`claude_dir()` helper).
+**Original decision.** Read `CLAUDE_HOME` at boot; fall back to
+`dirs::home_dir()/.claude`. No override in the settings UI for MVP. Adding one
+later is trivial — the path is read in one place (`claude_dir()`).
+
+**Superseded 2026-09-04 by F25 and
+[ADR-0036](../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md).**
+The override arrived, and it arrived as more than a path: a `profiles` table,
+where a row is one Claude identity and `CLAUDE_CONFIG_DIR` per spawned session
+is what isolates it.
+
+What changed about this answer, and what did not:
+
+- **`CLAUDE_HOME` is now a seed, not the mechanism.** It is read once, by
+  `services::profiles::ensure_default`, to create the default profile on an
+  install that has none. After that the row is authoritative and the variable is
+  not consulted again — otherwise Settings could show a directory sessions do not
+  use, which is two sources of truth for one fact.
+- **`CLAUDE_CONFIG_DIR` is now read before `CLAUDE_HOME`.** It is the CLI's own
+  variable, so an export of it in the environment factorai was launched from *is*
+  this machine's configuration directory; honouring `CLAUDE_HOME` alone would
+  have us index one store while every session used another.
+- **`claude_dir()` survives** as that seed and as `TerminalManager`'s fallback
+  when no profile resolver is wired, which is every unit test and resolves to
+  what a single-profile install has anyway. The "read in one place" property this
+  answer relied on is what made the change small.
+- **The conclusion holds: we still hold no credential.** A profile is a
+  directory the CLI logs into. Creating one stops at making the directory empty,
+  and credentials are never copied between them.
 
 ---
 

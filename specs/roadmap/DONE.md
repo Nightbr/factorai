@@ -3,6 +3,74 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Several Claude profiles, isolated by config directory, assigned per project (TODO item 45;
+  spec `05-features.md` F25 and `02-data-model.md`, ADR-0036, migrations 0017–0019, Q3 rewritten)**
+  — 2026-09-04, user request from 2026-08-31, designed and shipped the same day in three slices.
+  One machine, several Claude identities: a personal account and a work one, or a throwaway config
+  for testing hooks. Before this there was exactly one, resolved once at boot from `CLAUDE_HOME`.
+
+  **A profile is a name plus a config directory**, and switching profile is `CLAUDE_CONFIG_DIR` on
+  one spawned child. That variable is the CLI's own isolation boundary — credentials,
+  `settings.json`, `projects/`, `ide/`, hooks and MCP config all resolve under it — so factorai
+  never holds a token, and creating a profile deliberately stops at an empty directory the CLI
+  then asks the user to log into. That is what kept § "What this project does not do" intact
+  rather than needing an exception.
+
+  **`CLAUDE_HOME` became a seed.** Migration 0017 writes the default row with a blank
+  `config_dir`, `ensure_default` fills it in at boot, and the variable is never read again — so a
+  stale export in a shell profile cannot outrank what Settings shows. The blank-then-resolve split
+  is not decoration: 0018 attributes every existing discovery to the default profile and
+  `profile_id` is NOT NULL, so the row has to exist before any Rust runs, and static SQL cannot
+  read an environment variable.
+
+  **Everything a spawn does with a config directory goes through one resolution**, not just the
+  environment variable: the transcript probe that chooses `--resume` over `--session-id`, the IDE
+  lockfile we advertise at (F20 would otherwise have been silently dead under any non-default
+  profile), and the id `next_session_id` hands out. A session spawned under one directory and
+  probed under another is this feature's silent failure — the probe misses, we claim an id Claude
+  already knows, and the conversation is replaced by an empty one. The footer shell gets the
+  variable too, which is a deliberate departure from the `CLAUDE_CODE_SSE_PORT` rule one line
+  above it: that one is withheld so a hand-started `claude` is not bound to a bridge, this one is
+  given so a hand-started `claude` is not quietly the wrong account.
+
+  **Migration 0018 is the first table rebuild in the project, and it needed the runner to learn a
+  new trick.** Changing `discovered_projects`'s unique key from `(agent, key)` to
+  `(profile_id, key)` means SQLite's 12-step `ALTER TABLE`, which ends in `DROP TABLE` on a table
+  `sessions` references `ON DELETE CASCADE` — inside the shared migration transaction that
+  deletes every session row and every pin, and `PRAGMA foreign_keys = OFF` is a silent no-op
+  there. `PRAGMA legacy_alter_table` does not save it either: a rename rewrites `REFERENCES`
+  clauses whenever foreign keys are *enabled*, whatever that flag says, which was measured rather
+  than assumed. So `Db::migrate` gained a `STANDALONE` list — one transaction per migration, and a
+  standalone one runs with enforcement off and a `foreign_key_check` before it comes back on.
+  Migration 0011's closing note had predicted exactly this need.
+
+  **The scan is per profile and the watcher holds one root each**, re-armed from
+  `Control::rearm` when a profile is created or deleted — the half of `profiles:changed` no
+  renderer can do for itself, since a new profile's transcripts are only noticed by something
+  watching its directory. `scan_dir_path` takes the profile as a parameter, because it derives the
+  store key from a directory name that two profiles produce identically.
+
+  **A store that is merely unreachable is not an empty store.** `reap_deleted` deletes the row of
+  any transcript it cannot find, so an unmounted volume would have cost that profile its whole
+  index and its FTS rows; `index_dir` returns without reaping when it cannot read the directory,
+  and the watcher retries the root on the next re-arm.
+
+  **The assignment is reachable from both sides** — the project's right-click submenu and a
+  Settings row that folds open into the projects on that profile — writing one
+  `project_profiles` row, keyed `(project_id, agent)`, where no row means the default. Both carry
+  the same permanent note, because the variable is read at spawn: applies to new sessions. Deleting
+  a profile a project points at is refused rather than cascaded, and deleting one at all removes
+  the row and nothing on disk.
+
+  **A resume outranks the assignment**, which is the rule the session id was threaded through the
+  resolver for: a transcript lives under the directory it was written in, so a project reassigned
+  after a session ran must not make that session unresumable. The session header names its profile
+  where the branch and the checkout are said, and only when it is not the default.
+
+  Item 44's model pin stayed separate. Folding a model into a profile was considered and rejected:
+  it conflates identity with cost policy, and running a cheap model on your own account would have
+  meant two profiles over one config directory — which the scan cannot allow.
+
 - **The footer's glyphs sit on their labels again — a pixel of lift, restored (`DESIGN.md`
   § Buttons, "centring is not alignment"; spec `05-features.md` F23, F24)** — 2026-09-04, user
   report, shipped the same day. All four glyphs in the project footer — the chip's terminal mark,

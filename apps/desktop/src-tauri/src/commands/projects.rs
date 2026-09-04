@@ -31,8 +31,13 @@ const PROJECT_SELECT: &str = "SELECT p.id, p.real_path, p.display_name, p.missin
 	  WHERE d.project_id = p.id AND s.subagent_of IS NULL),
 	(SELECT MAX(s.updated_at) FROM sessions s
 	   JOIN discovered_projects d ON d.id = s.discovered_id
-	  WHERE d.project_id = p.id)
-	FROM projects p";
+	  WHERE d.project_id = p.id),
+	-- The assignment, and NULL meaning the default (F25 slice 3). A LEFT JOIN
+	-- rather than a subquery pair, since both columns come from the one row.
+	pr.id, pr.name
+	FROM projects p
+	LEFT JOIN project_profiles pp ON pp.project_id = p.id AND pp.agent = 'claude'
+	LEFT JOIN profiles pr ON pr.id = pp.profile_id";
 
 fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
 	Ok(Project {
@@ -42,6 +47,8 @@ fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
 		missing: row.get::<_, i64>(3)? != 0,
 		session_count: row.get(4)?,
 		last_session_at: row.get(5)?,
+		profile_id: row.get(6)?,
+		profile_name: row.get(7)?,
 	})
 }
 
