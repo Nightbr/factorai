@@ -18,6 +18,8 @@
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
+use std::time::Instant;
 
 use git2::{
 	BranchType, Delta, Diff, DiffFindOptions, DiffFlags, DiffOptions, Oid, Patch, Repository, Sort,
@@ -31,6 +33,8 @@ use crate::models::{
 	GitStatus, GitWorktree, RemoteHost,
 };
 use crate::services::files;
+use parking_lot::Mutex;
+use tracing::debug;
 
 /// Rows returned to the renderer. VS Code's equivalent limit is 10 000, which it
 /// can afford because its list is virtualised. Ours would mount that many
@@ -173,6 +177,28 @@ pub const GRAPH_PAGE: usize = 300;
 /// turn a 3-lane rail into a 200 000-row payload.
 pub const MAX_GRAPH_PAGE: usize = 1000;
 
+/// Pages already walked, per checkout, valid while the refs they were walked
+/// against are unchanged (ADR-0035).
+///
+/// Keyed on the gitdir rather than the project folder: two linked worktrees have
+/// distinct gitdirs and distinct `HEAD`s, so each keeps its own entry, while two
+/// project folders inside one checkout share one. A whole entry is dropped the
+/// moment its digest stops matching — a page walked against yesterday's refs is
+/// never spliced onto one walked against today's, which is the same rule the
+/// renderer applies across pages.
+static GRAPH_CACHE: LazyLock<Mutex<HashMap<PathBuf, CachedGraph>>> =
+	LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Enough for the first page plus a deep "Load more" run. Past this the entry is
+/// cleared rather than evicted page by page; a reader that far down is rare and
+/// a re-walk is the cost they already paid once.
+const GRAPH_CACHE_PAGES: usize = 16;
+
+struct CachedGraph {
+	digest: String,
+	pages: HashMap<(usize, usize), GitGraph>,
+}
+
 /// One page of the commit graph, laid out. See specs/05-features.md F18.
 ///
 /// **Paging is an offset with a full re-walk.** Every call walks from the same
@@ -181,7 +207,17 @@ pub const MAX_GRAPH_PAGE: usize = 1000;
 /// lanes cannot disagree with page 1's — the alternative, threading the open-lane
 /// frontier through an opaque cursor, buys a few microseconds of libgit2 in
 /// exchange for lane instability that is visible and permanent.
+///
+/// **The re-walk is paid once per set of refs, not once per call.** With
+/// `TOPOLOGICAL` in the sort libgit2 traverses everything reachable before it
+/// yields the first row, so the first page of a 200 000-commit repository costs
+/// the whole history — every 30s poll, every switch back to the tab. Commits are
+/// immutable and the refs digest already names exactly what the walk depends
+/// on, so a page is served from `GRAPH_CACHE` while that digest holds. What a
+/// call always pays is `collect_refs`, which is also what tells it whether the
+/// cache is still true.
 pub fn graph(project_path: &str, offset: usize, limit: usize) -> AppResult<GitGraph> {
+	let started = Instant::now();
 	let Some(repo) = discover(project_path) else {
 		return Ok(empty_graph());
 	};
@@ -192,8 +228,34 @@ pub fn graph(project_path: &str, offset: usize, limit: usize) -> AppResult<GitGr
 	};
 
 	let refs = collect_refs(&repo);
+	let refs_ms = started.elapsed().as_millis();
 	let limit = limit.clamp(1, MAX_GRAPH_PAGE);
+	let gitdir = repo.path().to_path_buf();
 
+	{
+		let cache = GRAPH_CACHE.lock();
+		if let Some(hit) = cache
+			.get(&gitdir)
+			.filter(|entry| entry.digest == refs.digest)
+			.and_then(|entry| entry.pages.get(&(offset, limit)))
+		{
+			debug!(
+				project = project_path,
+				offset,
+				limit,
+				refs_ms,
+				total_ms = started.elapsed().as_millis(),
+				"git_graph: page served from cache"
+			);
+			let mut page = hit.clone();
+			// A config read, cheap, and the one field a cached page carries that
+			// the digest does not cover.
+			page.remote_host = remote_host(&repo);
+			return Ok(page);
+		}
+	}
+
+	let walked_at = Instant::now();
 	let mut walk = repo.revwalk().map_err(git_err)?;
 	// TOPOLOGICAL keeps a branch's commits contiguous instead of interleaving them
 	// by date; TIME orders the branches themselves the way you'd expect to read
@@ -245,14 +307,36 @@ pub fn graph(project_path: &str, offset: usize, limit: usize) -> AppResult<GitGr
 		});
 	}
 
-	Ok(GitGraph {
+	let page = GitGraph {
 		repo_root: Some(workdir.to_string_lossy().into_owned()),
 		commits,
 		lane_count: lanes.width(),
-		refs_digest: refs.digest,
+		refs_digest: refs.digest.clone(),
 		has_more,
 		remote_host: remote_host(&repo),
-	})
+	};
+	debug!(
+		project = project_path,
+		offset,
+		limit,
+		refs = refs.tips.len(),
+		walked,
+		refs_ms,
+		walk_ms = walked_at.elapsed().as_millis(),
+		total_ms = started.elapsed().as_millis(),
+		"git_graph: page walked"
+	);
+
+	let mut cache = GRAPH_CACHE.lock();
+	let entry = cache
+		.entry(gitdir)
+		.or_insert_with(|| CachedGraph { digest: refs.digest.clone(), pages: HashMap::new() });
+	if entry.digest != refs.digest || entry.pages.len() >= GRAPH_CACHE_PAGES {
+		entry.digest = refs.digest;
+		entry.pages.clear();
+	}
+	entry.pages.insert((offset, limit), page.clone());
+	Ok(page)
 }
 
 /// An author email as an identity key: trimmed and lower-cased, because
@@ -549,7 +633,6 @@ fn collect_refs(repo: &Repository) -> RefTable {
 				continue; // notes, stash, replace — not part of the picture.
 			};
 
-			parts.push(format!("{full}:{oid}"));
 			tips.push(oid);
 			let is_head =
 				kind == GitRefKind::LocalBranch && head_branch.as_deref() == Some(name.as_str());
@@ -557,6 +640,15 @@ fn collect_refs(repo: &Repository) -> RefTable {
 				GitRefKind::LocalBranch => upstream_in_sync(repo, &name, oid),
 				_ => None,
 			};
+			// The digest names everything a page depends on, because a cached
+			// page lives exactly as long as it holds (ADR-0035). The oid alone
+			// missed two moves that leave every ref in place: which branch `HEAD`
+			// is on, and which upstream a branch tracks — both change a chip.
+			parts.push(format!(
+				"{full}:{oid}:{}:{}",
+				is_head,
+				upstream_in_sync.as_deref().unwrap_or("")
+			));
 			by_oid.entry(oid).or_default().push(GitRef { name, kind, is_head, upstream_in_sync });
 		}
 	}
@@ -1861,6 +1953,46 @@ mod tests {
 			whole.commits.iter().take(4).map(|c| (c.sha.as_str(), c.lane)).collect();
 		assert_eq!(spliced, expected, "two pages spliced must equal one walk");
 		assert_eq!(first.refs_digest, second.refs_digest, "same refs, same digest");
+	}
+
+	#[test]
+	fn a_page_is_cached_until_the_refs_move() {
+		let (dir, repo) = repo_with_commit();
+		write(dir.path(), "second.txt", "b\n");
+		commit_all(&repo, "second");
+
+		let first = graph(&root(&dir), 0, 10).unwrap();
+		let again = graph(&root(&dir), 0, 10).unwrap();
+		assert_eq!(first.refs_digest, again.refs_digest);
+		assert_eq!(first.commits.len(), again.commits.len());
+
+		// A commit moves the branch, so the digest changes and the page is walked
+		// afresh rather than served stale.
+		write(dir.path(), "third.txt", "c\n");
+		commit_all(&repo, "third");
+		let after = graph(&root(&dir), 0, 10).unwrap();
+		assert_ne!(after.refs_digest, first.refs_digest, "a moved ref is a new digest");
+		assert_eq!(after.commits.len(), 3);
+		assert_eq!(after.commits[0].subject, "third");
+	}
+
+	#[test]
+	fn switching_branches_without_moving_any_ref_still_invalidates_the_page() {
+		let (dir, repo) = repo_with_commit();
+		let head = repo.head().unwrap().peel_to_commit().unwrap();
+		repo.branch("side", &head, false).unwrap();
+
+		let on_main = graph(&root(&dir), 0, 10).unwrap();
+		let chip = |g: &GitGraph, name: &str| {
+			g.commits[0].refs.iter().find(|r| r.name == name).map(|r| r.is_head)
+		};
+		assert_eq!(chip(&on_main, "side"), Some(false));
+
+		// Same two refs at the same oid; only which one HEAD names has changed.
+		repo.set_head("refs/heads/side").unwrap();
+		let on_side = graph(&root(&dir), 0, 10).unwrap();
+		assert_ne!(on_side.refs_digest, on_main.refs_digest, "HEAD's branch is part of the digest");
+		assert_eq!(chip(&on_side, "side"), Some(true), "the chip follows HEAD, not the cache");
 	}
 
 	#[test]

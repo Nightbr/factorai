@@ -298,7 +298,9 @@ reveal_in_file_manager(path: String) -> ()
 // so a Rust hunk list has no consumer. Dropped in ADR-0009; the diff viewer is
 // fed by git_blob + read_file.
 
-// git (ADR-0009)
+// git (ADR-0009). Every one of these is an async command running its libgit2
+// read on the blocking pool (ADR-0035): a sync command runs on the main thread,
+// and a walk there froze the window for as long as the repository took.
 git_status(project_path: String) -> GitStatus                         // whole repo, grouped, capped
 git_blob(path: String, rev: GitRev) -> Option<FileContents>           // rev = head | index
 // graph (F18). All three registered 2026-08-17 with the rail; this block said
@@ -1112,6 +1114,16 @@ parent-adjacency graph and does not compute layout. See Q23.
   a client that reflows every append. Re-walking 1 200 commits to serve the
   fourth page is microseconds of libgit2; lane instability is visible and
   permanent.
+- **The re-walk is paid once per set of refs** (ADR-0035, 2026-09-04). With
+  `TOPOLOGICAL` in the sort libgit2 traverses the whole reachable history before
+  yielding the first row, so on a large repository the first page costs the
+  entire history — and until this date it did so on every 30s poll, every switch
+  back to the tab and every "Load more". Pages are now cached per gitdir under the
+  refs digest, and a call whose digest still matches pays only `collect_refs`.
+  The digest covers every ref's oid, which branch `HEAD` is on, and each local
+  branch's upstream — everything a chip can change on without an oid moving. The
+  walk logs `refs_ms` / `walk_ms` / `total_ms` at `debug`, so a slow machine can
+  report where its time goes.
 - The payload reports the refs it walked against (a cheap digest is enough). If
   that changes between pages, the renderer invalidates back to page 1 rather than
   splicing a page walked against different refs onto one that wasn't.

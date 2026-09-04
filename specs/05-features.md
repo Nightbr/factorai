@@ -3035,6 +3035,13 @@ costs nothing. The 3s Changes cadence is wrong here — a revwalk plus full ref
 enumeration is meaningfully more work than a status walk, and rows shifting
 under a line you are reading is the annoyance Q18 legislated against for tabs.
 
+**The poll does not re-walk unless a ref moved** (ADR-0035, 2026-09-04). Rust
+caches each page under the refs digest and answers a poll, a tab switch or a
+"Load more" from it while the digest holds; only `collect_refs` runs on every
+call. And the walk no longer runs on the main thread — a first page that takes
+seconds on a large history shows `Loading…` in this tab while the terminal beside
+it keeps scrolling, where it used to freeze the whole window.
+
 ### Scale
 
 **300-commit pages, plain DOM, an explicit "Load more".** No virtualisation:
