@@ -3,6 +3,42 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The Graph tab no longer freezes the app, and a page is walked once per set of refs (spec
+  `03-backend-rust.md` § `git` and `05-features.md` F18 § Freshness, ADR-0035)** — 2026-09-04, user
+  report, shipped the same day as `v0.33.1`. Clicking Graph stalled for about ten seconds, every
+  time, and on a user's macOS machine it took the whole window with it — the terminal stopped
+  scrolling too. Two causes, and neither was the renderer.
+
+  **A synchronous Tauri command runs on the main thread**, which is also the thread painting the
+  window and pumping every event, so a libgit2 walk there is a freeze rather than a wait. Every
+  command in `commands/git.rs` was synchronous. That means it was never only the graph: `git_status`
+  polls every three seconds while the panel is open, at 100–120ms on the repository this was
+  reproduced against, and each of those was a hitch nobody had named. All six are `async` now and
+  run their read through one `spawn_blocking` helper — `spawn_blocking` and not a plain `async fn`,
+  because libgit2 is synchronous C and would otherwise block a runtime worker exactly as it blocked
+  the main thread.
+
+  **`TOPOLOGICAL` is why the first page costs the whole history.** libgit2 traverses everything
+  reachable from the pushed refs before it yields row one, so a 300-row page is priced by the
+  repository and not by the page — and until this fix it was paid again on every 30s poll, every
+  switch back to the tab, and every "Load more". F18 priced that as "microseconds of libgit2" for
+  1 200 commits, which is true and is not the repository people bring: 8 907 commits and 1 136 refs
+  measured 355ms per call in a release build. Pages are now cached per gitdir under the refs digest
+  the page was walked against, so the walk is paid once per set of refs; what every call still pays
+  is `collect_refs`, which is also what tells it whether the cache is still true.
+
+  **The digest had to name two things it did not.** It covered every ref's oid, which misses the
+  moves that leave every oid in place: which branch `HEAD` is on, and which upstream a local branch
+  tracks. Both change a chip, so both are in the digest now — a cached page cannot show a tick
+  beside the branch you just left. `remote_host` is a config read and is recomputed on a hit rather
+  than folded in.
+
+  **The walk reports its own timings**, at `debug`, which the default filter prints: refs
+  enumeration, the walk, the total, and whether the page came from the cache. The freeze was
+  reported from a machine we cannot see, and the next one will be too — running the binary from a
+  terminal now answers where the time went. In the dev build on that repository: 565ms walked on the
+  first click, 97ms from cache on the second, terminal live throughout.
+
 - **Reveal in file manager, from the viewer's header (TODO item 51, spec `05-features.md` F7 and
   `03-backend-rust.md` § `reveal`, ADR-0033)** — 2026-09-03, user ask, shipped the same day. The
   viewer could hand a file to the application that owns its type and it could copy the path. It
