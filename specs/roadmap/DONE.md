@@ -3,6 +3,27 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The footer's glyphs sit on their labels again — a pixel of lift, restored (`DESIGN.md`
+  § Buttons, "centring is not alignment"; spec `05-features.md` F23, F24)** — 2026-09-04, user
+  report, shipped the same day. All four glyphs in the project footer — the chip's terminal mark,
+  its pane-count columns, `+ Terminal`, `Split` — read a pixel and a half low against the words
+  beside them. Measured off the real window: glyph ink centre 22.0, cap box centre 20.5.
+
+  **The cause is that centring is not alignment, and F24 had talked itself out of the fix.** A
+  glyph beside a 12px label is centred by `items-center` against that label's 16px *line* box,
+  and the cap box the letters draw in is not centred inside that line box — WebKit lays the
+  baseline out from the face's ascent and descent. F23 lifted the `+` a pixel off a measurement
+  of exactly this. F24 removed the lift on a calculation that put the error at 0.3px and the
+  wrong way round, which came from reading Inter's hhea metrics; what WebKit renders here is the
+  win metrics — ascent 1.0em, descent 0.5em — and those give 1.5px, low. So the lift went back
+  on, and this time in the chip too, which had never had it and had the same error.
+
+  **A whole pixel and not the 1.5px.** A half-pixel translate blurs a 1px stroke, and 0.5px of
+  residual is not visible where 1.5px was: verified from the pixels of a real capture, cap box
+  centre 953.5 against glyph centre 954.0 on all four, every stroke still on the grid. The rule
+  in `DESIGN.md` now carries the measurement and the metrics, so the next reading of it cannot
+  arrive at 0.3px again.
+
 - **The Graph tab no longer freezes the app, and a page is walked once per set of refs (spec
   `03-backend-rust.md` § `git` and `05-features.md` F18 § Freshness, ADR-0035)** — 2026-09-04, user
   report, shipped the same day as `v0.33.1`. Clicking Graph stalled for about ten seconds, every

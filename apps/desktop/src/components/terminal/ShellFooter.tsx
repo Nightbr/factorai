@@ -104,19 +104,20 @@ export function ShellFooter({
 			    outweighs the chips beside it. No `aria-label`: the visible word is
 			    the accessible name.
 
-			    **`size-3` on the glyph, matching the 12px label, and not lifted.**
-			    The scale's 3.5 is sized for a 14px label. F23 lifted the `+` by a
-			    pixel from a measurement of it alone; once `Split` put a second
-			    glyph beside a second word (F24) both read high, and measuring the
-			    line box against the font's metrics said why: with a 12px face on a
-			    16px line the flex centre already sits 0.3px above the cap centre,
-			    so the lift moved the glyph 1.3px above the letters it belongs to.
-			    The chip's glyphs never had the lift, and they were the ones that
-			    read right. */}
+			    **`size-3` on the glyph, matching the 12px label, and lifted a
+			    pixel** — `DESIGN.md` § Buttons, "centring is not alignment". The
+			    scale's 3.5 is sized for a 14px label. The lift is not a taste
+			    correction: `items-center` centres the 12px glyph box against the
+			    16px *line* box, and the cap box inside that line is not centred in
+			    it, so a centred glyph is a low glyph. Measured off the real window
+			    at 12px: glyph ink centre 22.0, cap box centre 20.5 — 1.5px of it.
+			    The lift is a whole pixel and not the 1.5px, because a half-pixel
+			    translate blurs a 1px stroke, and 0.5px of residual is invisible
+			    where 1.5px was not. */}
 			<Button
 				variant="quiet"
 				size="sm"
-				className="shrink-0 gap-1.5 font-normal text-xs [&_svg]:size-3"
+				className="shrink-0 gap-1.5 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
 				disabled={!canOpen}
 				onClick={() => cwd && open(projectId, cwd)}
 			>
@@ -130,7 +131,7 @@ export function ShellFooter({
 				<Button
 					variant="quiet"
 					size="sm"
-					className="gap-1.5 font-normal text-xs [&_svg]:size-3"
+					className="gap-1.5 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
 					disabled={!canOpen || splitReason !== null}
 					onClick={() => active && cwd && split(active.key, cwd)}
 				>

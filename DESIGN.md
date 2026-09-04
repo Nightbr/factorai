@@ -462,11 +462,17 @@ exactly once.
   was made for. **Never add a hover ground to it**, or every quiet control in the
   app gains a block at once.
 - **A glyph beside a label is centred, and centring is not alignment.** The flex
-  line centres the glyph's box against the text's *line* box, whose baseline sits
-  below its centre — so a glyph sized for a 14px label reads high beside a 12px
-  one. Match the glyph to the label's size and lift it a pixel; measured on the
-  session footer, that moved the `+` from 1.5px below the word's optical centre
-  to half a pixel above it.
+  line centres the glyph's box against the text's *line* box, and the cap box the
+  letters actually draw in is not centred inside that line box — WebKit lays the
+  baseline out from the face's ascent and descent, which for Inter put the cap
+  box 1.5px above the centre of a 12px label's 16px line. So a glyph that is
+  centred is a glyph that reads low. Match the glyph to the label's size **and
+  lift it a pixel**: measured off the project footer, glyph ink centre 22.0
+  against a cap box centre of 20.5, and the lift takes 1.5px of error down to
+  0.5px. A whole pixel and not the 1.5px, because a half-pixel translate blurs a
+  1px stroke and half a pixel of residual is not visible where 1.5px was. The
+  lift is not optional and not taste — dropping it is what put the footer's four
+  glyphs a pixel and a half under their words twice.
 - **The scale is a desktop scale, not a stock web one.** It was derived from what
   the app's dense surfaces were already overriding to by hand. If you find
   yourself writing a seventh inline override, the scale is wrong again — not the

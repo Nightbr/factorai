@@ -88,7 +88,12 @@ export function ShellChip({
 				title={title}
 				className="flex items-center gap-1.5 whitespace-nowrap font-medium text-xs"
 			>
-				<SquareTerminal className="size-3" />
+				{/* Lifted a pixel, like the strip's own controls beside it —
+				    `DESIGN.md` § Buttons, "centring is not alignment". A glyph
+				    centred in the 16px line box of a 12px label lands 1.5px under
+				    the cap box the letters draw in, and a chip is the one place the
+				    two sit close enough for that to read as a mistake. */}
+				<SquareTerminal className="-translate-y-px size-3" />
 				{label}
 				{/* A chip that holds a row says so: a columns glyph and the count,
 				    at the label's own size — the scale has no third one (F24). */}
@@ -97,7 +102,7 @@ export function ShellChip({
 						className="flex items-center gap-0.5 text-muted-foreground"
 						aria-label={`${count} panes`}
 					>
-						<Columns2 className="size-3" />
+						<Columns2 className="-translate-y-px size-3" />
 						{count}
 					</span>
 				)}
