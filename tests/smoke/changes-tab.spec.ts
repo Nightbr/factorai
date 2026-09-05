@@ -85,16 +85,21 @@ test.describe('changes tab', () => {
 		// A filename longer than the 288px panel on its own — the directory beside
 		// it is what the row has to give up first.
 		const relPath = 'docs/adr/0011-a-project-is-a-folder-in-the-workspace.md';
-		status.changes.push({
-			path: `${status.repoRoot}/${relPath}`,
-			relPath,
-			group: 'unstaged',
-			kind: 'untracked',
-			oldRelPath: null,
-			additions: 168,
-			deletions: 0,
-			isBinary: false,
-		});
+		// And a deep path under a short name, which is the case the row is ordered
+		// for: the path truncates, the name stays whole (F13).
+		const deepPath = 'apps/desktop/src/components/files/FileChangeRow.tsx';
+		for (const p of [relPath, deepPath]) {
+			status.changes.push({
+				path: `${status.repoRoot}/${p}`,
+				relPath: p,
+				group: 'unstaged',
+				kind: 'untracked',
+				oldRelPath: null,
+				additions: 168,
+				deletions: 0,
+				isBinary: false,
+			});
+		}
 		status.total = status.changes.length;
 
 		await installMockBridge(page, fixture);
@@ -112,6 +117,25 @@ test.describe('changes tab', () => {
 			.getByTestId('changes-view')
 			.evaluate((el) => el.scrollWidth - el.clientWidth);
 		expect(bleed).toBeLessThanOrEqual(1);
+
+		// The two halves give up width in order, not in proportion: the path is
+		// clipped and the filename beside it is whole, which is the whole reason
+		// the path leads the row.
+		const halves = await page
+			.locator(`button[title="${deepPath}"] span`)
+			.evaluateAll((els) =>
+				els
+					.filter(
+						(el) =>
+							el.textContent === 'apps/desktop/src/components/files' ||
+							el.textContent === 'FileChangeRow.tsx',
+					)
+					.map((el) => ({ text: el.textContent, clipped: el.scrollWidth > el.clientWidth + 1 })),
+			);
+		expect(halves).toEqual([
+			{ text: 'apps/desktop/src/components/files', clipped: true },
+			{ text: 'FileChangeRow.tsx', clipped: false },
+		]);
 	});
 
 	test('@smoke the chosen tab survives a reload and never switches itself', async ({ page }) => {

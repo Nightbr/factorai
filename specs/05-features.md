@@ -2049,14 +2049,29 @@ Three groups, in order, each with a count and hidden when empty:
 - **Staged Changes** — HEAD ↔ index.
 - **Changes** — index ↔ worktree.
 
-A row is: file-type icon (the F12 icon set), basename, dimmed parent path,
+A row is: file-type icon (the F12 icon set), dimmed parent path, `/`, basename,
 `+N −M`, and a status letter. A partly-staged file appears in **both** groups
 with its own counts in each — one row per (path, group), which is the only
 version where the numbers are true.
 
+**The path leads and the filename ends the run, with the ellipsis between
+them** — `frontend/apps/web/src/featu…/person.ts`. Both halves are one 14px
+line, the path dimmed and the name at full contrast, and they shrink in
+sequence rather than in proportion: the path collapses first, all the way to
+nothing if the filename alone needs the row, and only once it is gone does the
+filename itself truncate. So the name a row is *for* survives every panel width
+down to the width of that name, while the prefix that tells two `index.ts` rows
+apart takes whatever is left; a fully collapsed path leaves its separator
+behind, so the row reads `/0011-a-project-is-a-…` rather than as a bare name.
+Filenames do not line up in a column as a result — each starts where its own
+path ended — and that is the trade: the counts and the status letter stay
+pinned to the right edge, so the columns that *are* scanned vertically still
+are. The full path is in the row's `title`.
+
 Status letters follow git and take their colour from the theme, not from new
-hex values: `M` modified, `A` added, `D` deleted, `R` renamed (row shows
-`new ← old`), `U` untracked, `C` conflicted.
+hex values: `M` modified, `A` added, `D` deleted, `R` renamed (the row's
+`title` shows `new ← old`; inline it would be a second full path in a row that
+already leads with one), `U` untracked, `C` conflicted.
 
 **Scope.** The whole repository, found by walking up from the project root — so
 a project inside a monorepo shows changes above itself, displayed relative to

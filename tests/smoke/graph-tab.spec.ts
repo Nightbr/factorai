@@ -87,8 +87,8 @@ test.describe('graph tab', () => {
 		// above the list, so at the default height clicking a commit showed
 		// everything about it except what you clicked for.
 		//
-		// Basename and directory are separate spans, per `FileChangeRow` — the
-		// filename first and the path dimmed after it, which is F13's row verbatim.
+		// Directory and basename are separate spans, per `FileChangeRow` — the path
+		// dimmed first and the filename last, which is F13's row verbatim.
 		await expect(detail).toContainText('index.ts');
 		await expect(detail).toContainText('+7');
 

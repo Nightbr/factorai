@@ -3,6 +3,33 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A changed-file row leads with its path and ends with its filename (spec `05-features.md`
+  F13)** — 2026-09-05, user ask with a reference screenshot, same day. The row was
+  `icon · name · dimmed path · +N −M · letter`; it is now `icon · dimmed path · / · name · +N −M ·
+  letter`, so a deep path is cut in the middle — `frontend/apps/web/src/featu…/person.ts` — instead
+  of shoving the filename around.
+
+  **The two halves shrink in sequence, not in proportion.** The old row let both halves truncate
+  together, which meant a monorepo path ate the name it was there to qualify. The directory now
+  carries a `shrink-[9999]` factor, so flexbox freezes it at zero before the filename gives up a
+  pixel: the name survives every panel width down to the width of the name itself, and only then
+  truncates. The separator is a third `shrink-0` span rather than a character on the end of the
+  directory string, because `text-overflow` eats that character first and leaves `…person.ts`.
+
+  **A `min-w-*` floor on the directory was tried and dropped**, twice. Wide enough to draw a bare
+  `…` (24px) is also wide enough to open a visible gap after a short `src`, because `min-width`
+  applies whether or not the string is clipped; narrow enough not to (14–16px) renders the ellipsis
+  clipped, as `d..`. Zero is what shipped, so a fully collapsed path reads `/0011-a-project-is-a-…`
+  — the separator is the mark that something was cut, and the full path is in the row's `title`.
+
+  Filenames stopped lining up in a column, which was the deliberate trade — the counts and the
+  status letter stay pinned to the right edge, so the columns actually scanned vertically still
+  are. The path also went from 12px to 14px, which is `DESIGN.md`'s Two Sizes Rule applied to the
+  half of the row you now navigate by. F13's rename line was corrected in the same commit: the row
+  has only ever shown `new ← old` in its `title`, and inline it would be a second full path in a
+  row that already leads with one. The smoke suite gained the case the order exists for — a deep
+  path under a short name, asserting the directory span is clipped and the filename span is not.
+
 - **Several Claude profiles, isolated by config directory, assigned per project (TODO item 45;
   spec `05-features.md` F25 and `02-data-model.md`, ADR-0036, migrations 0017–0019, Q3 rewritten)**
   — 2026-09-04, user request from 2026-08-31, designed and shipped the same day in three slices.

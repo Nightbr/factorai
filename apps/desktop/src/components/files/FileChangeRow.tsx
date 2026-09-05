@@ -15,7 +15,7 @@ interface FileChangeRowProps {
 }
 
 /**
- * One changed-file row: icon, basename, dimmed directory, `+N −M`, status letter.
+ * One changed-file row: icon, dimmed parent path, basename, `+N −M`, status letter.
  *
  * Shared by F13's Changes tab and F18's commit detail pane. It takes the fields
  * explicitly rather than a `GitChange`, because a commit's diff is not staged,
@@ -43,19 +43,31 @@ export function FileChangeRow({
 				onClick={onClick}
 			>
 				<FileIcon fileName={name} />
-				{/* Both halves of the path shrink, or the row sets a min-content width
-				    the panel can't meet and the whole list scrolls sideways — one
-				    `0004_workspace_projects.sql` was enough to push every other row's
-				    name off the left edge. They shrink in proportion to their own
-				    length (`grow`, not `flex-1`, keeps the directory's basis at its
-				    content size), so the long half gives up the space and a short
-				    filename beside a deep path stays whole. `title` on the button has
-				    the full path when both end up clipped. */}
-				<span className="min-w-0 truncate text-foreground">{name}</span>
-				{dir && (
-					<span className="min-w-0 grow truncate text-muted-foreground/60 text-xs">{dir}</span>
-				)}
-				{!dir && <span className="flex-1" />}
+				{/* Path first, filename last, with the ellipsis between them (F13) — the
+				    filename was first until 2026-09-05, and at 288px one
+				    `frontend/apps/web/src/features/…` pushed every name in the list off
+				    the left edge. The two halves shrink in sequence rather than in
+				    proportion: the directory's shrink factor is large enough that it
+				    collapses to nothing and freezes there before the filename gives up a
+				    single pixel, so the name survives whole down to the width of the name
+				    itself. Nothing is a deliberate floor — a `min-w-*` on the directory
+				    wide enough to draw a bare `…` is also wide enough to open a gap after
+				    a short `src`, and a narrower one renders the ellipsis clipped, as
+				    `d..`. The separator survives either way and is its own `shrink-0`
+				    span, because a `/` living at the end of the directory string is the
+				    first character `text-overflow` eats, which leaves `…person.ts`. The
+				    run is `flex-1`, so the space the path does not use is what pins the
+				    counts and the status letter to the right edge. `title` on the button
+				    has the full path when either half is clipped. */}
+				<span className="flex min-w-0 flex-1 items-center">
+					{dir && (
+						<>
+							<span className="min-w-0 shrink-[9999] truncate text-muted-foreground">{dir}</span>
+							<span className="shrink-0 text-muted-foreground">/</span>
+						</>
+					)}
+					<span className="min-w-0 truncate text-foreground">{name}</span>
+				</span>
 				<LineCounts additions={additions} deletions={deletions} isBinary={isBinary} />
 				<span
 					aria-label={KIND_LABELS[kind]}
@@ -90,7 +102,7 @@ function LineCounts({
 	);
 }
 
-/** Basename plus the directory it sits in, which is what the row shows dimmed.
+/** The directory the row shows dimmed, plus the basename it shows bright.
  *  A change above the project keeps its `../` so it reads as not-yours. */
 function splitPath(relPath: string): { dir: string; name: string } {
 	const i = relPath.lastIndexOf('/');
