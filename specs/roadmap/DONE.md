@@ -3,6 +3,26 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A profile's store is watched the moment its `projects/` directory appears (spec
+  `05-features.md` F25, § "The scan and the watcher are per profile")** — 2026-09-05, found in
+  use the day after profiles shipped. A project assigned to a profile created that evening lost
+  every session the moment its tab closed.
+
+  The watcher arms one root per profile, `<config_dir>/projects`, and skips a root that is not on
+  disk. A profile created from Settings points at an empty directory: `projects/` inside it does
+  not exist until the CLI writes the first transcript, which is long after `Control::rearm` fired
+  for the row that created it. Nothing came back to that root, so the profile's transcripts were
+  watched by nothing — no event, no `scan_dir_path`, no `discover()`, no `discovered_projects`
+  row, no `sessions` row. **A session with no row is in the sidebar only while its PTY is live**,
+  which is why closing the tab looked like deletion; the next boot's full scan found the
+  transcript again, so nothing was ever lost on disk.
+
+  A skipped root is retried every 5s now, not only on the next re-arm, and a failed `watch()` is
+  retried the same way rather than dropped for the life of the process. **A root armed that late
+  also kicks one scan**, because the appends that filled those transcripts happened while nothing
+  was watching and a finished session never appends again — the watch on its own would have left
+  exactly the sessions that motivated the fix unindexed.
+
 - **A changed-file row leads with its path and ends with its filename (spec `05-features.md`
   F13)** — 2026-09-05, user ask with a reference screenshot, same day. The row was
   `icon · name · dimmed path · +N −M · letter`; it is now `icon · dimmed path · / · name · +N −M ·
