@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::new_debouncer;
@@ -17,6 +17,17 @@ const DEBOUNCE: Duration = Duration::from_millis(1000);
 /// How often the thread wakes with nothing to do, to notice a re-arm. Only a
 /// flag is read on such a wake — the profile list is queried when it is set.
 const IDLE_TICK: Duration = Duration::from_millis(500);
+
+/// How often a wanted root that is not on disk yet is tried again.
+///
+/// **A re-arm is not enough on its own.** `Control::rearm` fires when a profile
+/// row is written, and a profile's `projects/` directory does not exist until
+/// its first session writes a transcript into it — which happens later, with
+/// nothing to announce it. Without this retry that profile's store is watched by
+/// nothing until the next boot, and its sessions are only ever the live one: the
+/// row that would keep them in the sidebar is written by the scan the watcher
+/// never triggers, so each one disappears when its terminal closes.
+const RETRY: Duration = Duration::from_secs(5);
 
 /// Ask the watcher to reconcile its roots against the `profiles` table.
 ///
@@ -81,7 +92,10 @@ pub fn spawn(indexer: Arc<Indexer>, control: Arc<Control>) {
 			// Watched root → the profile it belongs to. The map *is* the set of
 			// live watches, so reconciling is a diff against the table.
 			let mut watched: HashMap<PathBuf, String> = HashMap::new();
-			reconcile(&indexer, &mut debouncer, &mut watched);
+			// No scan on this first pass: `spawn_initial_scan` is reading the same
+			// stores as we arm them.
+			let mut pending = reconcile(&indexer, &mut debouncer, &mut watched).pending;
+			let mut last_try = Instant::now();
 
 			loop {
 				match rx.recv_timeout(IDLE_TICK) {
@@ -123,8 +137,23 @@ pub fn spawn(indexer: Arc<Indexer>, control: Arc<Control>) {
 					}
 					Ok(Err(e)) => warn!(error = %e, "watcher error"),
 					Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-						if control.take() {
-							reconcile(&indexer, &mut debouncer, &mut watched);
+						let asked = control.take();
+						let due = pending && last_try.elapsed() >= RETRY;
+						if !(asked || due) {
+							continue;
+						}
+						let outcome = reconcile(&indexer, &mut debouncer, &mut watched);
+						pending = outcome.pending;
+						last_try = Instant::now();
+						// A root armed this late holds transcripts no event will ever
+						// mention again: the appends that wrote them happened while
+						// nothing was watching, and a finished session never appends
+						// twice. Read the store once so those sessions are indexed now
+						// rather than at the next boot. Not when a profile write asked
+						// for this — `create_profile` kicks that scan itself, and
+						// `delete_profile` wants none.
+						if outcome.armed && !asked {
+							crate::services::indexer::spawn_initial_scan(indexer.clone());
 						}
 					}
 					// Every sender is gone, which only happens when the debouncer is
@@ -142,7 +171,8 @@ fn reconcile<W: notify::Watcher>(
 	indexer: &Indexer,
 	debouncer: &mut notify_debouncer_mini::Debouncer<W>,
 	watched: &mut HashMap<PathBuf, String>,
-) {
+) -> Reconciled {
+	let mut outcome = Reconciled::default();
 	let wanted: HashMap<PathBuf, String> = profiles::all(indexer.db())
 		.into_iter()
 		.map(|p| (PathBuf::from(&p.config_dir).join("projects"), p.id))
@@ -165,16 +195,101 @@ fn reconcile<W: notify::Watcher>(
 		if !root.exists() {
 			// Not a warning per re-arm: a profile created a moment ago has an empty
 			// config directory with no `projects/` in it until its first session
-			// runs, which is the ordinary case rather than a fault.
+			// runs, which is the ordinary case rather than a fault. `RETRY` is what
+			// makes sure the moment it appears is noticed.
 			info!(path = ?root, "watcher skipped — projects dir not there yet");
+			outcome.pending = true;
 			continue;
 		}
 		match debouncer.watcher().watch(&root, RecursiveMode::Recursive) {
 			Ok(()) => {
 				info!(path = ?root, "watcher started");
 				watched.insert(root, profile_id);
+				outcome.armed = true;
 			}
-			Err(e) => warn!(error = %e, path = ?root, "failed to watch projects dir"),
+			// Retried like a root that is not there: the failure is usually the
+			// same one arriving a moment earlier — a directory being created
+			// under us, or an inotify limit that clears.
+			Err(e) => {
+				warn!(error = %e, path = ?root, "failed to watch projects dir");
+				outcome.pending = true;
+			}
 		}
+	}
+	outcome
+}
+
+/// What one pass of [`reconcile`] did, which is what decides whether the watcher
+/// has to come back to it.
+#[derive(Default)]
+struct Reconciled {
+	/// A root was taken on that was not watched before, so its store holds
+	/// transcripts nothing has read.
+	armed: bool,
+	/// A profile the table names has no directory to watch yet, so this set is
+	/// not final.
+	pending: bool,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::db::Db;
+	use crate::models::ProfileInput;
+	use crate::services::indexer::Indexer;
+
+	/// An indexer over a fresh database, with the seeded default profile pointed
+	/// at a directory that is already there — so the only root under test is the
+	/// one the test creates.
+	fn fixture(tmp: &std::path::Path) -> (Indexer, PathBuf) {
+		let default_dir = tmp.join("default");
+		std::fs::create_dir_all(default_dir.join("projects")).unwrap();
+		let db = Db::open(&tmp.join("data")).expect("open db");
+		profiles::ensure_default(&db, &default_dir).expect("resolve the default profile");
+		let indexer = Indexer::with_callbacks(db, Arc::new(|_| {}), Arc::new(|_| {}));
+
+		let config_dir = tmp.join("work");
+		indexer
+			.db()
+			.with(|conn| {
+				profiles::create(
+					conn,
+					&ProfileInput {
+						name: "Work".into(),
+						config_dir: config_dir.to_string_lossy().into_owned(),
+					},
+					0,
+				)
+			})
+			.expect("create profile");
+		(indexer, config_dir)
+	}
+
+	/// The bug this retry exists for: a profile is created, its `projects/`
+	/// directory does not exist until the CLI writes the first transcript, and
+	/// nothing re-arms the watcher at that moment.
+	#[test]
+	fn a_profile_whose_projects_dir_appears_later_is_armed_without_a_re_arm() {
+		let tmp = tempfile::tempdir().unwrap();
+		let (indexer, config_dir) = fixture(tmp.path());
+		let (tx, _rx) = std::sync::mpsc::channel();
+		let mut debouncer = new_debouncer(DEBOUNCE, tx).unwrap();
+		let mut watched: HashMap<PathBuf, String> = HashMap::new();
+
+		let first = reconcile(&indexer, &mut debouncer, &mut watched);
+		assert!(first.pending, "a root that is not on disk leaves the set unfinished");
+		assert_eq!(watched.len(), 1, "only the default profile's root is watchable");
+
+		// The CLI's first session under this profile.
+		std::fs::create_dir_all(config_dir.join("projects")).unwrap();
+
+		let second = reconcile(&indexer, &mut debouncer, &mut watched);
+		assert!(second.armed, "the root that appeared is taken on");
+		assert!(!second.pending, "nothing is left to wait for");
+		assert_eq!(watched.len(), 2);
+
+		let third = reconcile(&indexer, &mut debouncer, &mut watched);
+		assert!(!third.armed, "a root already watched is not armed twice");
+		assert!(!third.pending);
 	}
 }

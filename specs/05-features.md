@@ -5084,8 +5084,18 @@ profile pointed at an existing `~/.claude-work` has history from the first momen
 
 **A store that is merely unreachable is not an empty store.** `index_dir` returns
 without reaping when it cannot read the directory, and the watcher skips a root
-that is not there and retries on the next re-arm. Anything else would make an
-unmounted volume delete that profile's whole index.
+that is not there. Anything else would make an unmounted volume delete that
+profile's whole index.
+
+**A skipped root is retried every 5s, not only on the next re-arm.** A profile's
+`projects/` directory does not exist until its first session writes a transcript
+into it, and nothing announces that moment — the re-arm already happened, when
+the row was written. Left at that, the first sessions under a new profile are
+watched by nothing and indexed only at the next boot, which reads as data loss:
+with no `sessions` row, a session is in the sidebar only while its PTY is live
+and vanishes when the tab closes. A root taken on this late also kicks one scan,
+because the appends that filled those transcripts happened while nothing was
+watching and a finished session never appends again.
 
 ### The assignment, from either side
 
