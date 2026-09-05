@@ -19,8 +19,10 @@
 //!
 //! The candidate list carries no Windows entries (Q1: no Windows support).
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -188,20 +190,48 @@ fn candidate_paths() -> Vec<PathBuf> {
 	out
 }
 
-/// Best-effort version lookup. Runs `claude --version` with a 2-second
-/// soft timeout. Returns the first whitespace-separated token that looks
+const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Best-effort version lookup. Runs `claude --version` with a real 2-second
+/// timeout, not `Command::output()`'s unbounded wait — a wrapper script or a
+/// first-run self-check can hang the child on stdio it never had, and this is
+/// reachable synchronously from a Tauri command, so it must not depend on the
+/// binary behaving. Returns the first whitespace-separated token that looks
 /// like a semver (e.g. "0.2.34" out of "claude 0.2.34 (build abc)").
 fn version_for(bin: &Path) -> Option<String> {
-	let output = Command::new(bin)
+	let mut child = Command::new(bin)
 		.arg("--version")
-		.output()
+		.stdin(Stdio::null())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null())
+		.spawn()
 		.map_err(|e| warn!(error = %e, "claude --version failed"))
 		.ok()?;
-	if !output.status.success() {
+
+	// Reading on this thread would be the hang the timeout exists to prevent —
+	// see `shell_path::path_from_shell`, the same pattern.
+	let mut stdout = child.stdout.take()?;
+	let (tx, rx) = mpsc::channel();
+	std::thread::spawn(move || {
+		let mut buf = Vec::new();
+		let _ = stdout.read_to_end(&mut buf);
+		let _ = tx.send(buf);
+	});
+
+	let received = rx.recv_timeout(VERSION_TIMEOUT);
+	// Unconditionally, before looking at the result: on the happy path the
+	// child has already exited and this reaps it, and on timeout it is the
+	// only thing that stops a stuck `--version` living as long as the app does.
+	let _ = child.kill();
+	let status = child.wait().ok()?;
+	if !status.success() {
 		return None;
 	}
-	let _ = Duration::from_secs(2); // documented intent; std Command has no built-in timeout
-	let s = String::from_utf8_lossy(&output.stdout);
+
+	let out = received
+		.map_err(|_| warn!(bin = %bin.display(), "claude --version did not answer in time"))
+		.ok()?;
+	let s = String::from_utf8_lossy(&out);
 	for tok in s.split_whitespace() {
 		if is_version_like(tok) {
 			return Some(tok.to_string());
@@ -225,7 +255,34 @@ fn is_version_like(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use std::os::unix::fs::PermissionsExt;
+
 	use super::*;
+
+	fn fake_claude(dir: &Path, body: &str) -> PathBuf {
+		let p = dir.join("claude");
+		std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+		std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+		p
+	}
+
+	#[test]
+	fn version_for_times_out_instead_of_hanging_forever() {
+		// A `--version` that never returns — a wrapper script, a stalled
+		// first-run self-check — must not block the caller past the timeout.
+		let tmp = tempfile::TempDir::new().unwrap();
+		let bin = fake_claude(tmp.path(), "sleep 30");
+		let started = std::time::Instant::now();
+		assert_eq!(version_for(&bin), None);
+		assert!(started.elapsed() < Duration::from_secs(10));
+	}
+
+	#[test]
+	fn version_for_reads_a_well_behaved_binary() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let bin = fake_claude(tmp.path(), "printf 'claude 1.2.3 (build abc)\\n'");
+		assert_eq!(version_for(&bin), Some("1.2.3".to_string()));
+	}
 
 	#[test]
 	fn version_like_accepts_semver() {
