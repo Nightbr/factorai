@@ -123,6 +123,11 @@ test.describe('file viewer', () => {
 
 		await page.reload();
 
+		// **And the strip knows what it is showing.** A reload restores `?file=`
+		// from the URL without passing through `open()`, so the tab has to be
+		// re-derived or the viewer shows a file the strip has lost (ADR-0037).
+		await expect(page.getByTestId('file-tab')).toHaveText(/README\.md/);
+
 		const viewer = page.getByTestId('file-viewer');
 		await expect(viewer).toBeVisible();
 		await expect(viewer.getByText('README.md', { exact: true })).toBeVisible();
@@ -783,5 +788,30 @@ test.describe('file viewer', () => {
 		// And back, once the shell is a dead band clear of the threshold again.
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await expect(page.getByTestId('viewer-column')).toBeVisible();
+	});
+
+	test('@smoke the strip scrolls to whatever is showing', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		// Enough files to outrun a 400px column several times over. Each is
+		// double-clicked so it stays: a strip of previews would never overflow.
+		for (const name of ['Cargo.toml', 'README.md', 'knip.jsonc', 'main.py', 'logo.png']) {
+			await panel.getByRole('button', { name, exact: true }).dblclick();
+		}
+		const tabs = page.getByTestId('file-tab');
+		await expect(tabs).toHaveCount(5);
+
+		// The last one opened is what the viewer is showing, so it is what the
+		// strip has to be scrolled to — the failure found in the dev app was a
+		// strip stuck at the first three tabs with no active one in sight.
+		const active = page.locator('[data-testid="file-tab"][aria-selected="true"]');
+		await expect(active).toHaveText(/logo\.png/);
+		await expect(active).toBeInViewport();
+
+		// And going back to the first tab scrolls the other way.
+		await tabs.first().click();
+		await expect(tabs.first()).toBeInViewport();
 	});
 });

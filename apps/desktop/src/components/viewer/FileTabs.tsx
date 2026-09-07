@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
 import type { ViewerTab } from '@store/viewerStore';
 
@@ -31,6 +32,21 @@ interface FileTabsProps {
  * not asking for anything.
  */
 export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps) {
+	const strip = useRef<HTMLDivElement>(null);
+
+	// **The strip follows what is showing.** A file opened from the tree, from a
+	// terminal link or by the agent lands at the end of a strip that may already
+	// be scrolled past its width — and in a 400px column that is three tabs in.
+	// Found in the dev app: seven files open, the seventh on screen, and a strip
+	// showing the first three with no active tab in it (ADR-0037). Same idiom as
+	// `SessionTabs`, and for the same reason.
+	useEffect(() => {
+		if (!active) return;
+		strip.current
+			?.querySelector(`[data-path="${CSS.escape(active)}"]`)
+			?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+	}, [active]);
+
 	if (!tabs.length) return null;
 
 	return (
@@ -43,7 +59,15 @@ export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps
 			// row. The row itself belongs to `ViewerPane`, which shares it with the
 			// pane's two controls — one 36px strip rather than two, because the
 			// column this sits in can be 400px wide.
+			ref={strip}
 			className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1"
+			onWheel={(e) => {
+				// A vertical wheel over a horizontal strip does nothing by default,
+				// which reads as "these tabs are stuck".
+				if (e.deltaY !== 0 && strip.current) {
+					strip.current.scrollLeft += e.deltaY;
+				}
+			}}
 		>
 			{tabs.map((tab) => {
 				const name = baseName(tab.path);
@@ -55,6 +79,7 @@ export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps
 						aria-selected={isActive}
 						tabIndex={0}
 						data-testid="file-tab"
+						data-path={tab.path}
 						data-preview={tab.preview}
 						data-active={isActive}
 						title={tab.path}

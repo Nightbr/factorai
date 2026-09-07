@@ -52,12 +52,16 @@ chosen by measurement rather than by a preference.**
   will have to keep in sync with two other constants.
 
 - **`MIN_SESSION_WIDTH = 400`.** The floor is the session's, not the viewer's,
-  because the session is the thing this app exists to show. 400px is ~56
-  columns, under the 80 the CLI writes for; it is a deliberate trade that buys
-  the column at the default 1400px window, and it only binds when the panels are
+  because the session is the thing this app exists to show. 400px is **~52
+  columns** — measured in the dev app, where a 660px pane reported `COLUMNS=86`
+  — under the 80 the CLI writes for; it is a deliberate trade that buys the
+  column at the default 1400px window, and it only binds when the panels are
   dragged to their extremes.
 
-- **A per-checkout tab strip, persisted.** `?file=` stays the *active* file and
+- **A per-checkout tab strip, persisted, and the strip always holds what is
+  showing.** `?file=` can be set without passing through `open()` — a reload, a
+  deep link — so the strip re-derives a tab for the active file rather than
+  showing a set that has lost track of it. `?file=` stays the *active* file and
   keeps every property F7 gave it — deep-linkable, survives reload and HMR,
   browser-back closes the viewer, and F19's terminal links and F20's IDE bridge
   keep arriving through it. The list of open files is layout state beside it,
@@ -85,8 +89,11 @@ between windows are three separate problems, none of which this one has.
   unit-tested; it gains an argument rather than a global.
 - **Escape no longer closes the viewer.** In the modal it did, and there it was
   right. In a column it would close a surface the user is reading beside the
-  agent, so Escape returns focus to the session and the tab is closed by its own
-  `×`, by `Cmd/Ctrl+W`, or by the header's close.
+  agent, so it closes nothing at all: a tab goes by its own `×`, by a
+  middle-click, or by the pane's close control. Escape *returning focus to the
+  session* is the half not built — it needs a focus path into the terminal that
+  nothing else has wanted yet, and it is a checkbox on roadmap item 48 rather
+  than a claim here.
 - A restored tab can name a file that no longer exists. The viewer already has
   the honest answer for that — `errorText` says the tree may be out of date —
   and the tab is closed by hand. Refusing to restore at all was the alternative,

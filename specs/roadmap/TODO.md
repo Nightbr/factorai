@@ -1297,8 +1297,8 @@ and `FileViewerModal` is just its first host". This item builds the second and t
       the user has dragged. Pure and unit-tested, like `clampPanelWidth`.
 - [ ] **The column host.** Between `AppShell`'s session column and the panel, with its own
       `PanelResizer` and a persisted width. `MIN_VIEWER_WIDTH = 400`; `MIN_SESSION_WIDTH = 400`,
-      which is ~56 columns and a deliberate trade — it is what buys the column at the default
-      1400px window.
+      which is ~52 columns (measured: a 660px pane reports `COLUMNS=86`) and a deliberate trade —
+      it is what buys the column at the default 1400px window.
 - [ ] **The split host.** Tree above, viewer below, inside `FileTreePanel`, at a **second**
       remembered panel width (~420) because a column holding two things wants more than 288.
       Precedent for the mechanism: `GraphView.tsx:188` with `PanelResizer` and a clamped

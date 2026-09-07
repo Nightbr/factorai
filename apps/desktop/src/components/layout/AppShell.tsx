@@ -77,6 +77,26 @@ export function AppShell({ children }: AppShellProps) {
 	// what re-seeds it on launch and when you come back to a project. A URL that
 	// already names a file wins: a deep link, a terminal click and the IDE
 	// bridge all arrive that way and must not be overwritten by history.
+	// **The strip always holds the file that is showing.**
+	//
+	// `?file=` can arrive without passing through `open()` — a reload restores it
+	// from the URL, and a deep link starts the app with it — and the checkout it
+	// belongs to is not known until the route resolves, so an `openTab` at that
+	// moment would have had nowhere to put it. Both cases end with a file in the
+	// viewer and no tab for it, which reads as a strip that has lost track of
+	// what you are looking at. Found in the dev app, after a reload
+	// (ADR-0037).
+	//
+	// A preview tab, because nothing about restoring a URL says the file was
+	// pinned.
+	useEffect(() => {
+		if (!root || !viewer.path) return;
+		const state = useViewerStore.getState();
+		if (state.checkout !== root) return;
+		if (tabsFor(state, root).some((t) => t.path === viewer.path)) return;
+		state.openTab(viewer.path, { preview: true, diff: viewer.diff });
+	}, [root, viewer.path, viewer.diff]);
+
 	const restored = useRef(new Set<string>());
 	useEffect(() => {
 		if (!root || viewer.path || restored.current.has(root)) return;
@@ -85,8 +105,21 @@ export function AppShell({ children }: AppShellProps) {
 		const last = state.activeByCheckout[root];
 		if (!last) return;
 		const tab = tabsFor(state, root).find((t) => t.path === last);
-		viewer.open(last, { diff: tab?.diff ?? undefined });
+		// Restored **as it was left**, preview included: reopening it as a pinned
+		// tab would silently promote it, and the next click in the tree would then
+		// append beside it instead of replacing it.
+		viewer.open(last, { diff: tab?.diff ?? undefined, preview: tab?.preview });
 	}, [root, viewer.path, viewer.open]);
+
+	// **The stored width is clamped on every render, not only on drag.** A width
+	// dragged wide in a big window, or restored from a previous launch, would
+	// otherwise be applied verbatim in a smaller one and take the columns out of
+	// the session — which is the floor the whole rule exists to protect
+	// (ADR-0037). At the threshold this resolves to exactly `MIN_VIEWER_WIDTH`.
+	const appliedViewerWidth = clampViewerWidth(
+		viewerWidth,
+		maxViewerWidth(shellWidth, sidebarWidth, effectivePanelWidth),
+	);
 
 	// **A closed panel leaves only one host.** The split lives inside the panel,
 	// so with the panel collapsed a `split` answer would render the viewer
@@ -151,7 +184,7 @@ export function AppShell({ children }: AppShellProps) {
 				{showColumn && (
 					<>
 						<PanelResizer
-							size={viewerWidth}
+							size={appliedViewerWidth}
 							onSize={(width) =>
 								setViewerWidth(width, maxViewerWidth(shellWidth, sidebarWidth, effectivePanelWidth))
 							}
@@ -166,7 +199,7 @@ export function AppShell({ children }: AppShellProps) {
 						/>
 						<aside
 							data-testid="viewer-column"
-							style={{ width: viewerWidth }}
+							style={{ width: appliedViewerWidth }}
 							className="flex shrink-0 flex-col overflow-hidden border-l border-border"
 						>
 							<ViewerPane />

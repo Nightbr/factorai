@@ -23,11 +23,13 @@ export const DEFAULT_VIEWER_WIDTH = 460;
 /**
  * The session's floor, and the number the whole rule hangs on.
  *
- * 400px is ~56 columns at the terminal's 12px mono, under the 80 the CLI writes
- * its output for, so long lines wrap. That is a deliberate trade: at 560 (an
- * honest 80 columns) the threshold lands above 1400 and the default window
- * would never show the column at all. It binds only when both panels are
- * dragged to their extremes.
+ * 400px is **~52 columns** — measured in the dev app, where a 660px session
+ * pane reported `COLUMNS=86`, so a column is 7.7px and not the 7.2 first
+ * assumed. That is under the 80 the CLI writes its output for, so long lines
+ * wrap, and it is a deliberate trade: at 560 (an honest 80 columns) the
+ * threshold lands above 1400 and the default window would never show the
+ * viewer column at all. It binds only when both panels are dragged to their
+ * extremes.
  */
 export const MIN_SESSION_WIDTH = 400;
 

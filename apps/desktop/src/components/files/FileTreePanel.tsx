@@ -51,7 +51,6 @@ export function FileTreePanel() {
 	// you dragged it to rather than sharing one number that is wrong for one of
 	// them.
 	const split = host === 'split' && viewer.path !== null;
-	const size = split ? splitWidth : width;
 	const ceiling = maxPanelWidth({
 		shellWidth,
 		sidebarWidth,
@@ -59,6 +58,10 @@ export function FileTreePanel() {
 		host,
 		viewerOpen: viewer.path !== null,
 	});
+	// Clamped on every render, not only on drag: a width dragged in a wider
+	// window — or restored from a previous launch — must not be applied verbatim
+	// in a smaller one and take the session under its floor (ADR-0037).
+	const size = clampPanelWidth(split ? splitWidth : width, ceiling);
 	const setSize = (next: number) =>
 		split ? setSplitWidth(next, ceiling) : setWidth(next, ceiling);
 

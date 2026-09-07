@@ -3,7 +3,7 @@ import { ContextMenu, ContextMenuTrigger } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Check, ChevronRight, Link2, X } from 'lucide-react';
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
 import { FileRowMenu, type RowOutcome } from '@components/files/FileRowMenu';
 import { useFileViewer } from '@hooks/useFileViewer';
@@ -11,7 +11,6 @@ import { DECORATION_CLASSES, useGitDecorations } from '@hooks/useGitDecorations'
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { expandedFor, usePanelStore } from '@store/panelStore';
-import { useViewerStore } from '@store/viewerStore';
 
 /** px of indent per level. Tight — the panel is narrow. */
 const INDENT = 12;
@@ -49,6 +48,11 @@ interface FileTreeNodeProps {
 	trailing?: ReactNode;
 }
 
+/** How long after a click a second one still means "pin this" (ADR-0037).
+ *  The platform's own double-click interval is not readable from a webview, so
+ *  this is the conventional 400ms rather than a guess at the user's setting. */
+const DOUBLE_CLICK_MS = 400;
+
 export function FileTreeNode({
 	entry,
 	root,
@@ -65,6 +69,8 @@ export function FileTreeNode({
 	const toggleSelected = usePanelStore((s) => s.toggleSelected);
 	const selectRange = usePanelStore((s) => s.selectRange);
 	const { open: openViewer } = useFileViewer();
+	/** When this row was last clicked, for the pin gesture above. */
+	const lastClickAt = useRef(0);
 	// Which agent "Add to agent context" would hand these to: the session in front, and
 	// nothing when the human is on the project list or in settings (F20).
 	const { sessionId: activeSessionId } = useParams({ strict: false }) as { sessionId?: string };
@@ -100,9 +106,19 @@ export function FileTreeNode({
 		} else if (!entry.isDir) {
 			// Single click opens the viewer (F7) — as a **preview** tab, which the
 			// next single click replaces (ADR-0037). It is what stops clicking down
-			// a directory leaving forty tabs behind, and it is why a double-click
+			// a directory leaving forty tabs behind, and it is why a second click
 			// now has something to mean: it pins.
-			openViewer(entry.path, { preview: true });
+			//
+			// **The pair is timed here rather than left to `dblclick`**, and the
+			// reason is the first click: opening a file can widen the panel by
+			// 130px (the split host's own width), so the row moves under the
+			// pointer and the browser never pairs the two clicks into a
+			// `dblclick`. Found in the dev app — the gesture worked on a tab,
+			// where nothing moves, and silently did nothing on a tree row.
+			const now = Date.now();
+			const second = now - lastClickAt.current < DOUBLE_CLICK_MS;
+			lastClickAt.current = now;
+			openViewer(entry.path, { preview: !second });
 		}
 	}
 
@@ -161,12 +177,6 @@ export function FileTreeNode({
 								: 'text-muted-foreground hover:bg-secondary/50'
 						}`}
 						onClick={handleClick}
-						// Pins the preview this row's first click opened, the same
-						// gesture the tab itself takes (ADR-0037). Harmless on a
-						// directory: there is no tab to pin.
-						onDoubleClick={() => {
-							if (!entry.isDir) useViewerStore.getState().pinTab(entry.path);
-						}}
 						// Right-clicking *inside* a selection acts on the whole of it, the
 						// way every file manager does; right-clicking outside one
 						// replaces it. Either way the menu acts on rows you can see are
