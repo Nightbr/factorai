@@ -3,6 +3,49 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The file viewer leaves the modal: a column beside the session, a split under the tree, and a
+  strip of open files (roadmap 48, [ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md))**
+  — 2026-09-07, user ask. Reading a file covered the terminal it was opened from, in an app whose
+  claim is that you watch an agent while it works. Six hosts were prototyped side by side before
+  any was built; three lost on the same ground, and it is the one worth keeping: a tab beside the
+  session, and file tabs in the top strip, both put the file *where the agent was* — the modal's
+  problem wearing a different shell.
+
+  **The host is measured, not chosen in Settings.** `column ⟺ shellWidth ≥ sidebarWidth +
+  MIN_SESSION_WIDTH + MIN_VIEWER_WIDTH + panelWidth + gutters`, with a 40px dead band so dragging
+  a window edge across the threshold does not strobe the layout. A preference cannot know the
+  sidebar was just pulled to 480, and both side panels are user-resizable, so the flip point is a
+  function of what the user dragged rather than a constant to keep in sync with two others.
+  `lib/viewerLayout.ts` is the whole rule and it is pure.
+
+  **`MIN_SESSION_WIDTH = 400`, and the floor is the session's.** ~52 columns, measured in the dev
+  app — a 660px pane reports `COLUMNS=86`, so a column is 7.7px and not the 7.2 first assumed.
+  That is under the 80 the CLI writes for, and it is the trade that buys the column at the default
+  1400px window: at an honest 560 the threshold lands above 1400 and nobody would ever see it.
+
+  **Five things the test suite could not have told us, all found by driving the dev app:**
+  the session pane sat at 350px because the stored viewer width was clamped on drag and not on
+  render; the double-click that pins a tab never fired on a tree row, because the first click
+  widens the panel and the row moves out from under the pointer (timed in our own state now);
+  `?file=` can arrive without passing through `open()` — a reload, a deep link — leaving a file on
+  screen with no tab, so the strip re-derives one; the strip never scrolled to what it was showing,
+  so seven open files read as three with no active tab; and a restored preview tab came back
+  pinned. Four of the five now have a smoke test, and the suite moved to a 1440×900 viewport
+  because Chrome's 1280 default put every test in the narrow host — a shell the app never opens
+  at.
+
+  **The modal is demoted rather than deleted**, reached from one control in the strip for a file
+  too wide to read in a column, and `Escape` closes nothing at all: over a pane you are reading
+  beside the agent, the modal's reflex is wrong. The pane's own close went the same way — it was
+  the active tab's `×` a second time, and the one on the tab is the one that says which file it
+  closes.
+
+  **What it still owes**, on TODO item 48: `Escape` returning focus to the session, reordering
+  tabs by drag, and a diff at 400px, which is legible but cramped — the expand is its answer for
+  now. The detached window that came out of the same prototype is item 52, and it waits for its
+  own ADR because kill-on-quit, window lifetime and cross-window state are three problems this one
+  does not have.
+
 - **An expanded project's sessions hang from a subtree guide (`DESIGN.md`, The Subtree Guide
   Rule)** — 2026-09-07, user ask, same day. A session row was indented under its project and
   marked as belonging to it by nothing else, so a sidebar with two projects open read as one flat

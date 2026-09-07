@@ -1277,60 +1277,26 @@ a cheap model on your own account would have needed two profiles over one config
 the scan cannot allow. See `DONE.md`'s entry for that item. So this one is independent of profiles
 rather than sequenced behind them.
 
-## 48. The file viewer as a column, with a split under the tree when the window is narrow
+## 48. The file viewer's column — the three pieces the first cut left
 
-**User feedback, 2026-09-01, revised 2026-09-07** after six hosts were prototyped side by side.
-The viewer is a 90vw × 85vh modal (`FileViewerModal.tsx:75`), so reading a file covers the terminal
-you opened it from. The first ask was a split under the tree with a Settings switch; what the
-prototype settled on instead is a **column of its own between the session and the panel**, falling
-back to that split when the shell cannot hold four columns, with **file tabs** so more than one
-file can be open at once. [ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md)
-records the decision and why the other four hosts lost.
+**Shipped 2026-09-07** — the column, the measured fallback to a split under the tree, the strip of
+open files with preview tabs, and the demoted modal. See [`DONE.md`](DONE.md) for what landed and
+what driving the dev app caught, and
+[ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md) for why this
+host and not the other five. What is left is small and independent:
 
-**F7 already committed to the shape**: "`FileView` is written self-contained and modal-agnostic,
-and `FileViewerModal` is just its first host". This item builds the second and third.
-
-- [ ] **The host, chosen by measurement.** One pure function over measured widths —
-      `column ⟺ shellWidth ≥ sidebarWidth + MIN_SESSION_WIDTH + MIN_VIEWER_WIDTH + panelWidth +
-      gutters`, with a 40px dead band so dragging a window edge does not strobe the layout. Not a
-      Settings switch: both side panels are user-resizable, so the flip point is a function of what
-      the user has dragged. Pure and unit-tested, like `clampPanelWidth`.
-- [ ] **The column host.** Between `AppShell`'s session column and the panel, with its own
-      `PanelResizer` and a persisted width. `MIN_VIEWER_WIDTH = 400`; `MIN_SESSION_WIDTH = 400`,
-      which is ~52 columns (measured: a 660px pane reports `COLUMNS=86`) and a deliberate trade —
-      it is what buys the column at the default 1400px window.
-- [ ] **The split host.** Tree above, viewer below, inside `FileTreePanel`, at a **second**
-      remembered panel width (~420) because a column holding two things wants more than 288.
-      Precedent for the mechanism: `GraphView.tsx:188` with `PanelResizer` and a clamped
-      `panelStore` height. Layout state, not a preference — ADR-0013.
-- [ ] **File tabs.** One strip, one set of open files **per checkout** — keyed the way
-      `expandedByCheckout` is (F21), because the paths are absolute — persisted and restored on
-      launch. A single click in the tree opens a *preview* tab that the next single click replaces;
-      double-click pins it, on the row or on the tab. `?file=` stays the active file and keeps
-      every property F7 gave it. A Changes row opens the same tab in diff mode: one path is one
-      tab either way.
-- [ ] **Rework `MAX_PANEL_WIDTH`.** 600 today (`panelStore.ts:21`), chosen when the panel only ever
-      held a tree. The ceiling has to be relative to the shell with the session's floor subtracted —
-      a fixed 900 leaves nothing for the agent on a laptop. `clampPanelWidth` is pure and
-      unit-tested; keep both properties, give it an argument rather than a global.
-- [ ] **Every view has to survive the narrow host, not just Monaco.** The markdown renderer, the
-      image view, `SvgPreview` and pdf.js all render inside `FileView`. F7 turned the minimap off
-      because it was "noise at modal width" and that argument only gets stronger; word wrap is
-      already on. The PDF is the one to check first — a continuous-scroll document at 400px is
-      either fine or unreadable, and nothing in ADR-0018 answers it.
-- [ ] **The modal is demoted, not deleted.** It becomes an explicit expand affordance in the
-      viewer header, for a file too wide to read in a column. Nothing lands there by default.
-- [ ] **Routing and the two agents that open files.** F19's terminal path-click and F20's IDE
-      bridge both arrive through `?file=`. Opening a file with the panel closed has to open the
-      panel — silently doing nothing is the failure that looks like a broken link.
-- [ ] **`Escape` returns focus to the session**, and closes nothing. Closing a surface you are
-      reading beside the agent is the modal's reflex and it is wrong here. A tab closes by its `×`,
-      by `Cmd/Ctrl+W`, or by the header's close.
-- [ ] **Not in this item:** reordering tabs by drag. `SessionTabs` has the dnd-kit worked example
-      (ADR-0016) and the keyboard path beside it; this strip ships without one and gains it when
-      somebody wants it.
-
-**Settled since the first draft.** The width ask was the file panel, not the left sidebar.
+- [ ] **`Escape` returns focus to the session.** It closes nothing today, which is the important
+      half — over a pane you are reading beside the agent, the modal's reflex is wrong. Moving
+      focus into the terminal needs a focus path nothing else has wanted yet, which is why it is
+      not in the first cut.
+- [ ] **Reordering tabs by drag.** `SessionTabs` has the dnd-kit worked example (ADR-0016) and the
+      4px activation constraint that keeps a click a click; a keyboard path ships beside it or it
+      is half a feature. Nobody has asked to order files yet.
+- [ ] **A diff at 400px.** Legible but cramped — two gutters and a wrapped hunk in a column that
+      narrow. The expand affordance is the answer for now; `diffInline` and the pane's width are
+      the two knobs worth trying before anything is built. Check the PDF at the same width while
+      you are there: nothing in ADR-0018 answers it, and a continuous-scroll page at 400px is
+      either fine or unreadable.
 
 ## 52. The file viewer, and the panel with it, in a window of its own
 
