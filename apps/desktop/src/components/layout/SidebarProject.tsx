@@ -779,9 +779,20 @@ function SessionList({ project, depth }: { project: Project; depth: number }) {
 					    exemption from recency ends, and a rule costs one row of height
 					    where a pin glyph on every pinned row costs a column on all of
 					    them. Only drawn between the two blocks: no pins, or nothing but
-					    pins, and there is no boundary to show. */}
+					    pins, and there is no boundary to show.
+
+					    **It starts clear of the subtree guide rather than crossing it.**
+					    At a fixed `mx-2` it began 21px left of the guide inside a group,
+					    poked through the trunk and carried on — and where two hairlines
+					    meet at a T the junction reads as a rendering artifact rather than
+					    as two marks. 4px of clearance keeps the trunk legibly continuous
+					    and leaves the divider plainly a boundary *inside* the subtree. */}
 						{session.pinned === false && i > 0 && sessions[i - 1]?.pinned === true && (
-							<li aria-hidden className="mx-2 my-1 border-border/60 border-t" />
+							<li
+								aria-hidden
+								className="my-1 mr-2 border-border/60 border-t"
+								style={{ marginLeft: GUIDE_X[depth] + 4 }}
+							/>
 						)}
 						<SessionRow
 							session={session}

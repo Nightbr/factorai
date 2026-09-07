@@ -1010,6 +1010,27 @@ test.describe('session subtree guide', () => {
 		await expect(page.getByTestId(`session-guide-${ALPHA_ID}`)).toHaveCSS('left', '29px');
 	});
 
+	test('@smoke the pinned divider starts clear of the guide, never across it', async ({ page }) => {
+		// One pin is what draws the divider: it is the boundary between the rows
+		// exempt from recency and the rest.
+		const fixture = fixtureTwoProjectsManySessions();
+		const zulu = fixture.sessionsByProject?.[ZULU_ID];
+		if (!zulu?.[0]) throw new Error('fixture must have zulu sessions');
+		zulu[0].pinned = true;
+		await installMockBridge(page, fixture);
+		await page.goto('/');
+
+		await page.getByRole('button', { name: 'Expand zulu' }).click();
+
+		const guide = page.getByTestId(`session-guide-${ZULU_ID}`);
+		const divider = page.getByTestId(`sidebar-sessions-${ZULU_ID}`).locator('li[aria-hidden]');
+		const g = await guide.boundingBox();
+		const d = await divider.boundingBox();
+		if (!g || !d) throw new Error('guide and divider must both be on screen');
+		// Clear of the trunk on the right of it, not through it.
+		expect(d.x).toBeGreaterThan(g.x + g.width);
+	});
+
 	test('@smoke the guide covers the empty state too, not just session rows', async ({ page }) => {
 		const empty = fixtureOneProjectOneSession();
 		await installMockBridge(page, { ...empty, sessionsByProject: { [FOO_ID]: [] } });

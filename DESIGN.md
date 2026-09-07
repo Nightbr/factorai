@@ -526,6 +526,11 @@ reader, and a decoration that took a click would owe a keyboard path the chevron
 above it already is. The session indent steps with the guide (`pl-8` → `pl-12`),
 so a grouped project's sessions never share an x with an ungrouped project's.
 
+**Nothing crosses the guide.** The pinned/unpinned divider inside the block
+starts 4px to its right rather than at a fixed inset — at `mx-2` it began 21px
+left of the guide inside a group and ran straight through it, and two hairlines
+meeting at a T read as a rendering artifact rather than as two marks.
+
 `--guide` is its own token, not a fraction of `--border`: on the panel the guide
 is drawn on, `border/40` measured 6/255 in the dark theme and 17/255 in the
 light one — geometrically correct and invisible in both. The two values are
