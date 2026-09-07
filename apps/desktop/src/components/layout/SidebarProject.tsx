@@ -853,7 +853,7 @@ function Subtree({
 			<span
 				aria-hidden
 				data-testid={`session-guide-${projectId}`}
-				className="pointer-events-none absolute inset-y-0 w-px bg-guide"
+				className="pointer-events-none absolute inset-y-0 w-px bg-border/60"
 				style={{ left: GUIDE_X[depth] }}
 			/>
 		</div>

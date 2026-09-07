@@ -11,7 +11,6 @@ colors:
   muted: "oklch(20% 0.008 250)"
   muted-foreground: "oklch(56% 0.006 250)"
   border: "oklch(25% 0.008 250)"
-  guide: "oklch(36% 0.008 250)"
   input: "oklch(22% 0.008 250)"
   primary: "oklch(81.3% 0.165 75)"
   primary-foreground: "oklch(16% 0.008 250)"
@@ -510,7 +509,7 @@ a pointer on something inert is a lie. A new interactive role joins the base rul
 rather than being patched onto the component.
 
 **The Subtree Guide Rule.** An expanded project's sessions hang from a 1px
-`guide` line at **its own chevron's centre** — 13px at the top level, 29px
+`border/60` line at **its own chevron's centre** — 13px at the top level, 29px
 for a project inside a group — running the full height of the block, from the
 top of the first row to the bottom of the last. The x is measured off the glyph,
 not taken from the 4/6/8/12 rhythm: snapped to 12 the line misses the chevron's
@@ -531,12 +530,16 @@ starts 4px to its right rather than at a fixed inset — at `mx-2` it began 21px
 left of the guide inside a group and ran straight through it, and two hairlines
 meeting at a T read as a rendering artifact rather than as two marks.
 
-`--guide` is its own token, not a fraction of `--border`: on the panel the guide
-is drawn on, `border/40` measured 6/255 in the dark theme and 17/255 in the
-light one — geometrically correct and invisible in both. The two values are
-hand-tuned to about a 45–55/255 step from the panel, and the dark one is
-*lighter* than its ground where the light one is darker than its, so neither can
-be a tint of the other.
+**Both hairlines in the block are `border/60`** — the guide and the pinned
+divider that stops beside it. They agree by choice rather than by coincidence:
+two rules a row apart at different weights read as one of them being broken, and
+agreement was judged worth more than either being individually optimal. It is
+still a quiet mark — on the panel it is drawn on, `border/60` is a 10/255 step in
+the dark theme — so the nesting is carried by the indent and the line sits under
+it as a hint rather than as the statement. Raise both together or neither. Two
+alternatives were rendered and rejected: `border/40` (a 6/255 step, which fades
+out at a glance) and a dedicated per-theme `--guide` token at roughly 50/255,
+too loud for a mark repeated once per expanded project.
 
 ### Inputs / Fields
 
