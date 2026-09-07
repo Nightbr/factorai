@@ -88,7 +88,11 @@ export function AppShell({ children }: AppShellProps) {
 		viewer.open(last, { diff: tab?.diff ?? undefined });
 	}, [root, viewer.path, viewer.open]);
 
-	const showColumn = host === 'column' && viewer.path !== null;
+	// **A closed panel leaves only one host.** The split lives inside the panel,
+	// so with the panel collapsed a `split` answer would render the viewer
+	// nowhere at all — a file opened from a terminal link with no tree showing
+	// would look like a broken link, which is the failure ADR-0037 names.
+	const showColumn = viewer.path !== null && (host === 'column' || !panelOpen);
 
 	return (
 		// The border is what gives the app a defined silhouette against the

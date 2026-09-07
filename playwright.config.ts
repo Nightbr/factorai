@@ -44,7 +44,17 @@ export default defineConfig({
 	projects: [
 		{
 			name: 'chromium',
-			use: { ...devices['Desktop Chrome'] },
+			// **The window the app actually opens at**, not Chrome's 1280×720 phone
+			// of a desktop. `tauri.conf.json` asks for 1400×900 with a 1100
+			// minimum, and since ADR-0037 the layout answers differently on either
+			// side of a measured threshold — at 1280 every test would run in the
+			// narrow host, which is not where a user starts. The narrow host has a
+			// test of its own that shrinks the viewport itself.
+			//
+			// It goes **here** and not in the top-level `use`: a project's `use`
+			// replaces it, and `devices['Desktop Chrome']` carries a viewport of
+			// its own that would win.
+			use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
 		},
 	],
 	webServer: {

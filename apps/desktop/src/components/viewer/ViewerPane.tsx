@@ -47,7 +47,7 @@ export function ViewerPane() {
 	}
 
 	return (
-		<div data-testid="viewer-pane" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+		<div data-testid="file-viewer" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
 			<div className="flex h-9 shrink-0 items-center border-border border-b bg-card pr-1">
 				<FileTabs tabs={tabs} active={viewer.path} onOpen={show} onPin={pinTab} onClose={close} />
 				{/* The demoted modal (ADR-0037). It is reached from here and from

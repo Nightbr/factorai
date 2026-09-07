@@ -26,7 +26,7 @@ export const DEFAULT_PANEL_WIDTH = 288;
  *  (ADR-0037). A second remembered width rather than one shared with the column
  *  layout: 288px is a good tree and a bad split, and 420 is the other way
  *  round. */
-export const DEFAULT_SPLIT_PANEL_WIDTH = 420;
+const DEFAULT_SPLIT_PANEL_WIDTH = 420;
 
 /** Pure so the drag maths can be unit-tested without a pointer.
  *

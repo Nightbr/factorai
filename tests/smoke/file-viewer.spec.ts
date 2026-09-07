@@ -12,6 +12,18 @@ async function openTree(page: Page) {
 	return panel;
 }
 
+/** Close whatever the viewer has open. Escape does not do this any more: the
+ *  viewer is a pane beside the agent now, not a modal over it (ADR-0037). */
+async function closeViewer(page: Page) {
+	await page.getByTestId('viewer-close').click();
+}
+
+/** The expanded view — the demoted modal, reached only from the pane. */
+async function expandViewer(page: Page) {
+	await page.getByTestId('viewer-expand').click();
+	return page.getByTestId('file-viewer-modal');
+}
+
 /**
  * Arguments of every read_file call so far. `maxBytes` is stringified because
  * the two cases we care about are `undefined` (backend default cap) and `null`
@@ -47,9 +59,8 @@ test.describe('file viewer', () => {
 
 		const viewer = page.getByTestId('file-viewer');
 		await expect(viewer).toBeVisible();
-		// Header: name prominent, parent directory beneath it.
-		await expect(viewer.getByText('Cargo.toml', { exact: true })).toBeVisible();
-		await expect(viewer.getByText(ROOT, { exact: true })).toBeVisible();
+		// The file is a tab now, and the tab is what names it (ADR-0037).
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/Cargo\.toml/);
 		// Monaco mounted, and the footer describes what we're looking at.
 		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
 		await expect(viewer.getByText('read-only')).toBeVisible();
@@ -67,12 +78,12 @@ test.describe('file viewer', () => {
 		const panel = await openTree(page);
 		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
 
+		// The path toolbar lives in the expanded view — the pane's own strip
+		// carries the tabs and two controls, and nothing else fits at 400px.
+		const modal = await expandViewer(page);
 		// Matched by prefix: the label carries the platform's own name for the
 		// file manager, so it reads "Reveal in Finder" on macOS.
-		await page
-			.getByTestId('file-viewer')
-			.getByRole('button', { name: /^Reveal in / })
-			.click();
+		await modal.getByRole('button', { name: /^Reveal in / }).click();
 
 		// The absolute path, verbatim, is the renderer's whole share of this.
 		// What a desktop then does with it belongs to `services::reveal`, and
@@ -85,14 +96,19 @@ test.describe('file viewer', () => {
 		expect(asked).toEqual([`${ROOT}/Cargo.toml`]);
 	});
 
-	test('@smoke Esc closes the viewer and clears the URL', async ({ page }) => {
+	test('@smoke closing the last file clears the URL, and Esc closes nothing', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
 		const panel = await openTree(page);
 		await panel.getByRole('button', { name: 'README.md' }).click();
 		await expect(page.getByTestId('file-viewer')).toBeVisible();
 
+		// Escape used to close the modal. Over a pane you are reading beside the
+		// agent it must do nothing at all (ADR-0037).
 		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
+
+		await closeViewer(page);
 
 		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
 		expect(page.url()).not.toContain('file=');
@@ -326,7 +342,7 @@ test.describe('file viewer', () => {
 			viewer.getByTestId('markdown-view').getByRole('heading', { name: 'foo' }),
 		).toBeVisible();
 
-		await page.keyboard.press('Escape');
+		await closeViewer(page);
 		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
 
 		// The agent edits the file while the viewer is closed. Nothing tells the
@@ -414,7 +430,8 @@ test.describe('file viewer', () => {
 		// Switching files moves the watch, and the file being left is released
 		// *first* — React runs the old effect's cleanup before the new effect, which
 		// is what makes a path-scoped `unwatch_file` safe. Through the document's
-		// own link rather than the tree, because the modal covers the tree.
+		// own link rather than the tree, because that is the path a relative
+		// markdown link takes and it has to move the watch too.
 		await page.getByTestId('file-viewer').getByRole('link', { name: 'the guide' }).click();
 		await expect
 			.poll(() => watchCalls(page))
@@ -424,8 +441,13 @@ test.describe('file viewer', () => {
 				{ name: 'watch_file', path: `${ROOT}/docs/guide.md` },
 			]);
 
-		// And closing the viewer leaves nothing watching.
-		await page.keyboard.press('Escape');
+		// Closing the file being watched moves the watch to the tab underneath —
+		// the strip is what the viewer is showing now, so a close is a switch
+		// until the last one goes (ADR-0037).
+		await closeViewer(page);
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
+		// And closing the last one leaves nothing watching.
+		await closeViewer(page);
 		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
 		await expect
 			.poll(() => watchCalls(page))
@@ -433,7 +455,11 @@ test.describe('file viewer', () => {
 				{ name: 'watch_file', path: `${ROOT}/README.md` },
 				{ name: 'unwatch_file', path: `${ROOT}/README.md` },
 				{ name: 'watch_file', path: `${ROOT}/docs/guide.md` },
+				// The first close went back to the tab underneath, so the watch
+				// followed it there before the last close released everything.
 				{ name: 'unwatch_file', path: `${ROOT}/docs/guide.md` },
+				{ name: 'watch_file', path: `${ROOT}/README.md` },
+				{ name: 'unwatch_file', path: `${ROOT}/README.md` },
 			]);
 	});
 
@@ -544,13 +570,15 @@ test.describe('file viewer', () => {
 		expect(page.url()).toContain(encodeURIComponent(`${ROOT}/docs/guide.md`));
 	});
 
-	test('@smoke the header controls sit on one row with the close button', async ({ page }) => {
+	test('@smoke the expanded header controls sit on one row with the close button', async ({
+		page,
+	}) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
 		const panel = await openTree(page);
 		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
 
-		const viewer = page.getByTestId('file-viewer');
+		const viewer = await expandViewer(page);
 		const names = ['Copy path', 'Open in default app', 'Close viewer'];
 		const boxes = [];
 		for (const name of names) {
@@ -566,10 +594,12 @@ test.describe('file viewer', () => {
 			expect(Math.abs(c - centres[0])).toBeLessThanOrEqual(1);
 		}
 
-		// Closing through the header button clears the URL like Esc does.
+		// Closing the expanded view puts the file back in the pane rather than
+		// closing it: expanding is a way of looking, not a second open (ADR-0037).
 		await viewer.getByRole('button', { name: 'Close viewer' }).click();
-		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
-		expect(page.url()).not.toContain('file=');
+		await expect(page.getByTestId('file-viewer-modal')).toHaveCount(0);
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
+		expect(page.url()).toContain(encodeURIComponent(`${ROOT}/Cargo.toml`));
 	});
 
 	test('@smoke a file that vanished since the tree listed it explains itself', async ({ page }) => {
@@ -699,5 +729,59 @@ test.describe('file viewer', () => {
 
 		await expect(page.getByTestId('file-viewer')).toBeVisible();
 		await expect(page.getByTestId('viewer-add-to-claude')).toHaveCount(0);
+	});
+
+	test('@smoke a single click previews, a double click pins, so browsing leaves one tab', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+		const tabs = page.getByTestId('file-tab');
+		await expect(tabs).toHaveCount(1);
+		await expect(tabs.first()).toHaveAttribute('data-preview', 'true');
+
+		// A second single click replaces the preview rather than growing the
+		// strip — the whole point of the preview tab (ADR-0037).
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		await expect(tabs).toHaveCount(1);
+		await expect(tabs.first()).toHaveText(/README\.md/);
+
+		// A double-click pins it, so the next single click lands beside it.
+		await panel.getByRole('button', { name: 'README.md' }).dblclick();
+		await expect(tabs.first()).toHaveAttribute('data-preview', 'false');
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+		await expect(tabs).toHaveCount(2);
+
+		// And a tab switches the viewer back without going through the tree.
+		await tabs.first().click();
+		expect(page.url()).toContain(encodeURIComponent(`${ROOT}/README.md`));
+	});
+
+	test('@smoke a shell too narrow for four columns moves the viewer under the tree', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		// Wide: the viewer has a column of its own, between the session and the
+		// tree.
+		await expect(page.getByTestId('viewer-column')).toBeVisible();
+		await expect(page.getByTestId('viewer-split')).toHaveCount(0);
+
+		// Narrow: the same pane, split under the tree inside the panel. Nothing
+		// closes, and the file stays open.
+		await page.setViewportSize({ width: 1180, height: 900 });
+		await expect(page.getByTestId('viewer-split')).toBeVisible();
+		await expect(page.getByTestId('viewer-column')).toHaveCount(0);
+		await expect(page.getByTestId('file-viewer').getByTestId('markdown-view')).toBeVisible();
+
+		// And back, once the shell is a dead band clear of the threshold again.
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await expect(page.getByTestId('viewer-column')).toBeVisible();
 	});
 });

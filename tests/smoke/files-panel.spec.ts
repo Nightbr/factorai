@@ -190,9 +190,11 @@ test.describe('add files to agent context', () => {
 		const panel = await openSessionThenPanel(page);
 
 		await panel.getByRole('button', { name: 'README.md' }).click();
-		// The plain click above opened the viewer, as it always has. Dismiss it,
-		// then build a selection — which must not open anything further.
-		await page.keyboard.press('Escape');
+		// The plain click above opened the viewer, as it always has. Close it —
+		// Escape does not, now that the viewer is a pane beside the agent rather
+		// than a modal over it (ADR-0037) — then build a selection, which must
+		// not open anything further.
+		await page.getByTestId('viewer-close').click();
 		await panel.getByRole('button', { name: 'Cargo.toml' }).click({ modifiers: ['ControlOrMeta'] });
 		await panel.getByRole('button', { name: 'knip.jsonc' }).click({ modifiers: ['ControlOrMeta'] });
 		await expect(page.getByTestId('file-viewer')).toHaveCount(0);

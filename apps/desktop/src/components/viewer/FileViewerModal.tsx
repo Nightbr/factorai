@@ -35,11 +35,13 @@ interface FileViewerModalProps {
 }
 
 /**
- * V0 host for `FileView`: a near-fullscreen modal (specs/05-features.md F7).
+ * The **expanded** view of whatever the pane has open (F7, ADR-0037).
  *
- * The per-project tab system will host the same `FileView` in a tab; only this
- * shell gets replaced. Dismissal (Esc, click-outside, the close button) all
- * route through `onClose`, which clears the URL param.
+ * It was the viewer's only host until the pane took that job; it is now the
+ * answer to "this column is too narrow for this file", reached from the pane's
+ * header and from nowhere else. Dismissal (Esc, click-outside, the close
+ * button) all route through `onClose`, which puts the file back in the pane
+ * rather than closing it.
  */
 export function FileViewerModal({
 	path,
@@ -88,7 +90,7 @@ export function FileViewerModal({
 			}}
 		>
 			<DialogContent
-				data-testid="file-viewer"
+				data-testid="file-viewer-modal"
 				// `hideClose`: the built-in close button is absolutely positioned at
 				// right-4 top-4, which can't share a baseline with this header's own
 				// controls. We render DialogClose in-flow with them instead.
