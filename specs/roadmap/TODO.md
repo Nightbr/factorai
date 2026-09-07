@@ -1277,49 +1277,84 @@ a cheap model on your own account would have needed two profiles over one config
 the scan cannot allow. See `DONE.md`'s entry for that item. So this one is independent of profiles
 rather than sequenced behind them.
 
-## 48. The file viewer as a split under the tree, chosen in Settings — and a wider panel
+## 48. The file viewer as a column, with a split under the tree when the window is narrow
 
-**User feedback, 2026-09-01.** The viewer is a 90vw × 85vh modal
-(`FileViewerModal.tsx:75`), so reading a file covers the terminal you opened it from. Asked for as
-a viewer **inline, under the file tree**, with a setting to choose between that and the full-screen
-modal, a draggable height for the inline pane, and a wider file panel to read in.
+**User feedback, 2026-09-01, revised 2026-09-07** after six hosts were prototyped side by side.
+The viewer is a 90vw × 85vh modal (`FileViewerModal.tsx:75`), so reading a file covers the terminal
+you opened it from. The first ask was a split under the tree with a Settings switch; what the
+prototype settled on instead is a **column of its own between the session and the panel**, falling
+back to that split when the shell cannot hold four columns, with **file tabs** so more than one
+file can be open at once. [ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md)
+records the decision and why the other four hosts lost.
 
-**F7 already committed to this shape**: "`FileView` is written self-contained and modal-agnostic,
-and `FileViewerModal` is just its first host". This item builds the second host. Item 21's
-per-project tab system is the eventual third and is not blocked by it.
+**F7 already committed to the shape**: "`FileView` is written self-contained and modal-agnostic,
+and `FileViewerModal` is just its first host". This item builds the second and third.
 
-- [ ] **The split host.** Tree above, viewer below, inside `FileTreePanel`. Same pattern as
-      item 47 and the same precedent: `GraphView.tsx:188` with `PanelResizer` and a clamped
-      `panelStore` height (`MIN_DETAIL_HEIGHT` / `MAX_DETAIL_HEIGHT` / `DEFAULT_DETAIL_HEIGHT` are
-      the shape to copy, not the values to reuse). Layout state, not a preference — ADR-0013.
-- [ ] **The mode setting.** `fileViewerMode: 'modal' | 'split'` in `prefsStore`, which is a genuine
-      preference and renderer-only, so it does not go near the SQLite `settings` table. A row in
-      the **editor** section of `SettingsModal.tsx`, beside `diffInline`, which is the same kind of
-      choice about the same surface.
-- [ ] **Raise `MAX_PANEL_WIDTH`.** 600 today (`panelStore.ts:21`), chosen when the panel only ever
-      held a tree. A Monaco pane at 600px is a narrow column, and the comment on
-      `MIN_PANEL_WIDTH` says the ceiling's real constraint out loud: the panel is taking columns
-      from the terminal. So the new ceiling has to be relative to the window rather than another
-      constant — a fixed 900 leaves nothing for the agent on a laptop — and the session pane needs
-      a floor it cannot be dragged below. `clampPanelWidth` is pure and unit-tested; keep both
-      properties.
+- [ ] **The host, chosen by measurement.** One pure function over measured widths —
+      `column ⟺ shellWidth ≥ sidebarWidth + MIN_SESSION_WIDTH + MIN_VIEWER_WIDTH + panelWidth +
+      gutters`, with a 40px dead band so dragging a window edge does not strobe the layout. Not a
+      Settings switch: both side panels are user-resizable, so the flip point is a function of what
+      the user has dragged. Pure and unit-tested, like `clampPanelWidth`.
+- [ ] **The column host.** Between `AppShell`'s session column and the panel, with its own
+      `PanelResizer` and a persisted width. `MIN_VIEWER_WIDTH = 400`; `MIN_SESSION_WIDTH = 400`,
+      which is ~56 columns and a deliberate trade — it is what buys the column at the default
+      1400px window.
+- [ ] **The split host.** Tree above, viewer below, inside `FileTreePanel`, at a **second**
+      remembered panel width (~420) because a column holding two things wants more than 288.
+      Precedent for the mechanism: `GraphView.tsx:188` with `PanelResizer` and a clamped
+      `panelStore` height. Layout state, not a preference — ADR-0013.
+- [ ] **File tabs.** One strip, one set of open files **per checkout** — keyed the way
+      `expandedByCheckout` is (F21), because the paths are absolute — persisted and restored on
+      launch. A single click in the tree opens a *preview* tab that the next single click replaces;
+      double-click pins it, on the row or on the tab. `?file=` stays the active file and keeps
+      every property F7 gave it. A Changes row opens the same tab in diff mode: one path is one
+      tab either way.
+- [ ] **Rework `MAX_PANEL_WIDTH`.** 600 today (`panelStore.ts:21`), chosen when the panel only ever
+      held a tree. The ceiling has to be relative to the shell with the session's floor subtracted —
+      a fixed 900 leaves nothing for the agent on a laptop. `clampPanelWidth` is pure and
+      unit-tested; keep both properties, give it an argument rather than a global.
 - [ ] **Every view has to survive the narrow host, not just Monaco.** The markdown renderer, the
       image view, `SvgPreview` and pdf.js all render inside `FileView`. F7 turned the minimap off
       because it was "noise at modal width" and that argument only gets stronger; word wrap is
       already on. The PDF is the one to check first — a continuous-scroll document at 400px is
       either fine or unreadable, and nothing in ADR-0018 answers it.
-- [ ] **Routing and the two agents that open files.** The open file is `?file=` on the `__root`
-      route, so F19's terminal path-click and F20's IDE bridge both arrive through it and land in
-      whichever host the preference names. In split mode, opening a file with the panel closed has
-      to open the panel — silently doing nothing is the failure that looks like a broken link.
-- [ ] **`Escape`.** It closes the modal today. In split mode it must not close the panel by
-      reflex; decide what it does close, if anything.
+- [ ] **The modal is demoted, not deleted.** It becomes an explicit expand affordance in the
+      viewer header, for a file too wide to read in a column. Nothing lands there by default.
+- [ ] **Routing and the two agents that open files.** F19's terminal path-click and F20's IDE
+      bridge both arrive through `?file=`. Opening a file with the panel closed has to open the
+      panel — silently doing nothing is the failure that looks like a broken link.
+- [ ] **`Escape` returns focus to the session**, and closes nothing. Closing a surface you are
+      reading beside the agent is the modal's reflex and it is wrong here. A tab closes by its `×`,
+      by `Cmd/Ctrl+W`, or by the header's close.
+- [ ] **Not in this item:** reordering tabs by drag. `SessionTabs` has the dnd-kit worked example
+      (ADR-0016) and the keyboard path beside it; this strip ships without one and gains it when
+      somebody wants it.
 
-**Open.** Which sidebar the width ask meant. The file panel is the one the viewer would sit in and
-is read as the target here, but the left sidebar has its own ceiling —
-`MAX_SIDEBAR_WIDTH = 480` (`sidebarStore.ts:24`) — and if that is the one that feels cramped it is
-a one-line change with none of the above behind it. Confirm before building the wrong half.
+**Settled since the first draft.** The width ask was the file panel, not the left sidebar.
 
+## 52. The file viewer, and the panel with it, in a window of its own
+
+**Chosen 2026-09-07** alongside item 48, from the same six-host prototype, and deliberately split
+out of it: this is the app's first *second window*, and none of item 48's problems are its problems.
+
+**What it is.** A control in the panel header opens a second window carrying the whole panel —
+Files, Changes, Graph — beside the viewer. The main window keeps its own panel; clicking a file
+there opens it in the detached window and raises it, rather than doing nothing, which is the
+failure that looks like a broken link. Closing the detached window brings the viewer back. Inside
+it, the same measured rule as item 48 decides tree-beside-viewer or tree-above-viewer.
+
+**Why it is its own item and its own ADR.** Three problems that item 48 does not have:
+
+- **Window lifetime.** Kill-on-quit (ADR-0005) and the quit confirm (ADR-0020) both assume one
+  window. A second window that outlives the main one, or that the quit path forgets, is the orphan
+  problem on a surface we don't control.
+- **State.** Zustand over `localStorage` does not live-sync between windows. One set of open files
+  per checkout was chosen precisely so the strip *moves* rather than forking — which means the two
+  windows have to agree about it, and today nothing makes them.
+- **The route.** The detached window needs a route that renders the panel and the viewer and
+  nothing else, on the same hash history, without a session in it.
+
+None of it is started until item 48 has shipped and been lived with.
 
 ## 51. The macOS permission loop — the free half shipped, the paid half is a decision
 
