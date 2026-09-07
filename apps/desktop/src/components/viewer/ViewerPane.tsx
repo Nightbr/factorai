@@ -1,5 +1,5 @@
 import { IconButton } from '@factorai/ui';
-import { Maximize2, X } from 'lucide-react';
+import { Maximize2 } from 'lucide-react';
 import { Suspense } from 'react';
 import { FileTabs } from '@components/viewer/FileTabs';
 import { LazyDiffView, LazyFileView } from '@components/viewer/lazyViews';
@@ -48,35 +48,28 @@ export function ViewerPane() {
 
 	return (
 		<div data-testid="file-viewer" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-			<div className="flex h-9 shrink-0 items-center border-border border-b bg-card pr-1">
+			{/* `pr-2` against the button's own `ml-2`: 8px either side, so the one
+			    control in this row sits centred in its slot rather than hugging the
+			    edge it happens to be nearest. */}
+			<div className="flex h-9 shrink-0 items-center border-border border-b bg-card pr-2">
 				<FileTabs tabs={tabs} active={viewer.path} onOpen={show} onPin={pinTab} onClose={close} />
-				{/* At `p-0.5` these two 14px glyphs are 18px boxes; back to back they
-				    read as one control with a seam, and the tab's own `×` sits right
-				    against them. `gap-1.5` between the pair and `pl-2` off the strip —
-				    6 and 8, both on the spacing rhythm (DESIGN.md). One step wider
-				    than the panel header's `gap-1`, which is packing three icons into
-				    288px where this row has two. */}
-				<div className="flex shrink-0 items-center gap-1.5 pl-2">
-					{/* The demoted modal (ADR-0037). It is reached from here and from
-					    nowhere else: a file lands in this pane, and the full view is
-					    something you ask for when the column is too narrow to read in. */}
-					<IconButton
-						aria-label="Expand to full view"
-						title="Expand to full view"
-						data-testid="viewer-expand"
-						onClick={() => setExpanded(true)}
-					>
-						<Maximize2 />
-					</IconButton>
-					<IconButton
-						aria-label="Close file"
-						title="Close file"
-						data-testid="viewer-close"
-						onClick={() => viewer.path && close(viewer.path)}
-					>
-						<X />
-					</IconButton>
-				</div>
+				{/* **Expand, and nothing else.** The close that used to sit here was the
+				    active tab's `×` a second time, eight pixels away — two controls for
+				    one act, and the one on the tab is the one that says *which* file it
+				    closes. `ml-2` keeps it off the strip it scrolls beside.
+				
+				    What it opens is the demoted modal (ADR-0037), reached from here and
+				    from nowhere else: a file lands in this pane, and the full view is
+				    something you ask for when the column is too narrow to read in. */}
+				<IconButton
+					className="ml-2"
+					aria-label="Expand to full view"
+					title="Expand to full view"
+					data-testid="viewer-expand"
+					onClick={() => setExpanded(true)}
+				>
+					<Maximize2 />
+				</IconButton>
 			</div>
 
 			<Suspense

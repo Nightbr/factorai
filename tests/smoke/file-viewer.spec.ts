@@ -12,10 +12,11 @@ async function openTree(page: Page) {
 	return panel;
 }
 
-/** Close whatever the viewer has open. Escape does not do this any more: the
- *  viewer is a pane beside the agent now, not a modal over it (ADR-0037). */
+/** Close whatever the viewer has open, through the active tab's own `×` — the
+ *  only close there is. Escape does not do this any more: the viewer is a pane
+ *  beside the agent now, not a modal over it (ADR-0037). */
 async function closeViewer(page: Page) {
-	await page.getByTestId('viewer-close').click();
+	await page.locator('[data-testid="file-tab"][aria-selected="true"]').getByRole('button').click();
 }
 
 /** The expanded view — the demoted modal, reached only from the pane. */
