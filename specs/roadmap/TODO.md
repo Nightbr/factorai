@@ -166,6 +166,12 @@ swallows a keystroke breaks typing to Claude.
       and tmux's prefix (Q15). Pick something that survives a terminal-focused window, or accept
       that the toggle stays mouse-only and say so in F12.
 - [ ] Sidebar list navigation (F2: ↑/↓, Enter) belongs to the same pass.
+- [ ] **Changes-tab diff navigation — asked for by a user 2026-09-07.** Reviewing a diff means
+      closing the file and opening the next row; ↑/↓ should step from one changed file to the
+      next with the diff staying open, so a review is one pass down the list. Same pass because
+      it has the same terminal-focus problem as F2's sidebar navigation, and the F13 groups
+      (Merge / Staged / Changes) mean "next file" has to cross a group boundary rather than stop
+      at it. Read-only, so this adds no action beyond moving the selection — ADR-0009 stands.
 
 The table is also about to grow: **items 12–14** add `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`, and item
 14 wants the table's current `Cmd/Ctrl+G` (go to line) row *removed* because Monaco provides it
