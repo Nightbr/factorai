@@ -5,7 +5,9 @@ import {
 	PERSO_GROUP_ID,
 	PRO_GROUP_ID,
 	ZULU_ID,
+	FOO_ID,
 	fixtureGroupedProjects,
+	fixtureOneProjectOneSession,
 	fixtureTwoProjectsManySessions,
 	installMockBridge,
 } from './fixtures';
@@ -973,5 +975,51 @@ test.describe('sidebar header', () => {
 		// The header is a sibling above the scroller, so scrolling cannot move it.
 		expect(await header.boundingBox()).toEqual(before);
 		await expect(page.getByRole('button', { name: 'Sort and expand projects' })).toBeVisible();
+	});
+});
+
+/**
+ * The line an expanded project's sessions hang from (DESIGN.md, The Subtree
+ * Guide Rule). Its x is the parent chevron's centre, so the assertion that
+ * matters is the one that changes with depth: a project inside a group draws
+ * the guide 16px further in, and its sessions step with it.
+ */
+test.describe('session subtree guide', () => {
+	test('@smoke the guide hangs from the project chevron, and is inert', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		await page.getByRole('button', { name: 'Expand zulu' }).click();
+
+		const guide = page.getByTestId(`session-guide-${ZULU_ID}`);
+		await expect(guide).toHaveCSS('left', '13px');
+		// Decoration: the <ul>/<li> nesting is what states this to a screen reader.
+		await expect(guide).toHaveAttribute('aria-hidden', 'true');
+		await expect(guide).toHaveCSS('pointer-events', 'none');
+	});
+
+	test("@smoke inside a group it moves to that project's own chevron", async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+
+		await page.getByRole('button', { name: 'Expand Pro', exact: true }).click();
+		await page.getByRole('button', { name: 'Expand alpha' }).click();
+
+		// 29px, not 13: a grouped project is indented 16px, and its sessions hang
+		// under *it* rather than sharing an x with an ungrouped project's.
+		await expect(page.getByTestId(`session-guide-${ALPHA_ID}`)).toHaveCSS('left', '29px');
+	});
+
+	test('@smoke the guide covers the empty state too, not just session rows', async ({ page }) => {
+		const empty = fixtureOneProjectOneSession();
+		await installMockBridge(page, { ...empty, sessionsByProject: { [FOO_ID]: [] } });
+		await page.goto('/');
+
+		await page.getByRole('button', { name: 'Expand foo' }).click();
+
+		await expect(page.getByText('No sessions yet')).toBeVisible();
+		// It describes the container, so it does not wait for the container to
+		// have contents.
+		await expect(page.locator('[data-testid^="session-guide-"]')).toBeVisible();
 	});
 });

@@ -120,6 +120,7 @@
 	--color-accent-foreground: var(--accent-foreground);
 	--color-destructive: var(--destructive);
 	--color-border: var(--border);
+	--color-guide: var(--guide);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
 	--color-dev: var(--dev);
@@ -188,6 +189,14 @@
 	--accent-foreground: oklch(16% 0.008 250);
 	--destructive: oklch(58% 0.22 25);
 	--border: oklch(25% 0.008 250);
+	/* The sidebar's subtree guide (DESIGN.md, The Subtree Guide Rule), and its
+	   own token rather than a fraction of `--border` because `--border` is 7
+	   lightness points off the panel it would be drawn on: at 40% opacity the
+	   line measured 6/255 against the panel in the real renderer, which is not a
+	   line. Hand-tuned per theme, and the dark value is the *higher* of the two
+	   — a guide sits above its ground here and below it in the light theme, so
+	   neither can be a tint of the other. */
+	--guide: oklch(36% 0.008 250);
 	--input: oklch(22% 0.008 250);
 	--ring: oklch(81.3% 0.165 75);
 	--radius: 0.5rem;
@@ -256,6 +265,7 @@
 	--accent-foreground: oklch(98% 0.004 250);
 	--destructive: oklch(58% 0.22 25);
 	--border: oklch(88% 0.006 250);
+	--guide: oklch(84% 0.006 250);
 	--input: oklch(94% 0.006 250);
 	--ring: oklch(58% 0.17 75);
 	--dev: oklch(52% 0.21 300);

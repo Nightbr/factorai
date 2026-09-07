@@ -62,7 +62,7 @@ import {
 	Trash2,
 	X,
 } from 'lucide-react';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, type ReactNode, useMemo, useState } from 'react';
 
 /** How many sessions an expanded project shows. Enough to cover "the one I was
  *  just in", short enough that expanding two projects doesn't bury the list. */
@@ -540,7 +540,7 @@ export function SidebarProject({
 				</ContextMenuContent>
 			</ContextMenu>
 
-			{expanded && <SessionList project={project} />}
+			{expanded && <SessionList project={project} depth={parentGroupRowId ? 1 : 0} />}
 
 			{/* Only reached with something running. Removing is otherwise silent:
 			    it touches nothing on disk (ADR-0004) and re-adding rebuilds the
@@ -658,7 +658,26 @@ function ProfileSubmenu({ project }: { project: Project }) {
 	);
 }
 
-function SessionList({ project }: { project: Project }) {
+/**
+ * px from the sidebar's left edge to the centre of a project row's chevron, by
+ * the project's depth — the line its sessions hang from (DESIGN.md, The Subtree
+ * Guide Rule). `ml-1` (4) + the `sm` IconButton's `p-0.5` (2) + half a 14px
+ * glyph (7), plus the 16px a project inside a group is indented by.
+ *
+ * Off the 4/6/8/12 spacing rhythm on purpose: the rhythm governs the space
+ * between things, and this is an alignment to an existing glyph. Snapped to 12
+ * the line misses the chevron's tip by a pixel, which is visible in a column of
+ * ten projects even though a single one looks fine.
+ */
+const GUIDE_X = [13, 29];
+
+/** Session-row indent per depth, one group-step apart so a grouped project's
+ *  sessions hang under *it* rather than sharing an x with an ungrouped
+ *  project's. Groups do not nest (`SidebarChild` is always a project), so two
+ *  entries is the whole ladder. */
+const ROW_PAD = ['pl-8', 'pl-12'];
+
+function SessionList({ project, depth }: { project: Project; depth: number }) {
 	// `open` for what you have on the strip, `bySession` for what is running.
 	// `pendingSessions` needs the latter: a never-messaged session that is not
 	// running has no transcript and no process, so a permanent "New session" row
@@ -696,81 +715,137 @@ function SessionList({ project }: { project: Project }) {
 	// what is about to go with the parent.
 	const subagentCounts = useMemo(() => countSubagents(sessionsQ.data ?? []), [sessionsQ.data]);
 
-	if (sessionsQ.isPending) return <Row muted>Loading…</Row>;
-	if (sessions.length === 0 && pending.length === 0) return <Row muted>No sessions yet</Row>;
+	if (sessionsQ.isPending)
+		return (
+			<Subtree depth={depth} projectId={project.id}>
+				<Row depth={depth} muted>
+					Loading…
+				</Row>
+			</Subtree>
+		);
+	if (sessions.length === 0 && pending.length === 0)
+		return (
+			<Subtree depth={depth} projectId={project.id}>
+				<Row depth={depth} muted>
+					No sessions yet
+				</Row>
+			</Subtree>
+		);
 
 	const hidden = countHidden(sessionsQ.data ?? [], sessions.length);
 
 	return (
-		<ul className="mb-1" data-testid={`sidebar-sessions-${project.id}`}>
-			{/* Above the indexed rows: it is the newest thing here by definition,
+		<Subtree depth={depth} projectId={project.id}>
+			<ul className="mb-1" data-testid={`sidebar-sessions-${project.id}`}>
+				{/* Above the indexed rows: it is the newest thing here by definition,
 			    and it is the one you are looking at. */}
-			{pending.map((p) => (
-				<li key={p.sessionId}>
-					<Link
-						to="/projects/$projectId/sessions/$sessionId"
-						params={{ projectId: project.id, sessionId: p.sessionId }}
-						title={
-							routineOrigins[p.sessionId]
-								? `Started by routine — ${routineOrigins[p.sessionId].routineName}`
-								: 'New session — it takes its title from your first message'
-						}
-						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
-						activeProps={{ className: 'bg-secondary text-foreground' }}
-					>
-						{routineOrigins[p.sessionId] && (
-							<RoutineOrigin
-								name={routineOrigins[p.sessionId].routineName}
-								startedAt={routineOrigins[p.sessionId].startedAt}
-								clock24={clock24}
+				{pending.map((p) => (
+					<li key={p.sessionId}>
+						<Link
+							to="/projects/$projectId/sessions/$sessionId"
+							params={{ projectId: project.id, sessionId: p.sessionId }}
+							title={
+								routineOrigins[p.sessionId]
+									? `Started by routine — ${routineOrigins[p.sessionId].routineName}`
+									: 'New session — it takes its title from your first message'
+							}
+							className={`flex items-center gap-2 py-1.5 pr-2 ${ROW_PAD[depth]} text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground`}
+							activeProps={{ className: 'bg-secondary text-foreground' }}
+						>
+							{routineOrigins[p.sessionId] && (
+								<RoutineOrigin
+									name={routineOrigins[p.sessionId].routineName}
+									startedAt={routineOrigins[p.sessionId].startedAt}
+									clock24={clock24}
+								/>
+							)}
+							<span className="min-w-0 flex-1 truncate">
+								{routineOrigins[p.sessionId]
+									? routineSessionLabel(routineOrigins[p.sessionId], clock24)
+									: 'New session'}
+							</span>
+							<StatusDot
+								status={p.status}
+								background={open[p.sessionId]?.background ?? true}
+								className="size-1.5"
 							/>
-						)}
-						<span className="min-w-0 flex-1 truncate">
-							{routineOrigins[p.sessionId]
-								? routineSessionLabel(routineOrigins[p.sessionId], clock24)
-								: 'New session'}
-						</span>
-						<StatusDot
-							status={p.status}
-							background={open[p.sessionId]?.background ?? true}
-							className="size-1.5"
-						/>
-					</Link>
-				</li>
-			))}
-			{sessions.map((session, i) => (
-				<Fragment key={session.id}>
-					{/* **The divider is the mark, not a per-row icon.** Two pins in a
+						</Link>
+					</li>
+				))}
+				{sessions.map((session, i) => (
+					<Fragment key={session.id}>
+						{/* **The divider is the mark, not a per-row icon.** Two pins in a
 					    list read as a broken sort unless something says where the
 					    exemption from recency ends, and a rule costs one row of height
 					    where a pin glyph on every pinned row costs a column on all of
 					    them. Only drawn between the two blocks: no pins, or nothing but
 					    pins, and there is no boundary to show. */}
-					{session.pinned === false && i > 0 && sessions[i - 1]?.pinned === true && (
-						<li aria-hidden className="mx-2 my-1 border-border/60 border-t" />
-					)}
-					<SessionRow
-						session={session}
-						projectId={project.id}
-						mark={open[session.id]}
-						subagentCount={subagentCounts[session.id] ?? 0}
-						clock24={clock24}
-					/>
-				</Fragment>
-			))}
-			{hidden > 0 && (
-				// Not a scroll-forever list: the rest live on the project page.
-				<li>
-					<Link
-						to="/projects/$id"
-						params={{ id: project.id }}
-						className="block py-1.5 pr-2 pl-8 text-muted-foreground/60 text-sm transition-colors hover:text-foreground"
-					>
-						{hidden} more…
-					</Link>
-				</li>
-			)}
-		</ul>
+						{session.pinned === false && i > 0 && sessions[i - 1]?.pinned === true && (
+							<li aria-hidden className="mx-2 my-1 border-border/60 border-t" />
+						)}
+						<SessionRow
+							session={session}
+							projectId={project.id}
+							mark={open[session.id]}
+							subagentCount={subagentCounts[session.id] ?? 0}
+							clock24={clock24}
+							depth={depth}
+						/>
+					</Fragment>
+				))}
+				{hidden > 0 && (
+					// Not a scroll-forever list: the rest live on the project page.
+					<li>
+						<Link
+							to="/projects/$id"
+							params={{ id: project.id }}
+							className={`block py-1.5 pr-2 ${ROW_PAD[depth]} text-muted-foreground/60 text-sm transition-colors hover:text-foreground`}
+						>
+							{hidden} more…
+						</Link>
+					</li>
+				)}
+			</ul>
+		</Subtree>
+	);
+}
+
+/**
+ * The guide line an expanded project's sessions hang from, plus whatever block
+ * of rows it describes (DESIGN.md, The Subtree Guide Rule).
+ *
+ * Wraps the block rather than living on the `<ul>` because the block is not
+ * always a `<ul>`: `Loading…` and `No sessions yet` are single paragraphs, and
+ * a guide that skipped them would start and stop depending on how far the query
+ * had got.
+ */
+function Subtree({
+	depth,
+	projectId,
+	children,
+}: {
+	depth: number;
+	projectId: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className="relative">
+			{children}
+			{/* Last in the DOM and positioned, so it paints over the rows' own
+			    full-bleed hover and selection fills. A line interrupted by the
+			    selected row reads as a rendering bug rather than as a second
+			    selection cue — and selection is already carried by the fill.
+
+			    Inert and `aria-hidden`: the `<ul>`/`<li>` nesting already states
+			    this to a screen reader, and a decoration that took a click would
+			    owe a keyboard path the chevron above it already provides. */}
+			<span
+				aria-hidden
+				data-testid={`session-guide-${projectId}`}
+				className="pointer-events-none absolute inset-y-0 w-px bg-guide"
+				style={{ left: GUIDE_X[depth] }}
+			/>
+		</div>
 	);
 }
 
@@ -783,6 +858,8 @@ interface SessionRowProps {
 	/** Sub-agents that go with it, named in the confirm dialog. */
 	subagentCount: number;
 	clock24: boolean;
+	/** Its project's depth, so the row lands on the guide's indent (ROW_PAD). */
+	depth: number;
 }
 
 /**
@@ -798,7 +875,7 @@ interface SessionRowProps {
  * no index row; there is nothing to delete, and closing its tab is what disposes
  * of it.
  */
-function SessionRow({ session, projectId, mark, subagentCount, clock24 }: SessionRowProps) {
+function SessionRow({ session, projectId, mark, subagentCount, clock24, depth }: SessionRowProps) {
 	const deleteSession = useDeleteSession();
 	const setPinned = useSetSessionPinned();
 	// A pin that failed says so on the row, the same way a failed copy does: the
@@ -882,7 +959,7 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 								? `${title} · ran ${formatStamp(new Date(session.routineStartedAt), clock24)}`
 								: title
 						}
-						className="flex items-center gap-2 py-1.5 pr-2 pl-8 text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground"
+						className={`flex items-center gap-2 py-1.5 pr-2 ${ROW_PAD[depth]} text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground`}
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						{session.routineId && (
@@ -1028,10 +1105,10 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24 }: Sessio
 	);
 }
 
-function Row({ children, muted }: { children: string; muted?: boolean }) {
+function Row({ children, depth, muted }: { children: string; depth: number; muted?: boolean }) {
 	return (
 		<p
-			className={`py-1.5 pl-8 text-sm ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
+			className={`py-1.5 ${ROW_PAD[depth]} text-sm ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
 		>
 			{children}
 		</p>
