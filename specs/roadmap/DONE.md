@@ -3,6 +3,44 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **An expanded project's sessions hang from a subtree guide (`DESIGN.md`, The Subtree Guide
+  Rule)** — 2026-09-07, user ask, same day. A session row was indented under its project and
+  marked as belonging to it by nothing else, so a sidebar with two projects open read as one flat
+  list of rows at two different left edges. A 1px line now runs the height of each expanded
+  project's session block.
+
+  **It hangs from the parent chevron's centre — 13px, or 29px inside a group — measured off the
+  glyph rather than taken from the 4/6/8/12 spacing rhythm.** Snapped to the grid the line misses
+  the tip by a pixel, which is invisible on one project and visible down a column of ten. The
+  guide spans *every* row in the block, placeholders and `N more…` included: it describes the
+  container, and one that started where the query finished would move as data arrived. That is
+  also why it wraps the block rather than living on the `<ul>` — `Loading…` and `No sessions yet`
+  are bare paragraphs. It draws **over** the rows' full-bleed hover and selection fills, since an
+  interrupted line reads as a rendering bug and selection is already carried by the fill, and it
+  is inert and `aria-hidden` because the `<ul>`/`<li>` nesting already says this to a screen
+  reader.
+
+  **A grouped project's sessions had been sharing an x with an ungrouped project's.** Their rows
+  stayed at `pl-8` while the project row itself was indented `pl-4`, so they appeared to hang from
+  the wrong parent. The indent now steps with the guide (`pl-8` → `pl-12`); groups do not nest
+  (`SidebarChild` is always a project), so two rungs is the whole ladder.
+
+  **The pinned/unpinned divider stops beside the guide instead of crossing it.** At a fixed `mx-2`
+  it began 21px left of the guide inside a group and ran straight through the trunk, and two
+  hairlines meeting at a T read as a rendering artifact rather than as two marks. It starts 4px
+  right of the guide now, off the same measurement, so the clearance holds at both depths.
+
+  **Both hairlines are `border/60`, and the value was picked by rendering the ladder in the real
+  window** rather than from the token names. Deltas against the panel in the dark theme:
+  `border/20` 3/255 (invisible), `border/40` 6/255 (fades at a glance), `border/60` 10/255
+  (shipped), a hand-tuned per-theme `--guide` token ~43/255 (too loud for a mark repeated once per
+  expanded project). The token pair was written, shipped in the first commit and then removed —
+  the divider a row away is `border/60`, and two rules that close at different weights read as one
+  of them being broken. Raise both together or neither.
+
+  Verified in the real Tauri window as well as under Playwright, because the two disagree here:
+  `border/40` looked defensible from the token name and measured 6/255 on the actual panel.
+
 - **A profile's store is watched the moment its `projects/` directory appears (spec
   `05-features.md` F25, § "The scan and the watcher are per profile")** — 2026-09-05, found in
   use the day after profiles shipped. A project assigned to a profile created that evening lost
