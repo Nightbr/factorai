@@ -21,10 +21,27 @@ export const MIN_PANEL_WIDTH = 256;
 export const MAX_PANEL_WIDTH = 600;
 export const DEFAULT_PANEL_WIDTH = 288;
 
-/** Pure so the drag maths can be unit-tested without a pointer. */
-export function clampPanelWidth(width: number): number {
+/** What the panel is worth when it holds the tree *and* the viewer under it
+ *  (ADR-0037). A second remembered width rather than one shared with the column
+ *  layout: 288px is a good tree and a bad split, and 420 is the other way
+ *  round. */
+export const DEFAULT_SPLIT_PANEL_WIDTH = 420;
+
+/** Pure so the drag maths can be unit-tested without a pointer.
+ *
+ *  **The ceiling is an argument now.** `MAX_PANEL_WIDTH`'s fixed 600 was chosen
+ *  when the panel only ever held a tree; with the viewer inside it the ceiling
+ *  has to be the shell minus everything that is not the panel, or a laptop
+ *  window ends up with a wide panel and a 300px session (ADR-0037,
+ *  `lib/viewerLayout.ts`). Called with no ceiling it behaves exactly as it did.
+ *
+ *  A ceiling under the floor loses to the floor: a shell too narrow for both is
+ *  a shell where the panel is already at its minimum, and returning something
+ *  below `MIN_PANEL_WIDTH` would give the panel a header it cannot lay out. */
+export function clampPanelWidth(width: number, max: number = MAX_PANEL_WIDTH): number {
 	if (!Number.isFinite(width)) return DEFAULT_PANEL_WIDTH;
-	return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(width)));
+	const ceiling = Number.isFinite(max) ? max : MAX_PANEL_WIDTH;
+	return Math.max(MIN_PANEL_WIDTH, Math.min(ceiling, Math.round(width)));
 }
 
 /** Shorter than this and the commit detail can't show a subject and one file
@@ -52,6 +69,20 @@ const LEGACY_DEFAULT_DETAIL_HEIGHT = 200;
 export function clampDetailHeight(height: number): number {
 	if (!Number.isFinite(height)) return DEFAULT_DETAIL_HEIGHT;
 	return Math.min(MAX_DETAIL_HEIGHT, Math.max(MIN_DETAIL_HEIGHT, Math.round(height)));
+}
+
+/** The viewer's height when it is split under the tree (ADR-0037). Shorter than
+ *  the floor and Monaco shows four lines and its own chrome; taller than the
+ *  ceiling and the tree it is meant to be browsed from is gone. The shape is
+ *  the graph's detail pane above — the values are not, because that pane docks
+ *  under a graph and this one docks under a tree you keep clicking. */
+export const MIN_VIEWER_HEIGHT = 140;
+export const MAX_VIEWER_HEIGHT = 900;
+export const DEFAULT_VIEWER_HEIGHT = 340;
+
+export function clampViewerHeight(height: number): number {
+	if (!Number.isFinite(height)) return DEFAULT_VIEWER_HEIGHT;
+	return Math.min(MAX_VIEWER_HEIGHT, Math.max(MIN_VIEWER_HEIGHT, Math.round(height)));
 }
 
 /** Shorter than this and the shell is a two-line window that scrolls its own
@@ -142,11 +173,20 @@ interface PanelState {
 	 *  Persisted, and **one value for every session** — see
 	 *  `DEFAULT_SHELL_HEIGHT`. */
 	shellHeight: number;
+	/** The panel's width while the viewer is split under the tree (ADR-0037).
+	 *  Separate from `width` so each layout restores what you dragged *it* to. */
+	splitWidth: number;
+	/** Height of the viewer split under the tree, in px (ADR-0037). */
+	viewerHeight: number;
 
 	toggle: () => void;
 	setOpen: (open: boolean) => void;
 	setTab: (tab: PanelTab) => void;
-	setWidth: (width: number) => void;
+	/** `max` is the shell-relative ceiling (ADR-0037); omitted, the historical
+	 *  `MAX_PANEL_WIDTH` applies. */
+	setWidth: (width: number, max?: number) => void;
+	setSplitWidth: (width: number, max?: number) => void;
+	setViewerHeight: (height: number) => void;
 	setDetailHeight: (height: number) => void;
 	setShellHeight: (height: number) => void;
 	toggleExpanded: (checkout: string, path: string) => void;
@@ -174,7 +214,7 @@ interface PanelState {
  *  the other is a migration that silently drops a preference. */
 type PersistedPanelState = Pick<
 	PanelState,
-	'open' | 'width' | 'tab' | 'detailHeight' | 'shellHeight'
+	'open' | 'width' | 'tab' | 'detailHeight' | 'shellHeight' | 'splitWidth' | 'viewerHeight'
 >;
 
 /** `factorai.panel` as v2 wrote it. Only the v2→v3 migration below sees this
@@ -192,11 +232,15 @@ export const usePanelStore = create<PanelState>()(
 			anchorPath: null,
 			detailHeight: DEFAULT_DETAIL_HEIGHT,
 			shellHeight: DEFAULT_SHELL_HEIGHT,
+			splitWidth: DEFAULT_SPLIT_PANEL_WIDTH,
+			viewerHeight: DEFAULT_VIEWER_HEIGHT,
 
 			toggle: () => set((s) => ({ open: !s.open })),
 			setOpen: (open) => set({ open }),
 			setTab: (tab) => set({ tab }),
-			setWidth: (width) => set({ width: clampPanelWidth(width) }),
+			setWidth: (width, max) => set({ width: clampPanelWidth(width, max) }),
+			setSplitWidth: (width, max) => set({ splitWidth: clampPanelWidth(width, max) }),
+			setViewerHeight: (height) => set({ viewerHeight: clampViewerHeight(height) }),
 			setDetailHeight: (height) => set({ detailHeight: clampDetailHeight(height) }),
 			setShellHeight: (height) => set({ shellHeight: clampShellHeight(height) }),
 
@@ -296,6 +340,8 @@ export const usePanelStore = create<PanelState>()(
 				tab: s.tab,
 				detailHeight: s.detailHeight,
 				shellHeight: s.shellHeight,
+				splitWidth: s.splitWidth,
+				viewerHeight: s.viewerHeight,
 			}),
 		},
 	),

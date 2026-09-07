@@ -3,6 +3,10 @@ import {
 	clampDetailHeight,
 	clampPanelWidth,
 	clampShellHeight,
+	clampViewerHeight,
+	DEFAULT_VIEWER_HEIGHT,
+	MAX_VIEWER_HEIGHT,
+	MIN_VIEWER_HEIGHT,
 	DEFAULT_DETAIL_HEIGHT,
 	DEFAULT_PANEL_WIDTH,
 	DEFAULT_SHELL_HEIGHT,
@@ -26,6 +30,15 @@ describe('clampPanelWidth', () => {
 		expect(clampPanelWidth(10)).toBe(MIN_PANEL_WIDTH);
 		expect(clampPanelWidth(-500)).toBe(MIN_PANEL_WIDTH);
 		expect(clampPanelWidth(5000)).toBe(MAX_PANEL_WIDTH);
+	});
+
+	it('takes a shell-relative ceiling over the historical one (ADR-0037)', () => {
+		expect(clampPanelWidth(5000, 820)).toBe(820);
+		expect(clampPanelWidth(700, 820)).toBe(700);
+	});
+
+	it('lets the floor win over a ceiling below it', () => {
+		expect(clampPanelWidth(400, 100)).toBe(MIN_PANEL_WIDTH);
 	});
 
 	it('rounds sub-pixel drag deltas', () => {
@@ -109,5 +122,19 @@ describe('withExpanded', () => {
 		const before = new Set(['/p']);
 		withExpanded(before, ['/p/src']);
 		expect([...before]).toEqual(['/p']);
+	});
+});
+
+describe('clampViewerHeight', () => {
+	it('passes through heights inside the range', () => {
+		expect(clampViewerHeight(300)).toBe(300);
+		expect(clampViewerHeight(MIN_VIEWER_HEIGHT)).toBe(MIN_VIEWER_HEIGHT);
+		expect(clampViewerHeight(MAX_VIEWER_HEIGHT)).toBe(MAX_VIEWER_HEIGHT);
+	});
+
+	it('clamps a drag past either end, and a number that is not one', () => {
+		expect(clampViewerHeight(0)).toBe(MIN_VIEWER_HEIGHT);
+		expect(clampViewerHeight(4000)).toBe(MAX_VIEWER_HEIGHT);
+		expect(clampViewerHeight(Number.NaN)).toBe(DEFAULT_VIEWER_HEIGHT);
 	});
 });
