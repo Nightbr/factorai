@@ -11,7 +11,17 @@ import { checkoutLabel } from '@hooks/useWorktrees';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { PanelEmpty as Empty } from '@components/layout/PanelEmpty';
 import { PanelResizer } from '@components/layout/PanelResizer';
-import { clampPanelWidth, type PanelTab, usePanelStore } from '@store/panelStore';
+import { ViewerPane } from '@components/viewer/ViewerPane';
+import { useFileViewer } from '@hooks/useFileViewer';
+import { maxPanelWidth } from '@lib/viewerLayout';
+import {
+	clampPanelWidth,
+	clampViewerHeight,
+	type PanelTab,
+	usePanelStore,
+} from '@store/panelStore';
+import { useSidebarStore } from '@store/sidebarStore';
+import { useViewerStore } from '@store/viewerStore';
 
 /**
  * Right-hand file tree for the active project (specs/05-features.md F12).
@@ -24,26 +34,73 @@ export function FileTreePanel() {
 	const open = usePanelStore((s) => s.open);
 	const width = usePanelStore((s) => s.width);
 	const setWidth = usePanelStore((s) => s.setWidth);
+	const splitWidth = usePanelStore((s) => s.splitWidth);
+	const viewerHeight = usePanelStore((s) => s.viewerHeight);
+	const setViewerHeight = usePanelStore((s) => s.setViewerHeight);
+	const setSplitWidth = usePanelStore((s) => s.setSplitWidth);
+	const viewerWidth = usePanelStore((s) => s.viewerWidth);
+	const shellWidth = useViewerStore((s) => s.shellWidth);
+	const host = useViewerStore((s) => s.host);
+	const sidebarWidth = useSidebarStore((s) => s.width);
+	const viewer = useFileViewer();
 
 	if (!open) return null;
+
+	// **The split's own width** (ADR-0037). A panel holding the tree *and* the
+	// viewer wants more than one holding a tree, and each layout restores what
+	// you dragged it to rather than sharing one number that is wrong for one of
+	// them.
+	const split = host === 'split' && viewer.path !== null;
+	const size = split ? splitWidth : width;
+	const ceiling = maxPanelWidth({
+		shellWidth,
+		sidebarWidth,
+		viewerWidth,
+		host,
+		viewerOpen: viewer.path !== null,
+	});
+	const setSize = (next: number) =>
+		split ? setSplitWidth(next, ceiling) : setWidth(next, ceiling);
 
 	return (
 		<>
 			<PanelResizer
-				size={width}
-				onSize={setWidth}
+				size={size}
+				onSize={setSize}
 				edge="left"
 				label="Resize file tree"
-				clamp={clampPanelWidth}
+				clamp={(next) => clampPanelWidth(next, ceiling)}
 			/>
 			<aside
 				data-testid="file-tree-panel"
-				style={{ width }}
+				style={{ width: size }}
 				// `select-none`: dragging the resizer sweeps the cursor across these
 				// rows, and double-click-to-open would otherwise select the filename.
 				className="flex shrink-0 select-none flex-col overflow-hidden border-l border-border bg-card"
 			>
 				<PanelBody />
+				{/* **The narrow-window host** (ADR-0037): the same `ViewerPane` the
+				    shell renders in a column of its own, docked under the tree when
+				    four columns will not fit. The mechanism is the graph's detail
+				    pane — a `PanelResizer` on the top edge and a clamped height. */}
+				{split && (
+					<>
+						<PanelResizer
+							size={viewerHeight}
+							onSize={setViewerHeight}
+							edge="top"
+							label="Resize file viewer"
+							clamp={clampViewerHeight}
+						/>
+						<div
+							data-testid="viewer-split"
+							style={{ height: viewerHeight }}
+							className="flex shrink-0 flex-col overflow-hidden"
+						>
+							<ViewerPane />
+						</div>
+					</>
+				)}
 			</aside>
 		</>
 	);

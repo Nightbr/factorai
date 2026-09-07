@@ -11,6 +11,7 @@ import { DECORATION_CLASSES, useGitDecorations } from '@hooks/useGitDecorations'
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { expandedFor, usePanelStore } from '@store/panelStore';
+import { useViewerStore } from '@store/viewerStore';
 
 /** px of indent per level. Tight — the panel is narrow. */
 const INDENT = 12;
@@ -97,11 +98,11 @@ export function FileTreeNode({
 		if (canExpand) {
 			toggleExpanded(root, entry.path);
 		} else if (!entry.isDir) {
-			// Single click opens the viewer (F7). "Open in default app" lives in
-			// the viewer's header rather than on a double-click: the first click of
-			// a double-click already opens the modal, and the second would land on
-			// its overlay.
-			openViewer(entry.path);
+			// Single click opens the viewer (F7) — as a **preview** tab, which the
+			// next single click replaces (ADR-0037). It is what stops clicking down
+			// a directory leaving forty tabs behind, and it is why a double-click
+			// now has something to mean: it pins.
+			openViewer(entry.path, { preview: true });
 		}
 	}
 
@@ -160,6 +161,12 @@ export function FileTreeNode({
 								: 'text-muted-foreground hover:bg-secondary/50'
 						}`}
 						onClick={handleClick}
+						// Pins the preview this row's first click opened, the same
+						// gesture the tab itself takes (ADR-0037). Harmless on a
+						// directory: there is no tab to pin.
+						onDoubleClick={() => {
+							if (!entry.isDir) useViewerStore.getState().pinTab(entry.path);
+						}}
 						// Right-clicking *inside* a selection acts on the whole of it, the
 						// way every file manager does; right-clicking outside one
 						// replaces it. Either way the menu acts on rows you can see are

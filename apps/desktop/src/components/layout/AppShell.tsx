@@ -1,8 +1,20 @@
 import type { ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { FileTreePanel } from '@components/files/FileTreePanel';
 import { ShellDock } from '@components/terminal/ShellDock';
+import { ViewerPane } from '@components/viewer/ViewerPane';
+import { useActiveCheckout } from '@hooks/useActiveCheckout';
+import { useFileViewer } from '@hooks/useFileViewer';
 import { isMacOS } from '@lib/platform';
+import {
+	clampViewerWidth,
+	maxViewerWidth,
+	resolveViewerHost,
+	type ViewerHost,
+} from '@lib/viewerLayout';
+import { usePanelStore } from '@store/panelStore';
 import { clampSidebarWidth, useSidebarStore } from '@store/sidebarStore';
+import { tabsFor, useViewerStore } from '@store/viewerStore';
 import { PanelResizer } from './PanelResizer';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -14,6 +26,69 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
 	const sidebarWidth = useSidebarStore((s) => s.width);
 	const setSidebarWidth = useSidebarStore((s) => s.setWidth);
+	const panelOpen = usePanelStore((s) => s.open);
+	const panelWidth = usePanelStore((s) => s.width);
+	const viewerWidth = usePanelStore((s) => s.viewerWidth);
+	const setViewerWidth = usePanelStore((s) => s.setViewerWidth);
+	const viewer = useFileViewer();
+
+	const shellWidth = useViewerStore((s) => s.shellWidth);
+	const setShellWidth = useViewerStore((s) => s.setShellWidth);
+	const host = useViewerStore((s) => s.host);
+	const setHost = useViewerStore((s) => s.setHost);
+	const setCheckout = useViewerStore((s) => s.setCheckout);
+
+	// **Which checkout the open files belong to** (F21, ADR-0037). Set from here
+	// rather than from the panel because the panel can be closed, and a file
+	// opened from a terminal link with no panel showing still belongs to a tree.
+	const { root } = useActiveCheckout();
+	useEffect(() => {
+		setCheckout(root ?? null);
+	}, [root, setCheckout]);
+
+	// The shell row measures itself, because the host rule is about the room
+	// there actually is (ADR-0037) — the window's own size says nothing once the
+	// sidebar has been dragged to 480.
+	const row = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const el = row.current;
+		if (!el) return;
+		setShellWidth(el.getBoundingClientRect().width);
+		const observer = new ResizeObserver(([entry]) => setShellWidth(entry.contentRect.width));
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, [setShellWidth]);
+
+	// A closed panel is not a 288px panel: with the tree hidden the column has
+	// that much more room, and the rule has to see it.
+	const effectivePanelWidth = panelOpen ? panelWidth : 0;
+	const nextHost: ViewerHost = resolveViewerHost({
+		shellWidth,
+		sidebarWidth,
+		columnPanelWidth: effectivePanelWidth,
+		current: host,
+	});
+	useEffect(() => {
+		setHost(nextHost);
+	}, [nextHost, setHost]);
+
+	// **Restore what was open, once per checkout** (ADR-0037). `?file=` does not
+	// persist — it is the live answer — so the last file read in this checkout is
+	// what re-seeds it on launch and when you come back to a project. A URL that
+	// already names a file wins: a deep link, a terminal click and the IDE
+	// bridge all arrive that way and must not be overwritten by history.
+	const restored = useRef(new Set<string>());
+	useEffect(() => {
+		if (!root || viewer.path || restored.current.has(root)) return;
+		restored.current.add(root);
+		const state = useViewerStore.getState();
+		const last = state.activeByCheckout[root];
+		if (!last) return;
+		const tab = tabsFor(state, root).find((t) => t.path === last);
+		viewer.open(last, { diff: tab?.diff ?? undefined });
+	}, [root, viewer.path, viewer.open]);
+
+	const showColumn = host === 'column' && viewer.path !== null;
 
 	return (
 		// The border is what gives the app a defined silhouette against the
@@ -38,7 +113,7 @@ export function AppShell({ children }: AppShellProps) {
 			}`}
 		>
 			<TopBar />
-			<div className="flex min-h-0 flex-1">
+			<div ref={row} className="flex min-h-0 flex-1">
 				<aside
 					data-testid="sidebar"
 					style={{ width: sidebarWidth }}
@@ -64,6 +139,36 @@ export function AppShell({ children }: AppShellProps) {
 					<div className="min-h-0 flex-1 overflow-hidden">{children}</div>
 					<ShellDock />
 				</section>
+				{/* **The viewer's own column** (ADR-0037), between the session and the
+				    tree. Only where the shell can hold four columns — under that
+				    width the same pane is rendered by `FileTreePanel`, split under the
+				    tree — and only with a file open, so nothing open gives the
+				    session the width back. */}
+				{showColumn && (
+					<>
+						<PanelResizer
+							size={viewerWidth}
+							onSize={(width) =>
+								setViewerWidth(width, maxViewerWidth(shellWidth, sidebarWidth, effectivePanelWidth))
+							}
+							edge="left"
+							label="Resize file viewer"
+							clamp={(width) =>
+								clampViewerWidth(
+									width,
+									maxViewerWidth(shellWidth, sidebarWidth, effectivePanelWidth),
+								)
+							}
+						/>
+						<aside
+							data-testid="viewer-column"
+							style={{ width: viewerWidth }}
+							className="flex shrink-0 flex-col overflow-hidden border-l border-border"
+						>
+							<ViewerPane />
+						</aside>
+					</>
+				)}
 				{/* Renders nothing when collapsed; follows the route's project. */}
 				<FileTreePanel />
 			</div>

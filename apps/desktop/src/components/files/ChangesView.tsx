@@ -69,7 +69,10 @@ function ChangeRow({ change }: { change: GitChange }) {
 			additions={change.additions}
 			deletions={change.deletions}
 			isBinary={change.isBinary}
-			onClick={() => open(change.path, { diff })}
+			// A preview tab, like a click in the tree: one path is one tab whichever
+			// list you came from, and browsing a change set should not fill the
+			// strip either (ADR-0037).
+			onClick={() => open(change.path, { diff, preview: true })}
 		/>
 	);
 }

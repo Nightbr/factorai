@@ -11,6 +11,7 @@ import { useRoutinesChanged } from '@hooks/useRoutinesChanged';
 import { useSessionsSync } from '@hooks/useSessionsSync';
 import { useWatchedOpenFile } from '@hooks/useWatchedOpenFile';
 import { useSettingsModal } from '@hooks/useSettingsModal';
+import { useViewerStore } from '@store/viewerStore';
 import { isSettingsSection, type SettingsSection } from '@lib/settingsDraft';
 import { cmd, events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
@@ -21,6 +22,8 @@ function RootLayout() {
 	const setProgress = useIndexerStore((s) => s.setProgress);
 	const viewer = useFileViewer();
 	const settings = useSettingsModal();
+	const expanded = useViewerStore((s) => s.expanded);
+	const setExpanded = useViewerStore((s) => s.setExpanded);
 	const { sessionId } = useParams({ strict: false }) as { sessionId?: string };
 
 	// The `ide:open-file` listener is registered once for the app's life, so it
@@ -208,11 +211,15 @@ function RootLayout() {
 			<AppShell>
 				<Outlet />
 			</AppShell>
+			{/* **The demoted modal** (ADR-0037). A file lands in `ViewerPane` now —
+			    a column of its own, or a split under the tree. This is the expand
+			    the pane's header asks for, so it renders only while expanded and
+			    closing it puts the file back in the pane rather than closing it. */}
 			<FileViewerModal
-				path={viewer.path}
+				path={expanded ? viewer.path : null}
 				diff={viewer.diff}
 				position={viewer.position}
-				onClose={viewer.close}
+				onClose={() => setExpanded(false)}
 				onOpenPath={viewer.open}
 			/>
 			<SettingsModal

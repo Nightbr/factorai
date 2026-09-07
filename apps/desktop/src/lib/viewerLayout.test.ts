@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+	clampViewerWidth,
 	COLUMN_GUTTERS,
+	DEFAULT_VIEWER_WIDTH,
 	columnThreshold,
 	HOST_DEAD_BAND,
 	MIN_SESSION_WIDTH,
@@ -109,5 +111,21 @@ describe('maxViewerWidth', () => {
 
 	it('and at the threshold leaves exactly the viewer minimum', () => {
 		expect(maxViewerWidth(columnThreshold(SIDEBAR, PANEL), SIDEBAR, PANEL)).toBe(MIN_VIEWER_WIDTH);
+	});
+});
+
+describe('clampViewerWidth', () => {
+	it('holds the width between its floor and what the shell leaves', () => {
+		expect(clampViewerWidth(500, 900)).toBe(500);
+		expect(clampViewerWidth(50, 900)).toBe(MIN_VIEWER_WIDTH);
+		expect(clampViewerWidth(2000, 900)).toBe(900);
+	});
+
+	it('falls back to the default for a width that is not a number', () => {
+		expect(clampViewerWidth(Number.NaN, 900)).toBe(DEFAULT_VIEWER_WIDTH);
+	});
+
+	it('lets the floor win over a ceiling below it', () => {
+		expect(clampViewerWidth(500, 100)).toBe(MIN_VIEWER_WIDTH);
 	});
 });

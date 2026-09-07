@@ -1,4 +1,5 @@
 import { legacyDiffInline } from '@store/diffInlineHandover';
+import { clampViewerWidth, DEFAULT_VIEWER_WIDTH } from '@lib/viewerLayout';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -176,6 +177,9 @@ interface PanelState {
 	/** The panel's width while the viewer is split under the tree (ADR-0037).
 	 *  Separate from `width` so each layout restores what you dragged *it* to. */
 	splitWidth: number;
+	/** The viewer's own column width, when the shell is wide enough for one
+	 *  (ADR-0037). Its ceiling is the shell's, so the setter takes one. */
+	viewerWidth: number;
 	/** Height of the viewer split under the tree, in px (ADR-0037). */
 	viewerHeight: number;
 
@@ -186,6 +190,7 @@ interface PanelState {
 	 *  `MAX_PANEL_WIDTH` applies. */
 	setWidth: (width: number, max?: number) => void;
 	setSplitWidth: (width: number, max?: number) => void;
+	setViewerWidth: (width: number, max: number) => void;
 	setViewerHeight: (height: number) => void;
 	setDetailHeight: (height: number) => void;
 	setShellHeight: (height: number) => void;
@@ -214,7 +219,14 @@ interface PanelState {
  *  the other is a migration that silently drops a preference. */
 type PersistedPanelState = Pick<
 	PanelState,
-	'open' | 'width' | 'tab' | 'detailHeight' | 'shellHeight' | 'splitWidth' | 'viewerHeight'
+	| 'open'
+	| 'width'
+	| 'tab'
+	| 'detailHeight'
+	| 'shellHeight'
+	| 'splitWidth'
+	| 'viewerWidth'
+	| 'viewerHeight'
 >;
 
 /** `factorai.panel` as v2 wrote it. Only the v2→v3 migration below sees this
@@ -233,6 +245,7 @@ export const usePanelStore = create<PanelState>()(
 			detailHeight: DEFAULT_DETAIL_HEIGHT,
 			shellHeight: DEFAULT_SHELL_HEIGHT,
 			splitWidth: DEFAULT_SPLIT_PANEL_WIDTH,
+			viewerWidth: DEFAULT_VIEWER_WIDTH,
 			viewerHeight: DEFAULT_VIEWER_HEIGHT,
 
 			toggle: () => set((s) => ({ open: !s.open })),
@@ -240,6 +253,7 @@ export const usePanelStore = create<PanelState>()(
 			setTab: (tab) => set({ tab }),
 			setWidth: (width, max) => set({ width: clampPanelWidth(width, max) }),
 			setSplitWidth: (width, max) => set({ splitWidth: clampPanelWidth(width, max) }),
+			setViewerWidth: (width, max) => set({ viewerWidth: clampViewerWidth(width, max) }),
 			setViewerHeight: (height) => set({ viewerHeight: clampViewerHeight(height) }),
 			setDetailHeight: (height) => set({ detailHeight: clampDetailHeight(height) }),
 			setShellHeight: (height) => set({ shellHeight: clampShellHeight(height) }),
@@ -341,6 +355,7 @@ export const usePanelStore = create<PanelState>()(
 				detailHeight: s.detailHeight,
 				shellHeight: s.shellHeight,
 				splitWidth: s.splitWidth,
+				viewerWidth: s.viewerWidth,
 				viewerHeight: s.viewerHeight,
 			}),
 		},

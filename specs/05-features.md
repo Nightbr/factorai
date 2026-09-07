@@ -1043,17 +1043,44 @@ see `specs/03-backend-rust.md` § "Session ids".
 **Behavior.** Open a file from the tree (F12) read-only, with syntax
 highlighting, in Monaco (ADR-0007 — this supersedes the CodeMirror 6 plan).
 
-**UI.** V0 is a **modal**, ~90vw × 85vh: the cheapest UX that gets the
-feature useful. The eventual shape is a per-project **tab system** switching
-between the project page, its sessions and open files — so `FileView` is
-written self-contained and modal-agnostic, and `FileViewerModal` is just its
-first host.
+**UI.** A **pane with its own strip of open files**, hosted two ways and
+chosen by measurement (ADR-0037). `FileView` stays self-contained and
+host-agnostic, which is what makes three hosts possible at all.
 
-- Header: file name, dimmed parent directory, then copy-path,
+- **A column of its own**, between the session and the file panel, whenever the
+  shell can hold four columns:
+  `shellWidth ≥ sidebarWidth + MIN_SESSION_WIDTH + MIN_VIEWER_WIDTH +
+  panelWidth + gutters`, with a 40px dead band so dragging a window edge across
+  the threshold does not strobe the layout. `lib/viewerLayout.ts` is the whole
+  rule and it is pure.
+- **A split under the tree** inside the file panel when it cannot, at the
+  panel's own second remembered width — 288px is a good tree and a bad split.
+- **The session's floor is 400px** and the viewer's is the same. The session is
+  what this app exists to show, so it is the one with a floor the panels cannot
+  be dragged through; `MAX_PANEL_WIDTH`'s fixed 600 is gone, and the ceiling is
+  now the shell minus everything that is not the panel.
+- **Tabs.** One strip, one set of open files **per checkout** (F21) — the paths
+  are absolute, so a project with two worktrees is two sets — persisted and
+  restored on launch. A single click in the tree or in the Changes list opens a
+  *preview* tab, italic, that the next single click replaces; a double-click on
+  the row or on the tab pins it. A tab remembers the mode it was read in, so
+  one path is one tab whether you came from the tree or from a Changes row.
+  `?file=` remains the active file and keeps every property it had: deep link,
+  reload and HMR survival, browser-back closes the viewer, and F19's terminal
+  links and F20's IDE bridge arrive through it.
+- **The modal is the expand, not the default** (ADR-0037). It is reached from
+  the pane's header and from nowhere else, for a file too wide to read in a
+  column, and closing it puts the file back in the pane rather than closing it.
+- Modal header: file name, dimmed parent directory, then copy-path,
   reveal-in-file-manager, open-in-default-app and close — all four **in flow
   on one row**. `DialogContent` takes `hideClose` for this: its built-in close
   button is absolutely positioned at `right-4 top-4` and can never share a
-  baseline with a dialog's own toolbar.
+  baseline with a dialog's own toolbar. The pane's own strip carries two
+  controls beside the tabs — expand and close — in **one** 36px row rather than
+  a header under the tabs, because that column can be 400px wide.
+- **`Escape` closes nothing.** In the modal it closed the viewer and there it
+  was right; over a pane you are reading beside the agent it is not. A tab
+  closes by its `×` or by a middle-click.
 - **Reveal is a different question from Open in default app**, which is why it
   is a second control and not a rename of the first. Open hands the file to
   whatever application owns its type; reveal answers *where does this live* —

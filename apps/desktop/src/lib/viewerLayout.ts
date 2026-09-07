@@ -116,6 +116,14 @@ export function maxPanelWidth({
 	return shellWidth - sidebarWidth - MIN_SESSION_WIDTH - viewerColumn - COLUMN_GUTTERS;
 }
 
+/** The viewer's width, held between its floor and whatever the shell leaves.
+ *  Pure, like `clampPanelWidth`, and for the same reason. */
+export function clampViewerWidth(width: number, max: number): number {
+	if (!Number.isFinite(width)) return DEFAULT_VIEWER_WIDTH;
+	const ceiling = Number.isFinite(max) ? max : Number.POSITIVE_INFINITY;
+	return Math.max(MIN_VIEWER_WIDTH, Math.min(ceiling, Math.round(width)));
+}
+
 /**
  * How wide the viewer's own column may be dragged. Same arithmetic from the
  * other side: the panel is fixed while this one moves.

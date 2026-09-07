@@ -1,5 +1,6 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback } from 'react';
+import { useViewerStore } from '@store/viewerStore';
 
 /**
  * Which two revisions a diff compares (specs/05-features.md F13). The value
@@ -55,11 +56,15 @@ export function parsePosition(value: unknown): number | undefined {
 }
 
 /** How the viewer is opened. All optional: the tree passes none of it, the
- *  Changes tab passes `diff`, a terminal link (F19) passes a position. */
+ *  Changes tab passes `diff`, a terminal link (F19) passes a position.
+ *
+ *  `preview` is the tab this open makes (ADR-0037): a single click in the tree
+ *  passes it, everything else lands a tab that stays. */
 interface OpenOptions {
 	diff?: DiffMode;
 	line?: number;
 	col?: number;
+	preview?: boolean;
 }
 
 /**
@@ -102,6 +107,13 @@ export function useFileViewer(): {
 					col: opts?.col,
 				}),
 			});
+			// **Every route into the viewer passes through here** — the tree, the
+			// Changes list, a terminal link (F19), the IDE bridge (F20) — which is
+			// why the strip of open files is written from this one place rather
+			// than from each caller (ADR-0037). Read through `getState` because the
+			// checkout the tabs belong to is the store's business, not the
+			// caller's.
+			useViewerStore.getState().openTab(path, { preview: opts?.preview, diff: opts?.diff ?? null });
 		},
 		[navigate],
 	);
