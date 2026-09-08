@@ -1044,3 +1044,99 @@ test.describe('session subtree guide', () => {
 		await expect(page.locator('[data-testid^="session-guide-"]')).toBeVisible();
 	});
 });
+
+/**
+ * The rail — the sidebar collapsed to 48px (specs/05-features.md F1,
+ * docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md).
+ */
+test.describe('sidebar rail', () => {
+	test('@smoke the toggle takes the sidebar to 48px and back to the dragged width', async ({
+		page,
+	}) => {
+		// A width nobody would reach by accident, and not the 256 default: the
+		// point of `collapsed` being a boolean beside `width` is that expanding
+		// restores what you dragged rather than the default.
+		await page.addInitScript(() => {
+			window.localStorage.setItem(
+				'factorai.sidebar',
+				JSON.stringify({ state: { sort: 'manual', expanded: [], width: 331 }, version: 2 }),
+			);
+		});
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		const sidebar = page.getByTestId('sidebar');
+		await expect(sidebar).toHaveCSS('width', '331px');
+
+		await page.getByTestId('sidebar-collapse').click();
+		await expect(sidebar).toHaveCSS('width', '48px');
+
+		await page.getByTestId('sidebar-collapse').click();
+		await expect(sidebar).toHaveCSS('width', '331px');
+	});
+
+	test('@smoke a glyph routes to its project and the rail stays a rail', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+
+		await page.getByTestId('sidebar-collapse').click();
+		await page.getByTestId(`rail-glyph-${ZULU_ID}`).click();
+
+		await expect(page).toHaveURL(new RegExp(`/projects/${ZULU_ID}`));
+		// The whole point: a click that handed the pixels back would undo the
+		// thing collapsing asked for.
+		await expect(page.getByTestId('sidebar')).toHaveCSS('width', '48px');
+	});
+
+	test('@smoke a grouped project has a glyph of its own', async ({ page }) => {
+		await installMockBridge(page, fixtureGroupedProjects());
+		await page.goto('/');
+		await page.getByTestId('sidebar-collapse').click();
+
+		// `alpha` sits inside the `Pro` group. Drawn as one folder glyph it would
+		// have nothing to route to, and alpha would be unreachable.
+		await expect(page.getByTestId(`rail-glyph-${ALPHA_ID}`)).toBeVisible();
+		await expect(page.getByTestId(`rail-glyph-${ZULU_ID}`)).toBeVisible();
+	});
+
+	test('@smoke hovering a glyph lists that project’s sessions, capped', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByTestId('sidebar-collapse').click();
+
+		await page.getByTestId(`rail-glyph-${ZULU_ID}`).hover();
+
+		// The same twelve-session fixture the expanded row is capped against, so
+		// the card and the list agree: ten rows plus `2 more…`.
+		const rows = page.getByTestId(`sidebar-sessions-${ZULU_ID}`).getByRole('link');
+		await expect(rows).toHaveCount(11);
+		await expect(page.getByText('2 more…')).toBeVisible();
+		// The row's own `+`, so the card can start work as well as list it.
+		await expect(page.getByTestId(`rail-new-session-${ZULU_ID}`)).toBeVisible();
+	});
+
+	test('@smoke the search glyph routes to /search and focuses its field', async ({ page }) => {
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+		await page.getByTestId('sidebar-collapse').click();
+
+		await page.getByTestId('rail-search').click();
+
+		await expect(page).toHaveURL(/\/search/);
+		await expect(page.getByTestId('search-field')).toBeFocused();
+		// It routed rather than expanding: a 48px input is not a degraded input.
+		await expect(page.getByTestId('sidebar')).toHaveCSS('width', '48px');
+		// The flag is spent on arrival, so a reload of this URL does not re-focus.
+		await expect(page).not.toHaveURL(/focus/);
+	});
+
+	test('@smoke the collapsed state survives a reload', async ({ page }) => {
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+		await page.getByTestId('sidebar-collapse').click();
+		await expect(page.getByTestId('sidebar')).toHaveCSS('width', '48px');
+
+		await page.reload();
+		await expect(page.getByTestId('sidebar')).toHaveCSS('width', '48px');
+	});
+});

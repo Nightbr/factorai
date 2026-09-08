@@ -30,6 +30,10 @@ test.describe('full-text search', () => {
 	test('@smoke empty query shows the prompt, not a stale list', async ({ page }) => {
 		await installMockBridge(page, fixtureWithSearchHits());
 		await page.goto('/#/search?q=');
-		await expect(page.getByText(/Type a query in the sidebar/i)).toBeVisible();
+		// The prompt points at this page's own field, not at the sidebar's. The
+		// sidebar can be a 48px rail with no field in it (F1, ADR-0038), and
+		// this route is where the rail's search icon lands you.
+		await expect(page.getByText(/Type above to search/i)).toBeVisible();
+		await expect(page.getByTestId('search-field')).toBeVisible();
 	});
 });
