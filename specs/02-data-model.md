@@ -45,11 +45,19 @@ both directions.
 
 Encoding rule observed from existing claude folders:
 
-- Replace path separators (`/`, `\`) with `-`.
-- Drop the leading separator before encoding.
-- Result: `/Users/alice/code/foo` → `-Users-alice-code-foo`.
+- Replace path separators (`/`, `\`) **and dots (`.`)** with `-`.
+- Drop trailing separators before encoding.
+- Result: `/Users/alice/code/foo` → `-Users-alice-code-foo`, and
+  `/Users/alice/repo/.claude/worktrees/wt` → `-Users-alice-repo--claude-worktrees-wt`
+  (the `/.` before `claude` folds to `--`).
 
-Decoding is ambiguous (a real `-` in the path collides with the separator).
+The dot is not optional: every git-worktree checkout factorai creates lives
+under `.claude/worktrees/` (F21), so an encoder that folds only the separator
+produces a directory name that exists for no such path, and every transcript
+probe for a worktree session misses — `--resume` silently degrades to
+`--session-id` and the conversation is replaced by an empty one.
+
+Decoding is ambiguous (a real `-` or `.` in the path collides with the separator).
 Strategy: prefer the `cwd` Claude itself recorded in the transcript (Q4), and
 fall back to walking decoded candidates and probing with `Path::exists()`. A
 candidate we cannot confirm is discarded rather than guessed at — filing

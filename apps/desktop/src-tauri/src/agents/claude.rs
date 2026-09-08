@@ -14,15 +14,21 @@ use crate::services::jsonl::EventIter;
 /// Encode an absolute filesystem path into the directory name Claude Code uses
 /// under `~/.claude/projects/`.
 ///
-/// Rule: drop the leading `/`, then replace each `/` with `-`. Trailing slashes
-/// are dropped. Example: `/Users/alice/code/foo` becomes
-/// `-Users-alice-code-foo`.
+/// Rule: drop trailing slashes, then replace each `/` **and each `.`** with `-`.
+/// Example: `/Users/alice/code/foo` becomes `-Users-alice-code-foo`, and
+/// `/Users/alice/repo/.claude/worktrees/wt` becomes
+/// `-Users-alice-repo--claude-worktrees-wt` — the `/.` before `claude` folds to
+/// `--`. Claude Code encodes the dot as well as the slash; encoding only the
+/// slash produces a name that exists for no path with a dot in it, so the
+/// transcript probe misses every session run under a `.claude/worktrees`
+/// checkout (F21) and `--resume` silently becomes `--session-id`, losing the
+/// conversation.
 pub fn encode_path(p: &Path) -> String {
 	let mut s = p.to_string_lossy().to_string();
 	while s.ends_with('/') {
 		s.pop();
 	}
-	s.replace('/', "-")
+	s.replace(['/', '.'], "-")
 }
 
 /// Best-effort decode. Ambiguous when the original path contained a literal `-`
@@ -174,6 +180,18 @@ mod tests {
 	#[test]
 	fn encode_drops_trailing_slash() {
 		assert_eq!(encode_path(&PathBuf::from("/Users/alice/")), "-Users-alice");
+	}
+
+	#[test]
+	fn encode_folds_the_dot_as_claude_does() {
+		// Every worktree path runs through `.claude/worktrees/` (F21). Claude Code
+		// encodes the dot as well as the slash, so `/.claude` becomes `--claude`.
+		// Encoding only the slash produces a directory that exists for no such
+		// path, and the transcript probe misses every worktree session.
+		assert_eq!(
+			encode_path(&PathBuf::from("/Users/alice/repo/.claude/worktrees/eng-1-a-b")),
+			"-Users-alice-repo--claude-worktrees-eng-1-a-b"
+		);
 	}
 
 	#[test]
