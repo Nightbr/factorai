@@ -1036,6 +1036,11 @@ function Rail({
 	const navigate = useNavigate();
 	const { projectId: activeProjectId } = useActiveProject();
 	const projects = useMemo(() => flattenProjects(rows), [rows]);
+	// **At most one hover card, and switching between two is instant.** Radix
+	// gives each card its own timers and no notion of a group, so the 400ms
+	// close that makes a card reachable would also keep the *previous* one up
+	// while the next opened. Holding the open id here makes those one event.
+	const [openCard, setOpenCard] = useState<string | null>(null);
 
 	return (
 		<>
@@ -1086,6 +1091,15 @@ function Rail({
 							key={project.id}
 							project={project}
 							isActive={project.id === activeProjectId}
+							open={openCard === project.id}
+							// A close arriving late — this glyph's 400ms timer firing after
+							// the pointer has already opened the next card — must not shut
+							// the one that replaced it, so it only clears its own id.
+							onOpenChange={(next) =>
+								setOpenCard((current) =>
+									next ? project.id : current === project.id ? null : current,
+								)
+							}
 							liveStatus={statusByProject.get(project.id)}
 						/>
 					))

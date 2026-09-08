@@ -1115,6 +1115,24 @@ test.describe('sidebar rail', () => {
 		await expect(page.getByTestId(`rail-new-session-${ZULU_ID}`)).toBeVisible();
 	});
 
+	test('@smoke moving to another glyph swaps the card rather than showing two', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByTestId('sidebar-collapse').click();
+
+		await page.getByTestId(`rail-glyph-${ZULU_ID}`).hover();
+		await expect(page.getByTestId(`sidebar-sessions-${ZULU_ID}`)).toBeVisible();
+
+		// The 400ms close that makes a card reachable would otherwise keep this
+		// one up for a third of a second after the next had opened — two cards
+		// describing two projects. Opening one closes the last with no delay.
+		await page.getByTestId(`rail-glyph-${ALPHA_ID}`).hover();
+		await expect(page.getByTestId(`sidebar-sessions-${ALPHA_ID}`)).toBeVisible();
+		await expect(page.getByTestId(`sidebar-sessions-${ZULU_ID}`)).toHaveCount(0);
+	});
+
 	test('@smoke the search glyph routes to /search and focuses its field', async ({ page }) => {
 		await installMockBridge(page, fixtureOneProjectOneSession());
 		await page.goto('/');

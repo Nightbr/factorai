@@ -17,6 +17,16 @@ import { Plus } from 'lucide-react';
 interface SidebarRailGlyphProps {
 	project: Project;
 	isActive: boolean;
+	/** Whether *this* glyph's card is the one showing. Hoisted to the rail so
+	 *  that at most one is open: see `onOpenChange`. */
+	open: boolean;
+	/** Radix reports its own delayed decisions here; the rail decides what they
+	 *  mean for the set. The 400ms close exists so you can cross the gap into a
+	 *  card (F1), but applied between two glyphs it would leave the old card up
+	 *  for a third of a second after the new one had opened — two cards on
+	 *  screen, describing different projects. Opening one is therefore the same
+	 *  event as closing the last, with no delay on that half. */
+	onOpenChange: (open: boolean) => void;
 	/** Worst-status-wins roll-up of this project's live sessions, or undefined
 	 *  when it has none (F10). Badged on the avatar, which is the whole reason a
 	 *  rail can afford to drop the rows: knowing which project has a live
@@ -41,7 +51,13 @@ interface SidebarRailGlyphProps {
  * It opens on focus as well as hover, and its content is focusable, so the
  * sessions inside it are reachable from the keyboard.
  */
-export function SidebarRailGlyph({ project, isActive, liveStatus }: SidebarRailGlyphProps) {
+export function SidebarRailGlyph({
+	project,
+	isActive,
+	open,
+	onOpenChange,
+	liveStatus,
+}: SidebarRailGlyphProps) {
 	const startSession = useStartSession();
 
 	return (
@@ -50,7 +66,7 @@ export function SidebarRailGlyph({ project, isActive, liveStatus }: SidebarRailG
 		// it, and a hover surface that closes the moment you leave the trigger is
 		// one you can look at and never touch. 400ms also forgives the overshoot
 		// you make aiming at a 26px row.
-		<HoverCard openDelay={220} closeDelay={400}>
+		<HoverCard open={open} onOpenChange={onOpenChange} openDelay={220} closeDelay={400}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<HoverCardTrigger asChild>
