@@ -1,3 +1,4 @@
+import { ProjectMenu } from '@components/layout/ProjectMenu';
 import { DropLine } from '@components/layout/DropLine';
 import { DwellRing } from '@components/layout/DwellRing';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
@@ -30,19 +31,18 @@ import {
 import { useDeleteSession } from '@hooks/useDeleteSession';
 import { useSetSessionPinned } from '@hooks/useSetSessionPinned';
 import { useSessionMarks } from '@hooks/useSessionMarks';
-import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
 import { useStartSession } from '@hooks/useStartSession';
 import { queryKeys } from '@lib/queryKeys';
 import { formatStamp, routineSessionLabel } from '@lib/cron';
 import { formatError } from '@lib/errors';
 import { type SessionMark, pendingSessions } from '@lib/sessionGroups';
-import { cmd, openExternally } from '@lib/tauri';
+import { cmd } from '@lib/tauri';
 import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
 import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import {
 	AlertTriangle,
 	ArrowDown,
@@ -50,13 +50,10 @@ import {
 	Check,
 	ChevronRight,
 	FolderInput,
-	FolderOpen,
 	FolderOutput,
 	FolderPlus,
-	ClockFading,
 	Pin,
 	PinOff,
-	IdCard,
 	Plus,
 	Route,
 	Trash2,
@@ -195,8 +192,6 @@ export function SidebarProject({
 	const expanded = useSidebarStore((s) => s.expanded.includes(project.id));
 	const toggleProject = useSidebarStore((s) => s.toggleProject);
 	const startSession = useStartSession();
-	const navigate = useNavigate();
-	const removeProject = useRemoveProject();
 	// `disabled` rather than a conditional hook: `useSortable` has to be called on
 	// every render, and dnd-kit's own switch is what stops it claiming pointer
 	// events under a derived sort.
@@ -204,23 +199,7 @@ export function SidebarProject({
 		id: rowId,
 		disabled: !canReorder,
 	});
-	// Removing is silent when nothing is running: it touches nothing on disk and
-	// re-adding rebuilds, so a dialog on every tidy-up is friction on the action
-	// you will do thirty times. A live PTY is the exception — see the dialog.
-	// Subscribe to `bySession` and derive: `liveSessionsIn` builds a new array
-	// each call, so selecting it directly would hand zustand a fresh reference
-	// on every store read and re-render forever.
-	const bySession = useTerminalStore((s) => s.bySession);
-	const liveHere = useMemo(() => liveSessionsIn(bySession, project.id), [bySession, project.id]);
-	const [confirmRemove, setConfirmRemove] = useState(false);
 
-	function remove() {
-		if (liveHere.length > 0) {
-			setConfirmRemove(true);
-			return;
-		}
-		void removeProject(project.id);
-	}
 
 	// A `missing` folder has a known path that is no longer on disk, so claude
 	// would boot in $HOME and file the new session under a *different* project
@@ -434,227 +413,73 @@ export function SidebarProject({
 				{/* Same reason as the group row's: `Move to group ▸ → New group…`
 				    mounts an inline editor that focuses itself, and Radix's close-time
 				    refocus would blur it away before you could type. */}
-				<ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-					{/* The two things you come to a project to start (F22), at the top
-					    and away from the arranging below. Both say "New …" because the
-					    project page's own button does — two verbs on two adjacent items
-					    reads as a difference that is not there. */}
-					<ContextMenuItem
-						disabled={project.missing}
-						data-testid={`new-session-${project.id}`}
-						onSelect={() => void startSession(project.id)}
-					>
-						<Plus />
-						New session
-					</ContextMenuItem>
-					<ContextMenuItem
-						data-testid={`new-routine-${project.id}`}
-						onSelect={() =>
-							void navigate({
-								to: '/projects/$id',
-								params: { id: project.id },
-								search: { tab: 'routines', new: true },
-							})
-						}
-					>
-						<ClockFading />
-						New routine
-					</ContextMenuItem>
-					<ContextMenuSeparator />
-					{/* Present only where they work. Under a derived sort these are
+				<ProjectMenu
+					project={project}
+					arrange={
+						<>
+							{/* Present only where they work. Under a derived sort these are
 					    absent rather than greyed: a disabled row invites you to hunt for
 					    the thing blocking it, and the thing blocking it is a sort mode
 					    two clicks away in another menu. */}
-					{canReorder && (
-						<>
-							<ContextMenuItem onSelect={() => onNudge(rowId, -1)}>
-								<ArrowUp />
-								Move up
-							</ContextMenuItem>
-							<ContextMenuItem onSelect={() => onNudge(rowId, 1)}>
-								<ArrowDown />
-								Move down
-							</ContextMenuItem>
-							{/* **The complete keyboard path for changing level.** `Alt`+arrows
+							{canReorder && (
+								<>
+									<ContextMenuItem onSelect={() => onNudge(rowId, -1)}>
+										<ArrowUp />
+										Move up
+									</ContextMenuItem>
+									<ContextMenuItem onSelect={() => onNudge(rowId, 1)}>
+										<ArrowDown />
+										Move down
+									</ContextMenuItem>
+									{/* **The complete keyboard path for changing level.** `Alt`+arrows
 							    only walk one slot, so filing into a named group — or making one
 							    — needs a target you can pick rather than step to. `New group…`
 							    here is what the dwell gesture is for the mouse. */}
-							{onMoveToGroup && (
-								<ContextMenuSub>
-									<ContextMenuSubTrigger>
-										<FolderInput />
-										Move to group
-									</ContextMenuSubTrigger>
-									<ContextMenuSubContent>
-										{groups.map((group) => (
-											<ContextMenuItem
-												key={group.rowId}
-												disabled={group.rowId === parentGroupRowId}
-												onSelect={() => onMoveToGroup(rowId, group.rowId)}
-											>
-												{group.name}
-											</ContextMenuItem>
-										))}
-										{groups.length > 0 && <ContextMenuSeparator />}
-										<ContextMenuItem
-											data-testid={`new-group-from-${project.id}`}
-											onSelect={() => onMoveToGroup(rowId, null)}
-										>
-											<FolderPlus />
-											New group…
-										</ContextMenuItem>
-									</ContextMenuSubContent>
-								</ContextMenuSub>
-							)}
-							{/* Only where there is a group to leave. A greyed row would invite
+									{onMoveToGroup && (
+										<ContextMenuSub>
+											<ContextMenuSubTrigger>
+												<FolderInput />
+												Move to group
+											</ContextMenuSubTrigger>
+											<ContextMenuSubContent>
+												{groups.map((group) => (
+													<ContextMenuItem
+														key={group.rowId}
+														disabled={group.rowId === parentGroupRowId}
+														onSelect={() => onMoveToGroup(rowId, group.rowId)}
+													>
+														{group.name}
+													</ContextMenuItem>
+												))}
+												{groups.length > 0 && <ContextMenuSeparator />}
+												<ContextMenuItem
+													data-testid={`new-group-from-${project.id}`}
+													onSelect={() => onMoveToGroup(rowId, null)}
+												>
+													<FolderPlus />
+													New group…
+												</ContextMenuItem>
+											</ContextMenuSubContent>
+										</ContextMenuSub>
+									)}
+									{/* Only where there is a group to leave. A greyed row would invite
 							    a hunt for what is blocking it, and nothing is. */}
-							{parentGroupRowId && onRemoveFromGroup && (
-								<ContextMenuItem onSelect={() => onRemoveFromGroup(rowId)}>
-									<FolderOutput />
-									Remove from group
-								</ContextMenuItem>
+									{parentGroupRowId && onRemoveFromGroup && (
+										<ContextMenuItem onSelect={() => onRemoveFromGroup(rowId)}>
+											<FolderOutput />
+											Remove from group
+										</ContextMenuItem>
+									)}
+									<ContextMenuSeparator />
+								</>
 							)}
-							<ContextMenuSeparator />
 						</>
-					)}
-					<ProfileSubmenu project={project} />
-					<ContextMenuSeparator />
-					<ContextMenuItem
-						disabled={project.missing}
-						onSelect={() => void openExternally(project.realPath)}
-					>
-						<FolderOpen />
-						Reveal in file manager
-					</ContextMenuItem>
-					<ContextMenuSeparator />
-					{/* Below the separator and away from everything else: this one has no
-					    undo, and it is otherwise a slip from Reveal. */}
-					<ContextMenuItem
-						variant="destructive"
-						data-testid={`remove-project-${project.id}`}
-						onSelect={remove}
-					>
-						<Trash2 />
-						Remove Project
-					</ContextMenuItem>
-				</ContextMenuContent>
+					}
+				/>
 			</ContextMenu>
 
 			{expanded && <SessionList project={project} depth={parentGroupRowId ? 1 : 0} />}
-
-			{/* Only reached with something running. Removing is otherwise silent:
-			    it touches nothing on disk (ADR-0004) and re-adding rebuilds the
-			    index, so a dialog every time would be friction on the action this
-			    whole item exists to make possible. What a live PTY changes is that
-			    the alternative to killing it is leaving `claude` running with no row
-			    and no tab — the invisible-agent state ADR-0005 forbids. */}
-			<Dialog open={confirmRemove} onOpenChange={setConfirmRemove}>
-				<DialogContent data-testid="confirm-remove-project">
-					<DialogHeader>
-						<DialogTitle className="flex items-center gap-2">
-							<AlertTriangle className="size-5 text-destructive" />
-							Remove {project.displayName}?
-						</DialogTitle>
-						<DialogDescription>
-							{liveHere.length} running session{liveHere.length === 1 ? '' : 's'} in this project
-							will be stopped. Nothing on disk is deleted — your transcripts stay where they are,
-							and adding the folder back restores them.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button variant="outline" onClick={() => setConfirmRemove(false)}>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							data-testid="confirm-remove-project-yes"
-							onClick={() => {
-								setConfirmRemove(false);
-								void removeProject(project.id);
-							}}
-						>
-							Stop &amp; remove
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</li>
-	);
-}
-
-/**
- * Which Claude identity this project's new sessions run as (F25 slice 3).
- *
- * **In the menu rather than in Settings** because this is a property of the
- * project, alongside everything else you reach by right-clicking it — the global
- * modal also offers the reverse view, one profile and the projects on it, for
- * when you are thinking about identities rather than about one project.
- *
- * The note is permanent, not conditional on anything being live. The rule —
- * `CLAUDE_CONFIG_DIR` is read at spawn — is worth learning once rather than
- * discovering from a toast that only appears sometimes.
- */
-function ProfileSubmenu({ project }: { project: Project }) {
-	const queryClient = useQueryClient();
-	const profiles = useQuery({
-		queryKey: queryKeys.profiles(),
-		queryFn: () => cmd.listProfiles(),
-		// Read by every project row's menu, so one fetch answers all of them; the
-		// list changes only when Settings writes it, which invalidates this key.
-		staleTime: Number.POSITIVE_INFINITY,
-		retry: false,
-	});
-	const assign = useMutation({
-		mutationFn: (profileId: string | null) => cmd.setProjectProfile(project.id, profileId),
-		// `projects` carries the assignment, and the sidebar draws this menu from
-		// it — so the label under the cursor is what invalidating refreshes.
-		onSuccess: () => {
-			void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
-			void queryClient.invalidateQueries({ queryKey: queryKeys.sidebar() });
-		},
-	});
-
-	const rows = profiles.data ?? [];
-	// Nothing to choose between: one profile is the state every install starts in,
-	// and a submenu whose only entry is the one already in force is a dead end.
-	if (rows.length < 2) return null;
-
-	return (
-		<ContextMenuSub>
-			<ContextMenuSubTrigger data-testid={`project-profile-${project.id}`}>
-				<IdCard />
-				Profile
-				<span className="ml-auto pl-2 text-muted-foreground text-xs">
-					{project.profileName ?? 'Default'}
-				</span>
-			</ContextMenuSubTrigger>
-			<ContextMenuSubContent className="w-56">
-				<ContextMenuItem
-					data-testid={`project-profile-default-${project.id}`}
-					disabled={project.profileId === null}
-					onSelect={() => assign.mutate(null)}
-				>
-					Default profile
-				</ContextMenuItem>
-				<ContextMenuSeparator />
-				{rows.map((profile) => (
-					<ContextMenuItem
-						key={profile.id}
-						data-testid={`project-profile-${project.id}-${profile.id}`}
-						disabled={profile.id === project.profileId}
-						onSelect={() => assign.mutate(profile.id)}
-					>
-						{profile.name}
-						{profile.isDefault && (
-							<span className="ml-auto pl-2 text-muted-foreground text-xs">default</span>
-						)}
-					</ContextMenuItem>
-				))}
-				<p className="px-2 pt-1.5 pb-1 text-muted-foreground text-xs">
-					Applies to new sessions. A running session keeps the profile it started under.
-				</p>
-			</ContextMenuSubContent>
-		</ContextMenuSub>
 	);
 }
 
