@@ -53,6 +53,37 @@ pub fn recorded_cwds(db: &Db, session_id: &str) -> Vec<PathBuf> {
 	out
 }
 
+/// The store **directory name** the index recorded this session's transcript
+/// under, if the indexer has seen it — `discovered_projects.key`.
+///
+/// This is the authoritative location: the key is the directory Claude actually
+/// wrote to, recorded verbatim when the transcript was parsed, and never
+/// re-derived from a cwd. It is what [`recorded_cwds`] cannot reconstruct once
+/// the agent has `cd`'d into a subdirectory of the folder Claude keyed the store
+/// by — `last_cwd` then encodes to a sibling directory that holds no transcript,
+/// while the key still points where the file is.
+///
+/// **Swallows a read failure into `None`**, the same rule as [`recorded_cwds`]:
+/// a database we cannot read means "we know nothing about this session", not
+/// "refuse to act on it". `None` is also the ordinary answer for a freshly
+/// minted session — no transcript, no row, no key.
+pub fn recorded_key(db: &Db, session_id: &str) -> Option<String> {
+	db.with(|conn| {
+		Ok(conn
+			.query_row(
+				"SELECT d.key
+				 FROM sessions s
+				 JOIN discovered_projects d ON d.id = s.discovered_id
+				 WHERE s.id = ?1",
+				[session_id],
+				|row| row.get::<_, String>(0),
+			)
+			.ok())
+	})
+	.ok()
+	.flatten()
+}
+
 /// Record which checkout of its repository a session is working in (F21).
 ///
 /// **Only the IDE bridge's signal path calls this**, after the path has been
