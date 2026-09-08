@@ -677,7 +677,29 @@ const GUIDE_X = [13, 29];
  *  entries is the whole ladder. */
 const ROW_PAD = ['pl-8', 'pl-12'];
 
-function SessionList({ project, depth }: { project: Project; depth: number }) {
+/**
+ * A project's sessions, in the two places they are listed.
+ *
+ * `subtree` is the sidebar's expanded row: indented to its depth and hung off
+ * the guide line (DESIGN.md, The Subtree Guide Rule). `flat` is the rail's
+ * hover card, which has neither — no depth to indent to and no chevron to hang
+ * from (F1, ADR-0038).
+ *
+ * **One component rather than two, deliberately.** Everything with a rule in it
+ * — the three-key order, the `Math.max(limit, pinnedCount)` cap, the pinned
+ * divider, the `N more…` link, each row's pin/copy/delete menu — is the same
+ * question in both places, and a second implementation is a second answer that
+ * drifts. Only the frame differs.
+ */
+export function SessionList({
+	project,
+	depth,
+	variant = 'subtree',
+}: {
+	project: Project;
+	depth: number;
+	variant?: 'subtree' | 'flat';
+}) {
 	// `open` for what you have on the strip, `bySession` for what is running.
 	// `pendingSessions` needs the latter: a never-messaged session that is not
 	// running has no transcript and no process, so a permanent "New session" row
@@ -715,66 +737,74 @@ function SessionList({ project, depth }: { project: Project; depth: number }) {
 	// what is about to go with the parent.
 	const subagentCounts = useMemo(() => countSubagents(sessionsQ.data ?? []), [sessionsQ.data]);
 
-	if (sessionsQ.isPending)
-		return (
+	const flat = variant === 'flat';
+	const pad = flat ? 'pl-2' : ROW_PAD[depth];
+	// The guide line describes an indent, so the flat variant has nothing for it
+	// to describe and renders the block bare.
+	const frame = (children: ReactNode) =>
+		flat ? (
+			children
+		) : (
 			<Subtree depth={depth} projectId={project.id}>
-				<Row depth={depth} muted>
-					Loading…
-				</Row>
+				{children}
 			</Subtree>
 		);
+
+	if (sessionsQ.isPending)
+		return frame(
+			<Row pad={pad} muted>
+				Loading…
+			</Row>,
+		);
 	if (sessions.length === 0 && pending.length === 0)
-		return (
-			<Subtree depth={depth} projectId={project.id}>
-				<Row depth={depth} muted>
-					No sessions yet
-				</Row>
-			</Subtree>
+		return frame(
+			<Row pad={pad} muted>
+				No sessions yet
+			</Row>,
 		);
 
 	const hidden = countHidden(sessionsQ.data ?? [], sessions.length);
 
-	return (
-		<Subtree depth={depth} projectId={project.id}>
-			<ul className="mb-1" data-testid={`sidebar-sessions-${project.id}`}>
-				{/* Above the indexed rows: it is the newest thing here by definition,
+	return frame(
+		<ul className="mb-1" data-testid={`sidebar-sessions-${project.id}`}>
+			{/* Above the indexed rows: it is the newest thing here by definition,
 			    and it is the one you are looking at. */}
-				{pending.map((p) => (
-					<li key={p.sessionId}>
-						<Link
-							to="/projects/$projectId/sessions/$sessionId"
-							params={{ projectId: project.id, sessionId: p.sessionId }}
-							title={
-								routineOrigins[p.sessionId]
-									? `Started by routine — ${routineOrigins[p.sessionId].routineName}`
-									: 'New session — it takes its title from your first message'
-							}
-							className={`flex items-center gap-2 py-1.5 pr-2 ${ROW_PAD[depth]} text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground`}
-							activeProps={{ className: 'bg-secondary text-foreground' }}
-						>
-							{routineOrigins[p.sessionId] && (
-								<RoutineOrigin
-									name={routineOrigins[p.sessionId].routineName}
-									startedAt={routineOrigins[p.sessionId].startedAt}
-									clock24={clock24}
-								/>
-							)}
-							<span className="min-w-0 flex-1 truncate">
-								{routineOrigins[p.sessionId]
-									? routineSessionLabel(routineOrigins[p.sessionId], clock24)
-									: 'New session'}
-							</span>
-							<StatusDot
-								status={p.status}
-								background={open[p.sessionId]?.background ?? true}
-								className="size-1.5"
+			{pending.map((p) => (
+				<li key={p.sessionId}>
+					<Link
+						to="/projects/$projectId/sessions/$sessionId"
+						params={{ projectId: project.id, sessionId: p.sessionId }}
+						title={
+							routineOrigins[p.sessionId]
+								? `Started by routine — ${routineOrigins[p.sessionId].routineName}`
+								: 'New session — it takes its title from your first message'
+						}
+						className={`flex items-center gap-2 py-1.5 pr-2 ${pad} text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground`}
+						activeProps={{ className: 'bg-secondary text-foreground' }}
+					>
+						{routineOrigins[p.sessionId] && (
+							<RoutineOrigin
+								name={routineOrigins[p.sessionId].routineName}
+								startedAt={routineOrigins[p.sessionId].startedAt}
+								clock24={clock24}
 							/>
-						</Link>
-					</li>
-				))}
-				{sessions.map((session, i) => (
-					<Fragment key={session.id}>
-						{/* **The divider is the mark, not a per-row icon.** Two pins in a
+						)}
+						<span className="min-w-0 flex-1 truncate">
+							{routineOrigins[p.sessionId]
+								? routineSessionLabel(routineOrigins[p.sessionId], clock24)
+								: 'New session'}
+						</span>
+						<StatusDot
+							status={p.status}
+							background={open[p.sessionId]?.background ?? true}
+							className="size-1.5"
+						/>
+					</Link>
+				</li>
+			))}
+			{sessions.map((session, i) => (
+				<Fragment key={session.id}>
+					{/* **The divider is the mark, not a per-row icon.** Two pins in a
 					    list read as a broken sort unless something says where the
 					    exemption from recency ends, and a rule costs one row of height
 					    where a pin glyph on every pinned row costs a column on all of
@@ -787,37 +817,36 @@ function SessionList({ project, depth }: { project: Project; depth: number }) {
 					    meet at a T the junction reads as a rendering artifact rather than
 					    as two marks. 4px of clearance keeps the trunk legibly continuous
 					    and leaves the divider plainly a boundary *inside* the subtree. */}
-						{session.pinned === false && i > 0 && sessions[i - 1]?.pinned === true && (
-							<li
-								aria-hidden
-								className="my-1 mr-2 border-border/60 border-t"
-								style={{ marginLeft: GUIDE_X[depth] + 4 }}
-							/>
-						)}
-						<SessionRow
-							session={session}
-							projectId={project.id}
-							mark={open[session.id]}
-							subagentCount={subagentCounts[session.id] ?? 0}
-							clock24={clock24}
-							depth={depth}
+					{session.pinned === false && i > 0 && sessions[i - 1]?.pinned === true && (
+						<li
+							aria-hidden
+							className="my-1 mr-2 border-border/60 border-t"
+							style={flat ? undefined : { marginLeft: GUIDE_X[depth] + 4 }}
 						/>
-					</Fragment>
-				))}
-				{hidden > 0 && (
-					// Not a scroll-forever list: the rest live on the project page.
-					<li>
-						<Link
-							to="/projects/$id"
-							params={{ id: project.id }}
-							className={`block py-1.5 pr-2 ${ROW_PAD[depth]} text-muted-foreground/60 text-sm transition-colors hover:text-foreground`}
-						>
-							{hidden} more…
-						</Link>
-					</li>
-				)}
-			</ul>
-		</Subtree>
+					)}
+					<SessionRow
+						session={session}
+						projectId={project.id}
+						mark={open[session.id]}
+						subagentCount={subagentCounts[session.id] ?? 0}
+						clock24={clock24}
+						pad={pad}
+					/>
+				</Fragment>
+			))}
+			{hidden > 0 && (
+				// Not a scroll-forever list: the rest live on the project page.
+				<li>
+					<Link
+						to="/projects/$id"
+						params={{ id: project.id }}
+						className={`block py-1.5 pr-2 ${pad} text-muted-foreground/60 text-sm transition-colors hover:text-foreground`}
+					>
+						{hidden} more…
+					</Link>
+				</li>
+			)}
+		</ul>,
 	);
 }
 
@@ -869,8 +898,10 @@ interface SessionRowProps {
 	/** Sub-agents that go with it, named in the confirm dialog. */
 	subagentCount: number;
 	clock24: boolean;
-	/** Its project's depth, so the row lands on the guide's indent (ROW_PAD). */
-	depth: number;
+	/** The row's left padding class. Its project's `ROW_PAD[depth]` in the
+	 *  sidebar, where the row hangs off a guide line; a flat `pl-2` in the rail's
+	 *  hover card, which has no guide and no depth (F1, ADR-0038). */
+	pad: string;
 }
 
 /**
@@ -886,7 +917,7 @@ interface SessionRowProps {
  * no index row; there is nothing to delete, and closing its tab is what disposes
  * of it.
  */
-function SessionRow({ session, projectId, mark, subagentCount, clock24, depth }: SessionRowProps) {
+function SessionRow({ session, projectId, mark, subagentCount, clock24, pad }: SessionRowProps) {
 	const deleteSession = useDeleteSession();
 	const setPinned = useSetSessionPinned();
 	// A pin that failed says so on the row, the same way a failed copy does: the
@@ -970,7 +1001,7 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24, depth }:
 								? `${title} · ran ${formatStamp(new Date(session.routineStartedAt), clock24)}`
 								: title
 						}
-						className={`flex items-center gap-2 py-1.5 pr-2 ${ROW_PAD[depth]} text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground`}
+						className={`flex items-center gap-2 py-1.5 pr-2 ${pad} text-muted-foreground text-sm transition-colors hover:bg-secondary/50 hover:text-foreground [&.active]:text-foreground`}
 						activeProps={{ className: 'bg-secondary text-foreground' }}
 					>
 						{session.routineId && (
@@ -1116,10 +1147,10 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24, depth }:
 	);
 }
 
-function Row({ children, depth, muted }: { children: string; depth: number; muted?: boolean }) {
+function Row({ children, pad, muted }: { children: string; pad: string; muted?: boolean }) {
 	return (
 		<p
-			className={`py-1.5 ${ROW_PAD[depth]} text-sm ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
+			className={`py-1.5 ${pad} text-sm ${muted ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
 		>
 			{children}
 		</p>
