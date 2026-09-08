@@ -146,20 +146,22 @@ export function DiffView({ path, mode }: DiffViewProps) {
 				)}
 			</div>
 
-			<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
+			{/* Same shape as `FileView`'s footer, and for the same reason: this row
+			    lives in a column the user drags, so it is a `@container` whose one
+			    label drops when the width does (ADR-0037). */}
+			<footer className="@container flex h-7 shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap border-t border-border px-3 text-muted-foreground text-xs">
 				<Button
-					variant="ghost"
+					variant="quiet"
 					size="sm"
-					className="-ml-1 h-6 gap-1.5 px-2 text-xs"
+					className="-ml-1 h-6 shrink-0 gap-1.5 px-2 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
 					aria-pressed={inline}
+					title={inline ? 'Split' : 'Inline'}
 					onClick={() => setInline(!inline)}
 				>
-					{inline ? <Columns2 className="size-3.5" /> : <Rows2 className="size-3.5" />}
-					{inline ? 'Split' : 'Inline'}
+					{inline ? <Columns2 /> : <Rows2 />}
+					<span className="@max-[22rem]:hidden">{inline ? 'Split' : 'Inline'}</span>
 				</Button>
-				<span>{MODE_LABELS[mode]}</span>
-				<span aria-hidden="true">·</span>
-				<span>read-only</span>
+				<span className="min-w-0 truncate">{MODE_LABELS[mode]}</span>
 				{truncated && (
 					<>
 						<span className="flex-1" />

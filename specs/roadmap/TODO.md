@@ -1376,3 +1376,67 @@ ad-hoc `codesign` step remains what item 36 says it is.
 of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
 user has granted. It does not break the update path the way losing the minisign key would, so it is
 one notch less fatal — but it is not a secret to regenerate casually.
+
+## 53. Collapse the project sidebar
+
+**Asked for by a user 2026-09-08.** The sidebar is always on screen and always
+between 180 and 480px wide (F1). On a laptop, reading a diff or driving a
+terminal, those pixels are the ones you want back — and the window's only other
+column that can go away, the file panel, already goes away with one click in the
+titlebar (F12). This is the same affordance for the other side.
+
+The width drag stays exactly as it is. Collapse is not "drag it to zero": a
+width is how much sidebar you want, and this is whether you want one at all —
+two different questions, which is why `panelStore` keeps `open` and `width`
+apart and this follows it.
+
+- [ ] `collapsed: boolean` in `sidebarStore`, persisted beside `width`, with
+      `toggleCollapsed()`. **`width` is not touched when collapsing** — expanding
+      restores the width you dragged, not the default. A new field with a default
+      needs no version bump (see the store's own note on why there is no v2 → v3).
+      It is layout, not preference, so this store is the right home for it
+      ([ADR-0013](../../docs/adr/0013-preferences-storage-split.md)).
+- [ ] **The control goes in `TopBar`, mirroring the file-tree toggle** — a
+      `PanelLeft` `IconButton` at the left of the right-hand cluster, `aria-pressed`
+      carrying the state, same one-colour rule the panel toggle settled on 2026-08-20.
+      A control *inside* the sidebar cannot be its own way back, and a chevron on
+      the resizer would be a third meaning for a handle that already has one. The
+      header spans above the sidebar precisely so something can outlive it.
+- [ ] **Collapsed means gone, not an icon rail** — the `<aside>` is not rendered
+      and the `PanelResizer` beside it goes with it, since there is nothing left to
+      size. A rail would need a collapsed variant of every row type the sidebar has
+      (projects, groups, sessions, the drag chip, the drop lines, the footer's
+      update badge and zoom controls), which is a second sidebar to keep in step
+      with the first. What a rail would buy is at-a-glance session status, and the
+      titlebar's session tabs already carry that (F16, F10) — so the rail is the
+      deferred half, worth revisiting only if status turns out to be what people
+      miss.
+- [ ] **Feed `0`, not the stored width, to the viewer host rule.** `AppShell`
+      passes `sidebarWidth` into `resolveViewerHost` and `maxViewerWidth`
+      ([ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md));
+      a collapsed sidebar that still reports 256 makes the shell believe it has
+      less room than it has, and the viewer's column would refuse to appear at a
+      width where it now fits. This is the same bug the `panelOpen ? panelWidth : 0`
+      line already guards against on the other side — one more `effective*` value
+      in the same place.
+- [ ] **Focus must not be left inside a `<aside>` that is no longer there.** If
+      focus is inside the sidebar when it collapses, move it to the toggle. Nothing
+      else in the shell removes the subtree focus is in, so there is no precedent to
+      copy here.
+- [ ] Keep the terminal's refit to the *end* of the transition, if the width is
+      animated at all. Every frame of a CSS width animation is a resize event, and
+      a PTY resize per frame is a storm of `SIGWINCH` at the agent — an instant
+      toggle is the safe default, and a transition needs a debounced refit before
+      it can ship.
+- [ ] Smoke test: toggle hides `[data-testid="sidebar"]`, the toggle survives it,
+      a reload restores the collapsed state, and expanding restores the dragged
+      width rather than 256. Plus a `sidebarStore` unit test for the field.
+- [ ] **F1's UI paragraph is the contract and is updated in the same commit** —
+      it currently says the sidebar is a resizable section with a persisted width
+      and no other state. `DESIGN.md` only needs a line if the rail ever lands.
+
+**No keybinding in this item.** `Ctrl+B` is unavailable — readline's back-a-char
+and tmux's prefix (Q15) — and the file-tree toggle is parked on exactly that
+question in **item 5**, which owns the terminal-focus rule. Two toggles, one
+decision: pick both bindings there, and until then say in F1 that the control is
+mouse-only.

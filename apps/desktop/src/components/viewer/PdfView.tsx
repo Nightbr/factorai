@@ -204,14 +204,11 @@ function PdfDocumentView({
 				</div>
 			</div>
 
-			<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
-				<span data-testid="pdf-page-counter" className="tabular-nums">
+			<footer className="flex h-7 shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap border-t border-border px-3 text-muted-foreground text-xs">
+				<span data-testid="pdf-page-counter" className="shrink-0 tabular-nums">
 					{page} / {pages.length}
 				</span>
-				<span aria-hidden="true">·</span>
-				<span>{formatBytes(size)}</span>
-				<span aria-hidden="true">·</span>
-				<span>read-only</span>
+				<span className="min-w-0 truncate">· {formatBytes(size)}</span>
 
 				<span className="flex-1" />
 

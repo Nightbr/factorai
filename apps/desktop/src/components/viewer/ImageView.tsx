@@ -174,20 +174,13 @@ export function ImageView({ path }: { path: string }) {
 				/>
 			</div>
 
-			<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
-				<span>{image.mime}</span>
-				{dims && (
-					<>
-						<span aria-hidden="true">·</span>
-						<span>
-							{dims.w} × {dims.h}
-						</span>
-					</>
-				)}
-				<span aria-hidden="true">·</span>
-				<span>{formatBytes(image.size)}</span>
-				<span aria-hidden="true">·</span>
-				<span>read-only</span>
+			<footer className="flex h-7 shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap border-t border-border px-3 text-muted-foreground text-xs">
+				{/* One span, one string, so it ellipsizes as a unit in a column the
+				    user can drag down to 400px (ADR-0037). */}
+				<span className="min-w-0 truncate">
+					{image.mime}
+					{dims ? ` · ${dims.w} × ${dims.h}` : ''} · {formatBytes(image.size)}
+				</span>
 
 				<span className="flex-1" />
 

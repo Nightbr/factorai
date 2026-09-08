@@ -1097,8 +1097,22 @@ host-agnostic, which is what makes three hosts possible at all.
   deleted while it was on screen and a desktop with no file manager at all,
   and neither is distinguishable from a dead button. There is still no toast
   (roadmap item 7).
-- Footer: language · size · line count · `read-only`, plus the markdown
-  toggle when relevant.
+- **Footer: `language · size · line count`, as one string**, with the markdown
+  toggle to its left and "add to agent context" (F20) at the right. It is a
+  `@container` and it degrades in a fixed order, because the viewer's column can
+  be dragged to 400px where every label spelled out wants ~570: below 36rem the
+  agent control keeps its glyph and drops its label, below 22rem the markdown
+  toggle does the same, and the metadata truncates last. Both controls keep a
+  `title`, and the agent control's *answer* — "Added to context", "The agent is
+  not connected" — is never hidden, whatever the width.
+- **`read-only` is gone from the footer** (2026-09-07, user ask). Nothing in the
+  viewer is editable and nothing in it suggests otherwise, so the word was a
+  fifth item competing for the width the file's own facts need. The label
+  survives where it still says something: the project route's CLAUDE.md pane,
+  which sits beside an editable one.
+- The two footer controls are `Button variant="quiet"` with a 12px glyph, the
+  shape `ShellFooter` uses for `+ Terminal` — not `ghost`, whose hover block
+  read as the one widget in a row of metadata.
 - Monaco config: line numbers on, minimap **off** (noise at modal width),
   **word wrap on** with `wrappingIndent: 'indent'` so reading a file never
   means scrolling sideways, find widget on `Cmd/Ctrl+F`, and

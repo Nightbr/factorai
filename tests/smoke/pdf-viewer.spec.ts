@@ -22,7 +22,9 @@ async function openPdf(page: Page, name = 'spec.pdf') {
 }
 
 test.describe('pdf viewer', () => {
-	test('@smoke a PDF renders its pages, with a counter and read-only footer', async ({ page }) => {
+	test('@smoke a PDF renders its pages, with a counter and a size in the footer', async ({
+		page,
+	}) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
 
@@ -38,7 +40,6 @@ test.describe('pdf viewer', () => {
 		await expect.poll(async () => (await canvas.boundingBox())?.width ?? 0).toBeGreaterThan(100);
 
 		await expect(viewer.getByTestId('pdf-page-counter')).toHaveText('1 / 2');
-		await expect(viewer.getByText('read-only')).toBeVisible();
 		// Not Monaco: a PDF must not reach the text editor.
 		await expect(viewer.getByTestId('file-view-editor')).toHaveCount(0);
 	});

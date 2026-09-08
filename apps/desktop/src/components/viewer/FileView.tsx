@@ -157,28 +157,48 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 			</div>
 
 			{file && !file.isBinary && (
-				<footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5 text-muted-foreground text-xs">
+				/* **`@container`, because this row has to survive a 400px column**
+				   (ADR-0037). It is the only chrome in the app whose width the user
+				   drags directly, and with every label spelled out it needs ~570px:
+				   at less than that the spans wrapped, and a two-line footer under a
+				   fixed-height strip is the Fixed-Chrome Rule broken by text. The
+				   labels drop in the order they cost width — see each one. Same
+				   `@container` idiom as the sidebar footer's `UpdateBadge`.
+				
+				   `h-7` and no `py-`: an explicit height, since the footer is chrome
+				   (DESIGN.md § Layout). */
+				<footer className="@container flex h-7 shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap border-t border-border px-3 text-muted-foreground text-xs">
 					{previewable && (
+						/* `quiet`, `size-3` glyph, lifted a pixel: the house shape for a
+						   labelled control in a chrome strip, and the same one
+						   `ShellFooter` uses for `+ Terminal`. `ghost` painted a filled
+						   block behind the text on hover, which in a row of metadata
+						   read as the one thing here that is a widget. */
 						<Button
-							variant="ghost"
+							variant="quiet"
 							size="sm"
-							className="-ml-1 h-6 gap-1.5 px-2 text-xs"
+							className="-ml-1 h-6 shrink-0 gap-1.5 px-2 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
 							aria-pressed={preview}
+							title={preview ? 'View source' : 'Preview'}
 							onClick={() => setPreview((p) => !p)}
 						>
-							{preview ? <Code2 className="size-3.5" /> : <Eye className="size-3.5" />}
-							{preview ? 'View source' : 'Preview'}
+							{preview ? <Code2 /> : <Eye />}
+							{/* Second to go, and much later: with the long label already
+							    gone this one plus the metadata is ~340px, so it survives
+							    every width the viewer column can take (its floor is 400).
+							    22rem is where the *split* host gets narrow enough to matter
+							    — a panel dragged to its 256px minimum. Measured at 410px,
+							    the column at the 1400px default window, where an earlier
+							    26rem threshold hid it for no reason. */}
+							<span className="@max-[22rem]:hidden">{preview ? 'View source' : 'Preview'}</span>
 						</Button>
 					)}
-					<span>{languageLabel(language)}</span>
-					<span aria-hidden="true">·</span>
-					<span>{formatBytes(file.size)}</span>
-					<span aria-hidden="true">·</span>
-					<span>
-						{file.lineCount} line{file.lineCount === 1 ? '' : 's'}
+					{/* One span, one string: three spans and two separators cannot
+					    ellipsize as a unit, and this is what gives way last. */}
+					<span className="min-w-0 truncate">
+						{languageLabel(language)} · {formatBytes(file.size)} · {file.lineCount} line
+						{file.lineCount === 1 ? '' : 's'}
 					</span>
-					<span aria-hidden="true">·</span>
-					<span>read-only</span>
 
 					{/* One spacer, not one per right-hand item: two would leave whatever
 					    sits between them floating in the middle of the row. */}
@@ -213,10 +233,11 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 					    metadata reads as broken rather than unavailable. */}
 					{sessionId && (
 						<Button
-							variant="ghost"
+							variant="quiet"
 							size="sm"
-							className="-mr-1 h-6 gap-1.5 px-2 text-xs"
+							className="-mr-1 h-6 shrink-0 gap-1.5 px-2 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
 							data-testid="viewer-add-to-claude"
+							title={mentionLabel(range)}
 							onClick={() => {
 								setSendState('idle');
 								void cmd
@@ -226,12 +247,22 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 								setTimeout(() => setSendState('idle'), 1600);
 							}}
 						>
-							<Sparkles className="size-3.5" />
-							{sendState === 'sent'
-								? 'Added to context'
-								: sendState === 'failed'
-									? 'The agent is not connected'
-									: mentionLabel(range)}
+							<Sparkles />
+							{/* **First to go, at 36rem.** This is the longest label in the
+							    row — it names the range, so it grows — and the glyph plus
+							    the `title` still say what it does.
+
+							    **The two answers are never hidden.** A control that
+							    reports back and then reports back invisibly is worse than
+							    one that never reported: whatever the width, pressing this
+							    says whether the agent got it. */}
+							{sendState === 'idle' ? (
+								<span className="@max-[36rem]:hidden">{mentionLabel(range)}</span>
+							) : (
+								<span>
+									{sendState === 'sent' ? 'Added to context' : 'The agent is not connected'}
+								</span>
+							)}
 						</Button>
 					)}
 				</footer>

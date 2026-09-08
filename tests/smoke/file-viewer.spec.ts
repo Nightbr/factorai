@@ -62,10 +62,10 @@ test.describe('file viewer', () => {
 		await expect(viewer).toBeVisible();
 		// The file is a tab now, and the tab is what names it (ADR-0037).
 		await expect(viewer.getByTestId('file-tab')).toHaveText(/Cargo\.toml/);
-		// Monaco mounted, and the footer describes what we're looking at.
+		// Monaco mounted, and the footer describes what we're looking at. One
+		// string, not four spans: it has to ellipsize as a unit at 400px.
 		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
-		await expect(viewer.getByText('read-only')).toBeVisible();
-		await expect(viewer.getByText('3 lines')).toBeVisible();
+		await expect(viewer).toContainText(/ · 41 B · 3 lines/);
 
 		// The open file lives in the URL, which is what the tab system will grow
 		// out of — and what makes a reload reopen it.
@@ -637,7 +637,9 @@ test.describe('file viewer', () => {
 
 		const viewer = page.getByTestId('file-viewer');
 		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
-		await expect(viewer.getByText('JSON', { exact: true })).toBeVisible();
+		// The footer is one string now, so the language is matched inside it
+		// rather than as a span of its own.
+		await expect(viewer).toContainText(/JSON · /);
 		await expect(viewer.getByText('Plain Text')).toHaveCount(0);
 	});
 
@@ -702,19 +704,38 @@ test.describe('file viewer', () => {
 		const button = page.getByTestId('viewer-add-to-claude');
 		await expect(button).toHaveText('Add file to agent context');
 
+		// **The label goes before the row does.** This is the longest string in
+		// the footer, and the footer is a `@container` in a column the user can
+		// drag to 400px — where every label spelled out needed ~570px and the
+		// spans wrapped instead (ADR-0037). The control stays and keeps its
+		// `title`; only the label drops.
+		//
+		// Asserted on the label's own visibility, not on the button's text:
+		// `toHaveText` reads `textContent`, which happily returns a string from a
+		// `display: none` child and would pass either way.
+		const label = button.locator('span');
+		await expect(label).toBeHidden();
+		await expect(button).toBeVisible();
+		await expect(page.getByTestId('file-viewer')).toContainText('· 3 lines');
+
+		// Wide enough for it, and it is back. 1600 leaves the viewer column room
+		// to be dragged past the 36rem the label needs.
+		await page.setViewportSize({ width: 1600, height: 900 });
+		await page
+			.getByRole('separator', { name: 'Resize file viewer' })
+			.dragTo(page.getByTestId('sidebar'));
+		await expect(label).toBeVisible();
+
 		// **Bottom right, past the metadata.** Everything to the left of the
 		// spacer describes the file; this is the one control in the row that
 		// *does* something. Asserted on geometry rather than on the DOM order,
 		// because the thing that would break it is a stray second `flex-1`
 		// leaving the button stranded mid-row — which reads fine in the markup.
-		const readOnly = page.getByTestId('file-viewer').getByText('read-only');
-		const [buttonBox, readOnlyBox] = await Promise.all([
-			button.boundingBox(),
-			readOnly.boundingBox(),
-		]);
-		expect(buttonBox && readOnlyBox).toBeTruthy();
-		if (!buttonBox || !readOnlyBox) throw new Error('both are visible');
-		expect(buttonBox.x).toBeGreaterThan(readOnlyBox.x + readOnlyBox.width);
+		const meta = page.getByTestId('file-viewer').getByText('· 3 lines');
+		const [buttonBox, metaBox] = await Promise.all([button.boundingBox(), meta.boundingBox()]);
+		expect(buttonBox && metaBox).toBeTruthy();
+		if (!buttonBox || !metaBox) throw new Error('both are visible');
+		expect(buttonBox.x).toBeGreaterThan(metaBox.x + metaBox.width);
 
 		await button.click();
 		const calls = await page.evaluate(() =>
