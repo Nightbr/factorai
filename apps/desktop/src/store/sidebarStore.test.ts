@@ -4,7 +4,10 @@ import {
 	DEFAULT_SIDEBAR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
 	MIN_SIDEBAR_WIDTH,
+	effectiveSidebarWidth,
 	migrateSidebarState,
+	SIDEBAR_RAIL_WIDTH,
+	useSidebarStore,
 } from '@store/sidebarStore';
 
 describe('clampSidebarWidth', () => {

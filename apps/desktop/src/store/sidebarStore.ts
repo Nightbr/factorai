@@ -24,6 +24,25 @@ export const MIN_SIDEBAR_WIDTH = 180;
 export const MAX_SIDEBAR_WIDTH = 480;
 export const DEFAULT_SIDEBAR_WIDTH = 256;
 
+/** The collapsed sidebar's fixed width (F1, ADR-0038).
+ *
+ *  It is not a clamped width and never passes through `clampSidebarWidth`: the
+ *  rail is a different thing from a narrow sidebar, which is exactly why
+ *  `collapsed` is a boolean beside `width` rather than a width of zero. */
+export const SIDEBAR_RAIL_WIDTH = 48;
+
+/** What the layout should use, which is not always what was dragged.
+ *
+ *  Every consumer of the sidebar's width is really asking "how much room is the
+ *  sidebar taking", and a collapsed sidebar still reporting 256 makes the shell
+ *  believe it has less room than it has — the viewer's column then refuses to
+ *  appear at a width where it now fits, and the file panel's ceiling comes out
+ *  208px short (ADR-0037, `lib/viewerLayout.ts`). Exported so the three call
+ *  sites share one answer instead of each writing the ternary. */
+export function effectiveSidebarWidth(width: number, collapsed: boolean): number {
+	return collapsed ? SIDEBAR_RAIL_WIDTH : width;
+}
+
 /** Pure, so the drag maths is testable without a pointer — same rule as the
  *  file panel's `clampPanelWidth`. */
 export function clampSidebarWidth(width: number): number {
@@ -40,9 +59,18 @@ interface SidebarState {
 	expanded: string[];
 	/** Sidebar width in px. Persisted, like the file panel's. */
 	width: number;
+	/** Is the sidebar collapsed to its rail? Persisted beside `width`, and
+	 *  deliberately **not** folded into it (F1, ADR-0038).
+	 *
+	 *  A width is how much sidebar you want; this is whether you want one at all.
+	 *  Two different questions, which is why `panelStore` keeps `open` and
+	 *  `width` apart and this follows it: collapsing leaves `width` untouched, so
+	 *  expanding restores the width you dragged rather than the default. */
+	collapsed: boolean;
 
 	setSort: (sort: ProjectSort) => void;
 	setWidth: (width: number) => void;
+	toggleCollapsed: () => void;
 	toggleProject: (projectId: string) => void;
 	expandAll: (projectIds: string[]) => void;
 	collapseAll: () => void;
@@ -64,6 +92,11 @@ interface SidebarState {
  * a mode that is still on the menu, which is discarding a preference they set,
  * so the version stays at 2 and only the default for a fresh install changed.
  *
+ * **`collapsed` did not bump it either.** A new field with a default is absent
+ * from a persisted v2 entry, zustand merges the initial state under it, and the
+ * sidebar comes up expanded — which is what someone who has never collapsed it
+ * expects. A migration could only write the value it already has.
+ *
  * Pure and exported so the rule is testable without a storage round-trip.
  */
 export function migrateSidebarState(state: unknown, from: number): unknown {
@@ -78,9 +111,13 @@ export const useSidebarStore = create<SidebarState>()(
 			sort: 'manual',
 			expanded: [],
 			width: DEFAULT_SIDEBAR_WIDTH,
+			collapsed: false,
 
 			setSort: (sort) => set({ sort }),
 			setWidth: (width) => set({ width: clampSidebarWidth(width) }),
+			// Writes the boolean and nothing else. See `collapsed` for why `width`
+			// is not touched here.
+			toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
 			toggleProject: (projectId) =>
 				set((s) => ({
 					expanded: s.expanded.includes(projectId)
