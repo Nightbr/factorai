@@ -519,14 +519,23 @@ export function Sidebar() {
 	}, [term, navigate]);
 
 	// **Focus must not be left inside a subtree that just changed shape** (F1,
-	// ADR-0038). Collapsing removes the rows focus may be sitting on, so it is
-	// rescued to the toggle — the control that was just pressed, and the only way
-	// back. Expanding removes nothing: every rail control has an expanded
-	// counterpart, so focus stays where the click left it.
+	// ADR-0038). Collapsing removes the rows focus may be sitting on — nothing
+	// else in the shell does that, so there is no precedent to copy — and focus
+	// on a detached node falls to `<body>`, taking the tab order with it.
+	//
+	// **Only when it is actually in here, and only on the way in.** Expanding
+	// removes nothing: every rail control has an expanded counterpart, so focus
+	// stays where the click left it. And a rescue fired unconditionally would
+	// pull focus off whatever the *rest* of the app had it on, for a button the
+	// user may have reached with the mouse.
 	const toggleRef = useRef<HTMLButtonElement>(null);
 	function onToggleCollapsed() {
+		// The `<aside>` is AppShell's, so this asks the DOM rather than holding a
+		// ref to a node this component does not own.
+		const inHere = document.activeElement?.closest('[data-testid="sidebar"]') !== null;
+		const rescue = !collapsed && inHere;
 		toggleCollapsed();
-		toggleRef.current?.focus();
+		if (rescue) toggleRef.current?.focus();
 	}
 
 	const toggleButton = (
