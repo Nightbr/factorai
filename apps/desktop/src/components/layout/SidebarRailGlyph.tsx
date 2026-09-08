@@ -102,7 +102,11 @@ export function SidebarRailGlyph({
 			</ContextMenu>
 
 			<HoverCardContent side="right" align="start" sideOffset={12} className="w-64 p-1">
-				<div className="flex items-center gap-2 px-2 pt-1 pb-1.5">
+				{/* `pr-0.5` rather than `pr-2`: it puts the `+` on the same vertical
+				    line as the status dots down the rows below it. Both are the last
+				    thing in their row, and two right edges 6px apart read as a column
+				    that failed to line up rather than as two different kinds of mark. */}
+				<div className="flex items-center gap-2 pt-1 pr-0.5 pb-1.5 pl-2">
 					<p className="min-w-0 flex-1 truncate font-medium text-sm">{project.displayName}</p>
 					{/* The row's own `+`, verbatim (F2): same label, same call, same gate
 					    on a `missing` folder. Without it the card reads a project's

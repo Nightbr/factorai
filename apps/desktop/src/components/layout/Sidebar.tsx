@@ -541,6 +541,11 @@ export function Sidebar() {
 	const toggleButton = (
 		<IconButton
 			ref={toggleRef}
+			// `md` in the rail, `sm` everywhere else in this column. A 48px column
+			// gives an icon-only control the room a dense row cannot, and at the
+			// row's 14px the two controls at the top of it read as specks
+			// (DESIGN.md, The Rail Rule).
+			size={collapsed ? 'md' : 'sm'}
 			aria-expanded={!collapsed}
 			aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 			title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -1056,6 +1061,7 @@ function Rail({
 				    rail routes, it does not expand. A 48px input is not a degraded
 				    input, it is a broken one. */}
 				<IconButton
+					size="md"
 					aria-label="Search sessions"
 					title="Search sessions"
 					data-testid="rail-search"
