@@ -2,6 +2,7 @@ import { ImportProjects } from '@components/dialog/ImportProjects';
 import { DragChip } from '@components/layout/DragChip';
 import { SidebarGroup } from '@components/layout/SidebarGroup';
 import { SidebarProject } from '@components/layout/SidebarProject';
+import { SidebarRailGlyph } from '@components/layout/SidebarRailGlyph';
 import { UpdateBadge } from '@components/layout/UpdateBadge';
 import { ZoomControls } from '@components/layout/ZoomControls';
 import {
@@ -20,7 +21,7 @@ import {
 } from '@dnd-kit/core';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableContext } from '@dnd-kit/sortable';
-import type { SidebarRow } from '@factorai/types';
+import type { SidebarRow, TerminalStatus } from '@factorai/types';
 
 import {
 	Button,
@@ -55,6 +56,7 @@ import {
 	dropTarget,
 	fileIntoGroup,
 	groupsOf,
+	flattenProjects,
 	indicatorFor as toIndicator,
 	parentOf,
 	rowFor,
@@ -69,8 +71,16 @@ import { useIndexerStore } from '@store/indexerStore';
 import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { AlertTriangle, ArrowUpDown, FolderPlus, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+	AlertTriangle,
+	ArrowUpDown,
+	EllipsisVertical,
+	FolderPlus,
+	PanelLeftClose,
+	PanelLeftOpen,
+	Search,
+} from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /** A group row, narrowed once so the dialog and the handlers can name it. */
 type GroupRow = Extract<SidebarRow, { kind: 'group' }>;
@@ -193,6 +203,8 @@ export function Sidebar() {
 	}, [open]);
 	const { projectId: activeProjectId } = useActiveProject();
 
+	const collapsed = useSidebarStore((s) => s.collapsed);
+	const toggleCollapsed = useSidebarStore((s) => s.toggleCollapsed);
 	const sort = useSidebarStore((s) => s.sort);
 	const setSort = useSidebarStore((s) => s.setSort);
 	const expanded = useSidebarStore((s) => s.expanded);
@@ -506,12 +518,53 @@ export function Sidebar() {
 		return () => clearTimeout(t);
 	}, [term, navigate]);
 
+	// **Focus must not be left inside a subtree that just changed shape** (F1,
+	// ADR-0038). Collapsing removes the rows focus may be sitting on, so it is
+	// rescued to the toggle — the control that was just pressed, and the only way
+	// back. Expanding removes nothing: every rail control has an expanded
+	// counterpart, so focus stays where the click left it.
+	const toggleRef = useRef<HTMLButtonElement>(null);
+	function onToggleCollapsed() {
+		toggleCollapsed();
+		toggleRef.current?.focus();
+	}
+
+	const toggleButton = (
+		<IconButton
+			ref={toggleRef}
+			aria-expanded={!collapsed}
+			aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+			title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+			data-testid="sidebar-collapse"
+			onClick={onToggleCollapsed}
+		>
+			{collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+		</IconButton>
+	);
+
+	if (collapsed)
+		return (
+			<Rail
+				toggle={toggleButton}
+				rows={rows}
+				statusByProject={statusByProject}
+				onAddProject={() => void addProject()}
+				adding={adding}
+			/>
+		);
+
 	return (
 		<>
 			{/* The app's brand row lives in TopBar now — the sidebar starts at
-			    its search box. */}
-			<div className="border-b border-border px-3 py-2.5">
-				<div className="relative">
+			    its search box.
+
+			    **The toggle sits here, not in TopBar** (F1, ADR-0038). It is this
+			    column's own state, and a rail is left behind to hold it — which is
+			    the whole reason it can live with the thing it toggles rather than
+			    reading as window chrome beside the file-tree button. */}
+			<div className="flex items-center gap-1.5 border-b border-border py-2.5 pr-3 pl-1.5">
+				{toggleButton}
+				<div className="relative min-w-0 flex-1">
 					<Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 size-3.5 text-muted-foreground" />
 					<Input
 						type="search"
@@ -941,5 +994,141 @@ function SidebarEndZone({ active }: { active: boolean }) {
 				/>
 			)}
 		</div>
+	);
+}
+
+/**
+ * The sidebar at 48px (F1, ADR-0038).
+ *
+ * **One glyph per project, groups flattened away.** A folder glyph has nothing
+ * to route to, and since a glyph click does not expand, every project inside a
+ * group would be unreachable. `viewRows` already dissolves groups under two of
+ * the three sort modes for the same reason: a group is part of the
+ * *arrangement*, and a 48px column has no arrangement to show. Taking
+ * `flattenProjects` over whatever `viewRows` returned means the rail mirrors
+ * the current sort in all three modes with no ordering logic of its own.
+ *
+ * **Reordering is off**, gesture and keyboard path together, so there is no
+ * `DndContext` here — only the same scroller, which is all that is left of it.
+ */
+function Rail({
+	toggle,
+	rows,
+	statusByProject,
+	onAddProject,
+	adding,
+}: {
+	toggle: ReactNode;
+	rows: SidebarRow[];
+	statusByProject: Map<string, TerminalStatus | undefined>;
+	onAddProject: () => void;
+	adding: boolean;
+}) {
+	const navigate = useNavigate();
+	const { projectId: activeProjectId } = useActiveProject();
+	const projects = useMemo(() => flattenProjects(rows), [rows]);
+
+	return (
+		<>
+			<div className="flex flex-col items-center gap-1 pt-2.5 pb-1">
+				{toggle}
+				{/* **It routes to the search page rather than expanding.** The
+				    expanded field only debounces into this same navigation, so the
+				    icon goes straight there and you type in a full-width view — the
+				    rail routes, it does not expand. A 48px input is not a degraded
+				    input, it is a broken one. */}
+				<IconButton
+					aria-label="Search sessions"
+					title="Search sessions"
+					data-testid="rail-search"
+					onClick={() => void navigate({ to: '/search', search: {} })}
+				>
+					<Search />
+				</IconButton>
+			</div>
+
+			<nav
+				aria-label="Projects"
+				data-testid="sidebar-rail"
+				className="flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto px-1.5 pb-3"
+			>
+				{projects.length === 0 ? (
+					// The one thing the rail keeps of the header's menus, and only in
+					// this state: a rail with nothing to navigate to and nothing to
+					// press is a dead column. The folder picker, not the menu — Import
+					// and New group both want the list in front of you, and this one
+					// does not.
+					<IconButton
+						aria-label="Add a project"
+						title="Add a project"
+						data-testid="rail-add-project"
+						disabled={adding}
+						onClick={onAddProject}
+					>
+						<FolderPlus />
+					</IconButton>
+				) : (
+					projects.map((project) => (
+						<SidebarRailGlyph
+							key={project.id}
+							project={project}
+							isActive={project.id === activeProjectId}
+							liveStatus={statusByProject.get(project.id)}
+						/>
+					))
+				)}
+			</nav>
+
+			{/* **One overflow menu, not two half-rendered widgets.** `UpdateBadge`
+			    could survive inline — it drops its label in a narrow `@container` —
+			    but `ZoomControls` is three controls and cannot. `h-9`, the height
+			    the expanded footer already is, so the toggle does not move the rows
+			    above it. */}
+			<footer
+				data-testid="sidebar-footer"
+				className="flex h-9 shrink-0 items-center justify-center border-t border-border"
+			>
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<IconButton
+							aria-label="Updates and zoom"
+							title="Updates and zoom"
+							data-testid="rail-overflow"
+						>
+							<EllipsisVertical />
+						</IconButton>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="start" side="top" className="w-56">
+						<RailFooterMenu />
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</footer>
+		</>
+	);
+}
+
+/** Indexing and the updater, which the expanded footer states inline, plus the
+ *  zoom controls it cannot. */
+function RailFooterMenu() {
+	const progress = useIndexerStore((s) => s.progress);
+	return (
+		<>
+			{progress && progress.phase !== 'idle' && (
+				<>
+					<DropdownMenuLabel>
+						Indexing… {progress.processed}/{progress.total}
+					</DropdownMenuLabel>
+					<DropdownMenuSeparator />
+				</>
+			)}
+			<div className="px-2 py-1">
+				<UpdateBadge />
+			</div>
+			<DropdownMenuSeparator />
+			<div className="flex items-center gap-2 px-2 py-1 text-muted-foreground text-xs">
+				<span className="flex-1">Zoom</span>
+				<ZoomControls />
+			</div>
+		</>
 	);
 }
