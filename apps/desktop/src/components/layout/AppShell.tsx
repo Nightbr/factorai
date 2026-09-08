@@ -13,7 +13,12 @@ import {
 	type ViewerHost,
 } from '@lib/viewerLayout';
 import { usePanelStore } from '@store/panelStore';
-import { clampSidebarWidth, useSidebarStore } from '@store/sidebarStore';
+import {
+	clampSidebarWidth,
+	effectiveSidebarWidth,
+	SIDEBAR_RAIL_WIDTH,
+	useSidebarStore,
+} from '@store/sidebarStore';
 import { tabsFor, useViewerStore } from '@store/viewerStore';
 import { PanelResizer } from './PanelResizer';
 import { Sidebar } from './Sidebar';
@@ -24,8 +29,15 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-	const sidebarWidth = useSidebarStore((s) => s.width);
+	const storedSidebarWidth = useSidebarStore((s) => s.width);
+	const sidebarCollapsed = useSidebarStore((s) => s.collapsed);
 	const setSidebarWidth = useSidebarStore((s) => s.setWidth);
+	// **What the layout is told**, which is the rail's 48 while collapsed (F1,
+	// ADR-0038). Every rule below asks how much room the sidebar is taking, and
+	// a collapsed sidebar answering 256 makes the shell believe it has less than
+	// it has — the viewer's column would then refuse to appear at a width where
+	// it now fits. Same shape as `effectivePanelWidth` two lines down.
+	const sidebarWidth = effectiveSidebarWidth(storedSidebarWidth, sidebarCollapsed);
 	const panelOpen = usePanelStore((s) => s.open);
 	const panelWidth = usePanelStore((s) => s.width);
 	const viewerWidth = usePanelStore((s) => s.viewerWidth);
@@ -153,20 +165,28 @@ export function AppShell({ children }: AppShellProps) {
 			<div ref={row} className="flex min-h-0 flex-1">
 				<aside
 					data-testid="sidebar"
-					style={{ width: sidebarWidth }}
+					style={{ width: sidebarCollapsed ? SIDEBAR_RAIL_WIDTH : storedSidebarWidth }}
 					className="flex shrink-0 flex-col border-r border-border bg-card"
 				>
 					<Sidebar />
 				</aside>
 				{/* Mirror of the file panel's handle: this one is on the sidebar's
-				    right edge, so dragging right widens it. */}
-				<PanelResizer
-					size={sidebarWidth}
-					onSize={setSidebarWidth}
-					edge="right"
-					label="Resize sidebar"
-					clamp={clampSidebarWidth}
-				/>
+				    right edge, so dragging right widens it.
+
+				    **Not rendered while collapsed** (F1, ADR-0038). The rail is a
+				    fixed width, and a handle that resizes nothing is a handle that
+				    lies. There is no drag-to-collapse either: the clamp keeps its
+				    180px floor, because a width and a collapse are different
+				    questions. */}
+				{!sidebarCollapsed && (
+					<PanelResizer
+						size={storedSidebarWidth}
+						onSize={setSidebarWidth}
+						edge="right"
+						label="Resize sidebar"
+						clamp={clampSidebarWidth}
+					/>
+				)}
 				{/* The route above, the project's shell footer below (F23, ADR-0032).
 				    Inside this column and not spanning the window, so the file panel
 				    keeps its full height and the footer is the width of the thing it

@@ -65,3 +65,39 @@ describe('migrateSidebarState', () => {
 		expect(migrateSidebarState('garbage', 1)).toBe('garbage');
 	});
 });
+
+describe('effectiveSidebarWidth', () => {
+	it('reports the rail, not the stored width, while collapsed', () => {
+		// The bug this exists to stop: a collapsed sidebar still claiming 256px
+		// makes the shell believe it has less room than it has (ADR-0037).
+		expect(effectiveSidebarWidth(256, true)).toBe(SIDEBAR_RAIL_WIDTH);
+		expect(effectiveSidebarWidth(480, true)).toBe(SIDEBAR_RAIL_WIDTH);
+	});
+
+	it('reports the stored width while expanded', () => {
+		expect(effectiveSidebarWidth(320, false)).toBe(320);
+	});
+});
+
+describe('toggleCollapsed', () => {
+	it('starts expanded', () => {
+		expect(useSidebarStore.getState().collapsed).toBe(false);
+	});
+
+	it('flips the flag both ways', () => {
+		useSidebarStore.getState().toggleCollapsed();
+		expect(useSidebarStore.getState().collapsed).toBe(true);
+		useSidebarStore.getState().toggleCollapsed();
+		expect(useSidebarStore.getState().collapsed).toBe(false);
+	});
+
+	it('leaves the dragged width alone, so expanding restores it', () => {
+		// The whole reason `collapsed` is a boolean beside `width` rather than a
+		// width of zero: collapse is not "drag it to nothing".
+		useSidebarStore.getState().setWidth(320);
+		useSidebarStore.getState().toggleCollapsed();
+		expect(useSidebarStore.getState().width).toBe(320);
+		useSidebarStore.getState().toggleCollapsed();
+		expect(useSidebarStore.getState().width).toBe(320);
+	});
+});
