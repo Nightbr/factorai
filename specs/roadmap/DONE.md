@@ -3,6 +3,45 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The sidebar collapses to a 48px rail that navigates (roadmap 53,
+  [ADR-0038](../../docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md))** — 2026-09-08, user
+  ask. The one always-on column with no way to get its pixels back, on a laptop, while reading a
+  diff. It collapses to a rail rather than to nothing because it is the app's navigation, and the
+  three things that shape settled against what item 53 first wrote down.
+
+  **The rail routes; it does not expand.** A glyph click navigates and leaves the sidebar at 48px.
+  Expand-and-route — what the item first said — makes the rail a launcher that destroys itself on
+  first use: you collapsed it to get the pixels back, and a click that hands them away undoes what
+  you asked for. The search icon follows the same rule and goes to `/search`, because a 48px input
+  is not a degraded input, it is a broken one. The consequence is that **the toggle is the only
+  control that expands the sidebar**, and F1 says it is mouse-only until item 5 picks bindings for
+  it and the file-tree toggle together.
+
+  **Groups are flattened away, one glyph per project.** A folder glyph has nothing to route to,
+  and with the rule above every project inside a group would be unreachable. ADR-0025 is not
+  contradicted: `viewRows` already dissolves groups under two of three sort modes on the same
+  reasoning — a group is part of the *arrangement*, and a 48px column has none to show. The rail
+  is `flattenProjects(viewRows(rows, sort))`, so it mirrors the sort in all three modes with no
+  ordering logic of its own.
+
+  **What a 48px column cannot show, a hover card shows.** The standing objection to a rail is that
+  sessions disappear and a rail that nests them is a tree at 48px. The card is neither: it renders
+  `SessionList` itself, in a `flat` variant that drops the guide line, so the three-key order, the
+  `Math.max(limit, pinnedCount)` cap, the pinned divider, the `N more…` link and each row's
+  pin/copy/delete menu are the same code in both places rather than a second answer that drifts.
+  It carries the row's own `+`. There is **no pin on a project glyph** — a project has none; the
+  row's hover pin left when hand-ordering replaced pinning.
+
+  **Three call sites were asking a width that had stopped being true.** `resolveViewerHost` and
+  `maxViewerWidth` in `AppShell`, and `maxPanelWidth` in `FileTreePanel` — the third one item 53
+  did not name. A collapsed sidebar reporting its stored width makes the shell believe it has less
+  room than it has, so `effectiveSidebarWidth` is exported and all three go through it.
+
+  **`/search` had no field of its own.** It read `q` out of the URL and rendered results, and its
+  empty state said "type a query in the sidebar" — unreachable the moment the sidebar is a rail.
+  It has one now, focused on arrival from the rail via a flag spent and dropped immediately, so a
+  deep link or a reload does not steal a caret nobody asked it to.
+
 - **The file viewer leaves the modal: a column beside the session, a split under the tree, and a
   strip of open files (roadmap 48, [ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md))**
   — 2026-09-07, user ask. Reading a file covered the terminal it was opened from, in an app whose
