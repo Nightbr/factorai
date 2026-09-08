@@ -45,7 +45,12 @@ export function SidebarRailGlyph({ project, isActive, liveStatus }: SidebarRailG
 	const startSession = useStartSession();
 
 	return (
-		<HoverCard openDelay={220} closeDelay={120}>
+		// **The close delay is the whole usability of this card.** The pointer has
+		// to cross the gap between a 48px column and the card to reach anything in
+		// it, and a hover surface that closes the moment you leave the trigger is
+		// one you can look at and never touch. 400ms also forgives the overshoot
+		// you make aiming at a 26px row.
+		<HoverCard openDelay={220} closeDelay={400}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<HoverCardTrigger asChild>
@@ -80,7 +85,7 @@ export function SidebarRailGlyph({ project, isActive, liveStatus }: SidebarRailG
 				<ProjectMenu project={project} />
 			</ContextMenu>
 
-			<HoverCardContent side="right" align="start" sideOffset={8} className="w-64 p-1">
+			<HoverCardContent side="right" align="start" sideOffset={12} className="w-64 p-1">
 				<div className="flex items-center gap-2 px-2 pt-1 pb-1.5">
 					<p className="min-w-0 flex-1 truncate font-medium text-sm">{project.displayName}</p>
 					{/* The row's own `+`, verbatim (F2): same label, same call, same gate

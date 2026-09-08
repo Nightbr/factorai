@@ -1039,7 +1039,11 @@ function Rail({
 
 	return (
 		<>
-			<div className="flex flex-col items-center gap-1 pt-2.5 pb-1">
+			{/* Two icon-only controls stacked in a 48px column read as one blob at
+			    the expanded row's density. 8px between them and 8px under the pair
+			    separates them from each other and from the glyphs, which are a
+			    different kind of thing (DESIGN.md, The Rail Rule). */}
+			<div className="flex flex-col items-center gap-2 pt-3 pb-2">
 				{toggle}
 				{/* **It routes to the search page rather than expanding.** The
 				    expanded field only debounces into this same navigation, so the
@@ -1059,7 +1063,7 @@ function Rail({
 			<nav
 				aria-label="Projects"
 				data-testid="sidebar-rail"
-				className="flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto px-1.5 pb-3"
+				className="flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto px-1.5 pt-1 pb-3"
 			>
 				{projects.length === 0 ? (
 					// The one thing the rail keeps of the header's menus, and only in
