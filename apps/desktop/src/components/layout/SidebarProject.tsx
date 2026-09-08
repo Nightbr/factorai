@@ -200,7 +200,6 @@ export function SidebarProject({
 		disabled: !canReorder,
 	});
 
-
 	// A `missing` folder has a known path that is no longer on disk, so claude
 	// would boot in $HOME and file the new session under a *different* project
 	// than the row that was clicked. The gate says so before the click rather

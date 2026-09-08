@@ -1,13 +1,54 @@
 import { useQuery } from '@tanstack/react-query';
-import { createRoute, Link } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
+import { Input } from '@factorai/ui';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
+import { Search } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { rootRoute } from './__root';
 
 function SearchView() {
-	const { q } = searchRoute.useSearch();
+	const { q, focus } = searchRoute.useSearch();
 	const query = (q ?? '').trim();
+	const navigate = useNavigate();
+
+	// **This page has a field of its own** (F1, ADR-0038). It used to have none:
+	// `q` arrived from the sidebar's box and this view only rendered results,
+	// which is unreachable the moment the sidebar is a 48px rail with no box in
+	// it — the rail's search icon routes here, so here is where you type.
+	const [term, setTerm] = useState(q ?? '');
+	// Follows the URL when the URL changes from somewhere else — the sidebar's
+	// own field while it is expanded, or a deep link — without fighting what is
+	// being typed here, since a keystroke sets both.
+	useEffect(() => {
+		setTerm(q ?? '');
+	}, [q]);
+
+	// Same 250ms the sidebar's field uses: a search runs over every transcript,
+	// and one per keystroke is a query per character.
+	useEffect(() => {
+		const next = term.trim();
+		if (next === query) return;
+		const t = setTimeout(
+			() => void navigate({ to: '/search', search: { q: next || undefined }, replace: true }),
+			250,
+		);
+		return () => clearTimeout(t);
+	}, [term, query, navigate]);
+
+	// **Focused on arrival from the rail, and only from there.** A deep link or a
+	// reload lands on this route too, and stealing the caret from someone who
+	// asked for neither is the failure this flag exists to avoid. The flag is
+	// dropped from the URL as soon as it is spent, so a reload of what is now in
+	// the address bar does not re-focus.
+	const field = useRef<HTMLInputElement>(null);
+	useEffect(() => {
+		if (!focus) return;
+		field.current?.focus();
+		field.current?.select();
+		void navigate({ to: '/search', search: { q: q || undefined }, replace: true });
+	}, [focus, q, navigate]);
 
 	const hitsQ = useQuery({
 		queryKey: queryKeys.search(query, null),
@@ -19,11 +60,22 @@ function SearchView() {
 
 	return (
 		<main className="flex h-full flex-col bg-background">
-			<header className="flex items-baseline gap-2 border-b border-border px-4 py-3">
-				<h2 className="font-semibold text-sm">Search</h2>
-				{query && <span className="truncate text-muted-foreground text-sm">"{query}"</span>}
+			<header className="flex items-center gap-3 border-b border-border px-4 py-3">
+				<h2 className="shrink-0 font-semibold text-sm">Search</h2>
+				<div className="relative min-w-0 max-w-md flex-1">
+					<Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 size-3.5 text-muted-foreground" />
+					<Input
+						ref={field}
+						type="search"
+						value={term}
+						onChange={(e) => setTerm(e.target.value)}
+						placeholder="Search sessions…"
+						data-testid="search-field"
+						className="pl-7"
+					/>
+				</div>
 				{hits && (
-					<span className="ml-auto tabular-nums text-muted-foreground text-xs">
+					<span className="ml-auto shrink-0 tabular-nums text-muted-foreground text-xs">
 						{hits.length} {hits.length === 1 ? 'result' : 'results'}
 					</span>
 				)}
@@ -32,7 +84,7 @@ function SearchView() {
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{!query && (
 					<p className="p-4 text-muted-foreground text-sm">
-						Type a query in the sidebar to search across all session content.
+						Type above to search across all session content.
 					</p>
 				)}
 				{query && hitsQ.isLoading && (
@@ -89,8 +141,12 @@ export const searchRoute = createRoute({
 	// uniformity is what lets route-agnostic navigation (the `?file=` viewer
 	// param, and the tab system later) update search without knowing which
 	// route it's on. The view normalises a missing `q` to ''.
-	validateSearch: (search: Record<string, unknown>): { q?: string } => ({
+	// `focus` is how the rail's search icon says "and put the caret in the
+	// field" (F1, ADR-0038). A flag rather than route state: it is spent on
+	// arrival and immediately dropped, so nothing about it survives a reload.
+	validateSearch: (search: Record<string, unknown>): { q?: string; focus?: true } => ({
 		q: typeof search.q === 'string' ? search.q : undefined,
+		focus: search.focus === true || search.focus === 'true' ? true : undefined,
 	}),
 	component: SearchView,
 });

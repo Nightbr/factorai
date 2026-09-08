@@ -1041,7 +1041,7 @@ function Rail({
 					aria-label="Search sessions"
 					title="Search sessions"
 					data-testid="rail-search"
-					onClick={() => void navigate({ to: '/search', search: {} })}
+					onClick={() => void navigate({ to: '/search', search: { focus: true } })}
 				>
 					<Search />
 				</IconButton>
