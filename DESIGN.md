@@ -283,7 +283,7 @@ padding, never its labels. A menu row is tightened from 32px to 28px by its
 
 ## Layout
 
-A fixed three-column desktop shell inside a bordered window: **sidebar** (resizable, ~288px default) · **session area** (flex, min-width 0) · **file panel** (resizable, collapsible to nothing). The shell itself draws a hairline border on its sides and bottom only — the titlebar caps the top — which is what gives the window a defined silhouette against the desktop. Bottom corners are rounded (12px) on macOS only; on Linux, where the WM clips nothing, a radius takes a bite out of the shell and reads worse than a square corner.
+A fixed three-column desktop shell inside a bordered window: **sidebar** (resizable, ~288px default, collapsible to a 48px rail) · **session area** (flex, min-width 0) · **file panel** (resizable, collapsible to nothing). The shell itself draws a hairline border on its sides and bottom only — the titlebar caps the top — which is what gives the window a defined silhouette against the desktop. Bottom corners are rounded (12px) on macOS only; on Linux, where the WM clips nothing, a radius takes a bite out of the shell and reads worse than a square corner.
 
 There is no responsive breakpoint system. This is a desktop application with a
 minimum window size, and the two side panels are user-resized rather than
@@ -293,7 +293,8 @@ than by a constant.
 
 **Chrome heights are explicit, never derived.** Top bar 42px (`h-10.5`); file
 panel header, sidebar footer and the session's shell footer 36px (`h-9`);
-session tab 30px (`h-7.5`); menu row 28px; sidebar rows 26–28px. The sidebar
+session tab 30px (`h-7.5`); menu row 28px; sidebar rows 26–28px; **collapsed
+sidebar 48px wide, on a 36px cell**. The sidebar
 footer and the shell footer share a height because they share a **line**: they
 sit level across the bottom of the window, and 6px between them read as a
 misalignment rather than as two surfaces. A row sized by padding moves the moment a taller
@@ -309,6 +310,15 @@ uses a 16px+ step except modal internals.
 
 **The Fixed-Chrome Rule.** Every chrome row declares its height. If a child can
 grow, it truncates or scrolls; it does not push its container.
+
+**The Rail Rule.** A column collapsed to 48px carries **icons only, one per
+cell, at the size the expanded row drew them** — a project's avatar is 20px in
+both. Collapsing takes the label away, not the identity, so a glyph that grew to
+fill the rail would read as a different object from the row it replaced. Nothing
+that needs to be typed into or read as prose belongs there: it either routes
+somewhere with room for it, or folds into an overflow menu. The cell is 36px
+tall, off the 4/6/8/12 rhythm for the same reason `GUIDE_X` is — it is sized to
+a 20px glyph plus a hit target, not to the space between two things.
 
 **The One-Fact Row Rule.** 28px is the height of a row carrying one fact. A row
 that describes an *object* rather than an action may stack a 12px subtitle under

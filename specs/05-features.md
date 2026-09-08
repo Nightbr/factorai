@@ -38,6 +38,39 @@ all that differs. Width persists (180–480px). The session count was dropped fr
 competed with the status dot for the end of the row, and it is not what you
 scan a sidebar for.
 
+### Collapsed — the rail
+
+**It collapses to a 48px rail rather than to nothing** ([ADR-0038](../docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md)),
+because it is the app's navigation and a navigation column you dismissed is an
+app with no way to change what you are looking at. The toggle sits in the
+sidebar's own search row, left of the field — this column's state, not window
+chrome, which is what the file-tree toggle in `TopBar` is. The two are
+deliberately asymmetric for that reason.
+
+`collapsed` is a boolean beside `width`, not a width of zero: a width is how
+much sidebar you want and this is whether you want one at all, so **expanding
+restores the width you dragged**. The resizer is not rendered while collapsed,
+and there is no drag-to-collapse — the clamp keeps its 180px floor. The toggle
+is instant, with no width transition: every frame of one is a resize event, and
+a PTY resize per frame is a `SIGWINCH` storm at the agent.
+
+The rail holds, top to bottom: the toggle; a search icon; **one glyph per
+project, groups flattened away**, each its avatar badged with the status dot
+F10 already puts there; and one overflow menu carrying what `h-9` cannot —
+indexing, the updater and the zoom controls.
+
+**The rail routes. It does not expand.** Clicking a glyph goes to that project
+and leaves the sidebar at 48px; the search icon goes to `/search`, which has a
+field of its own and takes the caret on arrival. What a 48px column cannot show
+— a project's sessions — a **hover card** shows: the same list the expanded row
+draws, from the same component, plus that row's `+`. Right-click gives the same
+project menu minus the reordering, which is off while collapsed along with its
+keyboard path.
+
+**The toggle is therefore the only control that expands the sidebar, and it is
+mouse-only** until roadmap item 5 picks the bindings for it and the file-tree
+toggle together.
+
 ### Ordering
 
 **Every project sits where you dragged it.** A project has no position of its
