@@ -100,3 +100,23 @@
 	box-sizing: content-box;
 	padding-right: 8px;
 }
+
+/* **Find in the rendered markdown preview** (specs/05-features.md F7 § "Find").
+   Registered by `components/viewer/FindBar.tsx`, which holds the two names.
+
+   The CSS Custom Highlight API rather than `<mark>` wrappers, because the
+   document belongs to `react-markdown` and wrapping its text nodes is an edit
+   React undoes on its next render. A highlight paints without touching the
+   tree.
+
+   The same pair of colours the editor's own find widget takes in
+   `components/viewer/monaco.ts`: the accent at full strength for where you are,
+   the same hue at a tint for where else it is, and no `color` on either so the
+   prose keeps its own. */
+::highlight(factorai-find) {
+	background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+::highlight(factorai-find-current) {
+	background-color: color-mix(in oklab, var(--primary) 45%, transparent);
+}

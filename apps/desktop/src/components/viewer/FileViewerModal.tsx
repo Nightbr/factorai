@@ -1,6 +1,7 @@
 import { Dialog, DialogClose, DialogContent, DialogTitle, IconButton } from '@factorai/ui';
 import { Check, Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
+import { FindHandleProvider, isFindKey, useFindHandleSlot } from '@components/viewer/findHandle';
 import type { DiffMode, ViewerPosition } from '@hooks/useFileViewer';
 import { isMacOS } from '@lib/platform';
 import { cmd, openExternally } from '@lib/tauri';
@@ -42,6 +43,13 @@ interface FileViewerModalProps {
  * header and from nowhere else. Dismissal (Esc, click-outside, the close
  * button) all route through `onClose`, which puts the file back in the pane
  * rather than closing it.
+ *
+ * **`Escape` belongs to the find widget first** (F7 § "Find"). Radix listens on
+ * the document in the **capture** phase, so without the gate below it wins the
+ * race against Monaco's editor-level handler and one keystroke takes away both
+ * the widget and the expanded view. Gated, the first `Escape` closes find and
+ * the second closes this — which is what the same key does in every editor and
+ * every browser find bar.
  */
 export function FileViewerModal({
 	path,
@@ -52,6 +60,7 @@ export function FileViewerModal({
 }: FileViewerModalProps) {
 	const [copied, setCopied] = useState(false);
 	const [revealFailed, setRevealFailed] = useState(false);
+	const findSlot = useFindHandleSlot();
 
 	if (!path) return null;
 	const { name, parent } = splitPath(path);
@@ -91,6 +100,23 @@ export function FileViewerModal({
 		>
 			<DialogContent
 				data-testid="file-viewer-modal"
+				// Not `stopPropagation`: Monaco still has to see this keystroke to
+				// close its own widget with it. Preventing the default is what tells
+				// Radix not to dismiss.
+				onEscapeKeyDown={(event) => {
+					if (findSlot.current?.isRevealed()) event.preventDefault();
+				}}
+				// The same forward `ViewerPane` does, for the same reason: this
+				// dialog opens with its own content focused, and its header is four
+				// controls a reader's focus can be on. Monaco stops the event when
+				// it handles the key itself.
+				onKeyDown={(event) => {
+					if (!isFindKey(event)) return;
+					const handle = findSlot.current;
+					if (!handle) return;
+					event.preventDefault();
+					handle.open();
+				}}
 				// `hideClose`: the built-in close button is absolutely positioned at
 				// right-4 top-4, which can't share a baseline with this header's own
 				// controls. We render DialogClose in-flow with them instead.
@@ -133,19 +159,21 @@ export function FileViewerModal({
 					</DialogClose>
 				</header>
 
-				<Suspense
-					fallback={
-						<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
-							Loading editor…
-						</p>
-					}
-				>
-					{diff ? (
-						<DiffView path={path} mode={diff} />
-					) : (
-						<FileView path={path} position={position} onOpenPath={onOpenPath} />
-					)}
-				</Suspense>
+				<FindHandleProvider value={findSlot}>
+					<Suspense
+						fallback={
+							<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
+								Loading editor…
+							</p>
+						}
+					>
+						{diff ? (
+							<DiffView path={path} mode={diff} />
+						) : (
+							<FileView path={path} position={position} onOpenPath={onOpenPath} />
+						)}
+					</Suspense>
+				</FindHandleProvider>
 			</DialogContent>
 		</Dialog>
 	);

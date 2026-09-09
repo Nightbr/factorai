@@ -3,6 +3,74 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Find in the file the viewer is showing (F7)** — 2026-09-09, user ask. `Cmd/Ctrl+F` did
+  nothing, and **F7 and [ADR-0007](../../docs/adr/0007-monaco-for-the-file-viewer.md) had both
+  said it worked since the viewer shipped.** The cause is the JSON bug one level up:
+  `editor/editor.api` registers the editor and its API and *no* editor contributions, and find is
+  a contribution. `startFindAction` appeared zero times in the built chunk. Fixed by importing
+  `monaco-editor/features/find/register` — the feature entry point rather than
+  `contrib/find/browser/findController`, because it registers the same contribution and carries
+  an upstream patch that takes the widget's controls out of the tab order while it is hidden.
+  Every service the controller wants is already registered by `standaloneServices`, so unlike
+  JSON's full mode this one costs nothing but its own weight.
+
+  **Monaco's widget, in the app's palette, colours only.** Three models were mocked up and
+  compared before anything was built: the widget as it ships, a find bar of our own driving all
+  four viewer surfaces, and the widget restated in our colours. The third wins because the second
+  rebuilds regex, whole-word, in-selection, wrap-around, match ordering and reveal-and-centre by
+  hand on a file F26 had just made editable, and the first puts vs-dark's `#0078d4` focus ring in
+  the middle of our column. ~20 documented `editorFind*` / `editorWidget*` / `input*` theme keys
+  join the seven already in `defineTheme`. Its **geometry** stays Monaco's — a 24px field where
+  `DESIGN.md` says 32px — because the theme keys are API and the widget's internal class names
+  are not; `DESIGN.md` § Inputs now names that as the one exception in the app. It is also the
+  shape roadmap item 23's PDF find bar and item 13's project search match when they land, which
+  is what item 23 was waiting for.
+
+  **Three things were ours to build, and none of them is the search.** The pane and the expand
+  modal **forward the key**, because Monaco's binding fires only when the editor has focus and
+  both hosts have chrome above it. `Escape` **closes the widget before the modal**: Radix listens
+  on the document in the capture phase and beat Monaco's editor-level handler to it, so one
+  keystroke took away the widget and the expanded view together. And the **query survives an
+  editor that is re-created** — `FindController` does contribute `saveViewState`, but what it
+  saves is the widget's view zone geometry, so an agent saving the file you were searching took
+  the search with it. The toggles needed nothing: Monaco keeps `matchCase` / `wholeWord` /
+  `isRegex` in its own storage service.
+
+  Both hosts reach the editor through a **ref in a React context**, not a prop: `FileView` knows
+  nothing about its host (ADR-0037), and `FileViewerModal` is statically imported — importing
+  `monaco.ts` there would pull the heaviest chunk in the app into the initial bundle.
+
+  Everything else is Monaco's and was taken as it comes: the whole keymap (`F3`, `Cmd+G`,
+  `Ctrl+H`, `Alt+C`/`W`/`R`, all editor-scoped, so none of it reaches a focused terminal or waits
+  on item 5), Replace and Replace All (buffer edits, one undo back, and Save still asks before
+  overwriting a change nobody has read), and the `addExtraSpaceOnTop` and
+  `seedSearchStringFromSelection` defaults. The diff editor got find free with the same import.
+
+  **Two faults only the real window found, and both are about a container.** Monaco renders its
+  hovers into the element handed to `monaco.editor.create`, positioned `absolute` at the target's
+  page position *minus that element's own* — so a `static` host is not the offset parent those
+  coordinates assume, and the find widget's button tooltips resolved against whatever positioned
+  ancestor the shell offered and drew above the viewer entirely. One `relative`, on both editor
+  hosts. The other:
+
+  **The icon font is a second import, and only the real window said so.** With the contribution
+  registered the widget drew, searched and counted correctly — with nine identical tofu boxes
+  where its buttons should be. Monaco's glyphs are private-use codepoints, so a missing font is
+  not a missing icon; `features/codicon/register` is CSS only and fixes all nine. Typecheck, 583
+  unit tests and 268 smoke tests were green across the bug, which is the second time this feature
+  area has proved that opening the app is part of the gate — the first was JSON.
+
+  **Find in the rendered markdown preview**, asked for in the same session. Monaco's widget
+  belongs to an editor and a preview is a DOM tree, so this is `FindBar`, ours, drawn as the
+  widget's twin down to the 24px field — the point being that a reader toggling between source
+  and preview cannot tell which bar is which. It paints through the **CSS Custom Highlight API**
+  rather than `<mark>` wrappers, because the document belongs to `react-markdown` and wrapping
+  its text nodes is an edit React undoes on its next render. Whole-word turned out to need
+  Monaco's rule rather than `\b` — `\b\(b\)\b` never matches `(b)`, since there is no word
+  boundary beside a bracket. The SVG preview gets nothing: it is an `<img>` of a data URI, with
+  no text in it to find. PDF and image stay unsearchable and F7 says so; item 23's find bar now
+  has a shape to match rather than a decision to make.
+
 - **The sidebar collapses to a 48px rail that navigates (roadmap 53,
   [ADR-0038](../../docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md))** — 2026-09-08, user
   ask. The one always-on column with no way to get its pixels back, on a laptop, while reading a

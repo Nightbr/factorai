@@ -1162,9 +1162,115 @@ host-agnostic, which is what makes three hosts possible at all.
   which is a different label from the constant one removed on 2026-09-07.
 - Monaco config: line numbers on, minimap **off** (noise at modal width),
   **word wrap on** with `wrappingIndent: 'indent'` so reading a file never
-  means scrolling sideways, find widget on `Cmd/Ctrl+F`, and
-  `automaticLayout: true` — Monaco measures its container on create, and
-  inside a dialog that is mid-open-animation that measures zero.
+  means scrolling sideways, and `automaticLayout: true` — Monaco measures its
+  container on create, and inside a dialog that is mid-open-animation that
+  measures zero.
+
+**Find — `Cmd/Ctrl+F`** (shipped 2026-09-09). Monaco's own find widget, and
+**this section claimed it for a year while it did nothing.** The claim was
+untrue for the same reason JSON rendered unhighlighted, one level up:
+`editor.api` registers the editor and its API and *no* editor contributions,
+and find is a contribution. `monaco.ts` now imports
+`monaco-editor/features/find/register` — the feature entry point rather than
+`contrib/find/browser/findController`, because it registers the same
+contribution *and* carries an upstream patch that takes the widget's controls
+out of the tab order while it is hidden. Every service the controller asks for
+is already registered by `standaloneServices`, so this one costs nothing but
+its own weight. [ADR-0007](../docs/adr/0007-monaco-for-the-file-viewer.md)
+lists the find widget among the affordances Monaco gives free; that was written
+before anyone pressed the key, and it is true only with the import.
+
+- **Monaco's whole keymap, not just the one key.** `F3` / `Shift+F3`,
+  `Cmd+G` / `Cmd+Shift+G`, `Ctrl+H` for replace, `Alt+C` / `Alt+W` / `Alt+R`
+  for the toggles. All of it is **editor-scoped**, the way `Cmd/Ctrl+S` is
+  (F26), so none of it reaches a focused terminal and none of it waits on the
+  keyboard scheme in roadmap item 5. Roadmap item 14's *global* `Cmd+G` still
+  has to not fire while the find widget has focus, which its own entry already
+  says.
+- **The pane forwards the key.** Monaco's binding fires only when the editor
+  has focus, and the pane has a tab strip and an expand control above it, so
+  `ViewerPane` catches `Cmd/Ctrl+F` and opens the widget. Monaco stops the
+  event when it handles it itself, so the forward only ever runs for a
+  keystroke the editor never saw.
+- **`Escape` closes the widget before it closes the expand modal.** Radix
+  listens on the document in the capture phase and would otherwise win the
+  race against Monaco's editor-level handler, taking the widget and the
+  expanded view in one keystroke. Gated on the widget being open, so the first
+  `Escape` closes find and the second closes the modal. In the pane `Escape`
+  still closes nothing ([ADR-0037](../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md)).
+- **Replace and Replace All are kept**, and Monaco hides both on a read-only
+  file, which is the four cases F26 already computes. They are buffer edits:
+  one `Ctrl/Cmd+Z` back, the tab marks itself dirty, and Save still asks before
+  overwriting a change nobody has read. No separate confirmation.
+- **The search survives an editor that is re-created**, the way the scroll and
+  the selection do. Monaco's `FindController` contributes `saveViewState`, but
+  what it saves is the widget's view zone geometry — not whether the widget is
+  open and not the query — so the query rides in a ref beside `viewStateRef`.
+  The toggles need nothing: Monaco keeps `matchCase` / `wholeWord` / `isRegex`
+  in its own storage service, so `Aa` stays pressed across a new editor.
+- **Monaco's `find` defaults are kept.** `addExtraSpaceOnTop` scrolls a blank
+  row in so the widget never covers line 1, which matters most in a 400px
+  column; `seedSearchStringFromSelection` puts the selected symbol in the field
+  on open.
+- **The diff editor gets find too** (F8, F13), free with the same import and
+  read-only, on the modified side — reviewing a diff is where you go looking
+  for a symbol.
+- **The widget wears the app's palette, in colour only.** ~20 documented
+  `editorFind*` / `editorWidget*` / `input*` keys in `defineTheme` beside the
+  seven that were already there; the current match carries the accent at full
+  strength with the hue as its border, every other match the same tint at 16%.
+  Its *geometry* stays Monaco's — a 24px field where `DESIGN.md` says 32px —
+  because the theme keys are API and the widget's internal class names are not.
+- **On a truncated file, find searches what was read**, and says nothing extra
+  about it: the footer already reads `read-only — truncated` whenever that is
+  true. Searching the file that is actually on disk is roadmap item 13's job.
+- **The widget needs its icon font, and that is a second import** (fixed
+  2026-09-09, found in the real window). `features/codicon/register` is CSS
+  only — an `@font-face` for `codicon.ttf` and a class per glyph. Without it the
+  widget draws and searches correctly and every one of its nine buttons is a
+  tofu box, because Monaco's glyphs are private-use codepoints: a missing font
+  is not a missing icon, it is nine identical rectangles.
+- **The editor's host element is `relative`, and that is load-bearing** (fixed
+  2026-09-09, found in the real window). Monaco renders its hovers — the
+  tooltips on the find widget's buttons — into the element handed to
+  `monaco.editor.create`, positioned `absolute` at the target's page position
+  *minus that element's own*. A `static` container is not the offset parent
+  those coordinates assume, so the tooltip resolved against whatever positioned
+  ancestor the shell offered and landed above the viewer entirely. The diff
+  editor's host carries it for the same reason.
+
+**Find in the rendered markdown preview** (shipped 2026-09-09, user ask).
+Monaco's widget belongs to an editor, and a preview is a DOM tree — so the
+preview gets `FindBar`, the app's own, **drawn as the widget's twin**: same
+corner, same 34px height, same 24px field, same order of controls, same
+`1 of 9`, same `Enter` / `Shift+Enter` / `Escape`. A reader toggling between
+source and preview should not be able to tell which of the two bars is ours,
+which is why this one takes Monaco's field metrics rather than the app's 32px
+(`DESIGN.md` § Inputs). It is the shape roadmap item 23's PDF bar takes.
+
+- **The paint is a CSS Custom Highlight registration, not `<mark>` wrappers.**
+  The document belongs to `react-markdown`, and wrapping its text nodes is an
+  edit React undoes on its next render — silently, and only sometimes. A
+  highlight is a set of `Range`s held beside the DOM, so nothing in the tree
+  changes and clearing it is one `delete`. Two registrations: the accent at
+  full strength for the current match, the same hue at a tint for the rest,
+  which is the pair the editor's widget takes. A webview without the API loses
+  the tint and keeps the count, the stepping and the scroll.
+- **Whole-word is Monaco's rule, not `\b`.** `\b` is a transition between a
+  word character and a non-word one, so `\b\(b\)\b` never matches `(b)`.
+  Monaco asks whether the character on each side of the match is a word
+  character, which matches `(b)` between spaces and still refuses `find` inside
+  `finder`.
+- **The bar searches whatever is rendered**, frontmatter panel included, which
+  is why it is hosted beside `MarkdownView` rather than inside it. It publishes
+  the same handle the editor does, so the pane's forward and the modal's
+  `Escape` gate work over a preview knowing nothing about which one is mounted —
+  and only one ever is, since the editor is unmounted for a preview.
+- **No replace.** The preview is a rendering; the buffer it renders is edited in
+  the source view, which has Monaco's.
+- **The SVG preview does not get one**, and neither do an image or a PDF. An SVG
+  preview is an `<img>` of a data URI — there is no text in it to find. The
+  PDF's own find bar is roadmap item 23.
 
 **Language detection resolves through Monaco's own registry** — extension,
 then exact filename (`Dockerfile`, `Makefile`) — rather than a second

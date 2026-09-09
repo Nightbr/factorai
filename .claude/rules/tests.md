@@ -20,6 +20,13 @@ paths:
   with `net::ERR_NETWORK_CHANGED` on any netlink event, and docker or tailscale
   make those constant. `installMockBridge` logs every aborted script;
   `retries: 1` keeps it off the gate.
+- **A locator that is unique only once a lazy chunk lands is a strict-mode
+  violation, not a wait.** The README fixture has two mermaid fences, and both
+  render as `mermaid-diagram` until mermaid loads and rejects the broken one into
+  `mermaid-error`. A bare `getByTestId('mermaid-diagram')` therefore matched two
+  elements for as long as the chunk was in flight, and a slow load reported
+  itself as "resolved to 2 elements" rather than as the timeout it was. Take the
+  one you mean with `.first()`.
 - **dnd-kit reports `over` one move behind** — it collides against rects measured
   on the previous frame. Move twice, a pixel apart, per aim. See the helpers in
   `tests/smoke/sidebar.spec.ts`.

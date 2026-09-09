@@ -729,8 +729,10 @@ because F7 already commits to them:
   worth doing:
   - **A find bar.** `Cmd+F` across the document, with match highlighting and next/prev. The text
     layer is already there, so this is a match index and a scroll-to-match rather than new
-    plumbing. Wait for item 13's project-wide search to settle the find-bar shape first — two
-    find UIs that don't match each other is worse than one arriving later.
+    plumbing. **The shape is settled**: F7's find widget shipped 2026-09-09 — Monaco's, restated
+    in the app's palette — and this bar matches it rather than inventing a second look. What is
+    still open is only where the bar sits, because a floating widget over a PDF has no editor to
+    scroll a blank row into.
   - **Go-to-page.** A number box beside the counter. Small, and only obviously worth it once a
     document long enough to want it is in front of someone.
   - **Outline sidebar**, from `getOutline()` — real navigation for a spec or a book. Needs a

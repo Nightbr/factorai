@@ -560,6 +560,14 @@ too loud for a mark repeated once per expanded project.
   density a 2px ring plus a 2px offset is 4px of new geometry around a 32px
   field, which reads as the control resizing rather than as focus moving.
 - **Disabled:** 50% opacity and a not-allowed cursor.
+- **The embedded editor's own widgets are the exception**, and the find widget
+  is the one that exists (F7). Monaco draws a 24px field and 20px buttons inside
+  it. Its **colours** are restated here — app ground, hairline border, the amber
+  ring on focus, the accent for a match — because those are documented theme
+  keys; its **metrics** are not reachable without styling Monaco's internal
+  class names, which are not API and change under an upgrade. So this widget
+  reads as ours in colour and as Monaco in density, deliberately, and it is the
+  only control in the app that does.
 
 ### Menus (Dropdown and Context)
 

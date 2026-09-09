@@ -8,7 +8,15 @@ import { formatBytes } from '@lib/format';
 import { cmd } from '@lib/tauri';
 import { IMMUTABLE_REV, REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { queryKeys } from '@lib/queryKeys';
-import { ensureTheme, FACTORAI_DARK, languageForFile, monaco } from '@components/viewer/monaco';
+import { useFindHandleSink } from '@components/viewer/findHandle';
+import {
+	ensureTheme,
+	FACTORAI_DARK,
+	findIsRevealed,
+	languageForFile,
+	monaco,
+	openFind,
+} from '@components/viewer/monaco';
 import { usePrefsStore } from '@store/prefsStore';
 
 /**
@@ -215,10 +223,18 @@ interface DiffEditorProps {
 	inline: boolean;
 }
 
-/** Monaco diff host. Same lifecycle rule as `FileView`'s editor and the
- *  terminal: create in an effect, dispose on unmount, never through state. */
+/**
+ * Monaco diff host. Same lifecycle rule as `FileView`'s editor and the
+ * terminal: create in an effect, dispose on unmount, never through state.
+ *
+ * **Find works here too**, and it arrived with the import rather than with any
+ * code (F7 § "Find"): reviewing a diff is exactly where you go looking for a
+ * symbol, and the editor is read-only, so it is search with no replace beside
+ * it. The widget belongs to the **modified** side — the one a reviewer reads.
+ */
 function DiffEditor({ original, modified, language, inline }: DiffEditorProps) {
 	const hostRef = useRef<HTMLDivElement>(null);
+	const findSink = useFindHandleSink();
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -245,16 +261,27 @@ function DiffEditor({ original, modified, language, inline }: DiffEditorProps) {
 		const modifiedModel = monaco.editor.createModel(modified, language);
 		editor.setModel({ original: originalModel, modified: modifiedModel });
 
+		if (findSink) {
+			const modifiedEditor = editor.getModifiedEditor();
+			findSink.current = {
+				open: () => openFind(modifiedEditor),
+				isRevealed: () => findIsRevealed(modifiedEditor),
+			};
+		}
+
 		return () => {
+			if (findSink) findSink.current = null;
 			// Models outlive the editor unless disposed explicitly — Monaco keeps
 			// them in a global registry, so leaking them leaks the file's contents.
 			editor.dispose();
 			originalModel.dispose();
 			modifiedModel.dispose();
 		};
-	}, [original, modified, language, inline]);
+	}, [original, modified, language, inline, findSink]);
 
-	return <div ref={hostRef} className="h-full w-full" data-testid="diff-view-editor" />;
+	// `relative` for the same reason the file editor's host has it: Monaco
+	// renders its hovers into this element, positioned against it.
+	return <div ref={hostRef} className="relative h-full w-full" data-testid="diff-view-editor" />;
 }
 
 function Centered({ children, tone = 'muted' }: { children: string; tone?: 'muted' | 'error' }) {

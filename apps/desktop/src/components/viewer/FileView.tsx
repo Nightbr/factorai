@@ -1,12 +1,19 @@
 import { ImageView } from '@components/viewer/ImageView';
 import { MarkdownView } from '@components/viewer/MarkdownView';
 import { BinaryCard, Centered, errorText } from '@components/viewer/chrome';
+import { FindBar } from '@components/viewer/FindBar';
+import { useFindHandleSink } from '@components/viewer/findHandle';
 import {
 	FACTORAI_DARK,
+	type FindState,
 	ensureTheme,
+	findIsRevealed,
 	languageForFile,
 	languageLabel,
 	monaco,
+	openFind,
+	restoreFindState,
+	saveFindState,
 } from '@components/viewer/monaco';
 import {
 	Button,
@@ -29,7 +36,7 @@ import { draftFor, useDraftStore } from '@store/draftStore';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Code2, Eye, Save, Sparkles } from 'lucide-react';
-import type { MutableRefObject } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 
 /**
@@ -356,11 +363,13 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 					/>
 				)}
 				{!showConflictDiff && file && !file.isBinary && showPreview && isMarkdown && (
-					<MarkdownView
-						source={previewSource}
-						path={path}
-						onOpenPath={onOpenPath ?? (() => undefined)}
-					/>
+					<SearchablePreview source={previewSource}>
+						<MarkdownView
+							source={previewSource}
+							path={path}
+							onOpenPath={onOpenPath ?? (() => undefined)}
+						/>
+					</SearchablePreview>
 				)}
 				{!showConflictDiff && file && !file.isBinary && showPreview && isSvg && (
 					<SvgPreview source={previewSource} name={basename(path)} />
@@ -609,6 +618,50 @@ function ConflictBanner({
  * `encodeURIComponent`, not base64: `btoa` throws on any character outside
  * Latin-1, and an SVG with a `é` or an emoji in a label is ordinary.
  */
+/**
+ * The rendered markdown preview, with find over it (F7 § "Find").
+ *
+ * **The bar lives here rather than in `MarkdownView`** because what it searches
+ * is "whatever is rendered", and the frontmatter panel is part of that. It also
+ * keeps `MarkdownView` what it is — a renderer — while the thing that owns a
+ * keystroke and a piece of open/closed state is a host, the same split
+ * `ViewerPane` and `FileView` already have.
+ *
+ * It publishes the same handle the editor does, so the pane's `Cmd/Ctrl+F`
+ * forward and the expand modal's `Escape` gate work over a preview with no
+ * knowledge that this is not Monaco. Only one of the two is ever mounted — the
+ * editor is unmounted for a preview — so there is one publisher at a time.
+ */
+function SearchablePreview({ source, children }: { source: string; children: ReactNode }) {
+	const [open, setOpen] = useState(false);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const findSink = useFindHandleSink();
+
+	// `openRef` so the handle can report visibility without being rebuilt on
+	// every toggle — the sink holds a ref, not state, and a handle that changed
+	// identity per keystroke would be a write per render.
+	const openRef = useRef(false);
+	openRef.current = open;
+
+	useEffect(() => {
+		if (!findSink) return;
+		findSink.current = {
+			open: () => setOpen(true),
+			isRevealed: () => openRef.current,
+		};
+		return () => {
+			findSink.current = null;
+		};
+	}, [findSink]);
+
+	return (
+		<div ref={rootRef} className="relative h-full">
+			{children}
+			{open && <FindBar root={rootRef} contentKey={source} onClose={() => setOpen(false)} />}
+		</div>
+	);
+}
+
 function SvgPreview({ source, name }: { source: string; name: string }) {
 	return (
 		<div className="flex h-full items-center justify-center overflow-auto bg-muted/30 p-4">
@@ -665,6 +718,12 @@ interface EditorProps {
  * O(1) where comparing the buffer is O(size) per keystroke, and it is the only
  * way to get undoing back to the start reported as clean rather than as an
  * edit that happens to match.
+ *
+ * **The search survives the same way the scroll does** (F7 § "Find"). Monaco's
+ * own view state does not carry the find widget's query — see
+ * `restoreFindState` — so it rides beside `viewStateRef` in a ref of its own,
+ * and for the same reason: a watcher re-read must not throw away what the
+ * reader was in the middle of.
  */
 function Editor({
 	baseline,
@@ -678,6 +737,11 @@ function Editor({
 }: EditorProps) {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewStateRef = useRef<monaco.editor.ICodeEditorViewState | null>(null);
+	/** The search the next editor inherits, or null if find was closed. */
+	const findStateRef = useRef<FindState | null>(null);
+	/** Where the host reads `Cmd/Ctrl+F` and `Escape` from, or null in a host
+	 *  that provides no slot. */
+	const findSink = useFindHandleSink();
 	/** The last position actually jumped to, so a *new* `?line=` wins over the
 	 *  restored scroll while a re-render does not re-jump to an old one. */
 	const appliedPositionRef = useRef<ViewerPosition | null>(null);
@@ -760,6 +824,17 @@ function Editor({
 			editor.restoreViewState(viewStateRef.current);
 		}
 
+		// After the view state, because the query is set from the selection the
+		// restore just put back — see `restoreFindState`.
+		void restoreFindState(editor, findStateRef.current);
+
+		if (findSink) {
+			findSink.current = {
+				open: () => openFind(editor),
+				isRevealed: () => findIsRevealed(editor),
+			};
+		}
+
 		// Monaco's line and column numbers are 1-based, which is already what an
 		// `@file#L12-18` mention wants — the conversion happens once, in
 		// `lib/mentions`, and nothing else has to know about the convention.
@@ -792,16 +867,29 @@ function Editor({
 			// Before disposal, not after: a disposed editor has no view state to
 			// give, and this is the only moment the next one can inherit from.
 			viewStateRef.current = editor.saveViewState();
+			findStateRef.current = saveFindState(editor);
 			bufferRef.current = model?.getValue() ?? bufferRef.current;
+			// The host's handle points at an editor that is about to stop
+			// existing. Cleared here rather than left for the next editor to
+			// overwrite, so a host that outlives the view cannot call into a
+			// disposed one.
+			if (findSink) findSink.current = null;
 			contentSub?.dispose();
 			selectionSub.dispose();
 			editor.dispose();
 		};
 		// Recreating on a language change is fine: the viewer is one file at a
 		// time and disposal is cheap next to the initial module load.
-	}, [baseline, bufferRef, language, readOnly, position, onSelection, onDirtyChange]);
+	}, [baseline, bufferRef, language, readOnly, position, onSelection, onDirtyChange, findSink]);
 
-	return <div ref={hostRef} className="h-full w-full" data-testid="file-view-editor" />;
+	// **`relative`, and it is load-bearing.** Monaco renders its hovers — the
+	// tooltips on the find widget's buttons — into *this* element through
+	// `ContextView`, positioned `absolute` at the target's page position **minus
+	// this element's own** (see `base/browser/ui/contextview`). A `static`
+	// container is not the offset parent those coordinates assume, so the tooltip
+	// resolved against whatever positioned ancestor the shell happened to offer
+	// and landed above the viewer entirely.
+	return <div ref={hostRef} className="relative h-full w-full" data-testid="file-view-editor" />;
 }
 
 /**

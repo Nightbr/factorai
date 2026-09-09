@@ -46,6 +46,11 @@ export default defineConfig({
 			// above: discovered lazily, it would reload the page the first time
 			// someone opened a .json file.
 			'monaco-editor/languages/features/json/tokenization',
+			// The find widget's contribution, which `editor.api` does not
+			// register on its own, and the icon font its buttons draw from —
+			// same file, same prebundle reasoning.
+			'monaco-editor/features/find/register',
+			'monaco-editor/features/codicon/register',
 			// pdf.js arrives through a lazier chunk still — only when a PDF is
 			// opened — so it would otherwise prebundle and reload the page at
 			// exactly that moment. Same reasoning as Monaco's three above.

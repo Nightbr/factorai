@@ -337,6 +337,60 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
 	});
 
+	/**
+	 * Find over the **rendered** document (F7 § "Find").
+	 *
+	 * Not Monaco's widget: a preview is a DOM tree and not a model, so this is
+	 * the app's own bar drawn as the widget's twin. The paint is a CSS Custom
+	 * Highlight registration rather than `<mark>` wrappers — `react-markdown`
+	 * owns this DOM and would undo the wrappers on its next render — and that
+	 * registry is the one half of this no unit test can reach, so it is asserted
+	 * directly.
+	 */
+	test('@smoke Cmd/Ctrl+F searches the rendered markdown preview', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const md = viewer.getByTestId('markdown-view');
+		await expect(md).toBeVisible();
+		// No editor here at all, so the key has nothing of Monaco's to reach.
+		await expect(viewer.getByTestId('file-view-editor')).toHaveCount(0);
+		// **Wait for the diagram before searching**, and take it by `.first()` for
+		// the reason the fence test below spells out: the document is still being
+		// built while mermaid's chunk loads, so a match list taken before it lands
+		// is taken against a different document.
+		await expect(md.getByTestId('mermaid-diagram').first().locator('svg')).toBeVisible({
+			timeout: 15_000,
+		});
+
+		await viewer.getByTestId('file-tab').click();
+		await page.keyboard.press('ControlOrMeta+f');
+
+		await expect(viewer.getByTestId('preview-find')).toBeVisible();
+		await page.keyboard.type('project');
+		await expect(viewer.getByTestId('preview-find-count')).toHaveText('1 of 1');
+
+		const painted = () =>
+			page.evaluate(() => CSS.highlights.get('factorai-find-current')?.size ?? 0);
+		expect(await painted()).toBe(1);
+
+		// Appends, so the query becomes one nothing matches.
+		await page.keyboard.type('zzz');
+		await expect(viewer.getByTestId('preview-find-count')).toHaveText('No results');
+		expect(await painted()).toBe(0);
+
+		// Escape closes the bar, and the paint goes with it — a highlight outlives
+		// the component that registered it.
+		await page.keyboard.press('Escape');
+		await expect(viewer.getByTestId('preview-find')).toHaveCount(0);
+		expect(await painted()).toBe(0);
+		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
+	});
+
 	test('@smoke reopening a file re-reads it, so an agent edit shows', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
@@ -518,7 +572,14 @@ test.describe('file viewer', () => {
 		// An `<svg>` that mermaid laid out, with the node label in it — not the
 		// fence's text sitting in a code block. Mermaid loads lazily, so this is
 		// the one place in the suite that waits for a chunk.
-		const diagram = md.getByTestId('mermaid-diagram');
+		//
+		// **`.first()`, because this document has two fences.** Until mermaid
+		// lands they are two `mermaid-diagram` nodes — the broken one only becomes
+		// `mermaid-error` once mermaid has rejected it — so a bare locator is
+		// ambiguous for as long as the chunk is in flight, and a slow load
+		// reported itself as a strict-mode violation rather than as the wait it
+		// is. The valid fence is first in the document either way.
+		const diagram = md.getByTestId('mermaid-diagram').first();
 		await expect(diagram.locator('svg')).toBeVisible({ timeout: 15_000 });
 		await expect(diagram).toContainText('Terminal');
 
@@ -641,6 +702,87 @@ test.describe('file viewer', () => {
 		// rather than as a span of its own.
 		await expect(viewer).toContainText(/JSON · /);
 		await expect(viewer.getByText('Plain Text')).toHaveCount(0);
+	});
+
+	/**
+	 * Find (F7). Two halves of this are ours and both are here.
+	 *
+	 * **The forward**, because Monaco's own `Cmd/Ctrl+F` fires only when the
+	 * editor has focus, and the tab strip is the other place a reader's focus
+	 * sits in this pane. **The count**, because a find widget that opens and
+	 * does not search is the state this feature spent a year in: `editor.api`
+	 * registers no editor contributions, so the key did nothing at all while
+	 * both F7 and ADR-0007 said it worked.
+	 */
+	test('@smoke Cmd/Ctrl+F opens find from the tab strip and searches the file', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		// Through the tree rather than by URL: this needs a tab to put focus on,
+		// and a tab needs a checkout — `?file=` on its own has none.
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+
+		// Focus on the tab, not in the file: this is the keystroke Monaco never
+		// sees, and the one the pane has to forward.
+		await viewer.getByTestId('file-tab').click();
+		await page.keyboard.press('ControlOrMeta+f');
+
+		const find = viewer.locator('.find-widget.visible');
+		await expect(find).toBeVisible();
+
+		// Three `o`s in `[package] / name = "foo" / version = "0.1.0"`.
+		await page.keyboard.type('o');
+		await expect(find.locator('.matchesCount')).toHaveText('1 of 3');
+
+		// Enter steps, which is Monaco's keymap rather than ours — and the
+		// cheapest proof the widget is bound to a model and not just drawn.
+		await page.keyboard.press('Enter');
+		await expect(find.locator('.matchesCount')).toHaveText('2 of 3');
+
+		// Escape is the widget's, and the pane keeps the file open: in a column
+		// Escape closes nothing at all (ADR-0037).
+		await page.keyboard.press('Escape');
+		await expect(viewer.locator('.find-widget.visible')).toHaveCount(0);
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+	});
+
+	/**
+	 * The `Escape` order in the expanded view.
+	 *
+	 * Radix listens on the document in the **capture** phase, so it beats
+	 * Monaco's editor-level handler to the key. Ungated, one keystroke took away
+	 * the widget and the expanded view together; gated, the first closes find and
+	 * the second closes the modal.
+	 */
+	test('@smoke in the expanded view Escape closes find before it closes the modal', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		const file = encodeURIComponent(`${ROOT}/src/deep.ts`);
+		await page.goto(`/#/?file=${file}`);
+		await expect(page.getByTestId('file-view-editor').first()).toBeVisible();
+
+		const modal = await expandViewer(page);
+		await expect(modal.getByTestId('file-view-editor')).toBeVisible();
+
+		await page.keyboard.press('ControlOrMeta+f');
+		const find = modal.locator('.find-widget.visible');
+		await expect(find).toBeVisible();
+
+		await page.keyboard.press('Escape');
+		await expect(modal.locator('.find-widget.visible')).toHaveCount(0);
+		await expect(modal).toBeVisible();
+
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer-modal')).toHaveCount(0);
+		// Closing the expand puts the file back in the pane rather than closing
+		// it (ADR-0037).
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
 	});
 
 	/**

@@ -1,7 +1,8 @@
 import { IconButton } from '@factorai/ui';
 import { Maximize2 } from 'lucide-react';
-import { Suspense } from 'react';
+import { type KeyboardEvent, Suspense } from 'react';
 import { FileTabs } from '@components/viewer/FileTabs';
+import { FindHandleProvider, isFindKey, useFindHandleSlot } from '@components/viewer/findHandle';
 import { LazyDiffView, LazyFileView } from '@components/viewer/lazyViews';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { tabsFor, useViewerStore, type ViewerTab } from '@store/viewerStore';
@@ -19,9 +20,17 @@ import { tabsFor, useViewerStore, type ViewerTab } from '@store/viewerStore';
  * controls rather than taking a row above a header of their own: the column can
  * be 400px wide, and two rows of chrome over it would be a quarter of the
  * reading height gone before a line of the file is drawn.
+ *
+ * **`Cmd/Ctrl+F` is forwarded to the editor** (F7 § "Find"). Monaco's own
+ * binding fires only when the editor has focus, so the key did nothing from the
+ * tab strip or the expand button — the two places in this pane a reader's focus
+ * lands without touching the file. Scoped to the pane and not global, exactly
+ * as `Cmd/Ctrl+S` is: a global binding is item 5's problem to get right, and it
+ * has a terminal to not break.
  */
 export function ViewerPane() {
 	const viewer = useFileViewer();
+	const findSlot = useFindHandleSlot();
 	const checkout = useViewerStore((s) => s.checkout);
 	const tabs = useViewerStore((s) => tabsFor(s, s.checkout));
 	const pinTab = useViewerStore((s) => s.pinTab);
@@ -46,8 +55,23 @@ export function ViewerPane() {
 		viewer.open(next, { diff: nextTab?.diff ?? undefined });
 	}
 
+	/** Forward the key, or leave it alone. Monaco stops the event when it
+	 *  handles it itself, so this only ever runs for a keystroke the editor
+	 *  never saw. */
+	function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+		if (!isFindKey(event)) return;
+		const handle = findSlot.current;
+		if (!handle) return;
+		event.preventDefault();
+		handle.open();
+	}
+
 	return (
-		<div data-testid="file-viewer" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+		<div
+			data-testid="file-viewer"
+			className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+			onKeyDown={onKeyDown}
+		>
 			{/* `pr-2` against the button's own `ml-2`: 8px either side, so the one
 			    control in this row sits centred in its slot rather than hugging the
 			    edge it happens to be nearest. */}
@@ -72,23 +96,25 @@ export function ViewerPane() {
 				</IconButton>
 			</div>
 
-			<Suspense
-				fallback={
-					<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
-						Loading editor…
-					</p>
-				}
-			>
-				{viewer.diff ? (
-					<LazyDiffView path={viewer.path} mode={viewer.diff} />
-				) : (
-					<LazyFileView
-						path={viewer.path}
-						position={viewer.position}
-						onOpenPath={(path) => viewer.open(path)}
-					/>
-				)}
-			</Suspense>
+			<FindHandleProvider value={findSlot}>
+				<Suspense
+					fallback={
+						<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
+							Loading editor…
+						</p>
+					}
+				>
+					{viewer.diff ? (
+						<LazyDiffView path={viewer.path} mode={viewer.diff} />
+					) : (
+						<LazyFileView
+							path={viewer.path}
+							position={viewer.position}
+							onOpenPath={(path) => viewer.open(path)}
+						/>
+					)}
+				</Suspense>
+			</FindHandleProvider>
 		</div>
 	);
 }
