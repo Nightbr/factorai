@@ -52,6 +52,13 @@ jobs:
       # Formatting first: it is the cheapest check and the one most likely to
       # be the only thing wrong. `pnpm format` fixes it.
       - run: pnpm format:check
+
+      # A source file is text or it is not, and nothing else here can tell:
+      # biome formats a NUL, `tsc` parses one, and the tests ran green over the
+      # file that carried one. Git and the app's own viewer are what noticed,
+      # by drawing it as binary. See the `quality-gate` skill.
+      - run: pnpm bytes:check
+
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

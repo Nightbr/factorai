@@ -15,7 +15,8 @@
 		"e2e:ui": "playwright test --ui",
 		"deps:check": "syncpack list-mismatches",
 		"deps:fix": "syncpack fix-mismatches",
-		"deps:unused": "knip"
+		"deps:unused": "knip",
+		"bytes:check": "node scripts/check-text-bytes.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

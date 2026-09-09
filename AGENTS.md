@@ -78,6 +78,7 @@ Run all of these green before calling a task done, in this order:
 ```bash
 pnpm install --frozen-lockfile
 pnpm format:check
+pnpm bytes:check
 pnpm lint
 pnpm typecheck
 pnpm test

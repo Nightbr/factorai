@@ -10,6 +10,7 @@ Run, in this order, all green:
 ```bash
 pnpm install --frozen-lockfile
 pnpm format:check
+pnpm bytes:check
 pnpm lint
 pnpm typecheck
 pnpm test
@@ -43,6 +44,25 @@ lockfile it rewrites is part of the commit.
 caret drifted in with F14 and sat there failing for a day, in a repo that
 otherwise pins exact versions. A check nobody runs is a check that doesn't
 exist. `pnpm deps:fix` resolves the usual case.
+
+`bytes:check` is the newest, added 2026-09-09, the day the thing it catches
+nearly shipped. A `DiffView.tsx` was written with a literal U+0000 in a template
+literal where the author meant a separator. **Every other check passed** —
+biome formats a NUL, `tsc` parses it, and 605 unit tests plus 273 smoke tests
+ran green against the file. What noticed was git, which calls any file with a
+NUL in its first 8000 bytes binary: `git diff` reported
+`Bin 10692 -> 19617 bytes` instead of a diff, and factorai's own viewer, asking
+the same question of the same bytes, drew the binary card for one of its own
+source files. A human saw the `bin` badge in the Changes list. Nothing else in
+the list would have.
+
+`scripts/check-text-bytes.mjs` walks `git ls-files` and rejects any control byte
+outside tab, newline and carriage return. It is **stricter than git** — any
+offset, not just the first 8000 bytes — because "git happened not to notice" is
+not a property to depend on. Files that are legitimately bytes are named by
+extension in `BINARY_EXTENSIONS`, and the list **fails closed**: a new kind of
+binary asset turns the check red until someone names it, which is the right
+direction for a check whose whole job is telling text from not-text.
 
 **Formatting is gated as of 2026-08-16, both sides**, and the two fixers are
 `pnpm format` (biome, whole repo) and `cargo fmt`. It is in the list for the
