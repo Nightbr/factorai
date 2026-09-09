@@ -26,6 +26,11 @@ import { usePrefsStore } from '@store/prefsStore';
 interface DiffViewProps {
 	path: string;
 	mode: DiffMode;
+	/** Two strings to diff directly, instead of reading the revisions `mode`
+	 *  names (F26). The one caller is the conflict banner's "Show diff", whose
+	 *  right-hand side is an unsaved buffer — a thing no revision holds and no
+	 *  command can be asked for. */
+	sides?: { original: string; modified: string; label: string } | null;
 }
 
 /** One side of a diff, as a cache key plus the call that fills it.
@@ -99,33 +104,40 @@ function basename(path: string): string {
 	return i >= 0 ? path.slice(i + 1) : path;
 }
 
-export function DiffView({ path, mode }: DiffViewProps) {
+export function DiffView({ path, mode, sides = null }: DiffViewProps) {
 	const inline = usePrefsStore((s) => s.diffInline);
 	const setInline = usePrefsStore((s) => s.setDiffInline);
 	const { left, right } = sidesFor(path, mode);
 
+	// Disabled rather than absent when the strings were handed to us: hooks run
+	// in the same order either way, and nothing should read a revision whose
+	// answer we already have.
 	const leftQ = useQuery({
 		queryKey: left.key,
 		queryFn: left.load,
 		...left.freshness,
 		retry: false,
+		enabled: !sides,
 	});
 	const rightQ = useQuery({
 		queryKey: right.key,
 		queryFn: right.load,
 		...right.freshness,
 		retry: false,
+		enabled: !sides,
 	});
 
-	const pending = leftQ.isPending || rightQ.isPending;
-	const error = leftQ.error ?? rightQ.error;
+	// A disabled query stays `pending` forever, so the flag has to know which
+	// kind of diff this is.
+	const pending = !sides && (leftQ.isPending || rightQ.isPending);
+	const error = sides ? null : (leftQ.error ?? rightQ.error);
 	// Both sides absent means the file exists at neither revision — nothing to
 	// show, and not worth an error either.
-	const original = leftQ.data ?? null;
-	const modified = rightQ.data ?? null;
-	const binary = original?.isBinary || modified?.isBinary;
+	const original = sides ? { contents: sides.original } : (leftQ.data ?? null);
+	const modified = sides ? { contents: sides.modified } : (rightQ.data ?? null);
+	const binary = !sides && (leftQ.data?.isBinary || rightQ.data?.isBinary);
 	const identical = !pending && (original?.contents ?? '') === (modified?.contents ?? '');
-	const truncated = original?.truncated || modified?.truncated;
+	const truncated = !sides && (leftQ.data?.truncated || rightQ.data?.truncated);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -133,7 +145,7 @@ export function DiffView({ path, mode }: DiffViewProps) {
 				{pending && <Centered>Loading…</Centered>}
 				{!pending && error && <Centered tone="error">{errorText(error)}</Centered>}
 				{!pending && !error && binary && (
-					<Centered>{`Cannot preview binary file (${formatBytes(bytesOf(original, modified))}).`}</Centered>
+					<Centered>{`Cannot preview binary file (${formatBytes(bytesOf(leftQ.data ?? null, rightQ.data ?? null))}).`}</Centered>
 				)}
 				{!pending && !error && !binary && identical && <Centered>No changes.</Centered>}
 				{!pending && !error && !binary && !identical && (
@@ -161,7 +173,7 @@ export function DiffView({ path, mode }: DiffViewProps) {
 					{inline ? <Columns2 /> : <Rows2 />}
 					<span className="@max-[22rem]:hidden">{inline ? 'Split' : 'Inline'}</span>
 				</Button>
-				<span className="min-w-0 truncate">{MODE_LABELS[mode]}</span>
+				<span className="min-w-0 truncate">{sides ? sides.label : MODE_LABELS[mode]}</span>
 				{truncated && (
 					<>
 						<span className="flex-1" />

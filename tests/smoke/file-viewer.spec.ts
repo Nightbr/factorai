@@ -812,6 +812,286 @@ test.describe('file viewer', () => {
 		await expect(page.getByTestId('viewer-column')).toBeVisible();
 	});
 
+	// ---- editing (F26) -------------------------------------------------------
+
+	/**
+	 * Type `text` into the open editor, at wherever the click put the caret.
+	 *
+	 * **At the caret, not over a selection**, and that is a constraint of the
+	 * harness rather than a choice: this Monaco drives input through the
+	 * EditContext API where the browser has it — the only `textarea` it renders
+	 * is a readonly, aria-hidden IME shim — and a CDP `insertText` there inserts
+	 * rather than replacing what a `Cmd/Ctrl+A` selected. So these specs assert
+	 * that the buffer reached disk, not that it equals some exact document.
+	 *
+	 * Waiting for Monaco's own `focused` class is load-bearing: clicking the
+	 * container and typing straight away raced the editor's own mount.
+	 */
+	async function typeInEditor(page: Page, text: string) {
+		const host = page.getByTestId('file-view-editor');
+		await host.click();
+		await expect(host.locator('.monaco-editor').first()).toHaveClass(/(^|\s)focused(\s|$)/);
+		await page.keyboard.insertText(text);
+	}
+
+	/** What `write_file` was asked to write, in order. */
+	function writeCalls(page: Page) {
+		return page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'write_file')
+				.map((c) => ({ path: String(c.args?.path), contents: String(c.args?.contents) })),
+		);
+	}
+
+	test('@smoke typing enables Save, and Save writes the file', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		// Save is the dirty indicator, so it starts disabled: there is nothing to
+		// write and no second dot saying so.
+		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+
+		await typeInEditor(page, 'edited-by-a-human');
+		await expect(viewer.getByTestId('viewer-save')).toBeEnabled();
+
+		await viewer.getByTestId('viewer-save').click();
+
+		// One write, of the buffer: what the reader typed, on top of what was
+		// already in the file. Nothing normalised, nothing dropped.
+		const writes = await writeCalls(page);
+		expect(writes).toHaveLength(1);
+		expect(writes[0].path).toBe(`${ROOT}/Cargo.toml`);
+		expect(writes[0].contents).toContain('edited-by-a-human');
+		expect(writes[0].contents).toContain('[package]');
+		// Clean again — and no error in the footer.
+		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+		await expect(viewer.getByTestId('viewer-save-error')).toHaveCount(0);
+	});
+
+	test('@smoke Revert throws the buffer away and takes what is on disk', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		await typeInEditor(page, 'gone the moment this is reverted');
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('viewer-revert')).toBeVisible();
+
+		await viewer.getByTestId('viewer-revert').click();
+		await page.getByTestId('viewer-edit-confirm-ok').click();
+
+		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+		await expect(viewer.getByTestId('viewer-revert')).toHaveCount(0);
+		// Nothing was written on the way out.
+		expect(await writeCalls(page)).toEqual([]);
+	});
+
+	test('@smoke an agent writing the file under a dirty buffer banners instead of clobbering', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		await typeInEditor(page, 'mine-and-unsaved');
+		const viewer = page.getByTestId('file-viewer');
+
+		// The agent writes it, and Rust's watch fires. With a clean buffer this
+		// re-reads silently (the test above); with a dirty one it must not.
+		await page.evaluate((path) => {
+			const files = window.__FACTORAI_TEST__?.files;
+			const file = files?.[path];
+			if (files && file) files[path] = { ...file, contents: 'theirs\n' };
+			window.__FACTORAI_EMIT__?.('file:changed', { path });
+		}, `${ROOT}/Cargo.toml`);
+
+		await expect(viewer.getByTestId('viewer-conflict')).toBeVisible();
+		// Still dirty, still mine: the re-read was not applied over the edit.
+		await expect(viewer.getByTestId('viewer-save')).toBeEnabled();
+
+		// **Save is now Overwrite, and it asks.** Writing over a change nobody has
+		// read is a different act from saving.
+		await viewer.getByTestId('viewer-save').click();
+		await expect(page.getByTestId('viewer-edit-confirm')).toBeVisible();
+		await page.getByTestId('viewer-edit-confirm-ok').click();
+
+		// Mine reached disk, and theirs did not leak into the buffer on the way.
+		const writes = await writeCalls(page);
+		expect(writes).toHaveLength(1);
+		expect(writes[0].contents).toContain('mine-and-unsaved');
+		expect(writes[0].contents).not.toContain('theirs');
+		await expect(viewer.getByTestId('viewer-conflict')).toHaveCount(0);
+	});
+
+	test('@smoke Reload takes their version and drops the buffer', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		await typeInEditor(page, 'mine-and-unsaved');
+		await page.evaluate((path) => {
+			const files = window.__FACTORAI_TEST__?.files;
+			const file = files?.[path];
+			if (files && file) files[path] = { ...file, contents: 'theirs\n' };
+			window.__FACTORAI_EMIT__?.('file:changed', { path });
+		}, `${ROOT}/Cargo.toml`);
+
+		const viewer = page.getByTestId('file-viewer');
+		await viewer.getByTestId('viewer-conflict-reload').click();
+
+		await expect(viewer.getByTestId('viewer-conflict')).toHaveCount(0);
+		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+		expect(await writeCalls(page)).toEqual([]);
+	});
+
+	test('@smoke a plan is read-only, and says which kind of read-only', async ({ page }) => {
+		const fx = fixtureWithFileTree();
+		// A plan, reachable from the tree. Its own entries rather than the shared
+		// fixture's, so nothing else has to grow a `.claude` directory.
+		const claude = `${ROOT}/.claude`;
+		const plans = `${claude}/plans`;
+		fx.dirListings = {
+			...fx.dirListings,
+			[claude]: {
+				entries: [
+					{
+						name: 'plans',
+						path: plans,
+						isDir: true,
+						isSymlink: false,
+						symlinkOutsideRoot: false,
+						size: 0,
+						modifiedAt: null,
+						ignored: false,
+					},
+				],
+				total: 1,
+				truncated: false,
+			},
+			[plans]: {
+				entries: [
+					{
+						name: 'refactor.md',
+						path: `${plans}/refactor.md`,
+						isDir: false,
+						isSymlink: false,
+						symlinkOutsideRoot: false,
+						size: 12,
+						modifiedAt: null,
+						ignored: false,
+					},
+				],
+				total: 1,
+				truncated: false,
+			},
+		};
+		fx.files = {
+			...fx.files,
+			[`${plans}/refactor.md`]: {
+				path: `${plans}/refactor.md`,
+				contents: '# The plan\n',
+				size: 11,
+				isBinary: false,
+				truncated: false,
+				lineCount: 1,
+				lossy: false,
+			},
+		};
+		fx.dirListings[ROOT] = {
+			...fx.dirListings[ROOT],
+			entries: [
+				{
+					name: '.claude',
+					path: claude,
+					isDir: true,
+					isSymlink: false,
+					symlinkOutsideRoot: false,
+					size: 0,
+					modifiedAt: null,
+					ignored: false,
+				},
+				...fx.dirListings[ROOT].entries,
+			],
+			total: fx.dirListings[ROOT].total + 1,
+		};
+
+		await installMockBridge(page, fx);
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: '.claude' }).click();
+		await panel.getByRole('button', { name: 'plans' }).click();
+		await panel.getByRole('button', { name: 'refactor.md' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		// Rendered markdown, and the footer says why it cannot be saved.
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('plan — read-only');
+		await expect(viewer.getByTestId('viewer-save')).toHaveCount(0);
+	});
+
+	test('@smoke a truncated file cannot be edited until it is read whole', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'huge.log' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		// A prefix, so saving it would delete everything past the cap.
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('truncated — read-only');
+		await expect(viewer.getByTestId('viewer-save')).toHaveCount(0);
+
+		await viewer.getByRole('button', { name: 'Show anyway' }).click();
+
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveCount(0);
+		await expect(viewer.getByTestId('viewer-save')).toBeVisible();
+	});
+
+	test('@smoke Preview renders the unsaved buffer, not what is on disk', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		await viewer.getByRole('button', { name: 'View source' }).click();
+
+		// Inserted at the caret rather than replacing the document: what is under
+		// test is which *source* the preview renders, and a word is enough to
+		// answer that. Where in the file it lands is Monaco's business.
+		const host = page.getByTestId('file-view-editor');
+		await host.click();
+		await expect(host.locator('.monaco-editor').first()).toHaveClass(/(^|\s)focused(\s|$)/);
+		await page.keyboard.insertText('typed-but-not-saved');
+
+		await viewer.getByRole('button', { name: 'Preview' }).click();
+
+		// The point of editing CLAUDE.md in here: type, toggle, see it.
+		await expect(viewer.getByTestId('markdown-view')).toContainText('typed-but-not-saved');
+		expect(await writeCalls(page)).toEqual([]);
+	});
+
+	test('@smoke a dirty buffer survives switching tabs', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).dblclick();
+		await typeInEditor(page, 'still here');
+
+		await panel.getByRole('button', { name: 'knip.jsonc' }).dblclick();
+		await expect(page.getByTestId('file-tab')).toHaveCount(2);
+
+		// Back to the first tab. The strip switches which file the one viewer is
+		// pointed at, so without somewhere to keep the buffer this click is where
+		// the edit would have vanished.
+		await page.getByTestId('file-tab').filter({ hasText: 'Cargo.toml' }).click();
+		await expect(page.getByTestId('file-viewer').getByTestId('viewer-save')).toBeEnabled();
+	});
+
 	test('@smoke the strip scrolls to whatever is showing', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

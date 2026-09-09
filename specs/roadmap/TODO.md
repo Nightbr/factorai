@@ -78,29 +78,47 @@ Specs: [F26](../05-features.md#f26--editing-and-saving-a-file), amended F7 and F
 [ADR-0039](../../docs/adr/0039-factorai-writes-project-files-never-an-agents-store.md),
 [ADR-0040](../../docs/adr/0040-an-unsaved-draft-is-content-not-a-preference.md).
 
-### Slice 1 — the editor and the write
+### Slice 1 — the editor and the write — **done 2026-09-09**
 
 No schema change, and useful on its own.
 
-- [ ] `commands/files.rs::write_file(path, contents)` + `services::files::write_file`: canonicalise
+- [x] `commands/files.rs::write_file(path, contents)` + `services::files::write_file`: canonicalise
       (a symlinked `.env` writes its target), temp file in the same directory, copy the original's
       mode, fsync, rename over. Creates a file that has gone; never creates a parent directory.
       Rust tests for each: symlink, mode preservation, missing parent, path is a directory,
       unwritable file, and that a failed write leaves the old contents intact.
-- [ ] `FileContents.lossy` — Rust, `packages/types`, and the TS mirror in the same commit.
+- [x] `FileContents.lossy` — Rust, `packages/types`, and the TS mirror in the same commit.
       `contents_from_bytes` already decodes with `from_utf8_lossy`; it just never said so, and
       saving a buffer full of U+FFFD would destroy the original bytes.
-- [ ] `FileView`: `readOnly` off, Monaco EOL set from the file's own line endings, Save and Revert
+- [x] `FileView`: `readOnly` off, Monaco EOL set from the file's own line endings, Save and Revert
       in the footer, `Cmd/Ctrl+S` via `editor.addCommand` **inside the host only** — not a global
       binding, since `Ctrl+S` reaching a focused PTY is XOFF.
-- [ ] The four read-only cases, each with its reason in the footer: binary, truncated, lossy,
+- [x] The four read-only cases, each with its reason in the footer: binary, truncated, lossy,
       and a plan under `.claude/plans/` (F9).
-- [ ] Changed-on-disk: suppress `useWatchedOpenFile`'s re-read while dirty, show the banner
+- [x] Changed-on-disk: suppress `useWatchedOpenFile`'s re-read while dirty, show the banner
       (Reload / Show diff / dismiss), and turn Save into Overwrite-with-confirm once dismissed.
       Deleted-on-disk is the same banner with different words, and Save recreates.
-- [ ] Preview renders the live buffer, so editing `CLAUDE.md` is a type-toggle-see loop.
+- [x] Preview renders the live buffer, so editing `CLAUDE.md` is a type-toggle-see loop.
       `MarkdownView` already takes source as a prop.
-- [ ] Smoke test: open, type, Save, reopen, assert disk. Plus the truncated and lossy refusals.
+- [x] Smoke test: open, type, Save, reopen, assert disk. Plus the truncated and lossy refusals.
+- [x] **An in-memory draft store**, which slice 2 persists. Not in the original plan, and not
+      optional: the pane swaps which file one `FileView` is pointed at, so without somewhere to
+      keep the buffer, clicking another tab with unsaved changes discarded them with no dialog
+      and no dot. `store/draftStore.ts`, no `persist` middleware — ADR-0040 rejects localStorage
+      for this, and reaching for it here would be choosing the store that decision turned down.
+- [x] **`write_file` answers with the file it wrote.** Found while building: the cached read is
+      stale the instant the write lands, so the sync effect saw disk disagreeing with the new
+      baseline, decided the file had changed under the editor, and put the pre-save text back.
+      Re-reading costs a second pass over a file we just held; recomputing the line count in
+      TypeScript is a second definition of Rust's answer.
+
+**Two things the smoke suite taught, worth keeping.** Monaco drives input through the EditContext
+API where the browser has it, so its only `textarea` is a readonly aria-hidden IME shim and a CDP
+`insertText` inserts at the caret rather than replacing a `Cmd/Ctrl+A` selection — the editing
+specs assert that the buffer reached disk, not that it equals an exact document. And the editor
+must be seeded during render rather than in an effect: mounting with an empty string for one
+frame was enough to break `?line=`, because the jump applied to an empty model, recorded itself
+as applied, and the remount restored that view state instead of jumping again.
 
 ### Slice 2 — drafts
 

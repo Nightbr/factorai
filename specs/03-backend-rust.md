@@ -274,8 +274,12 @@ read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, b
 // directory, copy the original's mode, fsync, rename over. Creates the file if
 // it has gone; never creates a parent directory. Project files only — never an
 // agent's store (ADR-0039), and never exposed to agents over the MCP tool
-// server (ADR-0029), which have `Write` and `Edit` of their own.
-write_file(path: String, contents: String) -> ()
+// server (ADR-0029), which have `Write` and `Edit` of their own. It answers
+// with the file it just wrote, as `read_file` would describe it: the renderer's
+// cached read is stale the instant this returns, and the two alternatives are
+// re-reading a file we just held or recomputing the line count in TypeScript —
+// a second definition of an answer Rust already has.
+write_file(path: String, contents: String) -> FileContents
 // Images for the viewer (F7): base64 + a mime sniffed from the magic bytes,
 // never from the extension. Refuses a non-image or an oversized file rather
 // than truncating — half a PNG is a decode error, not a smaller PNG.
@@ -1004,6 +1008,8 @@ generalised rather than weakened.
 - **Creates the file if it is gone**, at the same path. It does not create parent
   directories: a missing parent means the tree moved, and guessing is worse than
   failing.
+- **Answers with the file it wrote.** No cap is applied: this is the text the
+  editor held, and it decoded, so there is nothing to truncate.
 - Errors are the same shapes the reads use — `permission denied`,
   `is a directory`, `NotFound` for a missing parent.
 

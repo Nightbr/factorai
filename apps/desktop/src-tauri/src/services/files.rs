@@ -320,6 +320,7 @@ pub(crate) fn contents_from_bytes(
 			is_binary: true,
 			truncated: false,
 			line_count: 0,
+			lossy: false,
 		};
 	}
 
@@ -328,7 +329,25 @@ pub(crate) fn contents_from_bytes(
 
 	// Lossy on purpose: a latin-1 source file or a stray invalid sequence is
 	// still worth reading, and we've already ruled out real binaries.
-	let contents = String::from_utf8_lossy(kept).into_owned();
+	//
+	// **But say so** (F26). Every byte that didn't decode is a U+FFFD in
+	// `contents`, and saving that string back would write the replacement
+	// character over the original byte, permanently. The viewer opens a lossy
+	// read read-only, and this flag is the only way it can know.
+	//
+	// The cap is not the file's fault. Cutting at a byte offset can land inside
+	// a multi-byte character, which `from_utf8` reports as an unexpected end of
+	// input (`error_len() == None`) rather than as a bad byte. Dropping that
+	// partial character keeps a large, perfectly valid UTF-8 file from being
+	// called lossy because we stopped reading mid-`é`.
+	let (contents, lossy) = match std::str::from_utf8(kept) {
+		Ok(s) => (s.to_string(), false),
+		Err(e) if truncated && e.error_len().is_none() => {
+			// Everything up to `valid_up_to` decoded, so this is lossless.
+			(String::from_utf8_lossy(&kept[..e.valid_up_to()]).into_owned(), false)
+		}
+		Err(_) => (String::from_utf8_lossy(kept).into_owned(), true),
+	};
 	let line_count = if contents.is_empty() { 0 } else { contents.lines().count() };
 
 	FileContents {
@@ -338,7 +357,149 @@ pub(crate) fn contents_from_bytes(
 		is_binary: false,
 		truncated,
 		line_count,
+		lossy,
 	}
+}
+
+/// Write `contents` to `path`, atomically (F26).
+///
+/// The first thing factorai writes that a human typed, and the boundary it sits
+/// on is ADR-0039: a project's own files, never an agent's store. Only the
+/// renderer calls it, only from a Save the human pressed, and it is deliberately
+/// not one of the tools the MCP server offers an agent (ADR-0029).
+///
+/// Four properties, each of which is a test below:
+///
+/// - **The path is canonicalised first**, so editing a symlinked `.env` — a very
+///   common layout — writes its target rather than replacing the link with a
+///   regular file.
+/// - **Temp file in the same directory, then rename.** Same filesystem, so the
+///   rename is atomic and a crash or a full disk leaves the previous contents
+///   intact. A temp file in `/tmp` would make it a cross-device copy and lose
+///   exactly that.
+/// - **The original's permission bits are copied onto the temp file** before the
+///   rename, or a `0600` secrets file comes back `0644` wearing the process
+///   umask.
+/// - **A file that has gone is recreated**, at the same path. Its parent is not:
+///   a missing parent means the tree moved under the editor, and guessing is
+///   worse than failing.
+///
+/// **It answers with the file it just wrote**, as a `read_file` would describe
+/// it. The renderer's cached read is stale the instant this returns, and the
+/// alternatives are both worse: re-reading costs a second pass over a file we
+/// just held in memory, and recomputing the size and line count in TypeScript
+/// puts a second definition of "how many lines is this" next to Rust's. No cap
+/// is applied — this is the text the editor holds, and it decoded, so there is
+/// nothing to truncate and nothing to lose.
+pub fn write_file(path: &str, contents: &str) -> AppResult<FileContents> {
+	let requested = Path::new(path);
+	if !requested.is_absolute() {
+		return Err(AppError::InvalidInput(format!("not an absolute path: {path}")));
+	}
+
+	// `canonicalize` resolves the symlink *and* fails on a file that is gone,
+	// which is a case we support — so fall back to the path as given, with its
+	// parent resolved. That still follows a symlinked directory on the way in,
+	// and there is no link at the leaf to follow when the leaf does not exist.
+	let target = match fs::canonicalize(requested) {
+		Ok(p) => p,
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => resolve_missing(requested)?,
+		Err(e) => return Err(AppError::Io(format!("{path}: {e}"))),
+	};
+
+	if target.is_dir() {
+		return Err(AppError::InvalidInput(format!("is a directory: {path}")));
+	}
+	let Some(dir) = target.parent() else {
+		return Err(AppError::InvalidInput(format!("path has no parent: {path}")));
+	};
+
+	// The mode of what is being replaced, before anything replaces it. `None`
+	// for a file that does not exist yet, which then takes the default.
+	let existing_mode = fs::metadata(&target).ok().map(|m| mode_of(&m));
+
+	let temp = tempfile::Builder::new()
+		.prefix(".factorai-")
+		.suffix(".tmp")
+		.tempfile_in(dir)
+		.map_err(|e| write_error(path, dir, e))?;
+
+	{
+		use std::io::Write as _;
+		let file = temp.as_file();
+		let mut writer = std::io::BufWriter::new(file);
+		writer.write_all(contents.as_bytes()).map_err(|e| write_error(path, dir, e))?;
+		writer.flush().map_err(|e| write_error(path, dir, e))?;
+	}
+	// Before the rename, not after: a rename that lands ahead of the data is
+	// how an atomic write still produces an empty file after a power cut.
+	temp.as_file().sync_all().map_err(|e| write_error(path, dir, e))?;
+
+	if let Some(mode) = existing_mode {
+		set_mode(temp.path(), mode).map_err(|e| write_error(path, dir, e))?;
+	}
+
+	// `persist` is the rename. It reports the temp file back on failure so it is
+	// cleaned up rather than left beside the file it failed to become.
+	temp.persist(&target).map_err(|e| write_error(path, dir, e.error))?;
+
+	let bytes = contents.as_bytes();
+	Ok(contents_from_bytes(path, bytes, bytes.len() as u64, usize::MAX))
+}
+
+/// The absolute path to write when the file itself does not exist: its parent
+/// canonicalised — which must exist — plus the name it will have.
+fn resolve_missing(requested: &Path) -> AppResult<std::path::PathBuf> {
+	let (Some(parent), Some(name)) = (requested.parent(), requested.file_name()) else {
+		return Err(AppError::InvalidInput(format!("path has no parent: {}", requested.display())));
+	};
+	let parent = fs::canonicalize(parent).map_err(|e| match e.kind() {
+		std::io::ErrorKind::NotFound => {
+			AppError::NotFound(format!("directory {}", parent.display()))
+		}
+		_ => AppError::Io(format!("{}: {e}", parent.display())),
+	})?;
+	Ok(parent.join(name))
+}
+
+/// One error shape for every step of the write, because the caller's question
+/// is only ever "did the file change, and if not why not". `dir` is named on a
+/// permission failure: the write can fail because the *directory* is read-only
+/// while the file itself looks writable, and that is the confusing one.
+fn write_error(path: &str, dir: &Path, e: std::io::Error) -> AppError {
+	match e.kind() {
+		std::io::ErrorKind::PermissionDenied => {
+			AppError::Io(format!("permission denied writing {path} (in {})", dir.display()))
+		}
+		_ => AppError::Io(format!("{path}: {e}")),
+	}
+}
+
+#[cfg(unix)]
+fn mode_of(meta: &fs::Metadata) -> u32 {
+	use std::os::unix::fs::PermissionsExt;
+	meta.permissions().mode()
+}
+
+#[cfg(unix)]
+fn set_mode(path: &Path, mode: u32) -> std::io::Result<()> {
+	use std::os::unix::fs::PermissionsExt;
+	fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+// macOS and Linux are the platforms (§ "What this project does not do"), so the
+// arms above are the real ones. These keep the file compiling anywhere else
+// without pretending the mode was preserved.
+#[cfg(not(unix))]
+fn mode_of(meta: &fs::Metadata) -> u32 {
+	let _ = meta;
+	0
+}
+
+#[cfg(not(unix))]
+fn set_mode(path: &Path, mode: u32) -> std::io::Result<()> {
+	let (_, _) = (path, mode);
+	Ok(())
 }
 
 /// Classify a batch of paths for the terminal's link provider (F19).
@@ -798,5 +959,171 @@ mod tests {
 	#[test]
 	fn path_kinds_of_nothing_is_nothing() {
 		assert!(path_kinds(&[]).is_empty());
+	}
+
+	// ---- write_file (F26) ----------------------------------------------------
+
+	fn path_of(p: &Path) -> String {
+		p.to_string_lossy().into_owned()
+	}
+
+	#[test]
+	fn write_file_replaces_contents() {
+		let dir = tempdir().unwrap();
+		let file = dir.path().join("notes.md");
+		fs::write(&file, "before").unwrap();
+
+		write_file(&path_of(&file), "after").unwrap();
+
+		assert_eq!(fs::read_to_string(&file).unwrap(), "after");
+	}
+
+	#[test]
+	fn write_file_answers_with_what_it_wrote() {
+		let dir = tempdir().unwrap();
+		let file = dir.path().join("notes.md");
+		fs::write(&file, "old").unwrap();
+
+		let after = write_file(&path_of(&file), "one\ntwo\n").unwrap();
+
+		// The renderer swaps this straight into its cache, so it has to be what a
+		// re-read would say — including the line count, which is Rust's answer and
+		// must not be recomputed on the other side of the boundary.
+		assert_eq!(after.contents, "one\ntwo\n");
+		assert_eq!(after.line_count, 2);
+		assert_eq!(after.size, 8);
+		assert!(!after.truncated);
+		assert!(!after.lossy);
+	}
+
+	#[test]
+	fn write_file_creates_a_file_that_is_gone() {
+		let dir = tempdir().unwrap();
+		let file = dir.path().join("new.txt");
+
+		write_file(&path_of(&file), "hello").unwrap();
+
+		assert_eq!(fs::read_to_string(&file).unwrap(), "hello");
+	}
+
+	#[test]
+	fn write_file_leaves_no_temp_files_behind() {
+		let dir = tempdir().unwrap();
+		let file = dir.path().join("a.txt");
+		fs::write(&file, "x").unwrap();
+
+		write_file(&path_of(&file), "y").unwrap();
+
+		let left: Vec<String> = fs::read_dir(dir.path())
+			.unwrap()
+			.filter_map(|e| e.ok())
+			.map(|e| e.file_name().to_string_lossy().into_owned())
+			.collect();
+		assert_eq!(left, vec!["a.txt".to_string()]);
+	}
+
+	#[test]
+	fn write_file_refuses_a_directory() {
+		let dir = tempdir().unwrap();
+		let err = write_file(&path_of(dir.path()), "nope").unwrap_err();
+		assert!(matches!(err, AppError::InvalidInput(_)), "got {err:?}");
+	}
+
+	#[test]
+	fn write_file_refuses_a_relative_path() {
+		let err = write_file("relative/file.txt", "nope").unwrap_err();
+		assert!(matches!(err, AppError::InvalidInput(_)), "got {err:?}");
+	}
+
+	#[test]
+	fn write_file_refuses_a_missing_parent() {
+		let dir = tempdir().unwrap();
+		let file = dir.path().join("gone").join("child.txt");
+		let err = write_file(&path_of(&file), "nope").unwrap_err();
+		// Not created: a missing parent means the tree moved under the editor.
+		assert!(matches!(err, AppError::NotFound(_)), "got {err:?}");
+		assert!(!file.exists());
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn write_file_follows_a_symlink_to_its_target() {
+		let dir = tempdir().unwrap();
+		let target = dir.path().join(".env.local");
+		fs::write(&target, "KEY=old").unwrap();
+		let link = dir.path().join(".env");
+		std::os::unix::fs::symlink(&target, &link).unwrap();
+
+		write_file(&path_of(&link), "KEY=new").unwrap();
+
+		// The target changed, and the link is still a link — the failure this
+		// guards is replacing somebody's `.env` symlink with a regular file.
+		assert_eq!(fs::read_to_string(&target).unwrap(), "KEY=new");
+		assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn write_file_keeps_the_mode_of_a_secrets_file() {
+		use std::os::unix::fs::PermissionsExt;
+		let dir = tempdir().unwrap();
+		let file = dir.path().join(".env");
+		fs::write(&file, "KEY=old").unwrap();
+		fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+
+		write_file(&path_of(&file), "KEY=new").unwrap();
+
+		let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+		assert_eq!(mode, 0o600, "a 0600 file must not come back 0644");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn write_file_reports_an_unwritable_directory() {
+		use std::os::unix::fs::PermissionsExt;
+		let dir = tempdir().unwrap();
+		let sub = dir.path().join("locked");
+		fs::create_dir(&sub).unwrap();
+		let file = sub.join("a.txt");
+		fs::write(&file, "before").unwrap();
+		fs::set_permissions(&sub, fs::Permissions::from_mode(0o500)).unwrap();
+
+		let err = write_file(&path_of(&file), "after").unwrap_err();
+
+		// Restore before asserting, or the tempdir cannot be cleaned up.
+		fs::set_permissions(&sub, fs::Permissions::from_mode(0o700)).unwrap();
+		assert!(matches!(err, AppError::Io(_)), "got {err:?}");
+		// The whole point of the temp-and-rename: a failed write changes nothing.
+		assert_eq!(fs::read_to_string(&file).unwrap(), "before");
+	}
+
+	#[test]
+	fn a_lossy_read_says_so() {
+		// 0x80 is a continuation byte with nothing to continue — invalid UTF-8,
+		// and not a null byte, so this is text as far as the sniff is concerned.
+		let bytes = b"caf\x80 au lait";
+		let read = contents_from_bytes("/tmp/x.txt", bytes, bytes.len() as u64, 1024);
+		assert!(!read.is_binary);
+		assert!(read.lossy, "invalid UTF-8 must be flagged, or Save would write U+FFFD back");
+	}
+
+	#[test]
+	fn clean_utf8_is_not_lossy() {
+		let bytes = "café au lait\n".as_bytes();
+		let read = contents_from_bytes("/tmp/x.txt", bytes, bytes.len() as u64, 1024);
+		assert!(!read.lossy);
+		assert_eq!(read.contents, "café au lait\n");
+	}
+
+	#[test]
+	fn a_cap_through_a_character_is_truncated_not_lossy() {
+		// The cap lands between the two bytes of `é`. That is the reader's cut,
+		// not the file's fault, and calling it lossy would make every large
+		// UTF-8 file unreadable-as-editable for no reason.
+		let bytes = "aéb".as_bytes();
+		let read = contents_from_bytes("/tmp/x.txt", bytes, bytes.len() as u64, 2);
+		assert!(read.truncated);
+		assert!(!read.lossy);
+		assert_eq!(read.contents, "a");
 	}
 }

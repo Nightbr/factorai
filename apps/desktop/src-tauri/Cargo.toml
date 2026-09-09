@@ -67,8 +67,11 @@ croner = "3"
 # crate uses it only to answer *what is in* the trash, and we only ever put
 # things there.
 trash = { version = "5.2.6", default-features = false }
+# The atomic half of `write_file` (F26): a named temp file in the target's own
+# directory, `persist`ed over it. Doing this by hand means inventing a unique
+# name, cleaning it up on every early return, and getting the rename right.
+tempfile = "3"
 
 [dev-dependencies]
 regex = "1.13.1"
-tempfile = "3"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }

@@ -674,6 +674,8 @@ function contents(path: string, text: string, over: Partial<FileContents> = {}):
 		// Mirrors Rust's `lines().count()`: a trailing newline ends the last line
 		// rather than starting an empty one.
 		lineCount: text ? text.replace(/\n$/, '').split('\n').length : 0,
+		// Fixtures are text somebody typed into this file, so it decoded (F26).
+		lossy: false,
 		...over,
 	};
 }

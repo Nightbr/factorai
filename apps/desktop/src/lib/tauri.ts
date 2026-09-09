@@ -134,6 +134,12 @@ export const cmd = {
 	 *  default; pass null to lift the cap after warning the user. */
 	readFile: (path: string, maxBytes?: number | null) =>
 		invoke<FileContents>('read_file', { path, maxBytes }),
+	/** Write a file from the viewer's editor (F26). Atomic, follows a symlink
+	 *  to its target, and keeps the original's permission bits — see
+	 *  `services::files::write_file`. Rejects rather than creating a parent
+	 *  directory that has gone. */
+	writeFile: (path: string, contents: string) =>
+		invoke<FileContents>('write_file', { path, contents }),
 	/** Read an image for the viewer (F7). Rejects a file whose magic bytes
 	 *  aren't a displayable format, which is the caller's cue to fall back to
 	 *  the binary card. */
@@ -935,6 +941,32 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// fixture declare `truncated: true` and have "Show anyway" resolve it.
 			if (args?.maxBytes === null) return { ...file, truncated: false } as unknown as T;
 			return file as unknown as T;
+		}
+		case 'write_file': {
+			// Writes into the fixture, so a spec can save and then reopen and see
+			// what it saved — the round trip is the only part of this the mock can
+			// honestly stand in for.
+			const path = String(args?.path ?? '');
+			const contents = String(args?.contents ?? '');
+			const files = fx?.files;
+			if (!files) throw { kind: 'Io', message: `no fixture file at ${path}` };
+			const before = files[path];
+			const written = {
+				...(before ?? { path, isBinary: false }),
+				path,
+				contents,
+				size: new TextEncoder().encode(contents).length,
+				// Rust counts with `lines()`, where a trailing newline ends the last
+				// line rather than starting an empty one.
+				lineCount: contents === '' ? 0 : contents.replace(/\r?\n$/, '').split('\n').length,
+				// What was written is what the editor held: valid UTF-8, whole.
+				truncated: false,
+				lossy: false,
+			} as FileContents;
+			files[path] = written;
+			// The command answers with the file it wrote, so the renderer can put
+			// it straight into its cache — see `services::files::write_file`.
+			return written as unknown as T;
 		}
 		case 'read_image': {
 			const path = String(args?.path ?? '');

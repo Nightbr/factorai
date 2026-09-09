@@ -24,6 +24,23 @@ pub fn read_file(path: String, max_bytes: Option<usize>) -> AppResult<FileConten
 	files::read_file(&path, max_bytes)
 }
 
+/// Write one file from the viewer's editor (F26).
+///
+/// The only command that writes something a human typed, and the only one that
+/// writes into a project at all. ADR-0039 draws the line it sits on: project
+/// files yes, an agent's own store never (ADR-0004 is unchanged), and this is
+/// not offered to agents over the MCP tool server (ADR-0029) — they have `Write`
+/// and `Edit`, and a second path through us would route around their own
+/// approvals.
+///
+/// Atomic, symlink-resolving and mode-preserving; see `services::files::write_file`
+/// for each and why — including why it answers with the file it wrote rather
+/// than with nothing.
+#[tauri::command]
+pub fn write_file(path: String, contents: String) -> AppResult<FileContents> {
+	files::write_file(&path, &contents)
+}
+
 /// Read one image as base64 for the viewer (F7). Rejects anything whose magic
 /// bytes aren't a displayable format, so the caller falls back to the binary
 /// card instead of rendering a broken image.

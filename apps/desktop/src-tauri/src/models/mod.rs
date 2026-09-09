@@ -342,6 +342,11 @@ pub struct FileContents {
 	pub truncated: bool,
 	/// Lines in `contents` (0 for empty or binary).
 	pub line_count: usize,
+	/// The bytes did not decode as UTF-8 and `contents` carries U+FFFD where
+	/// they were (F26). The read is still worth showing — a latin-1 source file
+	/// is readable — but writing this string back would destroy the original
+	/// bytes, so the viewer opens a lossy file read-only.
+	pub lossy: bool,
 }
 
 /// One image, ready for an `<img src>` (F7).

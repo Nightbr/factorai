@@ -352,6 +352,7 @@ pub fn run() {
 			commands::sessions::delete_session,
 			commands::files::list_dir,
 			commands::files::read_file,
+			commands::files::write_file,
 			commands::files::read_image,
 			commands::files::read_pdf,
 			commands::files::path_kinds,

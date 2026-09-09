@@ -5465,8 +5465,12 @@ Claude has `Write` and `Edit`; a second write path through us would route around
 its own permission prompts and hooks, and would let an agent overwrite a file the
 human has a draft on.
 
-**Backend.** `write_file(path, contents)` in `commands/files.rs`, plus
-`FileContents.lossy`. `write_claude_md` is dropped from `03-backend-rust.md`
+**Backend.** `write_file(path, contents) -> FileContents` in `commands/files.rs`,
+plus `FileContents.lossy`. It answers with the file it wrote so the renderer can
+put it straight into its cache: the cached read is stale the moment the write
+lands, and leaving it that way is a race with a visible failure — the viewer
+would see disk disagreeing with the new baseline, decide the file had changed
+under the editor, and put the pre-save text back. `write_claude_md` is dropped from `03-backend-rust.md`
 before it is built — one write path means one place for the atomic write, the
 permission preservation and the symlink resolution to live. ADR-0039 states the
 boundary the command sits on: factorai writes **project** files, and never an

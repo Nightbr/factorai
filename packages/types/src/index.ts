@@ -487,6 +487,11 @@ export interface FileContents {
 	truncated: boolean;
 	/** Lines in `contents` (0 for empty or binary). */
 	lineCount: number;
+	/** The bytes did not decode as UTF-8, so `contents` carries U+FFFD where
+	 *  they were (F26). Still worth reading — a latin-1 source file is
+	 *  readable — but writing this string back would destroy the original
+	 *  bytes, so the viewer opens a lossy file read-only. */
+	lossy: boolean;
 }
 
 /**
