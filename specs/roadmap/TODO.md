@@ -55,7 +55,7 @@ follow-ups the design named. None of it is started.
   render, not a graph feature. What stays here is the graph's share of it: a `HEAD` chip per
   checkout, which is one more ref kind through machinery this item already owns.
 
-## 2. M4 — CLAUDE.md & plans (F9)
+## 2. M4 — editing and saving a file (F26)
 
 The first place the app is not read-only, and the last M4 deliverable.
 
@@ -65,22 +65,77 @@ Three of those have surfaces already; **this item is the whole of the fourth**. 
 edit some markdown" feature it looked optional. As the human's only lever on how agents behave,
 it is the load-bearing one, and its position in this list understates it.
 
-- [ ] `commands/memory.rs`: `read_claude_md`, `write_claude_md`, `list_plans`, `read_plan`
-      (`03-backend-rust.md`). Writes go through the same path validation as the read commands —
-      ADR-0004 says `~/.claude/` is read-only, and this is a *project* file, so it isn't a
-      violation, but the boundary is worth stating in the ADR trail.
-- [ ] Dirty-state save flow with an explicit Save action, plus the on-disk-changed-while-dirty
-      modal (F9 edge case).
-- [ ] "Create CLAUDE.md" stub button when the project has none.
+**Rewritten 2026-09-09**, from a clarify-needs interview. This item was "CLAUDE.md & plans (F9)":
+`read_claude_md` / `write_claude_md`, editing switched on for one path, a diff modal for the
+changed-on-disk case. All three generalised — every text file in the tree is editable, one
+`write_file` serves them all, and F26 owns the model. F9 keeps the stub button and the rule that
+plans stay read-only. **Where it lives is unchanged and was settled by Q18**: not a side panel
+tab, a file the tree opens. The strip is hardcoded (`Files | Changes | Graph`) and a Memory tab
+would be a worse version of something the tree already does.
 
-**Where does it live? — settled by Q18.** F9 says "side panel tab *Memory*", written when the
-side panel was notional. That slot went to `Changes`: the tab strip is hardcoded and not a
-registry — `Files | Changes | Graph` as of 2026-08-17, when Q18 was amended for F18. Memory is
-turned away by the same reasoning either way, because it
-takes the cheaper route it should have anyway —
-`CLAUDE.md` is **a file the tree opens**, with editability switched on for that one path, which
-also makes plans free (they're `.md` under `.claude/plans/`). Update F9 to match before building;
-it still describes the tab.
+Specs: [F26](../05-features.md#f26--editing-and-saving-a-file), amended F7 and F9,
+`03-backend-rust.md` § `files`, `02-data-model.md` § `file_drafts`,
+[ADR-0039](../../docs/adr/0039-factorai-writes-project-files-never-an-agents-store.md),
+[ADR-0040](../../docs/adr/0040-an-unsaved-draft-is-content-not-a-preference.md).
+
+### Slice 1 — the editor and the write
+
+No schema change, and useful on its own.
+
+- [ ] `commands/files.rs::write_file(path, contents)` + `services::files::write_file`: canonicalise
+      (a symlinked `.env` writes its target), temp file in the same directory, copy the original's
+      mode, fsync, rename over. Creates a file that has gone; never creates a parent directory.
+      Rust tests for each: symlink, mode preservation, missing parent, path is a directory,
+      unwritable file, and that a failed write leaves the old contents intact.
+- [ ] `FileContents.lossy` — Rust, `packages/types`, and the TS mirror in the same commit.
+      `contents_from_bytes` already decodes with `from_utf8_lossy`; it just never said so, and
+      saving a buffer full of U+FFFD would destroy the original bytes.
+- [ ] `FileView`: `readOnly` off, Monaco EOL set from the file's own line endings, Save and Revert
+      in the footer, `Cmd/Ctrl+S` via `editor.addCommand` **inside the host only** — not a global
+      binding, since `Ctrl+S` reaching a focused PTY is XOFF.
+- [ ] The four read-only cases, each with its reason in the footer: binary, truncated, lossy,
+      and a plan under `.claude/plans/` (F9).
+- [ ] Changed-on-disk: suppress `useWatchedOpenFile`'s re-read while dirty, show the banner
+      (Reload / Show diff / dismiss), and turn Save into Overwrite-with-confirm once dismissed.
+      Deleted-on-disk is the same banner with different words, and Save recreates.
+- [ ] Preview renders the live buffer, so editing `CLAUDE.md` is a type-toggle-see loop.
+      `MarkdownView` already takes source as a prop.
+- [ ] Smoke test: open, type, Save, reopen, assert disk. Plus the truncated and lossy refusals.
+
+### Slice 2 — drafts
+
+- [ ] Migration `0020` `file_drafts(path PK, contents, base_hash, updated_at)`, and the two
+      commands behind it. Caps: 1MB per draft, 32MB total, oldest evicted first.
+- [ ] Debounced persistence from the editor; a buffer equal to disk leaves no row.
+- [ ] Restore compares `base_hash` against the file as read: equal → restore dirty; different →
+      **drop the draft silently** and open clean. The silence is deliberate and stated in F26;
+      the alternative is a stale buffer that can overwrite an agent's overnight work.
+- [ ] Dirty dot on the file's row in the tree (F12 — the row already draws one for F13), and
+      on its tab in the pane's strip, in place of the `×` until hover.
+- [ ] **A preview tab pins on the first keystroke** (F7 — a single click in the tree replaces
+      an unpinned preview tab, which would otherwise discard a buffer mid-edit).
+- [ ] Unsaved files in the quit confirm (ADR-0020: it asks about work, not processes).
+- [ ] Revert deletes the row; Save deletes the row.
+
+### Slice 3 — secrets
+
+- [ ] `lib/secrets.ts`: the filename list, matched on basename, with tests. Not "git-ignored"
+      (that makes `dist/bundle.js` a secret) and not a content sniff (false-positives on any
+      base64 blob, and cannot be stated in a sentence).
+- [ ] F20's hand-to-the-agent control is absent on a secrets file.
+- [ ] A secrets file's draft is memory-only — no row, still a tree dot, still in the quit confirm.
+
+### What is left of F9
+
+- [ ] "Create CLAUDE.md" when the project has none: one button, `write_file`, one known path,
+      then open it.
+- [ ] `commands/memory.rs::list_plans`, `read_plan`.
+
+### Deliberately not here
+
+Creating, renaming and deleting files from the tree — a context menu, a destructive class of
+action needing the trash-not-unlink treatment ADR-0027 gave transcripts, and its own confirm
+story. Separate item.
 
 ## 42. Routines — the two slices slice 1 left
 

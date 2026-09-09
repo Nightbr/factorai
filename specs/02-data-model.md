@@ -679,6 +679,47 @@ when" is the question asked of a mark left weeks ago.
 exactly such a bit on `projects` with `sort_order`; migration 0015's comment says
 why a session list is the opposite shape and does not want one. See F2.
 
+### `file_drafts` — text you typed and have not saved
+
+| col        | type    | notes                                                        |
+| ---------- | ------- | ------------------------------------------------------------ |
+| path       | TEXT PK | absolute, canonical. A draft belongs to a file, not a project |
+| contents   | TEXT    | the unsaved buffer                                            |
+| base_hash  | TEXT    | hash of the file contents the draft was typed against         |
+| updated_at | INTEGER | epoch ms, last keystroke                                      |
+
+Migration `0020`, added by [F26](../specs/05-features.md#f26--editing-and-saving-a-file).
+
+**Why this is in SQLite and not localStorage.** ADR-0013 splits configuration
+three ways and sends renderer-only state to localStorage — which by its own rule
+is where a draft would go, since Rust never reads one. ADR-0040 makes the
+exception and states the reasoning: a draft is *content*, sized like a file
+rather than like a panel width, and the ~5MB origin quota is already shared with
+`factorai.panel`, `factorai.sidebar`, `factorai.zoom` and `factorai.prefs`. An
+over-quota write throws, and the thing lost would be the unsaved work the table
+exists to keep.
+
+**`base_hash` is the whole restore rule.** On open, the file is read and hashed:
+equal to `base_hash` → the draft is restored and the file is dirty; different →
+the file changed while factorai was not running, and **the draft is dropped**
+without asking. That is the one place in F26 where work is lost silently, and it
+is the deliberate side of the trade — a stale buffer restored over a file an
+agent rewrote overnight can overwrite a day of its work with one Save.
+
+**No foreign key, and no project id.** The viewer opens paths the tree reached,
+which is not the same set as "files inside a workspace project" — a draft has
+nothing to cascade from. Rows are cleaned up on Save, on Revert, and by the caps.
+
+**Caps: 1MB per draft, 32MB total, oldest evicted first.** A file too large to
+draft still edits and saves; it just is not kept across a quit, and the footer
+says so. Without a bound this table is an unbounded copy of whatever the user
+opened.
+
+**Secrets files never get a row.** F26 § "Secrets" — a `.env` buffer lives in
+memory for the session and dies with the process, because persisting drafts buys
+crash-resistance and is not worth a plaintext copy of every half-edited
+credential sitting here indefinitely.
+
 ### Indexes
 
 ```sql

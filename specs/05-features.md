@@ -1073,8 +1073,15 @@ see `specs/03-backend-rust.md` § "Session ids".
 
 ## F7 — File viewer
 
-**Behavior.** Open a file from the tree (F12) read-only, with syntax
-highlighting, in Monaco (ADR-0007 — this supersedes the CodeMirror 6 plan).
+**Behavior.** Open a file from the tree (F12) with syntax highlighting, in
+Monaco (ADR-0007 — this supersedes the CodeMirror 6 plan).
+
+**Amended by [F26](#f26--editing-and-saving-a-file).** This section said
+"read-only" and described a viewer with no edit affordance at all. A text file is
+now editable in place with an explicit Save; everything below about how a file is
+*opened, resolved, rendered and refreshed* is unchanged, and F26 owns the rest —
+the save flow, drafts, the changed-on-disk rule, and the four cases that stay
+read-only (binary, truncated, invalid UTF-8, and a diff).
 
 **UI.** A **pane with its own strip of open files**, hosted two ways and
 chosen by measurement (ADR-0037). `FileView` stays self-contained and
@@ -1146,6 +1153,12 @@ host-agnostic, which is what makes three hosts possible at all.
 - The two footer controls are `Button variant="quiet"` with a 12px glyph, the
   shape `ShellFooter` uses for `+ Terminal` — not `ghost`, whose hover block
   read as the one widget in a row of metadata.
+- **F26 adds Save and Revert to this row**, and the width order above absorbs
+  them: they are the two controls that *do* something to the file, so they sit
+  with the agent control at the right and keep their glyphs longest. The
+  `read-only` word comes back only where it is now load-bearing — a file that
+  cannot be edited, with the reason (binary, truncated, invalid UTF-8, a plan) —
+  which is a different label from the constant one removed on 2026-09-07.
 - Monaco config: line numbers on, minimap **off** (noise at modal width),
   **word wrap on** with `wrappingIndent: 'indent'` so reading a file never
   means scrolling sideways, find widget on `Cmd/Ctrl+F`, and
@@ -1543,25 +1556,40 @@ the two strings.
 
 ## F9 — CLAUDE.md & plans
 
-**Behavior.** Per project, show `CLAUDE.md` and any `.claude/plans/*.md`.
-CLAUDE.md is editable in-app; plans are read-only (they're working
-documents Claude writes).
+**Rewritten by [F26](#f26--editing-and-saving-a-file).** This section used to
+own editing: "CLAUDE.md is editable in-app", an explicit Save with a dirty
+indicator, and a diff modal for the changed-on-disk case. All three are now
+general — every text file gets them — so F26 holds the model and this section
+keeps only what is genuinely specific to these two kinds of file.
 
-**UI.** **Not a side panel tab.** Q18 turned this claimant away because
-`CLAUDE.md` has a cheaper home, and that reason is untouched by the strip later
-growing a third tab for F18 — the strip is hardcoded either way, and a Memory tab
-would be a worse version of something the tree already does. `CLAUDE.md` is a
-file the tree opens, with editing
-switched on for that one path, which makes plans free (they are `.md` under
-`.claude/plans/`). Roadmap item 2 builds it that way.
-Edits to CLAUDE.md trigger an explicit Save action with a dirty indicator.
+**Behavior.** Per project, `CLAUDE.md` and any `.claude/plans/*.md` are files the
+tree opens. Editing needs no switch for one path any more, because it is on for
+every text file.
 
-**Backend.** `read_claude_md`, `write_claude_md`, `list_plans`, `read_plan`.
+**Plans stay read-only, and that is now a deliberate exception** rather than a
+side effect of nothing being editable. They are working documents Claude writes
+while it thinks; a human editing one mid-plan is editing the agent's scratch
+paper, and the footer says `plan — read-only` so it reads as a rule rather than a
+missing feature. The path test is `.claude/plans/*.md` under the project.
+
+**Not a side panel tab.** Q18 turned this claimant away because `CLAUDE.md` has a
+cheaper home, and that reason is untouched by the strip later growing a third tab
+for F18 — the strip is hardcoded either way, and a Memory tab would be a worse
+version of something the tree already does.
+
+**What is left to build here** is one button: with no `CLAUDE.md` in the project,
+the tree offers **Create CLAUDE.md**, which writes a stub through `write_file`
+and opens it. One button writing one known path — not file management (F26 §
+"What this does not do").
+
+**Backend.** `list_plans`, `read_plan`. `read_claude_md` and `write_claude_md`
+are dropped: the tree reads a path and `write_file` writes one, and a per-file
+command pair would be a wrapper the day after it landed.
 
 **Edge cases.**
-- No CLAUDE.md → "Create CLAUDE.md" button writes a stub.
-- File changed on disk while we have a dirty buffer → diff modal asks the
-  user to merge or overwrite.
+- No CLAUDE.md → "Create CLAUDE.md" writes a stub.
+- A plan opened from the tree → read-only, with the reason in the footer.
+- Everything about saving, drafts and on-disk conflicts → F26.
 
 ---
 
@@ -5222,3 +5250,238 @@ profile is read and changed, which is the answer to "which identity is this
 project on"; a per-row badge would answer a question the list is not asking.
 
 **Roadmap.** Item 45.
+
+---
+
+## F26 — Editing and saving a file
+
+**Behavior.** Any text file the viewer can open is editable in place, and an
+explicit Save writes it to disk. This is the general capability F9 described for
+one path; F9 is now the CLAUDE.md-shaped remainder of it.
+
+**Why it is not optional.** `00-overview.md` § "The operating model" makes the
+human four things — supervisor, decider, reviewer, and the one who sets the
+rules agents run under. Three have surfaces. Setting the rules means writing
+`CLAUDE.md`, `.claude/settings.json`, `.mcp.json`, hooks, a `.env` an agent needs
+to run the thing it just built. Every one of those is a file, and until this
+lands the answer is "leave the app". A supervisor who has to leave to change the
+rules is not supervising from here.
+
+### The editor is the viewer
+
+**No edit mode, no Edit button.** A text file opens editable. The mode switch was
+considered and rejected: it protects against typing into a file by accident, and
+the thing it costs is the reason to open the file at all. Nothing is written
+without Save, so an accidental keystroke is an undo, not a change.
+
+Concretely, in `FileView`: Monaco's `readOnly` / `domReadOnly` come off, and
+`Save` and `Revert` join the footer's right-hand side beside F20's
+hand-to-the-agent control, under the same `@container` degradation order. The
+component is host-agnostic (F7), so editing arrives in the pane, in the panel
+split and in the expand modal at once, with nothing host-shaped in it.
+
+**Two things the tab strip owes an edited file** (F7 § UI — the pane carries one
+strip of open files per checkout, persisted and restored on launch):
+
+- **A dirty tab is marked**, with a dot in place of its `×` until hover, the
+  idiom every editor uses. Several tabs can be dirty at once, which is the case
+  a single footer cannot show.
+- **Typing pins a preview tab.** A single click in the tree opens an italic
+  preview tab that the *next* single click replaces. A preview tab you have
+  edited must stop being replaceable — otherwise one click in the tree throws
+  away a buffer you are still typing in. The first keystroke pins the tab, which
+  is what a double-click would have done, and the italic goes away as the signal
+  that it did.
+
+**Four cases stay read-only, and each says why in the footer** rather than
+presenting an editor that cannot save:
+
+| Case | Footer reads | Why |
+| --- | --- | --- |
+| `isBinary` | `binary` | Already the binary card, not an editor. |
+| `truncated` | `truncated — read-only` | The buffer is a prefix. Saving it deletes everything past the cap. F7's existing **Show anyway** re-read is the way in, and an uncapped read is editable. |
+| `lossy` | `not valid UTF-8 — read-only` | See below. |
+| A diff (F8/F13) | — | A diff is two revisions, one of which does not exist as a file. |
+
+**`lossy` is a new field on `FileContents`, and it closes a real hole.**
+`services::files::contents_from_bytes` decodes with `String::from_utf8_lossy`
+— deliberately, so a latin-1 source file is still readable (F7). Every invalid
+byte becomes U+FFFD, and a Save of that buffer would write the replacement
+characters back and destroy the original bytes for good. The read already knows
+this happened; it just never said so. Now it does, and a lossy read is read-only.
+
+### Save
+
+**Explicit, with the button as the dirty indicator.** Save is disabled until the
+buffer differs from what was read — the same rule F11's settings modal uses, and
+for the same reason: a separate dirty dot beside a Save button is two things
+saying one thing.
+
+- `Cmd/Ctrl+S` is bound through `editor.addCommand` **inside the Monaco host**,
+  so it fires only when the editor has focus. Not a global shortcut: item 5's
+  scheme has to decide when the embedded terminal swallows a key, and `Ctrl+S`
+  over a PTY is XOFF — a global binding that reaches a focused terminal on Linux
+  freezes it.
+- **Revert** sits beside Save, enabled only when dirty. It confirms once, naming
+  the file, then re-reads from disk and deletes the draft. It is the only way to
+  clear a draft without writing one, so without it a dirty file can only be
+  un-dirtied by saving it.
+- A failed write **leaves the buffer dirty** and puts the error in the footer.
+  Nothing about a failed Save may discard what the user typed — that is the one
+  copy of it.
+
+**Permission is discovered at Save, not at open.** An unwritable file opens like
+any other and the write fails with `permission denied: <path>`. The open-time
+check was considered and dropped: it is a courtesy that can be wrong by the time
+it matters, and it costs a field on every read for the rare file.
+
+### What Save writes
+
+**Exactly the bytes the editor holds, and nothing else.** No trailing-whitespace
+trim, no enforced final newline, no line-ending normalisation. A one-character
+fix in a file someone else wrote must produce a one-line diff, because an agent
+reviews that diff.
+
+- **Line endings survive.** The read detects CRLF and the Monaco model is
+  created with the matching `EOL`, so a Windows-line-ending file stays one.
+- **The write is atomic.** `write_file` canonicalises the path first — so
+  editing a symlinked `.env` writes the target rather than replacing the link
+  with a regular file — then writes a temp file in the same directory, copies
+  the original's permission bits onto it, fsyncs, and renames over. A crash or a
+  full disk leaves the previous file intact; a `0600` secrets file does not come
+  back `0644`.
+- **A deleted file is recreated.** If the file went while you were editing it,
+  the banner says so and Save writes it back at the same path. Refusing would
+  strand the only surviving copy of the text in a buffer.
+
+### The agent writes the file you are editing
+
+This is the collision the whole product exists inside, so it gets a stated rule
+rather than a race.
+
+`file:changed` already fires for the open file, and `useWatchedOpenFile`
+re-reads on it (F7 § freshness). That behaviour is **kept for a clean buffer** —
+watching a file an agent is editing is exactly what the viewer is good for.
+
+With a **dirty** buffer the re-read is suppressed and a banner appears above the
+editor:
+
+> **Changed on disk.** Something else wrote this file while you were editing it.
+> `Reload` · `Show diff` · dismiss
+
+- `Reload` discards the buffer and takes disk.
+- `Show diff` opens the buffer against disk in the diff view.
+- Dismissing keeps typing, and **Save becomes `Overwrite`** with a confirm that
+  names what it is replacing. The label changes because the action changed:
+  saving over an unread change is a different act from saving.
+- A file **deleted** on disk gets the same banner with different words, and Save
+  recreates (above).
+
+Neither side is ever discarded without a click. That is the whole invariant.
+
+### Drafts
+
+**An unsaved buffer survives closing the tab, and survives quitting.** The strip
+of open files is already persisted and restored on launch (F7), so a buffer that
+died with the process would be the one thing in the pane that does not come
+back: the file reopens on the next launch, in the same tab, with your edit gone.
+
+- **Storage** is the SQLite `file_drafts` table (`02-data-model.md`, migration
+  `0020`), not localStorage. ADR-0013 sends renderer-only state to localStorage,
+  and this bends that rule on purpose: a draft is content, not a preference, it
+  is sized like a file rather than like a width, and the ~5MB origin quota is
+  shared with `factorai.panel`, `factorai.sidebar`, `factorai.zoom` and
+  `factorai.prefs`. An over-quota write throws, and losing the write silently is
+  losing exactly the work this feature exists to keep. ADR-0040.
+- **Visible in four places**: its tab, the footer of the pane showing it, a
+  dirty dot on the file's row in the tree (F12 — the row already draws a status
+  dot for F13, so the slot and the precomputed-lookup shape both exist), and the
+  quit confirm, which ADR-0020 says asks about work rather than about processes.
+  An unsaved `.env` is work. The tree dot is the one that answers "what have I
+  left unsaved" for a file whose tab I closed.
+- **Restore compares hashes.** A draft stores the hash of the contents it was
+  based on. On open: disk matches that hash → the draft is restored and the file
+  is dirty. Disk has moved → **the draft is dropped, silently**, and the file
+  opens clean. This is the one case in the feature where work is lost without
+  being asked about, and it is chosen deliberately: the alternative is a stale
+  buffer that can overwrite everything an agent did while the app was closed. The
+  window is narrow — a draft is only ever dropped for a file that changed while
+  factorai was not running, since a change while it *is* running goes through the
+  conflict banner above.
+- **A draft equal to disk is not a draft.** Typing a character and deleting it
+  leaves no row.
+- **Caps.** 1MB per draft and 32MB total; the oldest rows go first. A file too
+  large to draft still edits and saves — it just is not kept across a quit, and
+  the footer says so.
+
+### Secrets
+
+The driving case for editing in-app is a config file, and the config files that
+most need editing are the ones holding credentials. They are edited like any
+other file — no masking, no banner, no separate confirm. What the flag changes is
+two things, both about where the contents go next:
+
+- **F20's hand-this-to-the-agent control is absent** on a secrets file. A
+  selection from a `.env` is one click from an agent's context otherwise, and
+  that click cannot be taken back.
+- **The draft is memory-only.** A secrets file's buffer is never written to
+  `file_drafts`; it lives in the store for the session, still shows its tree dot,
+  still appears in the quit confirm, and dies with the process. The point of
+  persisting drafts is surviving a crash, and it is not worth a plaintext copy of
+  every half-edited API key sitting in the database indefinitely.
+
+**The rule is a filename list and nothing else**, in `lib/secrets.ts`, matched on
+basename, with tests:
+
+```
+.env, .env.*          *.pem   *.key   *.p12   *.pfx
+id_rsa, id_ed25519    .netrc  .pgpass .npmrc
+*credentials*         secrets.*
+```
+
+Not "git-ignored", which would make `dist/bundle.js` a secret and stop the flag
+meaning anything. Not a content sniff for high-entropy values, which
+false-positives on any file with a base64 blob and cannot be stated in a
+sentence — and a rule the user cannot predict is one they will be surprised by
+while holding a credential.
+
+### Markdown and SVG
+
+A `.md` opens rendered and an `.svg` opens drawn (F7). **View source** is the way
+into editing, and toggling back to **Preview** renders *the buffer*, not disk. So
+editing `CLAUDE.md` is a live loop: type, toggle, see it. `MarkdownView` already
+takes its source as a prop, so this is what to pass, not a feature to build.
+
+### What this does not do
+
+Creating, renaming and deleting files is a **different item**: a tree context
+menu, a destructive class of action that needs the trash-not-unlink treatment
+ADR-0027 gave transcripts, and its own confirm story. F9's "Create CLAUDE.md"
+stub button stays where it is — one button writing one known path is not file
+management.
+
+`write_file` is **not exposed to agents** over the MCP tool server (ADR-0029).
+Claude has `Write` and `Edit`; a second write path through us would route around
+its own permission prompts and hooks, and would let an agent overwrite a file the
+human has a draft on.
+
+**Backend.** `write_file(path, contents)` in `commands/files.rs`, plus
+`FileContents.lossy`. `write_claude_md` is dropped from `03-backend-rust.md`
+before it is built — one write path means one place for the atomic write, the
+permission preservation and the symlink resolution to live. ADR-0039 states the
+boundary the command sits on: factorai writes **project** files, and never an
+agent's own store.
+
+**Edge cases.**
+- Save with no changes → the button is disabled; there is nothing to write.
+- File becomes a directory at its path → the write fails with `is a directory`,
+  buffer stays dirty.
+- Parent directory gone → the write fails rather than recreating a tree.
+- The same file open in two checkouts (F21) → two absolute paths, two tabs, two
+  drafts. Nothing to reconcile.
+- A tab closed with a draft → the draft stays; the tree keeps its dot and
+  reopening the path restores the buffer.
+- A draft for a file that no longer exists → restored dirty, with the
+  deleted-on-disk banner; Save recreates it.
+
+**Roadmap.** Item 2, in three slices.

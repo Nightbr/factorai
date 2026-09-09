@@ -38,8 +38,10 @@ apps/desktop/src/
 │   │   └── ClaudeSection.tsx        # detected binary + the override field
 │   ├── viewer/
 │   │   ├── monaco.ts                # sole Monaco import site + theme
-│   │   ├── FileView.tsx             # one file, read-only, host-agnostic
-│   │   ├── FileViewerModal.tsx      # V0 host (tabs replace it later)
+│   │   ├── FileView.tsx             # one file, editable, host-agnostic
+│   │   ├── ViewerPane.tsx           # the column / split host (ADR-0037)
+│   │   ├── FileTabs.tsx             # the strip of open files
+│   │   ├── FileViewerModal.tsx      # the expand, reached from the pane
 │   │   └── DiffView.tsx             # Monaco diff editor (F8, not built)
 │   └── plans/
 │       ├── ClaudeMdEditor.tsx
@@ -452,20 +454,28 @@ imports Monaco:
 - `monaco.ts` — the only Monaco import site. Pulls `editor.api` plus
   `basic-languages/monaco.contribution`, which is every Monarch grammar with
   **no** web-worker requirement (the workers back language services, i.e.
-  IntelliSense, which a read-only viewer doesn't want). Also owns the
-  `factorai-dark` theme and language resolution via Monaco's own registry.
-- `FileView.tsx` — one file, read-only, modal-agnostic. Runs the `read_file`
-  query, renders the editor / binary card / empty state, and the footer.
-- `FileViewerModal.tsx` — V0 host. `React.lazy`-loads `FileView`, so Monaco
-  lands in a chunk fetched on first open and the initial bundle is unchanged.
+  IntelliSense, which the viewer doesn't want — editing is a text buffer and a
+  Save, not a language service). Also owns the `factorai-dark` theme and
+  language resolution via Monaco's own registry.
+- `FileView.tsx` — one file, modal-agnostic. Runs the `read_file` query, renders
+  the editor / binary card / empty state, and the footer. Owns the edit buffer,
+  Save, Revert and the changed-on-disk banner (F26); the draft store outlives it.
+- `ViewerPane.tsx` / `FileTabs.tsx` — the host (a column, or a split under the
+  tree) and its strip of open files, chosen by measurement (ADR-0037).
+- `FileViewerModal.tsx` — the expand, reached from the pane's header.
+  `React.lazy`-loads `FileView`, so Monaco lands in a chunk fetched on first
+  open and the initial bundle is unchanged.
 
 `vite.config.ts` lists both Monaco entry points in `optimizeDeps.include`;
 without that, Vite discovers them the first time a file is opened and reloads
 the page mid-interaction.
 
-For MVP the viewer is read-only, with no edit affordance at all — editing
-arrives with F9's CLAUDE.md editor. "Accept / reject" of diffs ships in v2
-alongside the MCP/IDE emulator.
+**The viewer is an editor** (F26). It shipped read-only with no edit affordance
+at all, and that paragraph used to say editing would arrive with F9's CLAUDE.md
+editor for one path; instead every text file is editable with an explicit Save,
+and F9 is the remainder. Four cases stay read-only and say why in the footer:
+binary, truncated, invalid UTF-8, and a plan. A diff is read-only too —
+"accept / reject" of diffs ships in v2 alongside the MCP/IDE emulator.
 
 ## Session content rendering
 

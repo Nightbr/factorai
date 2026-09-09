@@ -19,13 +19,15 @@ commands/
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill, shell_spawn, shell_name
   files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds,
                       #   watch_file, unwatch_file, reveal_in_file_manager
+                      #   (+ write_file — F26, planned)
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
                       #   (+ git_worktrees — F21, planned)
   ide.rs              # the IDE bridge's command surface (F20)
   routines.rs         # list/create/update/delete/set_enabled/run_now
                       #   (+ list_skills — slice 2, planned)
-  memory.rs           # read_claude_md, write_claude_md, list_plans, read_plan
-                      #   — PLANNED, roadmap item 2
+  memory.rs           # list_plans, read_plan — PLANNED, roadmap item 2.
+                      #   read_claude_md/write_claude_md dropped: F26 makes
+                      #   every text file editable through write_file
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
 agents/
   mod.rs              # Discovered, display_name_for_path — the store-agnostic bits
@@ -266,7 +268,14 @@ app_quit_confirmed() -> ()
 // prompt is `waiting_input`, not `working`.
 
 // files
-read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated flags
+read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated + lossy flags
+// The one command that writes a file (F26) — PLANNED, roadmap item 2. Atomic:
+// canonicalise (so a symlinked `.env` writes its target), temp file in the same
+// directory, copy the original's mode, fsync, rename over. Creates the file if
+// it has gone; never creates a parent directory. Project files only — never an
+// agent's store (ADR-0039), and never exposed to agents over the MCP tool
+// server (ADR-0029), which have `Write` and `Edit` of their own.
+write_file(path: String, contents: String) -> ()
 // Images for the viewer (F7): base64 + a mime sniffed from the magic bytes,
 // never from the extension. Refuses a non-image or an oversized file rather
 // than truncating — half a PNG is a decode error, not a smaller PNG.
@@ -312,9 +321,10 @@ git_blob_at(path: String, commit: String, max_bytes: Option<usize>) -> Option<Fi
 // Read-only like the rest, and it doubles as the IDE bridge's path scope.
 git_worktrees(project_path: String) -> Vec<GitWorktree>
 
-// memory / plans — PLANNED. None of these are registered yet (roadmap item 2).
-read_claude_md(project_path: String) -> Option<String>
-write_claude_md(project_path: String, contents: String) -> ()
+// memory / plans — PLANNED. Neither is registered yet (roadmap item 2).
+// `read_claude_md` / `write_claude_md` were here and are dropped: F26 makes
+// every text file editable, so the tree reads a path and `write_file` writes
+// one. A per-file command pair would be a wrapper around both.
 list_plans(project_path: String) -> Vec<PlanRef>
 read_plan(path: String) -> String
 
@@ -951,7 +961,9 @@ Rules, all enforced in Rust so the renderer stays dumb:
   disk. The UI offers "Show anyway", which refetches with `max_bytes: None`.
 - Invalid UTF-8 without null bytes is read **lossily** rather than rejected: a
   latin-1 source file is still worth reading, and real binaries were already
-  ruled out.
+  ruled out. **`lossy` says so** (added by F26), because every invalid byte came
+  back as U+FFFD and writing that buffer to disk would destroy the original
+  bytes — so a lossy read opens read-only.
 - No `mime` field. It existed in the original spec to pick a viewer, but the
   renderer resolves a language from the extension through Monaco's own
   language registry (ADR-0007), so a `mime_guess` dependency would be a
@@ -974,7 +986,26 @@ in the order given so the caller can zip it against its own candidate list.
   stop the tree *browsing* out of a project; opening one file the agent just
   named is not that.
 
-Read-only, like the rest of our disk access (ADR-0004).
+**Reads are the whole of this service until F26**, which adds `write_file` — the
+first thing factorai writes that a human typed. The boundary it sits on is
+ADR-0039: project files yes, an agent's own store never, which is ADR-0004's rule
+generalised rather than weakened.
+
+`write_file(path, contents)`:
+
+- **Canonicalises first.** A symlinked `.env` — a very common layout — must have
+  its target written, not be replaced by a regular file.
+- **Temp file in the same directory, then rename.** Same filesystem, so the
+  rename is atomic; a crash or a full disk leaves the previous contents intact.
+  A temp file in `/tmp` would make the rename a cross-device copy and lose that.
+- **Copies the original's permission bits** onto the temp file before the
+  rename, so a `0600` secrets file does not come back `0644` with the process
+  umask.
+- **Creates the file if it is gone**, at the same path. It does not create parent
+  directories: a missing parent means the tree moved, and guessing is worse than
+  failing.
+- Errors are the same shapes the reads use — `permission denied`,
+  `is a directory`, `NotFound` for a missing parent.
 
 ### `reveal`
 
