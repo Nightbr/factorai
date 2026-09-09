@@ -258,6 +258,24 @@ swallows a keystroke breaks typing to Claude.
       it has the same terminal-focus problem as F2's sidebar navigation, and the F13 groups
       (Merge / Staged / Changes) mean "next file" has to cross a group boundary rather than stop
       at it. Read-only, so this adds no action beyond moving the selection — ADR-0009 stands.
+- [ ] **`Cmd+W` closes the focused tab — asked for by a user 2026-09-09.** It collides with the
+      table's current `Cmd/Ctrl + W` (kill active terminal), and there are two tab strips —
+      `SessionTabs` and the viewer's `FileTabs` — so "the tab" needs a focus rule before the
+      binding can be written. Closing a session tab is F10's close, `needsCloseConfirm` included,
+      not a silent kill; closing a file tab with an unsaved draft has to answer to F26's draft
+      store. § "Keyboard shortcuts" is amended in the same commit as whichever meaning wins.
+- [ ] **`Cmd+Q` quits factorai — same ask.** macOS supplies it through the app menu already; the
+      binding has to land on the *same* path as the window close so ADR-0020's quit guard and
+      kill-on-quit both still run. A renderer handler that exits around `CloseRequested` is
+      orphan zombies plus a skipped confirm. On Linux there is no menu equivalent, so it is a
+      real binding there rather than a no-op.
+- [ ] **`Cmd+F` focuses the search bar — same ask**, landing in the sidebar's
+      `Search sessions…` input. That is the action the table gives `Cmd/Ctrl + K`, on the row it
+      gives to find-in-viewer-or-terminal, so the two have to be resolved together: either they
+      swap, or `Cmd+F` becomes context-dependent (viewer or terminal focused keeps find,
+      anywhere else focuses search). Item 14 already wants a row *removed* from that table —
+      make both edits one amendment. "Session **and** files" is one bar only once items 12–13
+      land; today the bar searches transcripts.
 
 The table is also about to grow: **items 12–14** add `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`, and item
 14 wants the table's current `Cmd/Ctrl+G` (go to line) row *removed* because Monaco provides it
