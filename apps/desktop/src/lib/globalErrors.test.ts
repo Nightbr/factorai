@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, describeError, isCancellation } from './globalErrors';
+import { classify, describeError, isCancellation, isDisposedDiff } from './globalErrors';
 
 /** Exactly what Monaco constructs: `new CancellationError()` sets both `name`
  *  and `message` to `Canceled`. Rebuilt here rather than imported, because
@@ -31,10 +31,38 @@ describe('isCancellation', () => {
 	});
 });
 
+/** What Monaco's diff provider throws when the worker no longer holds one of
+ *  the two models — a bare Error, no name, no code. */
+function disposedDiffError(): Error {
+	return new Error('no diff result available');
+}
+
+describe('isDisposedDiff', () => {
+	it('recognises the diff race that is not dressed as a cancellation', () => {
+		expect(isDisposedDiff(disposedDiffError())).toBe(true);
+	});
+
+	it('matches the message exactly, so another worker failure still reaches the screen', () => {
+		expect(isDisposedDiff(new Error('no diff result available for foo.ts'))).toBe(false);
+		expect(isDisposedDiff(new Error('worker failed to start'))).toBe(false);
+		expect(isDisposedDiff({ message: 'no diff result available' })).toBe(false);
+		expect(isDisposedDiff('no diff result available')).toBe(false);
+		expect(isDisposedDiff(null)).toBe(false);
+	});
+});
+
 describe('classify', () => {
 	it('ignores a cancellation whether or not the app is mounted', () => {
 		for (const mounted of [true, false]) {
 			expect(classify(cancellationError(), mounted).kind).toBe('ignore');
+		}
+	});
+
+	it('ignores the disposed-diff race the same way, and says which it was', () => {
+		for (const mounted of [true, false]) {
+			const d = classify(disposedDiffError(), mounted);
+			expect(d.kind).toBe('ignore');
+			if (d.kind === 'ignore') expect(d.why).toMatch(/disposed/);
 		}
 	});
 

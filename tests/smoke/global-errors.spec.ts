@@ -47,6 +47,29 @@ test.describe('window-level errors', () => {
 		await expect(page.locator('#factorai-error-notice')).toHaveCount(0);
 	});
 
+	test('@smoke the disposed-diff race is ignored the same way a cancellation is', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/');
+		await expect(page.locator('aside').getByText('foo')).toBeVisible();
+
+		// The bare Error Monaco's diff provider throws when the worker no longer
+		// holds one of the two models — the same teardown as above, losing the
+		// race with its own cancellation token by a tick.
+		await page.evaluate(() => {
+			const err = new Error('no diff result available');
+			const p = Promise.reject(err);
+			p.catch(() => {});
+			window.dispatchEvent(
+				new PromiseRejectionEvent('unhandledrejection', { promise: p, reason: err }),
+			);
+		});
+
+		await expect(page.locator('aside').getByText('foo')).toBeVisible();
+		await expect(page.locator('#factorai-error-notice')).toHaveCount(0);
+	});
+
 	test('@smoke a real rejection is reported without destroying the app', async ({ page }) => {
 		await installMockBridge(page, fixtureOneProjectOneSession());
 		await page.goto('/');

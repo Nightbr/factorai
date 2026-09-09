@@ -2849,6 +2849,17 @@ the design:
   fields are required: an unrelated error merely *named* `Canceled` must still
   surface, or this stops being a filter and becomes a place bugs hide.
   `console.debug` keeps it findable in DevTools.
+- **The same race one tick later → ignored too** (added 2026-09-09, found in
+  the real window while QAing F26's editable diff). Monaco's diff provider
+  awaits the worker and *then* checks whether its cancellation token was
+  cancelled — the branch is commented "Text models might be disposed!". When
+  the disposal reaches the worker's model registry first, that check does not
+  fire: `$computeDiff` finds no model under one of the two URIs, answers
+  `null`, and the provider throws a bare `Error('no diff result available')`.
+  Same event, no `CancellationError`, so the filter above let it through and a
+  benign teardown put a card on screen. Matched on the **exact** message, for
+  the reason the three-field match above exists: a worker failure that is not
+  this one must still surface.
 - **Anything else, app already rendered → non-destructive.** A dismissible
   bottom-right card outside `#root` (`lib/errorNotice`), plus `console.error`.
   Whether the app is up is asked of the **DOM** — `root.childElementCount > 0` —

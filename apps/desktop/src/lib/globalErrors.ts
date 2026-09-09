@@ -34,6 +34,32 @@ export function isCancellation(err: unknown): boolean {
 	return err instanceof Error && err.name === 'Canceled' && err.message === 'Canceled';
 }
 
+/**
+ * **The same race, one tick later** (added 2026-09-09, seen in the real
+ * window).
+ *
+ * Monaco's diff provider awaits the worker and *then* asks whether its
+ * cancellation token was cancelled — the branch is commented "Text models
+ * might be disposed!" and returns an empty diff. When the disposal reaches the
+ * worker's model registry before the token flips, that check does not fire:
+ * `$computeDiff` finds no model under one of the two URIs, answers `null`, and
+ * the provider throws a plain `Error('no diff result available')`
+ * (`diffEditor/diffProviderFactoryService.js`).
+ *
+ * So it is `isCancellation`'s case wearing a different name, and it means
+ * exactly what that one means: an editor went away while its diff was being
+ * computed. There is nothing a user could do about it and nothing was lost —
+ * the next diff computes against the models that still exist.
+ *
+ * Matched on the message alone, because the error is constructed with no name
+ * and no code; matched **exactly**, so a different worker failure still
+ * reaches the screen. Same reason as above for not importing anything: this
+ * module must stay out of the Monaco chunk.
+ */
+export function isDisposedDiff(err: unknown): boolean {
+	return err instanceof Error && err.message === 'no diff result available';
+}
+
 /** Human-readable text for anything that can be thrown or rejected. */
 export function describeError(err: unknown): string {
 	if (err instanceof Error) {
@@ -73,6 +99,9 @@ type ErrorDisposition =
 export function classify(err: unknown, mounted: boolean): ErrorDisposition {
 	if (isCancellation(err)) {
 		return { kind: 'ignore', why: 'monaco cancelled an in-flight worker request' };
+	}
+	if (isDisposedDiff(err)) {
+		return { kind: 'ignore', why: 'a diff editor was disposed while its diff was computing' };
 	}
 	// A failed resource load (an `<img>`, a stylesheet) also fires `error` on
 	// window, as a plain Event carrying neither `error` nor `message`. Reporting

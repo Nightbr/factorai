@@ -32,6 +32,17 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   rendered nothing at all for a commit range — its label came from a three-entry lookup and F18
   can open a fourth kind of mode.
 
+  **A third bug, found by QAing it in the real window rather than by any test:** `Unexpected
+  error — no diff result available` after a save. Monaco's diff provider awaits the worker and
+  *then* checks its cancellation token ("Text models might be disposed!"); when the disposal
+  reaches the worker's model registry first, that check does not fire and it throws a bare
+  `Error` instead of the `CancellationError` F17's classifier already ignores. Fixed at both
+  ends. `DiffEditor` no longer keys its creation effect on either side's text — a save was
+  disposing both models to display text the editor was already showing — so content now arrives
+  through two effects that mutate the models in place, and the teardown calls `setModel(null)`
+  before disposing. And `lib/globalErrors` learned the second form: `isDisposedDiff`, matched on
+  the exact message so a worker failure that is not this one still reaches the screen (F17).
+
 - **Find in the file the viewer is showing (F7)** — 2026-09-09, user ask. `Cmd/Ctrl+F` did
   nothing, and **F7 and [ADR-0007](../../docs/adr/0007-monaco-for-the-file-viewer.md) had both
   said it worked since the viewer shipped.** The cause is the JSON bug one level up:
