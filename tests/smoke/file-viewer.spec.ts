@@ -871,22 +871,44 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('viewer-save-error')).toHaveCount(0);
 	});
 
-	test('@smoke Revert throws the buffer away and takes what is on disk', async ({ page }) => {
+	/**
+	 * **Monaco's keybindings cannot be driven from here**, so undo and
+	 * `Cmd/Ctrl+S` have no smoke coverage.
+	 *
+	 * `Cmd/Ctrl+A` and `Cmd/Ctrl+Z` pressed through CDP never reach the editor —
+	 * on macOS Chromium they are browser-level shortcuts, and what the page sees
+	 * is a select-all or an undo the browser has already handled against the
+	 * contenteditable. It is a limitation of the harness rather than of the
+	 * feature, but it means the way back from a dirty buffer is proved only by
+	 * the Reload path below, which is a click.
+	 */
+	test('@smoke going clean drops the draft, so the tab comes back unedited', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
 		const panel = await openTree(page);
-		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+		await panel.getByRole('button', { name: 'Cargo.toml' }).dblclick();
 
-		await typeInEditor(page, 'gone the moment this is reverted');
+		await typeInEditor(page, 'gone the moment this is dropped');
 		const viewer = page.getByTestId('file-viewer');
-		await expect(viewer.getByTestId('viewer-revert')).toBeVisible();
+		await expect(viewer.getByTestId('viewer-save')).toBeEnabled();
 
-		await viewer.getByTestId('viewer-revert').click();
-		await page.getByTestId('viewer-edit-confirm-ok').click();
-
+		// Something else writes the file, and the reader takes their version.
+		await page.evaluate((path) => {
+			const files = window.__FACTORAI_TEST__?.files;
+			const file = files?.[path];
+			if (files && file) files[path] = { ...file, contents: 'theirs\n' };
+			window.__FACTORAI_EMIT__?.('file:changed', { path });
+		}, `${ROOT}/Cargo.toml`);
+		await viewer.getByTestId('viewer-conflict-reload').click();
 		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
-		await expect(viewer.getByTestId('viewer-revert')).toHaveCount(0);
-		// Nothing was written on the way out.
+
+		// And the draft went with it: leaving the tab and coming back finds a file
+		// with nothing unsaved, rather than one still marked from an edit that no
+		// longer exists.
+		await panel.getByRole('button', { name: 'knip.jsonc' }).dblclick();
+		await page.getByTestId('file-tab').filter({ hasText: 'Cargo.toml' }).click();
+
+		await expect(page.getByTestId('file-viewer').getByTestId('viewer-save')).toBeDisabled();
 		expect(await writeCalls(page)).toEqual([]);
 	});
 

@@ -708,7 +708,8 @@ agent rewrote overnight can overwrite a day of its work with one Save.
 
 **No foreign key, and no project id.** The viewer opens paths the tree reached,
 which is not the same set as "files inside a workspace project" — a draft has
-nothing to cascade from. Rows are cleaned up on Save, on Revert, and by the caps.
+nothing to cascade from. Rows are cleaned up on Save, on undoing the buffer back
+to what is on disk, and by the caps.
 
 **Caps: 1MB per draft, 32MB total, oldest evicted first.** A file too large to
 draft still edits and saves; it just is not kept across a quit, and the footer

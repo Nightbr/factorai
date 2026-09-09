@@ -1153,9 +1153,10 @@ host-agnostic, which is what makes three hosts possible at all.
 - The two footer controls are `Button variant="quiet"` with a 12px glyph, the
   shape `ShellFooter` uses for `+ Terminal` — not `ghost`, whose hover block
   read as the one widget in a row of metadata.
-- **F26 adds Save and Revert to this row**, and the width order above absorbs
-  them: they are the two controls that *do* something to the file, so they sit
-  with the agent control at the right and keep their glyphs longest. The
+- **F26 adds Save to this row**, and the width order above absorbs it: with the
+  agent control it is one of the two things here that *do* something rather
+  than describe, so they sit together at the right and keep their glyphs
+  longest. The
   `read-only` word comes back only where it is now load-bearing — a file that
   cannot be edited, with the reason (binary, truncated, invalid UTF-8, a plan) —
   which is a different label from the constant one removed on 2026-09-07.
@@ -5275,8 +5276,8 @@ the thing it costs is the reason to open the file at all. Nothing is written
 without Save, so an accidental keystroke is an undo, not a change.
 
 Concretely, in `FileView`: Monaco's `readOnly` / `domReadOnly` come off, and
-`Save` and `Revert` join the footer's right-hand side beside F20's
-hand-to-the-agent control, under the same `@container` degradation order. The
+`Save` joins the footer's right-hand side beside F20's hand-to-the-agent
+control, under the same `@container` degradation order. The
 component is host-agnostic (F7), so editing arrives in the pane, in the panel
 split and in the expand modal at once, with nothing host-shaped in it.
 
@@ -5322,10 +5323,21 @@ saying one thing.
   scheme has to decide when the embedded terminal swallows a key, and `Ctrl+S`
   over a PTY is XOFF — a global binding that reaches a focused terminal on Linux
   freezes it.
-- **Revert** sits beside Save, enabled only when dirty. It confirms once, naming
-  the file, then re-reads from disk and deletes the draft. It is the only way to
-  clear a draft without writing one, so without it a dirty file can only be
-  un-dirtied by saving it.
+- **Undo is the way back, and there is no Revert control** (decided 2026-09-09,
+  reversing the interview's answer). `Ctrl/Cmd+Z` until the buffer matches disk
+  reports the file clean, because dirty is Monaco's own alternative version id
+  rather than a comparison of two strings — undoing to the start is *clean*, not
+  an edit that happens to match. **Going clean deletes the draft**, which is what
+  a Revert would have done and is now the only thing that does it short of
+  saving.
+
+  What this costs is worth stating: the undo stack belongs to the editor, and
+  the editor is recreated when the tab is switched away and back. So undo walks
+  back through this visit's typing, not through a draft restored from an earlier
+  one — a buffer that came back from the drafts store can be saved or edited
+  further, but cannot be undone to disk. Reload on the conflict banner is the
+  only other route to "give me what is on disk", and it only appears when
+  something else has written the file.
 - A failed write **leaves the buffer dirty** and puts the error in the footer.
   Nothing about a failed Save may discard what the user typed — that is the one
   copy of it.

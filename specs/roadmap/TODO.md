@@ -90,9 +90,13 @@ No schema change, and useful on its own.
 - [x] `FileContents.lossy` — Rust, `packages/types`, and the TS mirror in the same commit.
       `contents_from_bytes` already decodes with `from_utf8_lossy`; it just never said so, and
       saving a buffer full of U+FFFD would destroy the original bytes.
-- [x] `FileView`: `readOnly` off, Monaco EOL set from the file's own line endings, Save and Revert
-      in the footer, `Cmd/Ctrl+S` via `editor.addCommand` **inside the host only** — not a global
+- [x] `FileView`: `readOnly` off, Monaco EOL set from the file's own line endings, Save in the
+      footer, `Cmd/Ctrl+S` via `editor.addCommand` **inside the host only** — not a global
       binding, since `Ctrl+S` reaching a focused PTY is XOFF.
+- [x] **No Revert control** — user decision 2026-09-09, reversing the interview's answer.
+      `Ctrl/Cmd+Z` back to disk is the way out, and going clean deletes the draft. See F26 for
+      what that costs: the undo stack is the editor's, so a draft restored after a tab switch
+      cannot be undone to disk.
 - [x] The four read-only cases, each with its reason in the footer: binary, truncated, lossy,
       and a plan under `.claude/plans/` (F9).
 - [x] Changed-on-disk: suppress `useWatchedOpenFile`'s re-read while dirty, show the banner
@@ -111,6 +115,15 @@ No schema change, and useful on its own.
       baseline, decided the file had changed under the editor, and put the pre-save text back.
       Re-reading costs a second pass over a file we just held; recomputing the line count in
       TypeScript is a second definition of Rust's answer.
+
+**Monaco's keybindings have no smoke coverage, and cannot get any here.**
+`Cmd/Ctrl+A` and `Cmd/Ctrl+Z` pressed through CDP never reach the editor — on
+macOS Chromium they are browser-level shortcuts handled against the
+contenteditable before the page sees them. So `Cmd/Ctrl+S` and the undo that is
+now the only way back from a dirty buffer are both unproven by the suite; the
+way back is covered only through the conflict banner's Reload, which is a click.
+Both want a pass in the real window, which `scripts/qa` cannot drive on macOS
+(it is Linux/X11) — item 8's macOS smoke pass is where that lands.
 
 **Two things the smoke suite taught, worth keeping.** Monaco drives input through the EditContext
 API where the browser has it, so its only `textarea` is a readonly aria-hidden IME shim and a CDP
@@ -133,7 +146,7 @@ as applied, and the remount restored that view state instead of jumping again.
 - [ ] **A preview tab pins on the first keystroke** (F7 — a single click in the tree replaces
       an unpinned preview tab, which would otherwise discard a buffer mid-edit).
 - [ ] Unsaved files in the quit confirm (ADR-0020: it asks about work, not processes).
-- [ ] Revert deletes the row; Save deletes the row.
+- [ ] Save deletes the row, and so does undoing back to disk — there is no Revert control.
 
 ### Slice 3 — secrets
 

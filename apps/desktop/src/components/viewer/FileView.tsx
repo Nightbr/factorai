@@ -28,7 +28,7 @@ import { REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { draftFor, useDraftStore } from '@store/draftStore';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
-import { Code2, Eye, RotateCcw, Save, Sparkles } from 'lucide-react';
+import { Code2, Eye, Save, Sparkles } from 'lucide-react';
 import type { MutableRefObject } from 'react';
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 
@@ -195,6 +195,24 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 		if (draftFor(path) !== undefined) setDirty(true);
 	}, [path]);
 
+	/**
+	 * Monaco says whether the buffer differs from what it was created with.
+	 *
+	 * **Going clean drops the draft**, and that is the whole of the way back now
+	 * that there is no Revert control: undo until the editor matches disk and the
+	 * file is genuinely unedited again — the tab loses its mark and nothing is
+	 * kept for the next visit. Without this the draft would outlive the edit it
+	 * recorded, and reopening the file would mark it dirty against a buffer
+	 * identical to disk.
+	 */
+	const noteDirty = useCallback(
+		(next: boolean) => {
+			setDirty(next);
+			if (!next) clearDraft(path);
+		},
+		[clearDraft, path],
+	);
+
 	// **Disk lands only when the buffer is clean.** This is the suppression F26
 	// asks for: the watcher's re-read still happens, and `file.contents` still
 	// updates, but applying it over an edit in progress is what would discard
@@ -253,20 +271,21 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 	}, [adopt, path, queryClient, uncapped]);
 
 	/** Save, asking first when it would overwrite a change nobody has read. */
-	const [confirming, setConfirming] = useState<'overwrite' | 'revert' | null>(null);
+	const [confirmOverwrite, setConfirmOverwrite] = useState(false);
 	const requestSave = useCallback(() => {
 		if (!editable || !dirty || saving) return;
 		if (conflict) {
-			setConfirming('overwrite');
+			setConfirmOverwrite(true);
 			return;
 		}
 		void save();
 	}, [conflict, dirty, editable, save, saving]);
 
-	const revert = useCallback(async () => {
-		// Re-read rather than reuse what the query holds: Revert means "give me
-		// what is on disk", and the cached copy may predate the change that made
-		// the reader want it back.
+	/** Throw the buffer away and take what is on disk — the banner's Reload.
+	 *
+	 *  Re-reads rather than reusing what the query holds: the cached copy may
+	 *  predate the change that made the reader want disk back. */
+	const reload = useCallback(async () => {
 		const { data } = await fileQ.refetch();
 		adopt(data?.contents ?? '');
 	}, [adopt, fileQ]);
@@ -295,7 +314,7 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 			{showBanner && (
 				<ConflictBanner
 					deleted={!!deleted}
-					onReload={() => void revert()}
+					onReload={() => void reload()}
 					onShowDiff={deleted ? null : () => setShowConflictDiff((s) => !s)}
 					showingDiff={showConflictDiff}
 					onDismiss={() => setDismissedDisk(diskContents)}
@@ -332,7 +351,7 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 						readOnly={!editable}
 						position={position ?? null}
 						onSelection={setSelection}
-						onDirtyChange={setDirty}
+						onDirtyChange={noteDirty}
 						onSave={requestSave}
 					/>
 				)}
@@ -424,24 +443,6 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 						</span>
 					)}
 
-					{/* **Revert only exists while there is something to revert.** It is
-					    also the only way to clear a draft without writing one, which is
-					    why it is a control rather than an undo the reader has to guess
-					    at. */}
-					{editable && dirty && (
-						<Button
-							variant="quiet"
-							size="sm"
-							className="h-6 shrink-0 gap-1.5 px-2 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3"
-							data-testid="viewer-revert"
-							title="Discard unsaved changes"
-							onClick={() => setConfirming('revert')}
-						>
-							<RotateCcw />
-							<span className="@max-[30rem]:hidden">Revert</span>
-						</Button>
-					)}
-
 					{/* **Save is the dirty indicator.** Disabled until the buffer
 					    differs from disk, so there is no second dot saying the same
 					    thing — the rule F11's settings modal already uses.
@@ -514,15 +515,13 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 				</footer>
 			)}
 
-			<EditConfirm
-				kind={confirming}
+			<OverwriteConfirm
+				open={confirmOverwrite}
 				name={basename(path)}
-				onCancel={() => setConfirming(null)}
+				onCancel={() => setConfirmOverwrite(false)}
 				onConfirm={() => {
-					const kind = confirming;
-					setConfirming(null);
-					if (kind === 'overwrite') void save();
-					if (kind === 'revert') void revert();
+					setConfirmOverwrite(false);
+					void save();
 				}}
 			/>
 		</div>
@@ -806,41 +805,37 @@ function Editor({
 }
 
 /**
- * The two questions editing asks before it does something the reader cannot
- * undo: overwriting a change nobody has read, and throwing away their own.
+ * The one question editing asks before doing something the reader cannot undo:
+ * writing over a change nobody has read.
  *
- * One component with a `kind` rather than two dialogs, because they are the
- * same shape and the same three buttons — and because only one of them can be
- * open at a time by construction.
+ * There is no discard dialog beside it. Undo is the way back — `Ctrl/Cmd+Z`
+ * until the buffer matches disk, which reports itself clean because dirty is
+ * Monaco's alternative version id rather than a string comparison.
  */
-function EditConfirm({
-	kind,
+function OverwriteConfirm({
+	open,
 	name,
 	onCancel,
 	onConfirm,
 }: {
-	kind: 'overwrite' | 'revert' | null;
+	open: boolean;
 	name: string;
 	onCancel: () => void;
 	onConfirm: () => void;
 }) {
-	const overwrite = kind === 'overwrite';
 	return (
 		<Dialog
-			open={kind !== null}
+			open={open}
 			onOpenChange={(next) => {
 				if (!next) onCancel();
 			}}
 		>
 			<DialogContent className="sm:max-w-md" data-testid="viewer-edit-confirm">
 				<DialogHeader>
-					<DialogTitle>
-						{overwrite ? `Overwrite ${name}?` : `Discard changes to ${name}?`}
-					</DialogTitle>
+					<DialogTitle>Overwrite {name}?</DialogTitle>
 					<DialogDescription>
-						{overwrite
-							? 'Something else changed this file after you started editing. Saving replaces what is on disk with your version.'
-							: 'Your unsaved changes are thrown away and the file is re-read from disk.'}
+						Something else changed this file after you started editing. Saving replaces what is on
+						disk with your version.
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
@@ -848,7 +843,7 @@ function EditConfirm({
 						Cancel
 					</Button>
 					<Button variant="destructive" onClick={onConfirm} data-testid="viewer-edit-confirm-ok">
-						{overwrite ? 'Overwrite' : 'Discard'}
+						Overwrite
 					</Button>
 				</DialogFooter>
 			</DialogContent>
