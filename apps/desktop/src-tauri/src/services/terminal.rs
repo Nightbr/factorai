@@ -281,6 +281,16 @@ type BinaryOverrideCb = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
 /// The directories a session is recorded as having run in, **newest first**.
 /// Usually one; two when the agent moved (F21).
 type SessionCwdCb = Arc<dyn Fn(&str) -> Vec<PathBuf> + Send + Sync>;
+/// Answers "what store **directory name** did the index record this session's
+/// transcript under?" — `discovered_projects.key`, or `None` if the indexer has
+/// not seen it. See `TerminalManager::resume_cwd`.
+///
+/// Same shape and reason as `SessionCwdCb`: a row this module should not hold.
+/// It exists because a recorded cwd cannot be trusted to encode to the store
+/// directory — an agent that `cd`s into a subdirectory of the folder Claude
+/// keyed the store by leaves `last_cwd` pointing below it, so re-encoding misses
+/// the transcript while the key still names it exactly.
+type SessionKeyCb = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// Which Claude config directory a spawn runs under, given its project and —
 /// for a resume — its session (F25, ADR-0036).
 ///
@@ -454,6 +464,11 @@ pub struct TerminalManager {
 	/// caller named has to be spawned where the transcript is, or `session_flag`
 	/// claims an id Claude already knows and the conversation is lost.
 	session_cwd: Option<SessionCwdCb>,
+	/// The store directory name the index recorded a session's transcript under,
+	/// read at **spawn time** and by `next_session_id`. `None` — every test that
+	/// does not wire it — falls back to the recorded-cwd probe, which is the
+	/// behaviour that predates this.
+	session_key: Option<SessionKeyCb>,
 	/// The profile a spawn runs under (F25), read per spawn. `None` — every test
 	/// — falls back to `claude_dir`, which is what a single-profile install
 	/// resolves to anyway.
@@ -502,6 +517,7 @@ impl TerminalManager {
 			binary_override: None,
 			user_binary: None,
 			session_cwd: None,
+			session_key: None,
 			profile_dir: None,
 			worktree_store: None,
 			routine_store: None,
@@ -526,6 +542,7 @@ impl TerminalManager {
 			binary_override: None,
 			user_binary: None,
 			session_cwd: None,
+			session_key: None,
 			profile_dir: None,
 			worktree_store: None,
 			routine_store: None,
@@ -540,6 +557,14 @@ impl TerminalManager {
 	/// `sessions` table in `lib.rs`; `resume_cwd` is what it is for.
 	pub fn with_session_cwd(mut self, cb: SessionCwdCb) -> Self {
 		self.session_cwd = Some(cb);
+		self
+	}
+
+	/// Where to read a session's recorded store-directory key from. Wired to the
+	/// `sessions`/`discovered_projects` join in `lib.rs`; `resume_cwd` probes it
+	/// before falling back to the recorded cwd.
+	pub fn with_session_key(mut self, cb: SessionKeyCb) -> Self {
+		self.session_key = Some(cb);
 		self
 	}
 
@@ -734,9 +759,18 @@ impl TerminalManager {
 	/// answer "has this been messaged" without a round trip anyway. This also
 	/// can't race the indexer's 1s debounce, because it reads the transcript
 	/// directly rather than the index.
+	///
+	/// **"Messaged" is the same question `spawn_inner` asks, so it takes the
+	/// same answer** — `resume_cwd` first, the passed `folder` only as the
+	/// fallback. A session driven in a worktree (F21) keeps its transcript under
+	/// the checkout it ran in, not under the project folder, and once the agent
+	/// `cd`s into a subdirectory even the recorded cwd stops encoding to the store
+	/// directory — so `resume_cwd`'s key probe is what finds it. Probing the
+	/// folder alone misses it, calls a live messaged session "never messaged", and
+	/// hands its id back on every "new session" click instead of minting a fresh
+	/// one. `resume_cwd` is `None` for a genuinely new, never-messaged session, so
+	/// the fallback is what still lets one be reused.
 	pub fn next_session_id(&self, project_id: &str, folder: &Path) -> String {
-		// The project's own profile: a *new* session is what this hands out, so
-		// there is no session whose transcript could live somewhere else.
 		let claude_dir = self.config_dir_for(project_id, None);
 		for entry in self.terminals.iter() {
 			let h = entry.value();
@@ -744,13 +778,36 @@ impl TerminalManager {
 			// otherwise be handed to a "new session" click, and `claude --resume`
 			// pointed at an id no transcript will ever exist for (ADR-0031).
 			let Some(session_id) = h.session_id.as_deref() else { continue };
-			if h.project_id == project_id
-				&& !claude::transcript_path(&claude_dir, folder, session_id).exists()
-			{
+			if h.project_id != project_id {
+				continue;
+			}
+			if !self.is_messaged(session_id, folder, &claude_dir) {
 				return session_id.to_string();
 			}
 		}
 		Uuid::new_v4().to_string()
+	}
+
+	/// Whether a session has a transcript on disk — i.e. has been messaged.
+	///
+	/// A pure boolean, and deliberately wider than [`resume_cwd`]: that has to
+	/// hand back a real directory to spawn in, so it can only answer for a session
+	/// whose store directory it can name as a real path. This only has to answer
+	/// *does a transcript exist*, so it can also trust the store key directly —
+	/// the case where the agent worked in a worktree subdirectory and no recorded
+	/// cwd (nor its climbable ancestors) is available, but the key still names the
+	/// file. The three probes are the recorded cwd, the store key, and the passed
+	/// folder; any one hit means messaged.
+	fn is_messaged(&self, session_id: &str, folder: &Path, claude_dir: &Path) -> bool {
+		if self.resume_cwd(session_id, claude_dir).is_some() {
+			return true;
+		}
+		if let Some(key) = self.session_key.as_ref().and_then(|cb| cb(session_id)) {
+			if claude::transcript_path_by_key(claude_dir, &key, session_id).exists() {
+				return true;
+			}
+		}
+		claude::transcript_path(claude_dir, folder, session_id).exists()
 	}
 
 	/// Stand up this session's **agent tool server** (F22 slice 3, ADR-0029).
@@ -911,22 +968,50 @@ impl TerminalManager {
 	/// query that resolves *after* the terminal mounts, so by the time it knows,
 	/// the spawn has happened.
 	///
-	/// `None` unless the recorded folder **actually holds this transcript**, which
-	/// is a deliberately narrower test than "the index has a cwd for it". The
-	/// recorded folder is worth preferring over the caller's precisely because the
-	/// transcript is there; if it isn't — the folder moved, the store was cleaned,
-	/// the row is stale — then it buys nothing and would only move the session
-	/// somewhere the caller did not ask for. Falling through to `opts.cwd` is the
-	/// behaviour that predates this method.
+	/// `None` unless a candidate directory **actually holds this transcript**,
+	/// which is a deliberately narrower test than "the index knows this session".
+	/// The recorded location is worth preferring over the caller's precisely
+	/// because the transcript is there; if it isn't — the folder moved, the store
+	/// was cleaned, the row is stale — then it buys nothing and would only move the
+	/// session somewhere the caller did not ask for. Falling through to `opts.cwd`
+	/// is the behaviour that predates this method.
+	///
+	/// **Every returned path is a real, recorded directory** — never a key decoded
+	/// back into a path. Decoding is lossy (a literal `-` in the path is
+	/// indistinguishable from the `/` separator it encodes to), and a spawn run in
+	/// a mangled directory fails outright. The store key is used only to *locate*
+	/// the right recorded cwd, not as a path itself.
 	fn resume_cwd(&self, session_id: &str, claude_dir: &Path) -> Option<PathBuf> {
-		// Both recorded directories are tried, newest first. An agent that moves
-		// into a worktree mid-session takes Claude's store directory with it, so
-		// the transcript can exist *only* under where it ended up — and resuming
-		// from where it started would then miss the probe and claim an id Claude
-		// already knows (F21, migration 0008).
-		self.session_cwd.as_ref()?(session_id)
-			.into_iter()
-			.find(|dir| claude::transcript_path(claude_dir, dir, session_id).exists())
+		let recorded = self.session_cwd.as_ref().map(|cb| cb(session_id)).unwrap_or_default();
+
+		// First: a recorded cwd whose own directory holds the transcript. The
+		// ordinary case, newest first — the agent worked in the folder Claude keyed
+		// the store by.
+		if let Some(dir) =
+			recorded.iter().find(|d| claude::transcript_path(claude_dir, d, session_id).exists())
+		{
+			return Some(dir.clone());
+		}
+
+		// Otherwise the store key: the directory the indexer recorded the transcript
+		// under, verbatim. When it holds the transcript but no recorded cwd encodes
+		// to it, the agent `cd`'d into a *subdirectory* of the folder Claude keyed
+		// the store by (F21) — so the real directory is the ancestor of a recorded
+		// cwd whose `encode_path` is the key. That ancestor is a real path on disk;
+		// the decoded key would not be. Without a recorded cwd to climb, there is no
+		// real path to hand back, so fall through to `opts.cwd`.
+		if let Some(key) = self.session_key.as_ref().and_then(|cb| cb(session_id)) {
+			if claude::transcript_path_by_key(claude_dir, &key, session_id).exists() {
+				for start in &recorded {
+					for ancestor in start.ancestors() {
+						if claude::encode_path(ancestor) == key {
+							return Some(ancestor.to_path_buf());
+						}
+					}
+				}
+			}
+		}
+		None
 	}
 
 	/// Spawn `claude` for a session in a PTY. Returns the new terminal id.
@@ -2383,6 +2468,80 @@ mod tests {
 		// behaviour that predates `session_cwd`. `resume_cwd` returns `None`, so
 		// `opts.cwd` is used.
 		assert_eq!(mgr.resume_cwd("11111111-2222-3333-4444-555555555555", store.path()), None);
+	}
+
+	/// The store key finds the transcript when the recorded cwd cannot. This is
+	/// the real-world worktree shape: the agent `cd`'d into a subdirectory of the
+	/// folder Claude keyed the store by, so the recorded `last_cwd` encodes to a
+	/// sibling directory holding no transcript — the key still names it exactly.
+	#[test]
+	fn resume_cwd_uses_the_store_key_when_the_recorded_cwd_drifted_into_a_subdir() {
+		let store = tempfile::TempDir::new().unwrap();
+		let sid = "11111111-2222-3333-4444-555555555555";
+		// Claude keyed the store by "/work"; the transcript lives under its key.
+		let key = claude::encode_path(Path::new("/work"));
+		let path = claude::transcript_path_by_key(store.path(), &key, sid);
+		std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+		std::fs::write(&path, "{}\n").unwrap();
+
+		let (mgr, _d, _e) = make_manager_in(store.path().to_path_buf());
+		// The recorded cwd is a subdirectory — it encodes to "-work-sub", where no
+		// transcript exists, so the cwd probe alone would return None.
+		let mgr = mgr
+			.with_session_cwd(Arc::new(|_| vec![PathBuf::from("/work/sub")]))
+			.with_session_key(Arc::new(move |_| Some(key.clone())));
+
+		assert_eq!(mgr.resume_cwd(sid, store.path()), Some(PathBuf::from("/work")));
+	}
+
+	/// A live session driven in a worktree is *messaged*, so "new session" mints
+	/// a fresh id rather than handing that session's back (F21).
+	///
+	/// The regression, in the shape it actually took: a session run in a linked
+	/// checkout keeps its transcript under the worktree Claude keyed the store by,
+	/// and the agent had `cd`'d into a subdirectory of it — so the recorded cwd
+	/// encoded to a sibling directory holding no transcript. `next_session_id`
+	/// then read a busy session as "never messaged" and handed its id back, so
+	/// every "new session" click reopened that worktree session instead of
+	/// minting a fresh one. Only the store-key probe finds the transcript here.
+	#[test]
+	fn next_session_id_does_not_reuse_a_messaged_worktree_session() {
+		let store = tempfile::TempDir::new().unwrap();
+		let worktree = tempfile::TempDir::new().unwrap();
+		let subdir = worktree.path().join("frontend");
+		std::fs::create_dir_all(&subdir).unwrap();
+		let project = "11111111-aaaa-4bbb-8ccc-dddddddddddd";
+		let sid = "11111111-2222-3333-4444-555555555555";
+		// Claude keyed the store by the worktree root; the transcript lives under
+		// its key. The agent then worked in the `frontend` subdirectory, which is
+		// what the index recorded as the cwd — and it encodes to a sibling
+		// directory that holds no transcript.
+		let key = claude::encode_path(worktree.path());
+		let tpath = claude::transcript_path_by_key(store.path(), &key, sid);
+		std::fs::create_dir_all(tpath.parent().unwrap()).unwrap();
+		std::fs::write(&tpath, "{}\n").unwrap();
+
+		let (mgr, _d, _e) = make_manager_in(store.path().to_path_buf());
+		let recorded = subdir.clone();
+		let mgr = mgr
+			.with_session_cwd(Arc::new(move |_| vec![recorded.clone()]))
+			.with_session_key(Arc::new(move |_| Some(key.clone())));
+
+		let mut req = agent_req(sid, project);
+		req.cwd = Some(subdir.to_string_lossy().into_owned());
+		let _live = mgr
+			.spawn_inner(req, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+			.unwrap();
+
+		// The project root — where a "new session" click probes — holds no
+		// transcript for this session; only the worktree key does.
+		let offered = mgr.next_session_id(project, worktree.path().parent().unwrap());
+		assert_ne!(
+			offered, sid,
+			"a messaged worktree session must not be reused for a new session"
+		);
+
+		mgr.kill_all();
 	}
 
 	#[test]

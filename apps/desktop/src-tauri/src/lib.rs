@@ -133,6 +133,10 @@ pub fn run() {
 				.with_session_cwd(Arc::new(move |session_id| {
 					services::sessions::recorded_cwds(&session_db, session_id)
 				}))
+				.with_session_key({
+					let db = db.clone();
+					Arc::new(move |session_id| services::sessions::recorded_key(&db, session_id))
+				})
 				// Which identity a project's next session runs as (F25, ADR-0036).
 				// Read per spawn out of the same database and for the same reason as
 				// the two above: changing the default profile changes the next
