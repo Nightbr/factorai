@@ -1,4 +1,5 @@
 import type { FileContents } from '@factorai/types';
+import type { DiffMode } from '@hooks/useFileViewer';
 
 /**
  * Whether a file the viewer opened can be edited, and what to say when it
@@ -34,6 +35,33 @@ export function readOnlyReason(file: FileContents, path: string): string | null 
 	if (file.lossy) return 'not valid UTF-8 — read-only';
 	if (isPlanPath(path)) return 'plan — read-only';
 	return null;
+}
+
+/**
+ * Whether the right-hand side of a diff is the file on disk — the only side an
+ * edit could ever reach (F26 § "Editing a diff", ADR-0041).
+ *
+ * `unstaged` (index ↔ worktree) and `head` (HEAD ↔ worktree) both put the
+ * working tree on the right. `staged` puts the index there, and a commit range
+ * puts a blob at each end; a git object is not a file, and factorai has no
+ * command that writes one.
+ */
+export function diffEditsWorktree(mode: DiffMode): boolean {
+	return mode === 'unstaged' || mode === 'head';
+}
+
+/**
+ * Why a diff cannot be edited, or `null` when its right-hand side is the file
+ * on disk. Same contract as `readOnlyReason`: the string is the footer's
+ * label, and it names *which* of the reasons applies rather than saying
+ * `read-only` and leaving the reader to guess.
+ *
+ * A file-level reason still applies on top of this one — a truncated worktree
+ * side is no more writable in a diff than it is in the file view.
+ */
+export function diffReadOnlyReason(mode: DiffMode): string | null {
+	if (diffEditsWorktree(mode)) return null;
+	return mode === 'staged' ? 'index — read-only' : 'commit — read-only';
 }
 
 /**

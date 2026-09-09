@@ -3,6 +3,35 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Editing the working-tree side of a diff (F26)** — 2026-09-09, user ask. F26 shipped every
+  text file editable that morning and listed a diff among the four cases that stay read-only:
+  *"a diff is two revisions, one of which does not exist as a file"*. True of one of the four
+  modes. `unstaged` (index ↔ worktree) and `head` (HEAD ↔ worktree, the conflicted rows) both put
+  a file on disk on the right — the same `read_file` the file view edits — so the two most-used
+  rows in the Changes list were refusing an edit for a reason that did not apply to them. They
+  are editable now, with the whole of F26 behind them: Save, `Cmd/Ctrl+S` inside the host only,
+  the file's own line endings, the shared draft, the changed-on-disk banner and the overwrite
+  confirm.
+
+  **The other half of the ask was making a commit's diff refuse, visibly.** `staged` reads
+  `index — read-only`, `<parent>..<sha>` reads `commit — read-only`, a diff opened on a deleted
+  file reads `deleted — read-only`, and the original pane is never editable in any mode
+  (`originalEditable` off). Naming which kind rather than saying `read-only` is the rule F26
+  already applied to truncated, lossy and plan files. Editing the *index* is where this stops
+  short of VS Code, deliberately: it needs a Rust command that mutates the index and a second
+  write boundary beside `write_file`, which ADR-0039 drew narrowly.
+  [ADR-0041](../../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md).
+
+  **The machinery is shared, not copied** — `hooks/useEditBuffer.ts`, lifted out of `FileView`
+  unchanged, plus `ConflictBanner` / `SaveButton` / `OverwriteConfirm` moved to
+  `viewer/chrome.tsx`. A second copy of "an unsaved buffer over a file" is how one surface ends
+  up discarding an edit the other would have kept, and the draft being keyed by path means the
+  diff and the file view are two windows onto one edit rather than two buffers. Two bugs the
+  extraction surfaced and fixed on the way: a draft was written back as the empty string by any
+  surface that had a draft for the path but never seeded a buffer from it, and the diff footer
+  rendered nothing at all for a commit range — its label came from a three-entry lookup and F18
+  can open a fourth kind of mode.
+
 - **Find in the file the viewer is showing (F7)** — 2026-09-09, user ask. `Cmd/Ctrl+F` did
   nothing, and **F7 and [ADR-0007](../../docs/adr/0007-monaco-for-the-file-viewer.md) had both
   said it worked since the viewer shipped.** The cause is the JSON bug one level up:

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { FileContents } from '@factorai/types';
-import { eolOf, isPlanPath, readOnlyReason } from './editable';
+import {
+	diffEditsWorktree,
+	diffReadOnlyReason,
+	eolOf,
+	isPlanPath,
+	readOnlyReason,
+} from './editable';
 
 function file(over: Partial<FileContents> = {}): FileContents {
 	return {
@@ -75,5 +81,40 @@ describe('eolOf', () => {
 	it('takes the first ending in a mixed file rather than rewriting the other half', () => {
 		expect(eolOf('one\ntwo\r\n')).toBe('lf');
 		expect(eolOf('one\r\ntwo\n')).toBe('crlf');
+	});
+});
+
+const SHA = 'a'.repeat(40);
+const PARENT = 'b'.repeat(40);
+
+describe('diffEditsWorktree', () => {
+	it('puts the working tree on the right for the two modes that diff against disk', () => {
+		expect(diffEditsWorktree('unstaged')).toBe(true);
+		expect(diffEditsWorktree('head')).toBe(true);
+	});
+
+	it('does not for the index, which is a git object and not a file', () => {
+		expect(diffEditsWorktree('staged')).toBe(false);
+	});
+
+	it('does not for a commit, nor for a root commit', () => {
+		expect(diffEditsWorktree(`${PARENT}..${SHA}`)).toBe(false);
+		expect(diffEditsWorktree(`..${SHA}`)).toBe(false);
+	});
+});
+
+describe('diffReadOnlyReason', () => {
+	it('lets the worktree side through, so uncommitted work is edited where it is reviewed', () => {
+		expect(diffReadOnlyReason('unstaged')).toBeNull();
+		expect(diffReadOnlyReason('head')).toBeNull();
+	});
+
+	it('names the index rather than saying read-only', () => {
+		expect(diffReadOnlyReason('staged')).toBe('index — read-only');
+	});
+
+	it('names the commit, which is the case a reader arrives at from the graph', () => {
+		expect(diffReadOnlyReason(`${PARENT}..${SHA}`)).toBe('commit — read-only');
+		expect(diffReadOnlyReason(`..${SHA}`)).toBe('commit — read-only');
 	});
 });

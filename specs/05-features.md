@@ -1212,9 +1212,9 @@ before anyone pressed the key, and it is true only with the import.
   row in so the widget never covers line 1, which matters most in a 400px
   column; `seedSearchStringFromSelection` puts the selected symbol in the field
   on open.
-- **The diff editor gets find too** (F8, F13), free with the same import and
-  read-only, on the modified side — reviewing a diff is where you go looking
-  for a symbol.
+- **The diff editor gets find too** (F8, F13), free with the same import, on
+  the modified side — reviewing a diff is where you go looking for a symbol,
+  and since F26 § "Editing a diff" it is also the side you may be typing in.
 - **The widget wears the app's palette, in colour only.** ~20 documented
   `editorFind*` / `editorWidget*` / `input*` keys in `defineTheme` beside the
   seven that were already there; the current match carries the accent at full
@@ -1631,7 +1631,15 @@ how, what counts as a change — and it is in `roadmap/TODO.md`, not here.
 ## F8 — Diff viewer
 
 **Behavior.** Given a file path and two revisions, render a diff in either
-inline (unified) or side-by-side mode. Read-only.
+inline (unified) or side-by-side mode.
+
+**Amended by [F26](#f26--editing-and-saving-a-file) (2026-09-09).** This
+section said "Read-only", and that is true of the sides that are git objects and
+false of the one that is a file: `unstaged` and `head` both put the **working
+tree** on the right, and it is editable there exactly as it is in the file view.
+F26 § "Editing a diff" owns the rule and [ADR-0041](../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md)
+the reasoning; everything below about *what is diffed and how it is rendered* is
+unchanged.
 
 **UI.** A third mode of `FileView`, inside the existing viewer modal — not a
 separate surface (F7 keeps `FileView` self-contained and host-agnostic for
@@ -1658,6 +1666,12 @@ the two strings.
 - Binary on either side → the "cannot preview binary" card, not a diff.
 - Very large file → both sides obey `read_file`'s 5MB cap and its `truncated`
   flag; a truncated diff says so rather than lying by omission.
+- A side that cannot be written says which kind it is in the footer —
+  `index — read-only`, `commit — read-only`, `deleted — read-only` — rather than
+  presenting an editor that silently swallows keystrokes (F26).
+- The footer names a commit range as `<short> ↔ <short>`. It used to name it
+  nothing at all: the label came from a lookup with three entries and F18 can
+  open a fourth kind of mode.
 
 ---
 
@@ -2240,9 +2254,15 @@ limits — its own feature, not a side effect of this one.
 ## F13 — Changes tab (git status)
 
 **Behavior.** The right-hand panel's second tab lists what has changed in the
-active project's repository, and clicking a row opens the diff. Read-only:
-factorai shows you what the agent did, it does not stage, discard or commit —
-the terminal beside it already does that better. See ADR-0009.
+active project's repository, and clicking a row opens the diff. Read-only about
+*git*: factorai shows you what the agent did, it does not stage, discard or
+commit — the terminal beside it already does that better. See ADR-0009.
+
+**That is about the repository, not about the file.** Since 2026-09-09 the
+working-tree side of the diff a row opens is editable, and Save writes the file
+(F26 § "Editing a diff", ADR-0041). Nothing here touches the index or history;
+what changes is the *contents* of a file already changed, which is the same
+`write_file` the tree's own rows reach.
 
 **UI.** A `Files | Changes` tab strip in the panel header (the slot F12 left for
 it), which **F18 appended `Graph` to** rather than reordering, so Changes keeps
@@ -5408,7 +5428,7 @@ presenting an editor that cannot save:
 | `isBinary` | `binary` | Already the binary card, not an editor. |
 | `truncated` | `truncated — read-only` | The buffer is a prefix. Saving it deletes everything past the cap. F7's existing **Show anyway** re-read is the way in, and an uncapped read is editable. |
 | `lossy` | `not valid UTF-8 — read-only` | See below. |
-| A diff (F8/F13) | — | A diff is two revisions, one of which does not exist as a file. |
+| A diff's git side (F8/F13) | `index — read-only`, `commit — read-only` | A revision is not a file, and nothing here writes one. The **worktree** side of a diff *is* a file and is editable — see § "Editing a diff". |
 
 **`lossy` is a new field on `FileContents`, and it closes a real hole.**
 `services::files::contents_from_bytes` decodes with `String::from_utf8_lossy`
@@ -5416,6 +5436,58 @@ presenting an editor that cannot save:
 byte becomes U+FFFD, and a Save of that buffer would write the replacement
 characters back and destroy the original bytes for good. The read already knows
 this happened; it just never said so. Now it does, and a lossy read is read-only.
+
+### Editing a diff
+
+**Added 2026-09-09, user ask** ([ADR-0041](../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md)).
+The table above used to refuse the whole diff surface. It was right about three
+of the four modes and wrong about the two that matter most.
+
+**The side of a diff that is a file on disk is editable. Every side that is a
+git object is not.**
+
+| Mode | Left | Right | Editable |
+| --- | --- | --- | --- |
+| `unstaged` | index | working tree | the right side |
+| `head` (conflicted rows) | HEAD | working tree | the right side |
+| `staged` | HEAD | index | neither — `index — read-only` |
+| `<parent>..<sha>` (F18) | commit blob | commit blob | neither — `commit — read-only` |
+
+- **Why the worktree side.** Reviewing your own uncommitted work is where you
+  notice the thing you want to change. Leaving the diff to change it, and then
+  finding the line again, is the same "leave the app" this whole feature exists
+  to end — one surface further in.
+- **Why not the index.** Writing it means a Rust command that mutates the git
+  index and a second write boundary beside `write_file`, which ADR-0039 drew
+  narrowly on purpose. VS Code does it; factorai does not, yet, and the pane
+  says so rather than looking broken.
+- **The left side is never editable**, in any mode. Monaco's `originalEditable`
+  stays off.
+- **A worktree side that is not there** — the diff of a deleted file — is
+  `deleted — read-only`. Recreating a deleted file is the file view's job (§
+  "What Save writes"), because that is the surface with a buffer to recreate it
+  *from*; a diff opened on a deletion has none. A file deleted *while* its diff
+  is being edited keeps the editor and gets the banner, and Save writes it back.
+- **The file-level reasons still apply on top.** A truncated or lossy worktree
+  read is no more writable through a diff than through the editor.
+
+**Everything in § "Save", § "What Save writes", § "The agent writes the file you
+are editing" and § "Drafts" applies unchanged**, because it is the same code:
+the buffer, the draft, the conflict detection and the write live in
+`hooks/useEditBuffer.ts` and both surfaces call it. Two consequences worth
+stating:
+
+- **The draft is one draft.** It is keyed by absolute path, so a buffer typed
+  into the diff is the buffer the file view shows. Switching between them is
+  switching windows onto one edit, not choosing between two copies of it.
+- **The conflict banner has no "Show diff" here.** This *is* a diff, and its
+  left side is the index or a commit rather than the disk the banner is about.
+  Reload and dismiss are unchanged.
+
+**Saving until the two sides match empties the diff**, and it says `No changes.`
+rather than keeping an editor over two identical files. That only happens on a
+save: while the buffer is dirty both sides are held at what they were read as,
+so typing can never pull the editor out from under the reader.
 
 ### Save
 

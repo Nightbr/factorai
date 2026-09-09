@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { FOO_ID, fixtureWithChanges, fixtureWithFileTree, installMockBridge } from './fixtures';
+import {
+	FOO_ID,
+	SHA_MERGE,
+	SHA_TIP,
+	fixtureWithChanges,
+	fixtureWithFileTree,
+	installMockBridge,
+} from './fixtures';
 
 /**
  * The panel's Changes tab (specs/05-features.md F13).
@@ -151,5 +158,137 @@ test.describe('changes tab', () => {
 			'true',
 		);
 		await expect(page.getByTestId('changes-view')).toBeVisible();
+	});
+
+	// ---- editing the working tree from the diff (F26, ADR-0041) --------------
+
+	/**
+	 * Type into the **modified** side of the diff — the right-hand one, which is
+	 * the only side an edit can reach.
+	 *
+	 * Split mode puts two Monaco instances inside one host, so the click has to
+	 * name which; and waiting for Monaco's own `focused` class is load-bearing
+	 * here for the same reason it is in `file-viewer.spec.ts`, where the same
+	 * helper lives for the plain editor.
+	 */
+	async function typeInModifiedSide(page: import('@playwright/test').Page, text: string) {
+		const modified = page.getByTestId('diff-view-editor').locator('.editor.modified');
+		await modified.click();
+		await expect(modified.locator('.monaco-editor').first()).toHaveClass(/(^|\s)focused(\s|$)/);
+		await page.keyboard.insertText(text);
+	}
+
+	/** The text Monaco is showing on the modified side. Read from the rendered
+	 *  view lines, which is the only place a read-only editor's refusal is
+	 *  observable: nothing is written either way, so "no write" alone would
+	 *  pass against an editor that happily accepted the keystroke.
+	 *
+	 *  The two `:not()`s are the deleted/inserted **view zones** Monaco injects
+	 *  into the modified pane to line the two sides up. They carry the same
+	 *  `view-lines` class as the real one and are not part of the document. */
+	function modifiedText(page: import('@playwright/test').Page) {
+		return page
+			.getByTestId('diff-view-editor')
+			.locator('.editor.modified .view-lines:not(.line-delete):not(.line-insert)')
+			.innerText();
+	}
+
+	/** What `write_file` was asked to write, in order. */
+	function writeCalls(page: import('@playwright/test').Page) {
+		return page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'write_file')
+				.map((c) => ({ path: String(c.args?.path), contents: String(c.args?.contents) })),
+		);
+	}
+
+	/** Open one group's row for `src/index.ts` — the file the fixture carries in
+	 *  both the staged and the unstaged group.
+	 *
+	 *  Matched on the heading rather than on the section's text, because every
+	 *  group's name ends in "Changes"; and on the exact `title`, because the
+	 *  unstaged group also holds a *different* `index.ts` in a sibling package. */
+	async function openChange(page: import('@playwright/test').Page, heading: RegExp) {
+		await page
+			.getByTestId('file-tree-panel')
+			.locator('section')
+			.filter({ has: page.locator('h3').filter({ hasText: heading }) })
+			.locator('button[title="src/index.ts"]')
+			.click();
+		await expect(page.getByTestId('diff-view-editor')).toBeVisible();
+	}
+
+	test('@smoke the working-tree side of an uncommitted diff is editable, and Save writes it', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithChanges());
+		await page.goto(PROJECT);
+		await openPanel(page);
+		await page.getByRole('tab', { name: 'Changes' }).click();
+		await openChange(page, /^Changes/);
+
+		await expect(page).toHaveURL(/diff=unstaged/);
+		const viewer = page.getByTestId('file-viewer');
+		// Nothing typed yet, so there is nothing to write — Save is the dirty
+		// indicator, and the footer claims no reason to be read-only.
+		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveCount(0);
+
+		await typeInModifiedSide(page, 'edited-in-the-diff');
+		await expect(viewer.getByTestId('viewer-save')).toBeEnabled();
+		await viewer.getByTestId('viewer-save').click();
+
+		// One write, to the working tree, carrying what was typed on top of what
+		// the file already held.
+		const writes = await writeCalls(page);
+		expect(writes).toHaveLength(1);
+		expect(writes[0].path).toMatch(/src\/index\.ts$/);
+		expect(writes[0].contents).toContain('edited-in-the-diff');
+		expect(writes[0].contents).toContain('export const a = 2;');
+		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+		await expect(viewer.getByTestId('viewer-save-error')).toHaveCount(0);
+	});
+
+	test('@smoke a staged diff is read-only, because the index is not a file', async ({ page }) => {
+		await installMockBridge(page, fixtureWithChanges());
+		await page.goto(PROJECT);
+		await openPanel(page);
+		await page.getByRole('tab', { name: 'Changes' }).click();
+		await openChange(page, /^Staged Changes/);
+
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('index — read-only');
+		// No Save at all rather than a disabled one: there is nothing this
+		// surface could ever write.
+		await expect(viewer.getByTestId('viewer-save')).toHaveCount(0);
+
+		// The keystroke is refused by the editor, not merely left unsaved.
+		const before = await modifiedText(page);
+		await typeInModifiedSide(page, 'this must not land');
+		expect(await modifiedText(page)).toBe(before);
+		expect(await writeCalls(page)).toEqual([]);
+		await expect(viewer.getByTestId('viewer-save')).toHaveCount(0);
+	});
+
+	test("@smoke a commit's diff is read-only at both ends", async ({ page }) => {
+		await installMockBridge(page, fixtureWithChanges());
+		// The URL F18's graph produces: a commit against its first parent, both
+		// ends spelled out. There is no way to reach it from the Changes tab.
+		const file = `/home/alice/code/foo/src/index.ts`;
+		await page.goto(`${PROJECT}?file=${encodeURIComponent(file)}&diff=${SHA_MERGE}..${SHA_TIP}`);
+
+		const viewer = page.getByTestId('file-viewer');
+		await expect(page.getByTestId('diff-view-editor')).toBeVisible();
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('commit — read-only');
+		await expect(viewer.getByTestId('viewer-save')).toHaveCount(0);
+
+		// And the footer names the two commits rather than going blank, which is
+		// what a lookup with no entry for a range used to do.
+		await expect(viewer).toContainText(`${SHA_MERGE.slice(0, 7)} ↔ ${SHA_TIP.slice(0, 7)}`);
+
+		const before = await modifiedText(page);
+		await typeInModifiedSide(page, 'history is not a scratchpad');
+		expect(await modifiedText(page)).toBe(before);
+		expect(await writeCalls(page)).toEqual([]);
 	});
 });

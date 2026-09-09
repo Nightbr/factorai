@@ -1,6 +1,13 @@
 import { ImageView } from '@components/viewer/ImageView';
 import { MarkdownView } from '@components/viewer/MarkdownView';
-import { BinaryCard, Centered, errorText } from '@components/viewer/chrome';
+import {
+	BinaryCard,
+	Centered,
+	ConflictBanner,
+	OverwriteConfirm,
+	SaveButton,
+	errorText,
+} from '@components/viewer/chrome';
 import { FindBar } from '@components/viewer/FindBar';
 import { useFindHandleSink } from '@components/viewer/findHandle';
 import {
@@ -15,15 +22,8 @@ import {
 	restoreFindState,
 	saveFindState,
 } from '@components/viewer/monaco';
-import {
-	Button,
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '@factorai/ui';
+import { Button } from '@factorai/ui';
+import { useEditBuffer } from '@hooks/useEditBuffer';
 import type { ViewerPosition } from '@hooks/useFileViewer';
 import { eolOf, readOnlyReason } from '@lib/editable';
 import { iconKeyFor } from '@lib/fileIcon';
@@ -32,12 +32,11 @@ import { type LineSelection, mentionFor, mentionLabel, mentionRange } from '@lib
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
 import { REREAD_ON_OPEN } from '@lib/viewerQuery';
-import { draftFor, useDraftStore } from '@store/draftStore';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
-import { Code2, Eye, Save, Sparkles } from 'lucide-react';
+import { Code2, Eye, Sparkles } from 'lucide-react';
 import type { MutableRefObject, ReactNode } from 'react';
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
 /**
  * One file, editable (specs/05-features.md F7, F26).
@@ -146,156 +145,44 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 
 	// ---- the edit buffer (F26) ------------------------------------------------
 	//
-	// **Three pieces, and they answer different questions.** `baseline` is the
-	// disk contents this edit is against — it is what "dirty" is measured from
-	// and what a conflict is detected against. `bufferRef` is the text itself,
-	// in a ref rather than in state because a keystroke must not re-render the
-	// footer, and because it has to survive the editor being unmounted for a
-	// markdown preview. `dirty` is the one bit the footer needs, flipped by
-	// Monaco's own version id rather than by comparing megabytes per keystroke.
-	const [baseline, setBaseline] = useState<string | null>(null);
-	const bufferRef = useRef<string>('');
-	/** Whether `bufferRef` has been filled for this file yet. */
-	const seeded = useRef(false);
-	const [dirty, setDirty] = useState(false);
-	const [saveError, setSaveError] = useState<string | null>(null);
-	const [saving, setSaving] = useState(false);
-	/** The disk contents the reader has already been shown the banner for, so
-	 *  dismissing it stays dismissed and a *second* change shows it again. */
-	const [dismissedDisk, setDismissedDisk] = useState<string | null>(null);
-	const [showConflictDiff, setShowConflictDiff] = useState(false);
-	const setDraft = useDraftStore((s) => s.setDraft);
-	const clearDraft = useDraftStore((s) => s.clearDraft);
-
-	const editable = !!file && !file.isBinary && readOnlyReason(file, path) === null;
-
-	/** Take these contents as the new truth: it is what is on disk, and it is
-	 *  what the editor shows. Every clean transition goes through here. */
-	const adopt = useCallback(
-		(contents: string) => {
-			bufferRef.current = contents;
-			setBaseline(contents);
-			setDirty(false);
-			setDismissedDisk(null);
-			setShowConflictDiff(false);
-			clearDraft(path);
-		},
-		[clearDraft, path],
-	);
-
-	// **The buffer is seeded during render, not in an effect**, which is React's
-	// own lazy-initialisation shape (`if (ref.current === null) …`) and is
-	// load-bearing rather than tidy: an effect runs after the first commit, so
-	// the editor mounted holding an empty string for a frame. That was enough to
-	// break `?line=` — the jump applied to an empty model, recorded itself as
-	// applied, and the remount with the real text restored that view state
-	// instead of jumping again (F19).
+	// **The buffer, the draft, the conflict and the write are `useEditBuffer`'s**
+	// (ADR-0041): the diff view's worktree side is the same file through a
+	// different window, and one of the two surfaces quietly discarding an edit
+	// the other would have kept is exactly what a second copy of this buys.
 	//
-	// A draft from an earlier visit to this tab wins over disk: it is the newer
-	// of the two, and the reader never said to throw it away.
-	if (file && !file.isBinary && !seeded.current) {
-		seeded.current = true;
-		bufferRef.current = draftFor(path) ?? file.contents;
-	}
-
-	useEffect(() => {
-		if (draftFor(path) !== undefined) setDirty(true);
-	}, [path]);
-
-	/**
-	 * Monaco says whether the buffer differs from what it was created with.
-	 *
-	 * **Going clean drops the draft**, and that is the whole of the way back now
-	 * that there is no Revert control: undo until the editor matches disk and the
-	 * file is genuinely unedited again — the tab loses its mark and nothing is
-	 * kept for the next visit. Without this the draft would outlive the edit it
-	 * recorded, and reopening the file would mark it dirty against a buffer
-	 * identical to disk.
-	 */
-	const noteDirty = useCallback(
-		(next: boolean) => {
-			setDirty(next);
-			if (!next) clearDraft(path);
-		},
-		[clearDraft, path],
-	);
-
-	// **Disk lands only when the buffer is clean.** This is the suppression F26
-	// asks for: the watcher's re-read still happens, and `file.contents` still
-	// updates, but applying it over an edit in progress is what would discard
-	// the reader's work. When dirty, the difference becomes the banner instead.
-	useEffect(() => {
-		if (!file || file.isBinary || dirty) return;
-		if (file.contents === baseline) return;
-		bufferRef.current = file.contents;
-		setBaseline(file.contents);
-	}, [file, dirty, baseline]);
-
-	// The draft outlives the tab, not the app (ADR-0040 is the next slice).
-	// Written on the way out rather than per keystroke: nothing reads it while
-	// this component is mounted, since the editor holds the same text.
-	useEffect(() => {
-		return () => {
-			if (dirtyRef.current) setDraft(path, bufferRef.current);
-		};
-	}, [path, setDraft]);
-	const dirtyRef = useRef(false);
-	dirtyRef.current = dirty;
-
+	// What stays here is the part that is this surface's to decide — whether
+	// the file is editable at all — and the four things the footer says about
+	// it.
+	const editable = !!file && !file.isBinary && readOnlyReason(file, path) === null;
+	const {
+		baseline,
+		bufferRef,
+		dirty,
+		saving,
+		saveError,
+		noteDirty,
+		requestSave,
+		conflict,
+		deleted,
+		showBanner,
+		dismiss,
+		reload,
+		showConflictDiff,
+		toggleConflictDiff,
+		confirmOverwrite,
+		cancelOverwrite,
+		confirmedSave,
+	} = useEditBuffer({
+		path,
+		file,
+		editable,
+		cacheKey: queryKeys.file(path, uncapped),
+		refetch: fileQ.refetch,
+		// `read_file` answers NotFound, which is a fact about the file rather
+		// than a failure of the read.
+		missing: fileQ.isError && (fileQ.error as { kind?: string } | null)?.kind === 'NotFound',
+	});
 	const diskContents = file?.contents ?? null;
-	/** Something else wrote the file while this buffer was dirty (F26). */
-	const conflict = dirty && diskContents !== null && baseline !== null && diskContents !== baseline;
-	/** It was deleted instead. `read_file` answers NotFound, which is a fact
-	 *  about the file rather than a failure of the read. */
-	const deleted =
-		dirty && fileQ.isError && (fileQ.error as { kind?: string } | null)?.kind === 'NotFound';
-	const showBanner = (conflict && diskContents !== dismissedDisk) || deleted;
-
-	const queryClient = useQueryClient();
-	const save = useCallback(async () => {
-		const text = bufferRef.current;
-		setSaving(true);
-		setSaveError(null);
-		try {
-			const written = await cmd.writeFile(path, text);
-			// **The cache is stale the moment the write lands**, and leaving it
-			// that way is a race with a visible failure: the sync effect above
-			// would see disk disagreeing with the new baseline, decide the file
-			// had changed under the editor, and put the pre-save text back. The
-			// command answers with what it wrote precisely so this is exact —
-			// re-reading would cost a second pass over a file we just held, and
-			// recomputing the line count here would be a second definition of it.
-			queryClient.setQueryData(queryKeys.file(path, uncapped), written);
-			adopt(text);
-		} catch (e) {
-			// **The buffer stays dirty.** A failed write leaves the text the reader
-			// typed as the only copy of it, and discarding that to report an error
-			// would be the worst thing this component could do.
-			setSaveError(errorText(e));
-		} finally {
-			setSaving(false);
-		}
-	}, [adopt, path, queryClient, uncapped]);
-
-	/** Save, asking first when it would overwrite a change nobody has read. */
-	const [confirmOverwrite, setConfirmOverwrite] = useState(false);
-	const requestSave = useCallback(() => {
-		if (!editable || !dirty || saving) return;
-		if (conflict) {
-			setConfirmOverwrite(true);
-			return;
-		}
-		void save();
-	}, [conflict, dirty, editable, save, saving]);
-
-	/** Throw the buffer away and take what is on disk — the banner's Reload.
-	 *
-	 *  Re-reads rather than reusing what the query holds: the cached copy may
-	 *  predate the change that made the reader want disk back. */
-	const reload = useCallback(async () => {
-		const { data } = await fileQ.refetch();
-		adopt(data?.contents ?? '');
-	}, [adopt, fileQ]);
 
 	const language = file && !file.isBinary ? languageForFile(basename(path)) : 'plaintext';
 	const isMarkdown = language === 'markdown';
@@ -320,11 +207,11 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 		<div className="flex min-h-0 flex-1 flex-col">
 			{showBanner && (
 				<ConflictBanner
-					deleted={!!deleted}
+					deleted={deleted}
 					onReload={() => void reload()}
-					onShowDiff={deleted ? null : () => setShowConflictDiff((s) => !s)}
+					onShowDiff={deleted ? null : toggleConflictDiff}
 					showingDiff={showConflictDiff}
-					onDismiss={() => setDismissedDisk(diskContents)}
+					onDismiss={dismiss}
 				/>
 			)}
 			<div className="min-h-0 flex-1">
@@ -452,28 +339,8 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 						</span>
 					)}
 
-					{/* **Save is the dirty indicator.** Disabled until the buffer
-					    differs from disk, so there is no second dot saying the same
-					    thing — the rule F11's settings modal already uses.
-
-					    The label changes to `Overwrite` when the file moved under the
-					    buffer, because the act changed: writing over a change nobody
-					    has read is not the same as saving. */}
 					{editable && (
-						<Button
-							variant="quiet"
-							size="sm"
-							className="-mr-1 h-6 shrink-0 gap-1.5 px-2 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3 disabled:opacity-40"
-							data-testid="viewer-save"
-							disabled={!dirty || saving}
-							title={conflict ? 'Overwrite what is on disk' : 'Save'}
-							onClick={requestSave}
-						>
-							<Save className={dirty ? 'text-primary' : undefined} />
-							<span className="@max-[30rem]:hidden">
-								{saving ? 'Saving…' : conflict ? 'Overwrite' : 'Save'}
-							</span>
-						</Button>
+						<SaveButton dirty={dirty} saving={saving} conflict={conflict} onSave={requestSave} />
 					)}
 
 					{/* **Hand this to the agent** (F20). In the footer rather than the
@@ -527,80 +394,9 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 			<OverwriteConfirm
 				open={confirmOverwrite}
 				name={basename(path)}
-				onCancel={() => setConfirmOverwrite(false)}
-				onConfirm={() => {
-					setConfirmOverwrite(false);
-					void save();
-				}}
+				onCancel={cancelOverwrite}
+				onConfirm={confirmedSave}
 			/>
-		</div>
-	);
-}
-
-/**
- * Something else wrote — or deleted — the file while this buffer was dirty
- * (F26 § "The agent writes the file you are editing").
- *
- * Above the editor rather than in the footer: the footer says what the file
- * *is*, and this says what happened to it. Neither side is discarded by
- * anything here — Reload takes disk, dismissing keeps typing, and the Save it
- * leaves behind asks before it overwrites.
- */
-function ConflictBanner({
-	deleted,
-	onReload,
-	onShowDiff,
-	showingDiff,
-	onDismiss,
-}: {
-	deleted: boolean;
-	onReload: () => void;
-	onShowDiff: (() => void) | null;
-	showingDiff: boolean;
-	onDismiss: () => void;
-}) {
-	return (
-		<div
-			data-testid="viewer-conflict"
-			className="flex shrink-0 items-center gap-2 border-border border-b bg-primary/10 px-3 py-1.5 text-xs"
-		>
-			<span className="min-w-0 flex-1 truncate">
-				{deleted
-					? 'Deleted on disk. Saving writes the file back.'
-					: 'Changed on disk. Something else wrote this file while you were editing it.'}
-			</span>
-			{!deleted && (
-				<Button
-					variant="quiet"
-					size="sm"
-					className="h-6 shrink-0 px-2 font-normal text-xs"
-					data-testid="viewer-conflict-reload"
-					onClick={onReload}
-				>
-					Reload
-				</Button>
-			)}
-			{onShowDiff && (
-				<Button
-					variant="quiet"
-					size="sm"
-					className="h-6 shrink-0 px-2 font-normal text-xs"
-					data-testid="viewer-conflict-diff"
-					aria-pressed={showingDiff}
-					onClick={onShowDiff}
-				>
-					{showingDiff ? 'Back to editing' : 'Show diff'}
-				</Button>
-			)}
-			<Button
-				variant="quiet"
-				size="sm"
-				className="h-6 shrink-0 px-2 font-normal text-xs"
-				data-testid="viewer-conflict-dismiss"
-				onClick={onDismiss}
-			>
-				Dismiss
-			</Button>
 		</div>
 	);
 }
@@ -890,51 +686,4 @@ function Editor({
 	// resolved against whatever positioned ancestor the shell happened to offer
 	// and landed above the viewer entirely.
 	return <div ref={hostRef} className="relative h-full w-full" data-testid="file-view-editor" />;
-}
-
-/**
- * The one question editing asks before doing something the reader cannot undo:
- * writing over a change nobody has read.
- *
- * There is no discard dialog beside it. Undo is the way back — `Ctrl/Cmd+Z`
- * until the buffer matches disk, which reports itself clean because dirty is
- * Monaco's alternative version id rather than a string comparison.
- */
-function OverwriteConfirm({
-	open,
-	name,
-	onCancel,
-	onConfirm,
-}: {
-	open: boolean;
-	name: string;
-	onCancel: () => void;
-	onConfirm: () => void;
-}) {
-	return (
-		<Dialog
-			open={open}
-			onOpenChange={(next) => {
-				if (!next) onCancel();
-			}}
-		>
-			<DialogContent className="sm:max-w-md" data-testid="viewer-edit-confirm">
-				<DialogHeader>
-					<DialogTitle>Overwrite {name}?</DialogTitle>
-					<DialogDescription>
-						Something else changed this file after you started editing. Saving replaces what is on
-						disk with your version.
-					</DialogDescription>
-				</DialogHeader>
-				<DialogFooter>
-					<Button variant="outline" onClick={onCancel}>
-						Cancel
-					</Button>
-					<Button variant="destructive" onClick={onConfirm} data-testid="viewer-edit-confirm-ok">
-						Overwrite
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
-	);
 }

@@ -914,9 +914,26 @@ export function fixtureWithChanges(): TestFixture {
 				truncated: false,
 			},
 		},
+		files: {
+			...base.files,
+			// The worktree side of `src/index.ts`, so the unstaged diff has a file
+			// on the right rather than the absent side a deletion gets — which is
+			// what makes that side editable (F26).
+			[`${root}/src/index.ts`]: contents(`${root}/src/index.ts`, 'export const a = 2;\n'),
+		},
 		gitBlobs: {
 			[`index:${root}/src/index.ts`]: contents(`${root}/src/index.ts`, 'export const a = 1;\n'),
 			[`head:${root}/src/index.ts`]: contents(`${root}/src/index.ts`, 'export const a = 0;\n'),
+			// The same file at two commits, for a `<parent>..<sha>` diff — the one
+			// F18 opens from the graph, and the one that is read-only at both ends.
+			[`${SHA_TIP}:${root}/src/index.ts`]: contents(
+				`${root}/src/index.ts`,
+				'export const a = 1;\n',
+			),
+			[`${SHA_MERGE}:${root}/src/index.ts`]: contents(
+				`${root}/src/index.ts`,
+				'export const a = 0;\n',
+			),
 		},
 	};
 }
