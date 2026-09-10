@@ -2,7 +2,7 @@ import { Button } from '@factorai/ui';
 import { Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { type CrashContext, crashReport, issueUrl } from '@lib/crashReport';
-import { openExternally } from '@lib/tauri';
+import { copyText, openExternally } from '@lib/tauri';
 
 interface ErrorBoundaryProps {
 	children: ReactNode;
@@ -109,7 +109,7 @@ function CrashScreen({ error, componentStack }: CrashScreenProps) {
 					</Button>
 					<Button
 						variant="outline"
-						onClick={() => void navigator.clipboard.writeText(crashReport(ctx))}
+						onClick={() => void copyText(crashReport(ctx)).catch(() => {})}
 						data-testid="crash-copy"
 					>
 						<Copy /> Copy details

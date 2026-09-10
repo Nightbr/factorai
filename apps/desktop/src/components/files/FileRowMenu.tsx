@@ -5,7 +5,7 @@ import { Clipboard, ExternalLink, FileText, Link, Route, Sparkles } from 'lucide
 import { iconKeyFor } from '@lib/fileIcon';
 import { relativeToRoot } from '@lib/paths';
 import { queryKeys } from '@lib/queryKeys';
-import { cmd, copyImageFile, openExternally } from '@lib/tauri';
+import { cmd, copyImageFile, copyText, openExternally } from '@lib/tauri';
 import { usePanelStore } from '@store/panelStore';
 
 /** Whether a menu action worked, for the transient mark the row shows after —
@@ -137,23 +137,15 @@ export function FileRowMenu({
 			<ContextMenuItem
 				disabled={!canCopyContents}
 				onSelect={() =>
-					void run(() =>
-						isImage
-							? copyImageFile(entry.path)
-							: navigator.clipboard.writeText(file?.contents ?? ''),
-					)
+					void run(() => (isImage ? copyImageFile(entry.path) : copyText(file?.contents ?? '')))
 				}
 			>
 				<Clipboard /> {contentsLabel(entry, isImage, file?.isBinary, file?.truncated)}
 			</ContextMenuItem>
-			<ContextMenuItem onSelect={() => void run(() => navigator.clipboard.writeText(entry.path))}>
+			<ContextMenuItem onSelect={() => void run(() => copyText(entry.path))}>
 				<Route /> Copy absolute path
 			</ContextMenuItem>
-			<ContextMenuItem
-				onSelect={() =>
-					void run(() => navigator.clipboard.writeText(relativeToRoot(entry.path, root)))
-				}
-			>
+			<ContextMenuItem onSelect={() => void run(() => copyText(relativeToRoot(entry.path, root)))}>
 				<Link /> Copy relative path
 			</ContextMenuItem>
 		</ContextMenuContent>

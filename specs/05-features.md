@@ -1518,13 +1518,20 @@ whatever hosts `FileView`.
   a reset that left the image in a corner wouldn't look like one.
 - **Copy** puts a PNG on the system clipboard.
 
-**The clipboard needs Tauri, and finding that out cost a round trip.**
-`navigator.clipboard.writeText` works in this webview — the header's copy-path
-button is proof — so the obvious implementation is `clipboard.write()` with a
-`ClipboardItem`. It does not work: **WebKitGTK doesn't implement
-`ClipboardItem`**, the promise rejects, and nothing reaches the clipboard.
-Verified rather than assumed — after a web-API copy, `xclip -t TARGETS` still
-offered text targets only.
+**The clipboard needs Tauri, and finding that out cost a round trip.** The
+obvious implementation is `clipboard.write()` with a `ClipboardItem`. It does
+not work: **WebKitGTK doesn't implement `ClipboardItem`**, the promise rejects,
+and nothing reaches the clipboard. Verified rather than assumed — after a
+web-API copy, `xclip -t TARGETS` still offered text targets only.
+
+**Text goes the same way, since 2026-09-10.** `navigator.clipboard.writeText`
+used to work in this webview and stopped: WebKitGTK 2.52 rejects it with
+`NotAllowedError: The request is not allowed by the user agent or the platform
+in the current context` even straight out of a click handler. So every copy of
+text — a SHA, a path, a file's contents, a crash report — goes through
+`copyText` in `lib/tauri`, which is the plugin under Tauri and the web API in
+the browser-only lane. The permission is
+`clipboard-manager:allow-write-text`.
 
 So copy goes through `tauri-plugin-clipboard-manager`, handed **raw RGBA** via
 `Image.new`. Not the PNG bytes we already hold: `Image.fromBytes`/`fromPath`
@@ -3227,7 +3234,12 @@ what makes a 38-character row acceptable.
     looking at rather than being one of the things to look at — and putting them
     in a tab meant trading the file list away to answer "who wrote this". It also
     keeps the parent chips, which are how you walk history, reachable from either
-    tab.
+    tab. The copy control puts the **full** 40-character SHA on the clipboard
+    while showing the short one — nobody wants 40 characters pasted into a
+    terminal, but a truncated SHA in a `git show` is a coin flip in a big repo.
+    It goes through `copyText` (F7) and says **"Copy failed"** if the platform
+    refuses, rather than crashing the pane with an unhandled rejection, which is
+    what it did until 2026-09-10.
   - **`Changes N` and `Description`.** Changes is the default, because the hover
     card already carries subject, refs, author and date, so the files are the
     reason to click at all. The count sits on the tab, so "how much changed" is

@@ -9,6 +9,7 @@ import {
 	fixtureWithGraph,
 	installMockBridge,
 	SHA_MAIN,
+	SHA_MERGE,
 	SHA_SIDE,
 	ZULU_ID,
 } from './fixtures';
@@ -198,6 +199,66 @@ test.describe('graph tab', () => {
 		// chip's own hover, which took the subject off the row and overflowed the
 		// panel with a name that still didn't fit.
 		await expect(rows.nth(3)).toContainText('feat: work done on the side branch');
+	});
+
+	test('@smoke the SHA copy hands over the full 40 characters', async ({ page }) => {
+		// Stubbed rather than read back: what this owns is *what we hand over*, and
+		// a real clipboard is neither ours nor reliably readable headless — the
+		// pattern `file-viewer.spec.ts` already uses for the image copy.
+		await page.addInitScript(() => {
+			(window as unknown as { __COPIED__: string[] }).__COPIED__ = [];
+			Object.defineProperty(navigator, 'clipboard', {
+				configurable: true,
+				value: {
+					writeText: async (text: string) => {
+						(window as unknown as { __COPIED__: string[] }).__COPIED__.push(text);
+					},
+				},
+			});
+		});
+		await installMockBridge(page, fixtureWithGraph());
+		await page.goto(PROJECT);
+		await openGraph(page);
+		// The merge, because it is the commit `fixtureWithGraph` gives a detail to.
+		await page.getByTestId('commit-row').nth(1).click();
+
+		const detail = page.getByTestId('commit-detail');
+		await detail.getByRole('button', { name: `Copy ${SHA_MERGE.slice(0, 7)}` }).click();
+
+		// The full SHA, not the short one on the label: a truncated SHA in a
+		// `git show` is a coin flip in a big repo.
+		await expect
+			.poll(() => page.evaluate(() => (window as unknown as { __COPIED__: string[] }).__COPIED__))
+			.toEqual([SHA_MERGE]);
+		await expect(detail.getByRole('button', { name: 'Copied' })).toBeVisible();
+	});
+
+	test('@smoke a refused clipboard says so instead of crashing the pane', async ({ page }) => {
+		// The shape this shipped broken in (2026-09-10): WebKitGTK 2.52 started
+		// rejecting `navigator.clipboard.writeText` with `NotAllowedError`, the
+		// click handler awaited it without a catch, and clicking Copy put F17's
+		// unhandled-rejection card over the graph. The button owns the outcome.
+		await page.addInitScript(() => {
+			Object.defineProperty(navigator, 'clipboard', {
+				configurable: true,
+				value: {
+					writeText: async () => {
+						throw new DOMException('refused', 'NotAllowedError');
+					},
+				},
+			});
+		});
+		await installMockBridge(page, fixtureWithGraph());
+		await page.goto(PROJECT);
+		await openGraph(page);
+		// The merge, because it is the commit `fixtureWithGraph` gives a detail to.
+		await page.getByTestId('commit-row').nth(1).click();
+
+		const detail = page.getByTestId('commit-detail');
+		await detail.getByRole('button', { name: `Copy ${SHA_MERGE.slice(0, 7)}` }).click();
+
+		await expect(detail.getByRole('button', { name: 'Copy failed' })).toBeVisible();
+		await expect(page.locator('[data-notice]')).toHaveCount(0);
 	});
 });
 

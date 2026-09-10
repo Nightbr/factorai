@@ -4,7 +4,7 @@ import { lazy, Suspense, useState } from 'react';
 import { FindHandleProvider, isFindKey, useFindHandleSlot } from '@components/viewer/findHandle';
 import type { DiffMode, ViewerPosition } from '@hooks/useFileViewer';
 import { isMacOS } from '@lib/platform';
-import { cmd, openExternally } from '@lib/tauri';
+import { cmd, copyText, openExternally } from '@lib/tauri';
 
 // Monaco is the heaviest thing in the app, and the viewer is the only thing
 // that needs it. Lazy-loading keeps it out of the initial bundle: the chunk is
@@ -58,7 +58,7 @@ export function FileViewerModal({
 	onClose,
 	onOpenPath,
 }: FileViewerModalProps) {
-	const [copied, setCopied] = useState(false);
+	const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
 	const [revealFailed, setRevealFailed] = useState(false);
 	const findSlot = useFindHandleSlot();
 
@@ -69,12 +69,20 @@ export function FileViewerModal({
 	// read twice. See `lib/platform` for why the sniff is reliable in a webview.
 	const revealTarget = isMacOS() ? 'Finder' : 'file manager';
 	const revealLabel = revealFailed ? 'Reveal failed' : `Reveal in ${revealTarget}`;
+	const copyLabel = copied === 'failed' ? 'Copy failed' : 'Copy path';
 
 	async function copyPath() {
 		if (!path) return;
-		await navigator.clipboard.writeText(path);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 1200);
+		try {
+			await copyText(path);
+			setCopied('yes');
+		} catch {
+			// The same reason Reveal wears its failure: a clipboard the platform
+			// refused looks identical to a dead button, and the paste that follows
+			// carries whatever was on the clipboard before.
+			setCopied('failed');
+		}
+		setTimeout(() => setCopied(null), 1200);
 	}
 
 	async function reveal() {
@@ -130,11 +138,11 @@ export function FileViewerModal({
 					</div>
 					<IconButton
 						size="md"
-						aria-label="Copy path"
-						title="Copy path"
+						aria-label={copyLabel}
+						title={copyLabel}
 						onClick={() => void copyPath()}
 					>
-						{copied ? <Check className="text-primary" /> : <Copy />}
+						{copied === 'yes' ? <Check className="text-primary" /> : <Copy />}
 					</IconButton>
 					<IconButton
 						size="md"

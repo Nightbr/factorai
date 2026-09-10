@@ -36,7 +36,7 @@ import { queryKeys } from '@lib/queryKeys';
 import { formatStamp, routineSessionLabel } from '@lib/cron';
 import { formatError } from '@lib/errors';
 import { type SessionMark, pendingSessions } from '@lib/sessionGroups';
-import { cmd } from '@lib/tauri';
+import { cmd, copyText } from '@lib/tauri';
 import type { DropIndicator } from '@lib/sidebarTree';
 import { useSidebarStore } from '@store/sidebarStore';
 import { usePrefsStore } from '@store/prefsStore';
@@ -780,7 +780,7 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24, pad }: S
 
 	async function copyTranscriptPath() {
 		try {
-			await navigator.clipboard.writeText(await cmd.sessionTranscriptPath(session.id));
+			await copyText(await cmd.sessionTranscriptPath(session.id));
 			setCopied('yes');
 		} catch {
 			// Either half can refuse — the session may not be in the index any more,

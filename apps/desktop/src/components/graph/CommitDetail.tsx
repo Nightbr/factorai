@@ -6,7 +6,7 @@ import { FileChangeRow } from '@components/files/FileChangeRow';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { formatAbsolute, formatRelative } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
-import { cmd } from '@lib/tauri';
+import { cmd, copyText } from '@lib/tauri';
 
 /**
  * Which half of the pane is showing.
@@ -231,23 +231,32 @@ function DetailTab({
 }
 
 function CopySha({ sha, shortSha }: { sha: string; shortSha: string }) {
-	const [copied, setCopied] = useState(false);
+	const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
+	const failed = copied === 'failed';
+	const label = failed ? 'Copy failed' : copied ? 'Copied' : `Copy ${shortSha}`;
 
 	return (
 		<IconButton
-			aria-label={copied ? 'Copied' : `Copy ${shortSha}`}
-			title={copied ? 'Copied' : `Copy ${sha}`}
+			aria-label={label}
+			title={failed ? 'Copy failed' : copied ? 'Copied' : `Copy ${sha}`}
 			className="shrink-0"
 			onClick={async () => {
-				await navigator.clipboard.writeText(sha);
-				setCopied(true);
-				window.setTimeout(() => setCopied(false), 1200);
+				// A clipboard write can be refused by the platform, and an
+				// unhandled rejection here is the crash overlay over the graph
+				// rather than a button that says what happened.
+				try {
+					await copyText(sha);
+					setCopied('yes');
+				} catch {
+					setCopied('failed');
+				}
+				window.setTimeout(() => setCopied(null), 1200);
 			}}
 		>
 			{/* The full SHA goes to the clipboard, the short one is what's shown —
 			    nobody wants 40 characters pasted into a terminal, but a truncated
 			    SHA in a `git show` is a coin flip in a big repo. */}
-			{copied ? <Check /> : <Copy />}
+			{copied === 'yes' ? <Check /> : <Copy />}
 			<span className="ml-1 font-mono text-xs">{shortSha}</span>
 		</IconButton>
 	);

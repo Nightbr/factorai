@@ -354,12 +354,43 @@ export function homeDir(): Promise<string | null> {
 }
 
 /**
+ * Put text on the system clipboard.
+ *
+ * **Not `navigator.clipboard.writeText`.** It used to work in this webview and
+ * stopped: WebKitGTK 2.52 rejects the async clipboard write with
+ * `NotAllowedError: The request is not allowed by the user agent or the
+ * platform in the current context`, even straight out of a click handler, so
+ * every copy button in the app was one unhandled rejection with nothing on the
+ * clipboard. Verified on this machine by clicking Copy SHA in the graph's
+ * commit pane (F24).
+ *
+ * So text takes the same road images already take (F7): the clipboard plugin,
+ * which talks to GTK from Rust and cannot be turned down by the webview.
+ * `clipboard-manager:allow-write-text` in `capabilities/default.json` is what
+ * permits it.
+ *
+ * Throws on failure, so a button can say so instead of showing a tick for
+ * something that didn't happen.
+ */
+export async function copyText(text: string): Promise<void> {
+	if (!isTauri()) {
+		// Browser-only dev and Playwright: the web API is all there is, and in a
+		// Chromium test lane it works.
+		await navigator.clipboard.writeText(text);
+		return;
+	}
+	const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
+	await writeText(text);
+}
+
+/**
  * Put an image on the system clipboard (F7).
  *
- * **Not `navigator.clipboard.write`.** WebKitGTK implements `writeText` — the
- * viewer's copy-path button proves it — but not `ClipboardItem`, so the web
- * API rejects and nothing reaches the clipboard. Verified on this machine:
- * after a web-API copy, `xclip -t TARGETS` still offered text only.
+ * **Not `navigator.clipboard.write`.** WebKitGTK doesn't implement
+ * `ClipboardItem`, so the web API rejects and nothing reaches the clipboard.
+ * Verified on this machine: after a web-API copy, `xclip -t TARGETS` still
+ * offered text only. Its `writeText` is no way out either — see `copyText`
+ * above, which had to come here too.
  *
  * Raw RGBA rather than the PNG bytes we already hold, because `Image.new` is
  * the one constructor that needs no decoding: `fromBytes`/`fromPath` would
