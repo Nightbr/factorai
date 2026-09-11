@@ -1,7 +1,14 @@
 import { type Page, expect, test } from '@playwright/test';
-import { fixtureWithFileTree, installMockBridge } from './fixtures';
+import {
+	FOO_ID,
+	fixtureFileTreeInTwoCheckouts,
+	fixtureFileTreeTwoSessions,
+	fixtureWithFileTree,
+	installMockBridge,
+} from './fixtures';
 
 const ROOT = '/home/alice/code/foo';
+const SWITCHER = '/home/alice/code/worktrees/feature-x/switcher.ts';
 
 /** Open a project, reveal the tree, and return the panel locator. */
 async function openTree(page: Page) {
@@ -132,6 +139,65 @@ test.describe('file viewer', () => {
 		const viewer = page.getByTestId('file-viewer');
 		await expect(viewer).toBeVisible();
 		await expect(viewer.getByText('README.md', { exact: true })).toBeVisible();
+	});
+
+	test('@smoke switching session leaves the viewer showing the same file', async ({ page }) => {
+		await installMockBridge(page, fixtureFileTreeTwoSessions());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
+
+		await page.getByRole('button', { name: 'Expand foo' }).click();
+		await page
+			.getByTestId(`sidebar-sessions-${FOO_ID}`)
+			.getByRole('link', { name: /Wire the settings modal/ })
+			.click();
+		await expect(page).toHaveURL(/sessions\/session-uuid-002/);
+
+		// **The pane does not blank.** A `<Link>` to a session asks for a route
+		// and nothing else, and without the root route's retain middleware the
+		// param went with it — the strip's own persistence could not put it back,
+		// because `?file=` is the live answer (F7).
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer).toBeVisible();
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/README\.md/);
+		expect(page.url()).toContain(`file=${encodeURIComponent(`${ROOT}/README.md`)}`);
+	});
+
+	test('@smoke a session in another checkout comes back to that checkout\u2019s own file', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureFileTreeInTwoCheckouts());
+		await page.goto(`/#/projects/${FOO_ID}/sessions/session-uuid-002`);
+		await page.getByRole('button', { name: 'Toggle file tree' }).click();
+		const panel = page.getByTestId('file-tree-panel');
+
+		// The worktree session's own tree, and a file open in it.
+		await panel.getByRole('button', { name: 'switcher.ts' }).click();
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
+
+		// Over to the session in the project's own checkout, which has read
+		// nothing yet: the carried file stays rather than the viewer closing,
+		// because `root` resolves in two steps and closing on the second would
+		// shut a deep link a frame after it opened (ADR-0042).
+		const sessions = page.getByTestId(`sidebar-sessions-${FOO_ID}`);
+		await page.getByRole('button', { name: 'Expand foo' }).click();
+		await sessions.getByRole('link', { name: /Refactor the auth middleware/ }).click();
+		await expect(page).toHaveURL(/sessions\/session-uuid-001/);
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
+
+		// Read something in this checkout, and now the two strips differ.
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/Cargo\.toml/);
+
+		// **Back, and the pane returns to what that checkout was reading** — not
+		// to the file the other one is on.
+		await sessions.getByRole('link', { name: /Add the worktree switcher/ }).click();
+		await expect(page).toHaveURL(/sessions\/session-uuid-002/);
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
+		expect(page.url()).toContain(`file=${encodeURIComponent(SWITCHER)}`);
 	});
 
 	test('@smoke a binary file gets a card instead of an editor', async ({ page }) => {

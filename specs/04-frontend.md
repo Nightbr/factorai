@@ -383,6 +383,23 @@ dropped whenever `file` is absent, since a position in no file is not a state.
 Both position params are 1-based, matching what `foo.ts:42:7` means to everyone
 who writes it and what Monaco's `setPosition` expects.
 
+**`file` and `diff` are carried across a navigation that never mentioned them**,
+by a middleware in the root route's `search.middlewares`
+([ADR-0042](../docs/adr/0042-the-open-file-rides-across-a-navigation.md)).
+Without it every `<Link>` to a session drops them and the viewer goes blank when
+you switch session or start a new one. A middleware rather than a `search` prop
+on each of the fifteen call sites that navigate: one of them is
+`useStartSession`, so the next link someone adds would have to remember too.
+
+A navigation and a close are indistinguishable from inside the middleware — both
+arrive with no `file` — so the discriminator is `activeByCheckout` in
+`viewerStore`: `ViewerPane` drops the tab before it clears the param, so a real
+close has left no record of the file and a navigation still has one. This is
+also why `retainSearchParams` cannot be used: it fills a key that is *missing*,
+and `validateSearch` spells every key out, so no key ever is. `line` and `col`
+are deliberately not carried — a position is a one-shot instruction to reveal
+something, not a property of the file being open.
+
 **`?settings=claude|editor|confirmations|sessions`** opens the settings modal at
 one section (F11), validated the same way — a section nobody has built is not a
 section, so `?settings=appearance` opens nothing. It is a modal *and* a URL

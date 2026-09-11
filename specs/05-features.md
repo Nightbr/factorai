@@ -1108,6 +1108,22 @@ host-agnostic, which is what makes three hosts possible at all.
   `?file=` remains the active file and keeps every property it had: deep link,
   reload and HMR survival, browser-back closes the viewer, and F19's terminal
   links and F20's IDE bridge arrive through it.
+- **The viewer survives a navigation** ([ADR-0042](../docs/adr/0042-the-open-file-rides-across-a-navigation.md)).
+  Switching session, starting a new one, or moving between a project and its
+  sessions leaves the pane showing what it was showing: `file` and `diff` are
+  carried by a middleware on the root route, rather than by a `search` prop on
+  each of the links that navigate. Not `line` / `col` — a position is a one-shot
+  instruction to reveal something, not a property of the file being open. The
+  two ways out are untouched: a close has already dropped the tab, which is what
+  tells the middleware not to carry the file, and browser-back is a history pop,
+  which never runs a middleware at all.
+- **A change of checkout re-seeds it instead** (F21). The strip is per checkout,
+  so when a session in a linked worktree comes to the front the pane shows
+  *that* checkout's last file, as it was left, preview included. A checkout with
+  no history of its own leaves whatever is showing alone rather than closing the
+  viewer: `root` resolves in two steps for a session in a worktree — the
+  project's folder, then the worktree once `gitWorktrees` answers — and closing
+  on the second step would shut a deep link a frame after it opened.
 - **The modal is the expand, not the default** (ADR-0037). It is reached from
   the pane's header and from nowhere else, for a file too wide to read in a
   column, and closing it puts the file back in the pane rather than closing it.

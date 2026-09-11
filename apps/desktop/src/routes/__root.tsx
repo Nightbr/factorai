@@ -258,5 +258,56 @@ export const rootRoute = createRootRoute({
 		col: parsePosition(search.col),
 		settings: isSettingsSection(search.settings) ? search.settings : undefined,
 	}),
+	// **`file` and `diff` survive a navigation** (F7). They are the viewer's
+	// state, and the viewer is app-level: switching session, starting a new one
+	// or opening the project's Routines tab all navigate to a route that never
+	// asked about a file, and without this the param is dropped and the pane you
+	// were reading in goes blank. The strip's own persistence could not save it
+	// — `?file=` is the live answer, and nothing was putting it back.
+	//
+	// A middleware rather than a `search` prop on each of the ten links that
+	// navigate: one of them is `useStartSession`, so the next link someone adds
+	// would have to remember too.
+	//
+	// It fills a *missing* key only, which is what keeps the two ways out
+	// working: `close()` spells `file: undefined`, so the key is present and not
+	// refilled, and browser-back is a history pop that never runs middlewares at
+	// all. `line`/`col` are deliberately not retained — a position is a one-shot
+	// instruction to reveal something, not a property of the file being open.
+	// **`file` and `diff` survive a navigation that never mentioned them**
+	// (F7, ADR-0042).
+	// Switching session, starting a new one, or going back to the project all
+	// go through a `<Link>` that asks for a route and nothing else, and without
+	// this the viewer's params are dropped and the pane you were reading in goes
+	// blank. The strip's own persistence could not save it: `?file=` is the live
+	// answer, and nothing was putting it back.
+	//
+	// A middleware rather than a `search` prop on each of the fifteen call sites
+	// that navigate — one of them is `useStartSession`, so the next link someone
+	// adds would have to remember too.
+	//
+	// **The strip is what says a close is a close.** A navigation and a close
+	// look identical from here — both arrive with no `file` — so the discriminator
+	// has to come from outside the URL, and `activeByCheckout` already is one:
+	// `ViewerPane` drops the tab before it clears the param, so by the time this
+	// runs a real close has left no record of the file and a navigation still
+	// has one. `retainSearchParams` cannot be used for the same reason: it fills
+	// a *missing* key, and `validateSearch` below spells every key out, so there
+	// is never one missing.
+	//
+	// `line` and `col` are deliberately not carried: a position is a one-shot
+	// instruction to reveal something, not a property of the file being open.
+	search: {
+		middlewares: [
+			({ search, next }) => {
+				const result = next(search);
+				const file = search.file;
+				if (result.file !== undefined || typeof file !== 'string' || !file) return result;
+				const { checkout, activeByCheckout } = useViewerStore.getState();
+				if (!checkout || activeByCheckout[checkout] !== file) return result;
+				return { ...result, file, diff: search.diff };
+			},
+		],
+	},
 	component: RootLayout,
 });

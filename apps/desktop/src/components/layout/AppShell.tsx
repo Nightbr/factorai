@@ -84,44 +84,64 @@ export function AppShell({ children }: AppShellProps) {
 		setHost(nextHost);
 	}, [nextHost, setHost]);
 
-	// **Restore what was open, once per checkout** (ADR-0037). `?file=` does not
-	// persist — it is the live answer — so the last file read in this checkout is
-	// what re-seeds it on launch and when you come back to a project. A URL that
-	// already names a file wins: a deep link, a terminal click and the IDE
-	// bridge all arrive that way and must not be overwritten by history.
-	// **The strip always holds the file that is showing.**
+	// **The URL and the strip, kept agreed for the checkout in front**
+	// (ADR-0037). Two rules in one effect because they are two halves of the
+	// same invariant and they fight if they run apart — on a checkout change the
+	// second has to win before the first sees a path belonging to the checkout
+	// we just left (ADR-0042).
 	//
-	// `?file=` can arrive without passing through `open()` — a reload restores it
-	// from the URL, and a deep link starts the app with it — and the checkout it
-	// belongs to is not known until the route resolves, so an `openTab` at that
-	// moment would have had nowhere to put it. Both cases end with a file in the
-	// viewer and no tab for it, which reads as a strip that has lost track of
-	// what you are looking at. Found in the dev app, after a reload
-	// (ADR-0037).
+	// **Re-seed `?file=` from this checkout's history** on launch and whenever
+	// the checkout changes. `?file=` survives a navigation now — the root
+	// route's retain middleware, ADR-0042 — but it cannot survive a *switch of
+	// subject*: a session working in a linked worktree has its own strip
+	// (F21), and the file the last one was reading is not in its tree. On
+	// launch a URL that already names a file wins — a deep link, a terminal
+	// click and the IDE bridge all arrive that way and must not be overwritten
+	// by history.
 	//
-	// A preview tab, because nothing about restoring a URL says the file was
-	// pinned.
+	// A checkout with no history of its own leaves whatever is showing alone
+	// rather than closing the viewer. `root` resolves in two steps for a session
+	// in a worktree — the project's folder first, the worktree once
+	// `gitWorktrees` answers — so closing here would shut a deep link the moment
+	// the second step landed.
+	//
+	// **The strip always holds the file that is showing.** `?file=` can arrive
+	// without passing through `open()` — a reload restores it from the URL, and
+	// a deep link starts the app with it — and the checkout it belongs to is not
+	// known until the route resolves, so an `openTab` at that moment would have
+	// had nowhere to put it. Both cases end with a file in the viewer and no tab
+	// for it, which reads as a strip that has lost track of what you are looking
+	// at. Found in the dev app, after a reload (ADR-0037). A preview tab,
+	// because nothing about restoring a URL says the file was pinned.
+	const seen = useRef<string | null>(null);
 	useEffect(() => {
-		if (!root || !viewer.path) return;
+		if (!root) return;
 		const state = useViewerStore.getState();
+		// `setCheckout` above runs first, so this only holds on the render the
+		// route resolved on — and re-seeding against the old checkout's tabs is
+		// exactly what it is here to prevent.
 		if (state.checkout !== root) return;
+
+		const first = seen.current === null;
+		const switched = !first && seen.current !== root;
+		seen.current = root;
+
+		if (switched || (first && !viewer.path)) {
+			const last = state.activeByCheckout[root];
+			if (last && last !== viewer.path) {
+				const tab = tabsFor(state, root).find((t) => t.path === last);
+				// Restored **as it was left**, preview included: reopening it as a
+				// pinned tab would silently promote it, and the next click in the
+				// tree would then append beside it instead of replacing it.
+				viewer.open(last, { diff: tab?.diff ?? undefined, preview: tab?.preview });
+				return;
+			}
+		}
+
+		if (!viewer.path) return;
 		if (tabsFor(state, root).some((t) => t.path === viewer.path)) return;
 		state.openTab(viewer.path, { preview: true, diff: viewer.diff });
-	}, [root, viewer.path, viewer.diff]);
-
-	const restored = useRef(new Set<string>());
-	useEffect(() => {
-		if (!root || viewer.path || restored.current.has(root)) return;
-		restored.current.add(root);
-		const state = useViewerStore.getState();
-		const last = state.activeByCheckout[root];
-		if (!last) return;
-		const tab = tabsFor(state, root).find((t) => t.path === last);
-		// Restored **as it was left**, preview included: reopening it as a pinned
-		// tab would silently promote it, and the next click in the tree would then
-		// append beside it instead of replacing it.
-		viewer.open(last, { diff: tab?.diff ?? undefined, preview: tab?.preview });
-	}, [root, viewer.path, viewer.open]);
+	}, [root, viewer.path, viewer.diff, viewer.open]);
 
 	// **The stored width is clamped on every render, not only on drag.** A width
 	// dragged wide in a big window, or restored from a previous launch, would

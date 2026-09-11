@@ -828,6 +828,64 @@ export function fixtureWithFileTree(): TestFixture {
 }
 
 /**
+ * A tree in **both checkouts**, and a session in each (F7, F21).
+ *
+ * The strip is per checkout, so what needs two of them is every assertion about
+ * a session switch that changes the subject rather than only the route: the
+ * carried file belongs to a tree the new checkout does not have, and the pane
+ * has to come back to that checkout's own last file instead.
+ */
+export function fixtureFileTreeInTwoCheckouts(): TestFixture {
+	const tree = fixtureWithFileTree();
+	const worktree = fixtureSessionInAWorktree();
+	const project = tree.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const switcher = '/home/alice/code/worktrees/feature-x/switcher.ts';
+
+	return {
+		...worktree,
+		projects: [{ ...project, sessionCount: 2 }],
+		dirListings: { ...tree.dirListings, ...worktree.dirListings },
+		files: {
+			...tree.files,
+			[switcher]: contents(switcher, 'export const switcher = true;\n'),
+		},
+	};
+}
+
+/**
+ * The file tree, and **two sessions to switch between** (F7).
+ *
+ * What a session switch can break is invisible in a project with one session:
+ * the viewer is app-level and the file it is showing rides in `?file=`, so a
+ * navigation that does not carry the param empties the pane.
+ */
+export function fixtureFileTreeTwoSessions(): TestFixture {
+	const base = fixtureWithFileTree();
+	const project = base.projects?.[0];
+	if (!project) throw new Error('base fixture has no project');
+	const first = base.sessionsByProject?.[project.id]?.[0];
+	if (!first) throw new Error('base fixture has no session');
+
+	const second: SessionSummary = {
+		...first,
+		id: 'session-uuid-002',
+		title: 'Wire the settings modal',
+		updatedAt: Date.now() - 120_000,
+	};
+
+	return {
+		...base,
+		projects: [{ ...project, sessionCount: 2 }],
+		sessionsByProject: { [project.id]: [first, second] },
+		sessionPages: {
+			...base.sessionPages,
+			[second.id]: { id: second.id, events: [], offset: 0, limit: 100, total: 3 },
+		},
+	};
+}
+
+/**
  * A project whose folder has been deleted since it was indexed (F1 + F6).
  *
  * `realPath` is still set — a project is a folder, so it always has one. What
