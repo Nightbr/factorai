@@ -21,6 +21,7 @@ VERSION="${2:?a version is required}"
 
 BIN_DIR="$HOME/.local/bin"
 APP="$BIN_DIR/factorai.AppImage"
+LAUNCHER="$BIN_DIR/factorai"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/128x128/apps"
 
@@ -138,6 +139,48 @@ head -c 4 "$TMP/factorai.AppImage" | grep -q $'\x7fELF' \
 chmod +x "$TMP/factorai.AppImage"
 mv "$TMP/factorai.AppImage" "$APP"
 
+# ── The launcher ─────────────────────────────────────────────────────────────
+# **Without this the window comes up blank white**, with
+# `Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...`. The
+# AppImage bundles its own `libwayland-client.so.0`, and WebKitGTK initialising
+# EGL against it instead of the system one does not survive contact with WSLg's
+# d3d12 Mesa stack. Preloading the system library fixes it.
+#
+# Three things were tried on a real machine and two of them failed, so none of
+# this is a guess:
+#
+#   WEBKIT_DISABLE_DMABUF_RENDERER / WEBKIT_DISABLE_COMPOSITING_MODE — no
+#     effect. WebKitGTK initialises EGL before it reads them. They used to be on
+#     the `Exec=` line below and are gone; the app renders without them, and
+#     they cost acceleration for nothing.
+#   Deleting the bundled `libwayland-*.so*` from an extracted AppImage — still
+#     blank. Which is the useful negative result: repacking the bundle in CI
+#     would not have fixed it *and* would have invalidated the minisign
+#     signature the updater checks.
+#   `LD_PRELOAD` of the system `libwayland-client.so.0` — works.
+#
+# **A script rather than the path inlined into `Exec=`**, for two reasons. A
+# path resolved at install time is wrong after a distribution upgrade moves it;
+# and a bare soname cannot be used, because `AppRun` puts the bundle's own lib
+# directory on `LD_LIBRARY_PATH` before exec'ing the real binary, so the loader
+# would find the bundled copy again and we would be back where we started. This
+# resolves it at launch, and absolutely.
+say "Writing the launcher"
+cat > "$LAUNCHER" <<'LAUNCH'
+#!/usr/bin/env bash
+# Written by factorai's Windows installer. See apps/desktop/installer/.
+set -u
+LDCONFIG="$(command -v ldconfig || echo /sbin/ldconfig)"
+WL="$("$LDCONFIG" -p 2>/dev/null | awk '/libwayland-client\.so\.0/ {print $NF; exit}')"
+# Absolute path or nothing: a soname here would resolve against the AppImage's
+# own lib directory, which is the thing being worked around.
+if [ -n "${WL:-}" ] && [ -e "$WL" ]; then
+	export LD_PRELOAD="$WL${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+exec "$HOME/.local/bin/factorai.AppImage" "$@"
+LAUNCH
+chmod +x "$LAUNCHER"
+
 # The Start-menu icon, pulled out of the bundle we just placed. `--appimage-extract`
 # needs no FUSE — the runtime unpacks rather than mounts — but it writes
 # `squashfs-root` into the *working directory*, and this script's working
@@ -163,18 +206,15 @@ ICON_REL="usr/share/icons/hicolor/128x128/apps/factorai.png"
 # Start menu. `/usr/local` is the right one of the four: it is where the FHS
 # puts software the local administrator installed, which is exactly what this is.
 #
-# **The two WebKit variables are the reason `Exec=` is not one word.** WSLg
-# renders through a virtual GPU on a software GL path, and WebKitGTK's
-# accelerated compositing misbehaves there — the symptom is a blank white
-# window. They are set on this launcher only, never globally, so a native Linux
-# install keeps acceleration (ADR-0044).
+# `Exec=` is the launcher written above, not the AppImage: it is what sets the
+# `LD_PRELOAD` that keeps the window from coming up blank. See its comment.
 say "Writing the Start-menu entry"
 
 DESKTOP_BODY="[Desktop Entry]
 Type=Application
 Name=factorai
 Comment=Agentic Development Environment (ADE) for the AI era
-Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 $APP %U
+Exec=$LAUNCHER %U
 Icon=factorai
 Terminal=false
 Categories=Development;IDE;
@@ -227,7 +267,7 @@ else
 
   Until then, start factorai from PowerShell with:
 
-    wsl -- $APP
+    wsl -- $LAUNCHER
 
 DONE
 fi

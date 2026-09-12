@@ -87,10 +87,25 @@ in exchange for a native title bar.
   So the one part of this install that is not confined to the user's home is a
   file in `/usr/local/share/applications`, and it is the only step that needs
   root on a machine that already has FUSE 2.
-- **WSLg renders through a virtual GPU on a software GL path**, and WebKitGTK's
-  accelerated compositing misbehaves there. The installed `.desktop` entry sets
-  `WEBKIT_DISABLE_DMABUF_RENDERER=1` and `WEBKIT_DISABLE_COMPOSITING_MODE=1` for
-  that launcher only — never globally, so Linux users keep acceleration.
+- **The AppImage has to be launched with the system `libwayland-client`
+  preloaded, or the window is blank.** It bundles its own copy, and WebKitGTK
+  initialising EGL against that instead of the system one does not survive
+  WSLg's d3d12 Mesa stack: `Could not create default EGL display:
+  EGL_BAD_PARAMETER. Aborting...`, with the app otherwise running perfectly
+  behind an empty window. The installer writes a launcher that resolves the
+  system library through `ldconfig` at each start and preloads it by absolute
+  path; the `.desktop` entry points at that rather than at the AppImage.
+
+  Three fixes were tried on real hardware and the order of what failed is the
+  part worth keeping. `WEBKIT_DISABLE_DMABUF_RENDERER` and
+  `WEBKIT_DISABLE_COMPOSITING_MODE` do **nothing** — WebKitGTK initialises EGL
+  before it reads them — so the first shipped attempt was a guess that could
+  not have worked. Deleting the bundled `libwayland-*.so*` from an extracted
+  AppImage also leaves the window blank, which is the useful negative result:
+  repacking the bundle in CI would not have fixed this *and* would have
+  invalidated the minisign signature the updater checks (ADR-0010). Only the
+  preload works, and it is confined to the WSL launcher, so the Linux artifact
+  is untouched and native Linux users keep acceleration.
 - **Reveal in file manager does not work**, and is a documented limitation rather
   than a fix. There is no `FileManager1` on that bus, and `xdg-open` on a
   directory cannot bring up Explorer with an item selected. External links are

@@ -106,6 +106,32 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   FUSE 2, and a failure there is not fatal: the app is installed either way and
   the closing message says how to launch it and how to add the entry later.
 
+  **v0.40.4 made the window render.** Everything before it installed an app that
+  came up blank white — `Could not create default EGL display:
+  EGL_BAD_PARAMETER. Aborting...` — while the backend behind that empty window
+  was working perfectly: database open, watcher running, `claude` found on
+  PATH, the agent tool server and the IDE bridge both bound to loopback with the
+  lockfile written where the CLI reads it. The cause is in the Linux artifact,
+  not in WSL: the AppImage bundles its own `libwayland-client.so.0`, and
+  WebKitGTK initialising EGL against that instead of the system copy does not
+  survive WSLg's d3d12 Mesa stack.
+
+  **Two of the three candidate fixes failed, and which ones is the lasting
+  part.** `WEBKIT_DISABLE_DMABUF_RENDERER` and `WEBKIT_DISABLE_COMPOSITING_MODE`
+  — shipped in v0.40.0 on the strength of Tauri's Linux-graphics page — do
+  nothing at all here, because WebKitGTK initialises EGL before it reads them.
+  Deleting the bundled `libwayland-*.so*` from an extracted AppImage also leaves
+  the window blank, which is the useful negative result: repacking the bundle in
+  CI would not have fixed it *and* would have invalidated the minisign signature
+  the updater verifies (ADR-0010). What works is preloading the system
+  `libwayland-client.so.0`, so the installer now writes
+  `~/.local/bin/factorai` and the `.desktop` entry points at that. The preload
+  has to be an absolute path resolved at launch: `AppRun` puts the bundle's own
+  lib directory on `LD_LIBRARY_PATH` before exec'ing, so a bare soname finds the
+  bundled copy again, and a path resolved at install time breaks when a
+  distribution upgrade moves it. The two WebKit variables are gone — they cost
+  acceleration and bought nothing.
+
   **Shipped alongside:** `apps/desktop/installer/` (an NSIS bootstrapper built with `makensis`
   on the Linux runner, and the in-distro script it hands over to), an `installer` job in
   `release.yml` that blocks `publish`, and the floor written down — Windows 10 21H2 (build

@@ -48,12 +48,22 @@ or fails. So the script owns the window: it prints its own progress, and pauses
 before exiting so a message is not carried away by the window closing. Its exit
 code still reaches the installer.
 
-**`Exec=` sets two WebKit variables, on this launcher only.** WSLg renders
-through a virtual GPU on a software GL path, and WebKitGTK's accelerated
-compositing misbehaves there — a blank white window. `WEBKIT_DISABLE_DMABUF_RENDERER=1`
-and `WEBKIT_DISABLE_COMPOSITING_MODE=1` are Tauri's documented escalation for
-exactly that symptom. They are not set globally: a native Linux install keeps
-acceleration.
+**`Exec=` points at a launcher, and the launcher is why the window is not
+blank.** The AppImage bundles its own `libwayland-client.so.0`, and WebKitGTK
+initialising EGL against it rather than the system one fails on WSLg's d3d12
+Mesa stack — `Could not create default EGL display: EGL_BAD_PARAMETER` — with
+the app running fine behind an empty window. `~/.local/bin/factorai` resolves
+the system library through `ldconfig` at each start and preloads it by absolute
+path. It has to be absolute and it has to be resolved at run time: `AppRun` puts
+the bundle's lib directory on `LD_LIBRARY_PATH` before exec'ing, so a bare
+soname finds the bundled copy again, and a path baked in at install time breaks
+when a distribution upgrade moves it.
+
+Two things that do **not** work, tested on real hardware: the
+`WEBKIT_DISABLE_DMABUF_RENDERER` / `WEBKIT_DISABLE_COMPOSITING_MODE` pair,
+because WebKitGTK initialises EGL before reading them; and deleting the bundled
+`libwayland-*.so*`, which leaves the window just as blank — and would have meant
+repacking the AppImage in CI, invalidating the updater signature for nothing.
 
 ## Known limitations
 
