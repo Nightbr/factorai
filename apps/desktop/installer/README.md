@@ -26,12 +26,20 @@ It **runs once**. The app updates itself from there through the AppImage
 updater (F14), so the installer is never the upgrade path and carries no
 version state worth migrating.
 
-## Two details that are load-bearing
+## Three details that are load-bearing
 
 **The `.desktop` file is the entire Windows integration.** WSLg enumerates
 `Type=Application` entries and its RDP plugin creates a Start-menu shortcut for
 each. Nothing is registered on the Windows side; writing that file *is*
 appearing in the Start menu.
+
+**The in-distro script runs in its own console window, not captured.** The
+installer uses `ExecWait` rather than `nsExec`, because `sudo apt-get` needs a
+terminal to prompt on and `nsExec` gives its child neither stdin nor a console —
+on a default Ubuntu, where that password is not optional, a captured run hangs
+or fails. So the script owns the window: it prints its own progress, and pauses
+before exiting so a message is not carried away by the window closing. Its exit
+code still reaches the installer.
 
 **`Exec=` sets two WebKit variables, on this launcher only.** WSLg renders
 through a virtual GPU on a software GL path, and WebKitGTK's accelerated
@@ -48,6 +56,13 @@ acceleration.
   gives reveal nothing.
 - **`libEGL` / DRI3 warnings and `/dev/dri/card0` permission noise are
   normal** under WSLg. The app runs anyway — do not chase them.
+- **A name read back out of `wsl.exe` is never passed to `wsl.exe`.** v0.40.0
+  probed the default distribution's name, printed `Ubuntu`, and then got
+  `WSL_E_DISTRO_NOT_FOUND` from `wsl.exe -d "Ubuntu"` on a machine where
+  `wsl -d Ubuntu` works by hand: `nsExec::ExecToStack` captures stdout and
+  stderr together and `wsl.exe` writes its own messages in UTF-16LE, so an
+  invisible byte rode along. `-d` is now passed only when the user supplied
+  `/DISTRO=`; otherwise there is no flag and `wsl.exe` picks the default itself.
 - **The `.exe` is unsigned**, so SmartScreen shows "Windows protected your PC".
   There is no free Authenticode CA; ADR-0044 consequence 4 has the whole
   reasoning and the SignPath Foundation plan.

@@ -27,12 +27,40 @@ ICON_DIR="$HOME/.local/share/icons/hicolor/128x128/apps"
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die() { printf '\n\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# **The window this runs in is its own, and closes when this exits.** The
+# installer launches us with `ExecWait` rather than capturing our output,
+# because `sudo` below needs a terminal to prompt on — so the console is the
+# only place anything we print is visible, and an unpaused exit takes the error
+# message with it. One EXIT trap does both jobs: clean up, then hold the window.
+# `|| true` on the read, so a closed stdin does not turn a success into a
+# failure.
+FINISH_TMP=""
+finish() {
+	local code=$?
+	# An `if` and not `[ -n … ] && rm`, which under `set -e` returns 1 on the
+	# empty case and takes the rest of the trap — the pause included — with it.
+	if [ -n "$FINISH_TMP" ]; then
+		rm -rf "$FINISH_TMP"
+	fi
+	printf '\n'
+	read -rp "Press Enter to close this window... " _ || true
+	exit $code
+}
+trap finish EXIT
+
 # ── The floor ────────────────────────────────────────────────────────────────
 # glibc, because the AppImage is built on Ubuntu 24.04 and a glibc-linked binary
 # does not run on an older release than the one that built it. Same floor the
 # README documents for Linux, checked here rather than discovered as
 # `GLIBC_2.38 not found` after the download.
-glibc_version() { ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$'; }
+# `getconf` first: it prints exactly `glibc 2.39` and is not translated, whereas
+# `ldd --version` prints a sentence that is — and this installer's first real
+# user was on a French Windows. `ldd` stays as the fallback for a libc that has
+# no `getconf` entry.
+glibc_version() {
+	getconf GNU_LIBC_VERSION 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' && return 0
+	ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$'
+}
 
 GLIBC="$(glibc_version || true)"
 [ -n "$GLIBC" ] || die "could not read the glibc version in this distribution"
@@ -62,7 +90,13 @@ if . /etc/os-release 2>/dev/null && [[ "${ID:-} ${ID_LIKE:-}" == *debian* || "${
 	have_fuse2 || WANTED+=("$(apt-cache show libfuse2t64 >/dev/null 2>&1 && echo libfuse2t64 || echo libfuse2)")
 	command -v wslview >/dev/null 2>&1 || WANTED+=(wslu)
 	if [ ${#WANTED[@]} -gt 0 ]; then
-		say "Installing ${WANTED[*]} (sudo)"
+		say "Installing ${WANTED[*]}"
+		# Said out loud before the prompt appears, because a bare `[sudo] password
+		# for you:` in a console window the user did not open themselves is
+		# indistinguishable from something going wrong.
+		if ! sudo -n true 2>/dev/null; then
+			printf 'This needs your password inside the distribution (sudo).\n'
+		fi
 		sudo apt-get update -qq
 		sudo apt-get install -y "${WANTED[@]}"
 	fi
@@ -81,8 +115,17 @@ fi
 say "Downloading factorai $VERSION"
 mkdir -p "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-curl --fail --location --progress-bar --output "$TMP/factorai.AppImage" "$URL"
+FINISH_TMP="$TMP"
+# curl is in the Ubuntu WSL image and is not guaranteed anywhere else, so wget
+# is accepted too rather than making the presence of one tool the thing that
+# decides whether factorai installs.
+if command -v curl >/dev/null 2>&1; then
+	curl --fail --location --progress-bar --output "$TMP/factorai.AppImage" "$URL"
+elif command -v wget >/dev/null 2>&1; then
+	wget --show-progress -qO "$TMP/factorai.AppImage" "$URL"
+else
+	die "neither curl nor wget is installed in this distribution; install one and run this again"
+fi
 # A partial download that still parses as a file is the failure worth catching:
 # the AppImage's ELF magic is cheap and decisive.
 head -c 4 "$TMP/factorai.AppImage" | grep -q $'\x7fELF' \

@@ -50,6 +50,7 @@ VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "LegalCopyright" "factorai contributors"
 
 Var Distro
+Var DistroFlag
 Var UnDistro
 Var WipeData
 
@@ -95,33 +96,48 @@ Function .onInit
     Abort
   ${EndIf}
 
-  ; Which distribution. The default is where a WSL user's work lives, so that is
-  ; what we take — but the details pane names it, because someone with three of
-  ; them must not find factorai installed somewhere they did not expect.
-  ; `/DISTRO=Debian` overrides.
+  ; Which distribution.
   ;
-  ; **We ask the distribution its own name rather than parsing `wsl --list`.**
-  ; `wsl.exe` writes its own output as UTF-16LE, so every character of a parsed
-  ; list arrives with an interleaved NUL and nothing downstream matches. A
-  ; process inside the distribution answers in plain UTF-8.
+  ; **A name read back out of `wsl.exe` is never passed to `wsl.exe`**, and v0.40.0
+  ; shipped doing exactly that. The probe below returned `Ubuntu`, the details
+  ; pane printed `Ubuntu`, and `wsl.exe -d "Ubuntu"` answered
+  ; `WSL_E_DISTRO_NOT_FOUND` on a machine where `wsl -d Ubuntu` works by hand.
+  ; The string had something invisible on it: `nsExec::ExecToStack` captures
+  ; stdout **and stderr together**, and `wsl.exe` writes its own messages in
+  ; UTF-16LE, so one byte of a notice mixed into otherwise-ASCII output prints
+  ; identically and matches nothing.
   ;
-  ; `printenv` and not `sh -c`: one argument, no shell, and therefore no layer of
-  ; quoting to get wrong between NSIS, `wsl.exe` and a shell. The round trip also
-  ; doubles as proof that the default distribution actually boots.
+  ; So the name is **display only** now, and the flag is built from the command
+  ; line instead — which is clean by construction:
+  ;
+  ;   no `/DISTRO=`  ->  no `-d` at all. `wsl.exe` uses the default distribution,
+  ;                      which is the one the probe was pointing at anyway, so the
+  ;                      flag never did anything except add a way to fail.
+  ;   `/DISTRO=Deb`  ->  `-d "Deb"`, a string the user typed and we never parsed.
+  ;
+  ; The probe stays, for two things that do not need a trustworthy string: naming
+  ; the target in the details pane, and proving a default distribution actually
+  ; boots. **Its exit code is the liveness signal, not its output** — for the same
+  ; reason the output is not trusted anywhere else.
   ${GetOptions} $CMDLINE "/DISTRO=" $Distro
   ${If} $Distro == ""
+    StrCpy $DistroFlag ""
     nsExec::ExecToStack 'wsl.exe -- printenv WSL_DISTRO_NAME'
     Pop $0
     Pop $Distro
     ${TrimNewLines} $Distro $Distro
     ${If} $0 != 0
-    ${OrIf} $Distro == ""
       ${EnableX64FSRedirection}
       MessageBox MB_ICONSTOP "WSL is installed but has no usable distribution.\
         $\r$\n$\r$\nOpen PowerShell and run:$\r$\n$\r$\n    wsl --install -d Ubuntu-24.04\
         $\r$\n$\r$\nThen run this installer again."
       Abort
     ${EndIf}
+    ${If} $Distro == ""
+      StrCpy $Distro "your default distribution"
+    ${EndIf}
+  ${Else}
+    StrCpy $DistroFlag '-d "$Distro"'
   ${EndIf}
 
   ${EnableX64FSRedirection}
@@ -131,7 +147,9 @@ Section "factorai" SecMain
   SetOutPath "$INSTDIR"
   File "setup-in-distro.sh"
 
-  DetailPrint "Installing into the WSL distribution: $Distro"
+  ; Brackets, so a stray character in a name read back from `wsl.exe` is visible
+  ; here instead of invisible. That is all this string is for now — see `.onInit`.
+  DetailPrint "Installing into the WSL distribution: [$Distro]"
 
   ; See `.onInit`: 32-bit installer, redirected System32, no `wsl.exe` without this.
   ${DisableX64FSRedirection}
@@ -143,12 +161,21 @@ Section "factorai" SecMain
   ;
   ; `bash <file>` rather than executing it: a file copied from Windows carries no
   ; executable bit, and chmod-ing it would be a second thing to get right.
-  nsExec::ExecToLog 'wsl.exe -d "$Distro" --cd "$INSTDIR" -- bash ./setup-in-distro.sh "${APPIMAGE_URL}" "${VERSION}"'
-  Pop $0
+  ;
+  ; **`ExecWait` and not `nsExec`, because the script needs a terminal.** It runs
+  ; `sudo apt-get` for the two packages an AppImage under WSLg needs, and `nsExec`
+  ; hands its child no stdin and no console — so sudo's password prompt has
+  ; nothing to read from and the install hangs or fails on a default Ubuntu,
+  ; where that password is not optional. `ExecWait` launching a console
+  ; application from a GUI installer gets a console window of its own: the user
+  ; sees apt and the download progress, and can answer the prompt. The cost is
+  ; that the details pane below no longer carries the script's output, which is
+  ; why the script pauses on the way out rather than letting the window vanish.
+  ExecWait 'wsl.exe $DistroFlag --cd "$INSTDIR" -- bash ./setup-in-distro.sh "${APPIMAGE_URL}" "${VERSION}"' $0
   ${EnableX64FSRedirection}
   ${If} $0 != 0
     MessageBox MB_ICONSTOP "The install inside $Distro did not finish.$\r$\n$\r$\n\
-      The details above say why. Nothing was changed on Windows."
+      The console window said why. Nothing was changed on Windows."
     Abort
   ${EndIf}
 
@@ -157,14 +184,19 @@ Section "factorai" SecMain
   ; match the per-user install.
   WriteUninstaller "$INSTDIR\uninstall.exe"
   !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\factorai"
-  WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "factorai (WSL: $Distro)"
+  ; Plain, because `$Distro` may be the placeholder rather than a name — see
+  ; `.onInit`. Which distribution it went into is the details pane's job, not
+  ; Add/Remove Programs'.
+  WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "factorai (WSL 2)"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "factorai contributors"
   WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
   WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
-  ; Which distribution we installed into, so the uninstaller cleans the right one
-  ; rather than whichever is default by then.
-  WriteRegStr HKCU "${UNINST_KEY}" "Distro" "$Distro"
+  ; **The flag, not the name.** Empty when the install went to the default
+  ; distribution, which is what the uninstaller then targets too. Recording a
+  ; name we read back out of `wsl.exe` would hand the uninstaller the same
+  ; unusable string that broke v0.40.0's install.
+  WriteRegStr HKCU "${UNINST_KEY}" "DistroFlag" "$DistroFlag"
   WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
 SectionEnd
@@ -175,11 +207,11 @@ SectionEnd
 ; holds Claude's transcripts and the user's login. We only ever read those
 ; (ADR-0004); deleting them is not ours to offer.
 Function un.onInit
-  ReadRegStr $UnDistro HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\factorai" "Distro"
+  ReadRegStr $UnDistro HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\factorai" "DistroFlag"
   StrCpy $WipeData "no"
   MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 \
     "Also delete factorai's database and settings?$\r$\n$\r$\n\
-     ~/.local/share/dev.factorai/ inside $UnDistro$\r$\n$\r$\n\
+     ~/.local/share/dev.factorai/ inside the WSL distribution$\r$\n$\r$\n\
      Your Claude transcripts and login (~/.claude) are never touched, and \
      neither are your project folders." IDNO keep
   StrCpy $WipeData "yes"
@@ -188,16 +220,12 @@ FunctionEnd
 
 Section "Uninstall"
   ${DisableX64FSRedirection}
-  ; An empty distro name would make `wsl -d ""` ambiguous, so fall back to the
-  ; default rather than guessing — a registry key old enough to lack it predates
-  ; nothing we ship, but the uninstaller must not become the failing half.
-  ${If} $UnDistro == ""
-    nsExec::ExecToLog 'wsl.exe -- bash -lc "rm -f ~/.local/bin/factorai.AppImage ~/.local/share/applications/factorai.desktop ~/.local/share/icons/hicolor/128x128/apps/factorai.png"'
-  ${Else}
-    nsExec::ExecToLog 'wsl.exe -d "$UnDistro" -- bash -lc "rm -f ~/.local/bin/factorai.AppImage ~/.local/share/applications/factorai.desktop ~/.local/share/icons/hicolor/128x128/apps/factorai.png"'
-    ${If} $WipeData == "yes"
-      nsExec::ExecToLog 'wsl.exe -d "$UnDistro" -- bash -lc "rm -rf ~/.local/share/dev.factorai"'
-    ${EndIf}
+  ; `$UnDistro` is the whole `-d "name"` flag, or empty for the default
+  ; distribution — so there is one command here rather than a branch, and no
+  ; place for `wsl -d ""` to be built out of a missing value.
+  nsExec::ExecToLog 'wsl.exe $UnDistro -- bash -lc "rm -f ~/.local/bin/factorai.AppImage ~/.local/share/applications/factorai.desktop ~/.local/share/icons/hicolor/128x128/apps/factorai.png"'
+  ${If} $WipeData == "yes"
+    nsExec::ExecToLog 'wsl.exe $UnDistro -- bash -lc "rm -rf ~/.local/share/dev.factorai"'
   ${EndIf}
   ${EnableX64FSRedirection}
   Delete "$INSTDIR\setup-in-distro.sh"

@@ -59,6 +59,25 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   PowerShell tool, 2.1.139), so "WSL is required for the CLI" is no longer the reason — the
   reason is that the repositories, the toolchain and the login live in the distribution.
 
+  **v0.40.0's installer did not work, and v0.40.1 is the fix.** Two bugs, both
+  in the same class — a thing that is invisible until it runs on real Windows.
+  The first: the installer probed the default distribution's name, printed
+  `Ubuntu`, and then handed `wsl.exe -d "Ubuntu"` back to `wsl.exe`, which
+  answered `WSL_E_DISTRO_NOT_FOUND` on a machine where `wsl -d Ubuntu` works by
+  hand. `nsExec::ExecToStack` captures stdout and stderr together and `wsl.exe`
+  writes its own messages in UTF-16LE, so an invisible byte rode along on an
+  otherwise-ASCII string that printed identically. **A name read out of
+  `wsl.exe` is never passed to `wsl.exe` now**: `-d` appears only when the user
+  typed `/DISTRO=`, and otherwise there is no flag at all, because the default
+  distribution is what the probe was pointing at anyway. The second, found while
+  fixing the first: the in-distro script runs `sudo apt-get`, and `nsExec` gives
+  its child neither stdin nor a console, so the password prompt had nothing to
+  read from. It runs under `ExecWait` in its own console window now, and pauses
+  before exiting so a failure message is not carried off by the window closing.
+  Two smaller ones from the same reading: `ldd --version` is translated and the
+  first user was on a French Windows, so the glibc floor reads `getconf
+  GNU_LIBC_VERSION` first; and `wget` is accepted where `curl` is absent.
+
   **Shipped alongside:** `apps/desktop/installer/` (an NSIS bootstrapper built with `makensis`
   on the Linux runner, and the in-distro script it hands over to), an `installer` job in
   `release.yml` that blocks `publish`, and the floor written down — Windows 10 21H2 (build
