@@ -107,8 +107,9 @@ process is real money.
 
 ## Install
 
-Grab the `.dmg` (macOS) or `.AppImage` (Linux) from
-[Releases](https://github.com/Nightbr/factorai/releases). Both **update
+Grab the `.dmg` (macOS), the `.AppImage` (Linux) or `factorai-setup.exe`
+(Windows) from
+[Releases](https://github.com/Nightbr/factorai/releases). They **update
 themselves** — factorai checks on launch and every six hours, stages the new
 version in the background, and shows `Restart` in the header when it is ready.
 Nothing restarts on its own, because a restart kills running sessions.
@@ -116,8 +117,22 @@ Nothing restarts on its own, because a restart kills running sessions.
 You also need the [Claude Code CLI](https://claude.com/claude-code), already
 authenticated (`claude login`).
 
+**On Windows, factorai runs inside WSL 2.** It is the Linux build in your own
+distribution, shown as a normal window by WSLg — not a native port. That is on
+purpose: your repositories, your toolchain and your `claude` login live in the
+distribution, and reaching them from Windows goes over a network filesystem that
+is slow and where file watching does not work at all. `factorai-setup.exe`
+checks the machine, installs into your default distribution and puts factorai in
+the Start menu. It never installs WSL for you — if something is missing it tells
+you the command to run.
+
+Needs Windows 10 21H2 (build 19044) or Windows 11, x86_64, with WSL 2. ARM64
+Windows is not supported. Keep your projects inside the distribution, under `~`
+— a folder on `/mnt/c` works, but the session list will not update on its own
+there and git is slow, and factorai marks such a project with a warning.
+
 <details>
-<summary><b>Two things that look like the app is broken, and aren't</b></summary>
+<summary><b>Three things that look like the app is broken, and aren't</b></summary>
 
 <br>
 
@@ -146,6 +161,18 @@ There is no `.deb`, on purpose: Tauri's updater can replace an AppImage in place
 but never a `.deb`, since apt owns those files — and a package that silently
 never self-updates is worse than none.
 
+**Windows warns that it protected your PC** when you run `factorai-setup.exe`,
+because the installer is unsigned. Click **More info** → **Run anyway**. It is
+unsigned for a concrete reason rather than an oversight: there is no free
+Authenticode certificate authority — since June 2023 CAs must keep code-signing
+keys on dedicated hardware — and self-signing changes nothing a user sees on
+Windows. An application to SignPath Foundation, which is free for open-source
+projects, is in flight. The Linux binary the installer places is signed the way
+every other release is, and the app verifies its own updates.
+
+**Reveal in file manager does nothing on Windows.** There is no file manager on
+WSL's session bus for the app to ask. External links work.
+
 </details>
 
 Building from source, and everything else a contributor needs, is in
@@ -153,5 +180,5 @@ Building from source, and everything else a contributor needs, is in
 
 <div align="center">
 <br>
-<sub>macOS and Linux. Windows is out of scope for v1.</sub>
+<sub>macOS, Linux, and Windows through WSL 2.</sub>
 </div>

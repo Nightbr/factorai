@@ -113,8 +113,11 @@ window. Type checking does not validate UX.
 
 ## What this project does not do
 
-No Windows in v1. No telemetry, analytics or crash reporting. No localization.
-No code generation for Tauri bindings. No CodeScene / Codacy / SonarQube — Biome
+No native Windows port: Windows runs the Linux build inside WSL 2 under WSLg
+(ADR-0044), there is no `windows-msvc` target, and anything that must differ
+inside WSL is a runtime branch in `services/wsl.rs` rather than a `#[cfg]`. No
+ARM64 Windows. No telemetry, analytics or crash reporting. No localization. No
+code generation for Tauri bindings. No CodeScene / Codacy / SonarQube — Biome
 plus `tsc` plus clippy is the floor. No Claude OAuth helper. No mock data baked
 into the renderer.
 

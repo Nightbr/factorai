@@ -13,6 +13,39 @@ deferred list in `06-milestones.md`. We don't actively break Windows
 code paths (we use `portable-pty`, `dirs`, etc.), but we don't test or
 ship for it. Saves a class of PTY behavior + path encoding edge cases.
 
+**Amended 2026-09-12, with ADR-0044: Windows ships, and the PTY question
+never came up.**
+
+The answer above assumed Windows support meant a Windows port — a
+`windows-msvc` build, a ConPTY behind `portable-pty`, an encoding for
+`C:\` paths. That is the thing this question priced and declined, and it
+is still declined. What ships instead is **the Linux build running inside
+a WSL 2 distribution under WSLg**: the PTY is a Linux PTY, the paths are
+Linux paths, `~/.claude` is a real ext4 directory with working inotify,
+and both loopback servers are on the same loopback as the agent dialling
+back into them. None of the edge cases this question was avoiding exist
+in that shape.
+
+Two things this answer said are now wrong, and are struck rather than
+left to be trusted:
+
+- **"We don't ship for it"** — we do, as `factorai-setup.exe`, a
+  bootstrapper that installs the AppImage into the user's own
+  distribution. It is in the release's required-asset list.
+- **"We don't test it"** — we do, by hand on Windows 11 before a tag.
+  It is not in CI: a GitHub Windows runner cannot dependably nest WSL 2.
+
+What stays true is the sentence about not actively breaking Windows code
+paths, with one correction to how. It is not `#[cfg(windows)]` arms kept
+compiling — there is no Windows target to compile them for. It is that
+anything which must differ inside WSL is a **runtime** branch in
+`services/wsl.rs`, because the same binary and the same target triple
+serve native Linux and WSL both.
+
+PR #3, which did write the `#[cfg(windows)]` port this question
+originally imagined, is declined for that reason — see ADR-0044
+consequence 7.
+
 ---
 
 ## Q2 — Claude binary discovery → **three-tier probe**

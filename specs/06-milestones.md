@@ -153,8 +153,9 @@ toolchain wired up.
   rasterising each size from vector beats downsampling one bitmap.
 - README with install instructions.
 - GitHub Action: `tauri build` on tag push, attach artifacts to release.
-- Manual smoke test pass on macOS arm64 and Ubuntu 24. (Windows is out
-  of scope for v1.)
+- Manual smoke test pass on macOS arm64 and Ubuntu 24. (Windows was out of
+  scope for v1; it arrived 2026-09-12 as the Linux build under WSLg —
+  ADR-0044 — so its smoke pass is the Ubuntu one, run inside a distribution.)
 
 **Exit criteria.**
 - A teammate can install the .dmg or the .AppImage and use factorai for an
@@ -195,8 +196,13 @@ toolchain wired up.
 8. **Crash reporting / Sentry.** Wire `tauri-plugin-sentry` if/when
    factorai gets external users. Requires a DSN — either Sentry SaaS or
    a self-hosted instance; the plugin can't run "purely local".
-9. **Windows support.** PTY validation, path encoding edge cases,
-   build/signing pipeline.
+9. ~~**Windows support.**~~ **Graduated 2026-09-12** — see ADR-0044. The
+   PTY validation and path-encoding edge cases this item was scoped around
+   never had to happen: Windows runs the Linux build inside WSL 2 under WSLg,
+   so the PTY is a Linux PTY and the paths are Linux paths. What shipped
+   instead was a bootstrapping installer and one runtime branch
+   (`services/wsl.rs`). The signing half is still open and deliberately so —
+   no free Authenticode CA exists; see ADR-0044 consequence 4.
 10. **Mobile / iPad.** Tauri 2 supports mobile. Probably never useful
     for this product, but it's on the table.
 11. **Keep the machine awake while a session is working.** **Demoted here

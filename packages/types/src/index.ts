@@ -18,6 +18,14 @@ export interface Project {
 	/** The folder is gone from disk. Set by the indexer's scan, not computed per
 	 *  `list_projects` call — that query is polled every 2s. */
 	missing: boolean;
+	/** The folder is on the Windows drive, seen from inside WSL (ADR-0044).
+	 *
+	 *  Computed per query rather than stored — it is a prefix test on the path,
+	 *  with nothing to go stale. Always false on macOS, on Linux, and on Windows
+	 *  for a project kept inside the distribution, which is where projects
+	 *  belong: over the 9p share inotify delivers nothing, so the session list
+	 *  silently stops updating, and git is slow. */
+	windowsFilesystem: boolean;
 	/** Which Claude profile this project's **new** sessions run as (F25 slice 3).
 	 *  Null means the agent's default — which is what no assignment means, so an
 	 *  install that never assigned anything has null everywhere.

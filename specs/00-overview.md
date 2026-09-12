@@ -91,7 +91,7 @@ stub in `07-open-questions.md` for a possible follow-up.
 | ~~Auto-updates~~ **shipped**     | Was deferred; landed 2026-08-14 on `tauri-plugin-updater` (F14, ADR-0010). |
 | Claude OAuth helper              | Use the user's existing `claude` login. We don't reimplement `claude-auth.js`. |
 | Launch-in-external-terminal      | Embedded xterm is the only path for MVP. External terminal action is a deferred feature. |
-| Windows support                  | macOS and Linux only for v1. Drops a class of PTY/path-encoding edge cases from the critical path. |
+| ~~Windows support~~ **shipped**  | Was dropped for v1 to keep a class of PTY/path-encoding edge cases off the critical path. Landed 2026-09-12 without any of them: Windows is the Linux build running inside WSL 2 under WSLg, not a second port (ADR-0044). |
 
 ## Non-goals
 

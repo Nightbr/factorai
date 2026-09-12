@@ -411,6 +411,27 @@ change whenever the indexer runs, and a stale count is worse than a join.
   has just canonicalized the directory, so it knows better than a stale flag
   does.
 
+- **A project on the Windows drive, seen from inside WSL** → the row keeps a
+  small `AlertTriangle` beside the name, and the project page carries a line
+  under the path: the folder is on the Windows drive, new sessions will not
+  appear on their own, git is slow, move it inside the distribution.
+
+  **It warns and allows, it does not refuse.** The folder works for everything
+  except live updates — sessions run in it, transcripts are indexed on the next
+  scan, git answers — so refusing would override the human on a configuration
+  that is merely bad rather than broken. What makes the warning necessary is
+  that the failure is otherwise *silent*: `/mnt/<letter>` is a 9p share, inotify
+  delivers nothing there, and a sidebar that simply stops updating reads as a
+  bug in factorai rather than a property of the filesystem.
+
+  It is `windows_filesystem` on `Project`, **computed per query** — the opposite
+  choice from `missing` directly above, and for the opposite reason. This one
+  needs no `stat` at all: it is a prefix test on `real_path` plus one cached
+  boolean, so there is no hot-path cost to avoid and nothing that could go
+  stale. `services/wsl.rs` owns it, and it is false everywhere that is not WSL,
+  including a native Linux machine that happens to have a `/mnt/c`. See
+  ADR-0044.
+
   There is no longer a third state to distinguish it from. A project is a
   folder, so `real_path` is never null; "we never learned where this is" is now
   a property of a *discovered directory*, and one that can't be added until it

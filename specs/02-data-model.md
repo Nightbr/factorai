@@ -243,6 +243,16 @@ actions never write the second.
 per query from the sessions of every discovered directory linked to the folder:
 they change whenever the indexer runs, and a stale count is worse than a join.
 
+`windows_filesystem` is **not a column either**, and for a different reason than
+those two. It is true when factorai is running inside WSL and the folder is under
+`/mnt/<drive letter>` — the Windows drive, reached over 9p, where inotify
+delivers nothing and git is slow (ADR-0044). That is a prefix test on
+`real_path` plus one cached boolean, with no `stat` behind it and nothing that
+can go stale, so a column would cost a migration and a write path and buy
+nothing. Computing it also means it covers projects added before it existed, and
+reads as `false` for the same folder on a machine that is not WSL. Same shape as
+`profiles.missing` below.
+
 **A project has no position of its own.** It has a sidebar row, and the row has
 one — see `sidebar_rows` below. There was a `pinned INTEGER` column here until
 migration 0011, and a `sort_order INTEGER` until 0012; ADR-0023 and ADR-0025

@@ -102,7 +102,8 @@ table that is not built yet. Treat it as the thinnest of the four verbs.
   the agent writes.
 - Kill-on-quit is non-optional — no orphaned agent processes, ever.
 - No cloud sync, no accounts, no telemetry, no analytics, no crash reporting.
-- English only; no localization in v1. No Windows in v1.
+- English only; no localization in v1. Windows is supported through WSL 2
+  (ADR-0044) — the Linux build under WSLg, not a native port.
 - Specifically the official `claude` CLI, not a multi-provider session manager.
   There is a real tension between that and the broader "build software with
   agents" framing; it is named deliberately rather than resolved, and holds until

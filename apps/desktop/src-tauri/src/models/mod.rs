@@ -20,6 +20,16 @@ pub struct Project {
 	/// The folder is gone from disk. Set by the scan, not computed per
 	/// `list_projects` — that query is polled every 2s (F1).
 	pub missing: bool,
+	/// The folder is on the Windows drive, seen from inside WSL (ADR-0044).
+	///
+	/// **Computed per query, deliberately unlike `missing` above.** It is a
+	/// prefix test on a path plus one cached boolean — no `stat`, nothing to go
+	/// stale — so a column would buy nothing and cost a migration and a write
+	/// path. Same reasoning as `profiles.missing`, which is computed for the
+	/// same kind of reason (`specs/02-data-model.md`).
+	///
+	/// Always false off WSL, so every other platform reads exactly as before.
+	pub windows_filesystem: bool,
 	/// Which Claude profile this project's **new** sessions run as (F25 slice 3).
 	/// `None` means the agent's default, which is what no `project_profiles` row
 	/// means — so an install that has never assigned anything writes no rows.

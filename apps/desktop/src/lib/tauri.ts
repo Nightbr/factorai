@@ -841,6 +841,9 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				profileName: null,
 				sessionCount: candidate?.sessionCount ?? 0,
 				missing: candidate?.missing ?? false,
+				// The mock bridge never runs inside WSL, so this is the answer the
+				// real command gives on every platform the smoke suite runs on.
+				windowsFilesystem: false,
 			};
 			// Write it back into the fixture so the next `list_projects` returns it,
 			// as the real command's row would.

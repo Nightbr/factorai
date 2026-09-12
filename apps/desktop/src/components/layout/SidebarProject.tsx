@@ -359,6 +359,23 @@ export function SidebarProject({
 							{project.missing && (
 								<span className="shrink-0 text-muted-foreground/70 text-xs">missing</span>
 							)}
+							{/* The Windows drive, seen from inside WSL (ADR-0044). A glyph
+							    rather than a word: unlike `missing` this is not a state the
+							    row is *in*, it is a property of where the folder lives, and
+							    the row is fully usable — it is the live session list that
+							    quietly is not. The title carries the whole explanation,
+							    because a two-word badge cannot. */}
+							{project.windowsFilesystem && (
+								// The title sits on a wrapper rather than the icon: a lucide
+								// component forwards SVG props and `title` is not one of them,
+								// so it would typecheck nowhere and render nothing.
+								<span
+									className="shrink-0"
+									title={`${project.realPath} is on the Windows drive. New sessions will not appear until factorai rescans, and git is slow here. Move the folder inside the Linux distribution.`}
+								>
+									<AlertTriangle className="size-3.5 text-muted-foreground/70" />
+								</span>
+							)}
 						</Link>
 
 						{/* The hover pin stood here, with its state-at-rest / action-on-hover

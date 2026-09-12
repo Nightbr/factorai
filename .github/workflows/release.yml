@@ -338,6 +338,73 @@ jobs:
           includeUpdaterJson: true
           args: ${{ matrix.args }}
 
+  # The Windows deliverable (ADR-0044). Not a third platform in `build`: there is
+  # no `windows-msvc` compile, because factorai on Windows *is* the Linux
+  # AppImage the matrix above already produced, running inside a WSL 2
+  # distribution under WSLg. What this job makes is the ~1 MB bootstrapper that
+  # puts it there.
+  #
+  # **It runs on Linux.** `makensis` is in apt, so no Windows runner joins this
+  # workflow — which is also why this job blocking `publish` costs nothing in
+  # flakiness: it compiles no Rust and touches no Windows.
+  #
+  # `needs: build` and not just `create-release`, because the installer's whole
+  # job is to download an AppImage from this release. Starting before that asset
+  # exists would produce an installer that is correct and useless.
+  installer:
+    name: Windows (WSL 2) installer
+    needs: [create-release, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NSIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+
+      # Repeated from `build` rather than shared: jobs do not inherit a working
+      # tree, and the tag is the only source of truth for the version here as
+      # everywhere else. Kept deliberately simple — this job rewrites nothing on
+      # disk, it just needs the number.
+      - name: Read the version from the tag
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # The name the Linux job's bundler produced. Asserted rather than assumed:
+      # a bundler rename would otherwise ship an installer whose download 404s
+      # on first run, which is the kind of silent break this workflow's header
+      # is entirely about.
+      - name: Locate the AppImage in the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="$(gh release view "$GITHUB_REF_NAME" --json assets \
+            --jq '.assets[].name | select(endswith(".AppImage"))' | head -1)"
+          if [ -z "$NAME" ]; then
+            echo "::error::no .AppImage asset on $GITHUB_REF_NAME — the Linux build must land first"
+            exit 1
+          fi
+          echo "Found $NAME"
+          echo "APPIMAGE_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${NAME}" >> "$GITHUB_ENV"
+
+      - name: Build the installer
+        working-directory: apps/desktop/installer
+        run: makensis -DVERSION="$VERSION" -DAPPIMAGE_URL="$APPIMAGE_URL" factorai.nsi
+
+      # Unsigned, on purpose and not by omission: there is no free Authenticode
+      # CA, and self-signing buys nothing a Windows user sees. ADR-0044
+      # consequence 4 has the reasoning and the SignPath Foundation plan, which
+      # lands as one more step here and no other change.
+      - name: Upload into the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "apps/desktop/installer/factorai-setup-${VERSION}.exe" --clobber
+
   # Flip the draft live. Separate job rather than a step on `build`, because
   # `build` is a matrix: a step there would run twice and each copy would only
   # know about its own platform, which is precisely the blind spot that shipped a
@@ -348,7 +415,13 @@ jobs:
   # stays a draft exactly as it did when a human published it.
   publish:
     name: Publish the release
-    needs: [create-release, build]
+    # `installer` is in here on purpose, and it is the one place Windows is
+    # tier 1 rather than tier 2 (ADR-0044 consequence 3). Support is best-effort;
+    # the *artifact* is not. A release that shipped without the `.exe` would
+    # leave every Windows user on the previous one with nothing saying why, which
+    # is the same silent failure v0.10.1's one-platform manifest was. Safe to
+    # block on because this job builds on Linux and compiles nothing.
+    needs: [create-release, build, installer]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
@@ -372,6 +445,12 @@ jobs:
               ['a macOS installer', (n) => n.endsWith('.dmg')],
               ['a macOS updater bundle', (n) => n.endsWith('.app.tar.gz')],
               ['a Linux installer', (n) => n.endsWith('.AppImage')],
+              // The Windows bootstrapper (ADR-0044). Note there is deliberately
+              // no matching `latest.json` platform check below: the installed app
+              // on Windows *is* the Linux AppImage, and `tauri-plugin-updater`
+              // resolves its key from the compile-time target triple, so it looks
+              // up `linux-x86_64` and could never read a windows entry.
+              ['the Windows installer', (n) => n.endsWith('.exe')],
               ['the updater manifest', (n) => n === 'latest.json'],
             ];
             const missing = required.filter(([, match]) => !names.some(match)).map(([what]) => what);

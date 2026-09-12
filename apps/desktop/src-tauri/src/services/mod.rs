@@ -18,3 +18,4 @@ pub mod settings;
 pub mod shell_path;
 pub mod terminal;
 pub mod watcher;
+pub mod wsl;

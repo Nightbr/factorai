@@ -191,6 +191,18 @@ function ProjectView() {
 							{project.missing && ' — folder not found'}
 						</p>
 					)}
+					{/* The Windows drive, seen from inside WSL (ADR-0044). Not
+					    dismissible: the condition is still true tomorrow, and the
+					    symptom it explains — a session list that stops updating — is
+					    one a reader would otherwise file as a bug in factorai.
+					    The project page rather than a dialog, because this is a fact
+					    about the folder and this is where the folder is described. */}
+					{project?.windowsFilesystem && (
+						<p className="mt-1 text-muted-foreground text-xs">
+							This folder is on the Windows drive. New sessions will not appear on their own and git
+							is slow here — move it inside the Linux distribution.
+						</p>
+					)}
 				</div>
 				{/* **One button, in one place, whichever list you are on.** The action
 				    a project page offers is "make another one of these", so it

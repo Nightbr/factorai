@@ -3,6 +3,70 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Windows, through WSL 2 (ADR-0044)** — 2026-09-12, user ask: more people want a Windows
+  build. What shipped is deliberately *not* a Windows port. factorai on Windows is the same
+  `x86_64` Linux AppImage the release already produced, running inside the user's own WSL 2
+  distribution under WSLg. The build matrix gained no platform and the backend gained no
+  `#[cfg(windows)]` arm.
+
+  **The decision was made against three alternatives and the research is what settled it.** A
+  native app reaching into WSL over `\\wsl.localhost` was the obvious-looking one and has three
+  holes that cannot be closed: inotify does not work over 9p (microsoft/WSL#216, and the kernel's
+  own `inotify: disallow watches on unsupported filesystems` series names 9p), so the watcher
+  dies silently; `git2` over 9p is slow on every Changes tab and graph page; and both of our
+  loopback servers depend on the *agent* dialling back into them, which needs mirrored
+  networking, which has an open bug returning the SYN-ACK from a different ephemeral port so
+  Linux answers RST (microsoft/WSL#40343). A split backend — the VS Code Remote-WSL model — is
+  the architecturally correct answer and is what Anthropic shipped for Claude Code Desktop; read
+  what that product still cannot do inside a WSL session: *"the integrated terminal, connectors
+  and plugins, session forking, the file browser pane, and file suggestions when you type
+  `@`"*. The integrated terminal is ADR-0002 and the file browser is F12. It would mean
+  rebuilding exactly the parts a much larger team has not shipped, for a native title bar.
+
+  **The isolation is runtime, not `#[cfg]`, and that is the part worth remembering.** One binary
+  and one target triple serve native Linux and WSL both, so `cfg!(windows)` is never true there
+  and `#[cfg(target_os = "linux")]` cannot tell a distribution from a Debian laptop.
+  `services/wsl.rs` is the only place that asks, it caches one probe, and it answers exactly two
+  questions — are we inside WSL, and is this path on the Windows drive. There is no path
+  translation anywhere in the tree: the app runs *inside* the distribution, so every path it
+  sees is already a Linux path.
+
+  **`Project.windowsFilesystem`** is the one user-visible behaviour change, and it exists because
+  the failure it names is otherwise invisible. A project under `/mnt/<letter>` gets a watcher
+  that never fires — the session list simply stops updating, which reads as a bug in factorai
+  rather than a property of 9p. So: a warning glyph on the sidebar row, a line on the project
+  page, and it still lets you add the folder. Computed per query rather than stored, the opposite
+  call from `missing` beside it and for the opposite reason — a prefix test with no `stat` behind
+  it has no hot-path cost to avoid and nothing that can go stale, so a column would have bought a
+  migration and nothing else.
+
+  **PR #3 was declined, and reading it was worth the time anyway.** It ported the backend to
+  `windows-msvc`: `#[cfg(windows)]` arms in `child_env`, `shell_path`, `ide/lockfile` and
+  `git::canonical`, a UNC-aware `encode_path`, a `windows-latest` leg on the quality workflow.
+  All of it serves a target ADR-0044 says we do not build, so all of it would have been dead the
+  day it landed — and it had branched off an older `main`, so its `#[cfg(unix)]` `encode_path`
+  replaced only `/` and would have silently reverted the fix that encodes `.` as well, losing
+  `--resume` for every session under a `.claude/worktrees` checkout (F21). Its lasting value is
+  the map: those five modules are where platform sensitivity lives, and under WSLg every one of
+  them is Linux and needs nothing.
+
+  **Three things the research changed in the plan.** WSLg renders on a software GL path and
+  WebKitGTK's accelerated compositing misbehaves there — a blank white window — so the installed
+  `.desktop` entry sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` and
+  `WEBKIT_DISABLE_COMPOSITING_MODE=1` on that launcher only, never globally. `libEGL` / DRI3
+  warnings and `/dev/dri/card0` permission noise under WSLg are normal and are not to be chased.
+  And the premise moved while we were deciding: `claude` now runs natively on Windows (the
+  PowerShell tool, 2.1.139), so "WSL is required for the CLI" is no longer the reason — the
+  reason is that the repositories, the toolchain and the login live in the distribution.
+
+  **Shipped alongside:** `apps/desktop/installer/` (an NSIS bootstrapper built with `makensis`
+  on the Linux runner, and the in-distro script it hands over to), an `installer` job in
+  `release.yml` that blocks `publish`, and the floor written down — Windows 10 21H2 (build
+  19044) or Windows 11, x86_64, no ARM64. The `.exe` is unsigned because no free Authenticode CA
+  exists; SignPath Foundation is applied for. Known limitation, documented rather than fixed:
+  **reveal in file manager does nothing under WSL** — there is no `FileManager1` on that bus and
+  `xdg-open` cannot bring up Explorer with an item selected.
+
 - **Editing the working-tree side of a diff (F26)** — 2026-09-09, user ask. F26 shipped every
   text file editable that morning and listed a diff among the four cases that stay read-only:
   *"a diff is two revisions, one of which does not exist as a file"*. True of one of the four

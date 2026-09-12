@@ -57,3 +57,8 @@ apps/desktop/public/pdfjs/
 # and every tool that walks the tree (biome, knip, playwright) would otherwise
 # see a second copy of the whole source and report duplicates.
 .claude/worktrees/
+
+# The Windows installer `makensis` produces (ADR-0044). Built into its own
+# source directory on the release runner and uploaded from there, so a local
+# `makensis` run leaves one behind. It is a release artifact, not a file.
+apps/desktop/installer/factorai-setup-*.exe

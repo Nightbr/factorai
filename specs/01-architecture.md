@@ -122,19 +122,30 @@ CLI's merge replaces arrays wholesale, so nothing else belongs in it (ADR-0024).
 
 ## Build targets
 
-| Platform     | Target                                |
-| ------------ | ------------------------------------- |
-| macOS        | `.dmg` and `.app` (arm64 + x64)       |
-| Linux        | `.AppImage` (x86_64 only)             |
+| Platform     | Target                                        |
+| ------------ | --------------------------------------------- |
+| macOS        | `.dmg` and `.app` (arm64 + x64)               |
+| Linux        | `.AppImage` (x86_64 only)                     |
+| Windows      | `factorai-setup.exe` — installs the AppImage into WSL 2 |
 
-Windows is **out of scope** for MVP. The codebase shouldn't actively
-break on Windows (we still use `portable-pty`, `dirs`, etc.), but we
-don't test it, don't ship a build target for it, and don't take Windows
-bug reports until a future milestone.
+**Windows is not a build target. It is the Linux build, running inside a WSL 2
+distribution under WSLg** (ADR-0044). There is no `windows-msvc` compile, no
+second bundle, and no third platform in the matrix: the `.exe` is a
+bootstrapper that checks the machine and places the same `x86_64` AppImage the
+Linux row produces. `latest.json` therefore carries no Windows key — the
+running app is a Linux binary and updates as one.
 
-CI not specified for MVP; manual `tauri build` is fine until we have
-releases. Once we publish, add GitHub Actions with the official Tauri build
-action.
+Floor: **Windows 10 21H2 (build 19044) or Windows 11**, x86_64, with WSL 2 and
+WSLg. That is WSLg's floor, not WSL 2's — Windows 10 needs the Microsoft Store
+WSL package (`wsl --update`) before it has WSLg at all. **ARM64 Windows is out
+of scope**: its distribution is `aarch64` and we build no `aarch64` Linux
+bundle.
+
+**Anything that has to differ inside WSL is a runtime branch, never a `#[cfg]`
+one.** It is the same binary and the same target triple as native Linux —
+`services/wsl.rs` is the one place that asks, and it asks about the environment
+rather than the compile. There is no path translation anywhere: the app runs
+inside the distribution, so every path it sees is already a Linux path.
 
 ## Configuration boundaries
 

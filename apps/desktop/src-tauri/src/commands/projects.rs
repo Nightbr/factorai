@@ -16,7 +16,7 @@ use crate::agents::{self, claude};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{ImportCandidate, Project};
-use crate::services::git;
+use crate::services::{git, wsl};
 use crate::state::AppState;
 
 /// Columns and aggregates for one workspace row, shared by every query that
@@ -40,9 +40,14 @@ const PROJECT_SELECT: &str = "SELECT p.id, p.real_path, p.display_name, p.missin
 	LEFT JOIN profiles pr ON pr.id = pp.profile_id";
 
 fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
+	let real_path: String = row.get(1)?;
 	Ok(Project {
 		id: row.get(0)?,
-		real_path: row.get(1)?,
+		// Computed here rather than stored, so it covers every project that was
+		// ever added — including the ones added before this existed, and the
+		// ones added on a machine that was not WSL (ADR-0044).
+		windows_filesystem: wsl::is_windows_filesystem(Path::new(&real_path)),
+		real_path,
 		display_name: row.get(2)?,
 		missing: row.get::<_, i64>(3)? != 0,
 		session_count: row.get(4)?,

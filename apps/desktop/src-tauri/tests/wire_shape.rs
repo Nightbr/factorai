@@ -36,6 +36,7 @@ fn project() -> Project {
 		last_session_at: Some(900),
 		session_count: 2,
 		missing: false,
+		windows_filesystem: false,
 		profile_id: Some("prof-work".into()),
 		profile_name: Some("Work".into()),
 	}
@@ -66,6 +67,11 @@ fn a_project_row_matches_the_typescript_type() {
 	assert_eq!(json["project"]["profileId"], "prof-work");
 	assert_eq!(json["project"]["profileName"], "Work");
 	assert!(json["project"].get("profile_id").is_none());
+	// The Windows-drive warning (ADR-0044). Two words on the wire, and the
+	// snake_case spelling would be the same silent `undefined` this file exists
+	// to catch.
+	assert_eq!(json["project"]["windowsFilesystem"], false);
+	assert!(json["project"].get("windows_filesystem").is_none());
 }
 
 #[test]

@@ -35,6 +35,7 @@ function project(name: string, { lastSessionAt = 0 as number | null } = {}): Pro
 		displayName: name,
 		lastSessionAt,
 		missing: false,
+		windowsFilesystem: false,
 		sessionCount: 1,
 		profileId: null,
 		profileName: null,
