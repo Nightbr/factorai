@@ -277,7 +277,6 @@ swallows a keystroke breaks typing to Claude.
       find, anywhere else focuses search). Item 14 already wants a row *removed* from that
       table — make both edits one amendment. "Session **and** files" is one bar only once items
       12–13 land; today the bar searches transcripts.
-
 - [ ] **Rebindable in settings — asked for by a user 2026-09-12.** The defaults above stay the
       defaults, but the end state is a keyboard section in the settings modal where each action
       shows its binding and can be reassigned, so a collision like `Cmd+W` or `Cmd+F` is the
@@ -289,6 +288,39 @@ swallows a keystroke breaks typing to Claude.
       whether a conflicting assignment is refused or steals the key, and how a user gets back to
       the defaults. Write them into `07-open-questions.md` and amend `05-features.md`
       § "Keyboard shortcuts" to say the table is defaults, not fixed keys.
+
+**Candidate: `@tanstack/react-hotkeys`** (evaluated 2026-09-12, alpha, latest `0.10.0`, peer
+`react >=16.8`). It is the shape this item wants rather than a helper bolted onto it, and it
+covers most of the list above:
+
+- `useHotkey('Mod+S', fn, options)` — `Mod` resolves to Meta on macOS and Control on Linux, so
+  one binding covers both targets, and the Linux branch is also what a WSLg window gets
+  (ADR-0044).
+- **Scopes**: a key can mean one thing globally, another inside the editor, and nothing while the
+  user is typing — the terminal-focus rule as a first-class concept instead of a condition
+  repeated in every handler.
+- **`useHotkeyRecorder` + `formatForDisplay`**: the rebinding panel the bullet above asks for, and
+  an action→binding map is the library's native shape, so building on it gets that constraint for
+  free rather than by discipline.
+- `ignoreInputs` per binding, and `conflictBehavior: 'warn' | 'error' | 'replace' | 'allow'` —
+  the conflict detection those two colliding asks need.
+
+Two things it does **not** solve, and they are the hard two:
+
+- **`Cmd+Q`, and `Cmd+W` on macOS, never reach the webview** — AppKit menu accelerators consume
+  them first. Those stay Rust-side menu items on the same `CloseRequested` path as ADR-0020's
+  quit guard, exactly as the bullet above says. On Linux (and so under WSLg) there is no menu, so
+  there they are real `useHotkey` bindings: one action, two implementations.
+- **xterm's focus target is a real hidden `<textarea>`**, so the default `ignoreInputs` suppresses
+  hotkeys whenever the terminal has focus. That is the right default, but every binding meant to
+  fire over a focused terminal needs `ignoreInputs: false` *and* `attachCustomKeyEventHandler` on
+  the xterm side not to swallow it first. The library supplies the mechanism, not the decision —
+  same for Monaco owning find and go-to-line inside the editor.
+
+Adopting it is a dependency plus that renderer/Rust split, so it is an ADR, not a silent
+`pnpm add`. Two things to settle in it: the package is pre-1.0 and this surface is every shortcut
+in the app, and it has to be proven on WebKitGTK before the ADR is written — that engine has
+already diverged here on the clipboard and on zoom.
 
 The table is also about to grow: **items 12–14** add `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`, and item
 14 wants the table's current `Cmd/Ctrl+G` (go to line) row *removed* because Monaco provides it
