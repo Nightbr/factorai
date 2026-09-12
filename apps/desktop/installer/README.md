@@ -52,8 +52,9 @@ acceleration.
 
 - **Reveal in file manager does nothing under WSL.** There is no
   `FileManager1` on that bus and `xdg-open` on a directory cannot bring up
-  Explorer with an item selected. `wslu` gives external links a browser; it
-  gives reveal nothing.
+  Explorer with an item selected. External links are fine — the crate behind
+  Tauri's link opening runs `powershell.exe … Start-Process` on WSL — but
+  nothing there helps reveal.
 - **`libEGL` / DRI3 warnings and `/dev/dri/card0` permission noise are
   normal** under WSLg. The app runs anyway — do not chase them.
 - **A name read back out of `wsl.exe` is never passed to `wsl.exe`.** v0.40.0

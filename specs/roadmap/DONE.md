@@ -78,6 +78,20 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   first user was on a French Windows, so the glibc floor reads `getconf
   GNU_LIBC_VERSION` first; and `wget` is accepted where `curl` is absent.
 
+  **v0.40.2 dropped `wslu`.** v0.40.1's install got as far as the packages and
+  died on `E: Unable to locate package wslu` — the image had `universe`
+  disabled, which is where Ubuntu keeps it. The real fault was the shape, not
+  the repository: **something optional must never be able to abort the
+  install**, and `wslu` was only ever there to give `xdg-open` a browser through
+  `wslview`. It turned out to be the wrong dependency twice over — upstream has
+  discontinued and archived it, and the crate behind Tauri's link opening
+  already has its own WSL path, `powershell.exe -NoProfile -Command
+  "Start-Process ..."`, with `wslview` merely a fallback. So links work without
+  it and it is gone. What remains is `libfuse2`, which the AppImage genuinely
+  cannot start without, and which is therefore allowed to be fatal — with the
+  by-hand command in the error, and a loud warning never to install the package
+  called `fuse`, which removes `fuse3` and breaks the distribution.
+
   **Shipped alongside:** `apps/desktop/installer/` (an NSIS bootstrapper built with `makensis`
   on the Linux runner, and the in-distro script it hands over to), an `installer` job in
   `release.yml` that blocks `publish`, and the floor written down — Windows 10 21H2 (build

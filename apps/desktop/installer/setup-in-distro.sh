@@ -4,9 +4,9 @@
 #
 # The `.exe` beside this file has already decided *which* distribution to use and
 # that the machine is capable of running us. This script runs inside that
-# distribution and does the actual work: check the floor, get the two packages an
-# AppImage under WSLg needs, place the binary, and write the `.desktop` entry that
-# WSLg turns into a Start-menu shortcut.
+# distribution and does the actual work: check the floor, make sure the one
+# package an AppImage needs is there, place the binary, and write the `.desktop`
+# entry that WSLg turns into a Start-menu shortcut.
 #
 # **It is deliberately re-runnable.** Reinstalling over an existing copy is the
 # upgrade path for someone who did not let the app update itself, and every step
@@ -70,45 +70,50 @@ Ubuntu 24.04+, Debian 13+ or Fedora 40+ all qualify. Install one with:
   wsl --install -d Ubuntu-24.04"
 fi
 
-# ── The two packages ─────────────────────────────────────────────────────────
-# libfuse2: an AppImage mounts itself with FUSE 2, and Ubuntu has shipped only
-#   FUSE 3 since 23.10. The package is `libfuse2t64` on 24.04 and `libfuse2`
-#   before it. **Never `apt install fuse`** — that removes `fuse3` and breaks the
-#   distribution.
-# wslu: gives `xdg-open` a browser to reach, via `wslview`. Without it every
-#   external link in the app silently does nothing. It does NOT fix "reveal in
-#   file manager", which has no working path under WSL at all — see ADR-0044.
+# ── The one package ──────────────────────────────────────────────────────────
+# **libfuse2, and nothing else.** An AppImage mounts itself with FUSE 2, and
+# Ubuntu has shipped only FUSE 3 since 23.10, so without it the binary we are
+# about to place will not start. The package is `libfuse2t64` on 24.04 and
+# `libfuse2` before it. **Never `apt install fuse`** — that removes `fuse3` and
+# breaks the distribution.
 #
-# Debian-family gets this automatically because the package names are knowable
-# there. Everything else is checked and told, because `wslu` is a COPR add on
-# Fedora and an AUR build on Arch, so there is no one command to run and
-# guessing one would be worse than saying so.
+# **`wslu` used to be installed here and is not any more** (v0.40.1 aborted an
+# install on `E: Unable to locate package wslu`, on an image with `universe`
+# disabled). It was there to give `xdg-open` a browser through `wslview`, and it
+# was the wrong call twice over: upstream has discontinued and archived it, and
+# the crate behind Tauri's link opening already has its own WSL path —
+# `powershell.exe -NoProfile -Command "Start-Process ..."`, with `wslview` only
+# as a fallback if it happens to be there. So links work without it.
+#
+# The general rule this cost us: **something optional must never be able to
+# abort the install.** The only package left is one the app genuinely cannot run
+# without, which is why this one is allowed to be fatal.
 have_fuse2() { ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; }
 
-if . /etc/os-release 2>/dev/null && [[ "${ID:-} ${ID_LIKE:-}" == *debian* || "${ID:-}" == ubuntu ]]; then
-	WANTED=()
-	have_fuse2 || WANTED+=("$(apt-cache show libfuse2t64 >/dev/null 2>&1 && echo libfuse2t64 || echo libfuse2)")
-	command -v wslview >/dev/null 2>&1 || WANTED+=(wslu)
-	if [ ${#WANTED[@]} -gt 0 ]; then
-		say "Installing ${WANTED[*]}"
-		# Said out loud before the prompt appears, because a bare `[sudo] password
-		# for you:` in a console window the user did not open themselves is
-		# indistinguishable from something going wrong.
-		if ! sudo -n true 2>/dev/null; then
-			printf 'This needs your password inside the distribution (sudo).\n'
-		fi
-		sudo apt-get update -qq
-		sudo apt-get install -y "${WANTED[@]}"
+if have_fuse2; then
+	say "FUSE 2 is already installed"
+elif . /etc/os-release 2>/dev/null && [[ "${ID:-} ${ID_LIKE:-}" == *debian* || "${ID:-}" == ubuntu ]]; then
+	PKG="$(apt-cache show libfuse2t64 >/dev/null 2>&1 && echo libfuse2t64 || echo libfuse2)"
+	say "Installing $PKG"
+	# Said out loud before the prompt appears, because a bare `[sudo] password
+	# for you:` in a console window the user did not open themselves is
+	# indistinguishable from something going wrong.
+	if ! sudo -n true 2>/dev/null; then
+		printf 'This needs your password inside the distribution (sudo).\n'
 	fi
+	# A failing refresh is not by itself a reason to stop: the package may well
+	# be in the cache already, and `install` below is the real test.
+	sudo apt-get update -qq || true
+	sudo apt-get install -y "$PKG" || die "could not install $PKG.
+factorai's AppImage needs the FUSE 2 runtime to start. Install it by hand:
+  sudo apt-get install -y $PKG
+then run this installer again. Do NOT install the package called 'fuse' --
+that removes fuse3 and breaks the distribution."
 else
-	MISSING=()
-	have_fuse2 || MISSING+=("libfuse2 (FUSE 2 runtime — NOT the 'fuse' package)")
-	command -v wslview >/dev/null 2>&1 || MISSING+=("wslu (for opening links in your Windows browser)")
-	if [ ${#MISSING[@]} -gt 0 ]; then
-		printf '\nThis distribution (%s) needs these installed first:\n' "${ID:-unknown}" >&2
-		printf '  - %s\n' "${MISSING[@]}" >&2
-		die "install them with your package manager, then run this installer again"
-	fi
+	die "this distribution (${ID:-unknown}) does not have the FUSE 2 runtime.
+factorai's AppImage needs it to start. Install your distribution's libfuse2
+package -- NOT the one called 'fuse', which removes fuse3 -- then run this
+installer again."
 fi
 
 # ── The binary ───────────────────────────────────────────────────────────────

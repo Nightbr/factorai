@@ -87,8 +87,9 @@ in exchange for a native title bar.
   that launcher only — never globally, so Linux users keep acceleration.
 - **Reveal in file manager does not work**, and is a documented limitation rather
   than a fix. There is no `FileManager1` on that bus, and `xdg-open` on a
-  directory cannot bring up Explorer with an item selected. `wslu` gives external
-  links a browser; it gives reveal nothing.
+  directory cannot bring up Explorer with an item selected. External links are
+  fine — the crate behind Tauri's link opening has its own WSL path
+  (`powershell.exe … Start-Process`) — but nothing there helps reveal.
 - **A project kept on the Windows drive gets a watcher that never fires.** Not
   fixable from inside the app — see `windowsFilesystem` below.
 - Windows chrome is WSLg's, not Windows'. This is a developer tool; the people
