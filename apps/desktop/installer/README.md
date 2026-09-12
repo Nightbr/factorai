@@ -28,10 +28,17 @@ version state worth migrating.
 
 ## Three details that are load-bearing
 
-**The `.desktop` file is the entire Windows integration.** WSLg enumerates
-`Type=Application` entries and its RDP plugin creates a Start-menu shortcut for
-each. Nothing is registered on the Windows side; writing that file *is*
-appearing in the Start menu.
+**The `.desktop` file is the entire Windows integration, and it must live in a
+system directory.** WSLg enumerates `Type=Application` entries and its RDP
+plugin creates a Start-menu shortcut for each — but it reads
+`/usr/share/applications`, `/usr/local/share/applications`, and the snap and
+flatpak export directories, and **not** `~/.local/share/applications`. v0.40.2
+wrote it to the home directory, where XDG says it belongs, and nothing appeared
+in the Start menu. It goes to `/usr/local/share/applications` now, which is the
+FHS location for locally installed software; that needs root, so the entry is
+the one thing in this installer that can still ask for a password on a machine
+that already has FUSE 2. Failing it is not fatal — the closing message then
+says how to launch the app and how to add the entry later.
 
 **The in-distro script runs in its own console window, not captured.** The
 installer uses `ExecWait` rather than `nsExec`, because `sudo apt-get` needs a

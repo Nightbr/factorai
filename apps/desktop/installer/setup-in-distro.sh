@@ -155,14 +155,22 @@ ICON_REL="usr/share/icons/hicolor/128x128/apps/factorai.png"
 # creates a Windows Start-menu shortcut for each. So this file *is* the
 # integration; there is nothing to register on the Windows side.
 #
-# **The two WebKit variables are the reason this is not a one-line Exec.** WSLg
+# **It has to be a system directory, and v0.40.2 put it in the user's home.**
+# WSLg looks in `/usr/share/applications`, `/usr/local/share/applications`, and
+# the snap and flatpak export directories — and **not** in
+# `~/.local/share/applications`, where the XDG spec would put it and where this
+# script wrote it. The install reported success and nothing appeared in the
+# Start menu. `/usr/local` is the right one of the four: it is where the FHS
+# puts software the local administrator installed, which is exactly what this is.
+#
+# **The two WebKit variables are the reason `Exec=` is not one word.** WSLg
 # renders through a virtual GPU on a software GL path, and WebKitGTK's
 # accelerated compositing misbehaves there — the symptom is a blank white
 # window. They are set on this launcher only, never globally, so a native Linux
 # install keeps acceleration (ADR-0044).
 say "Writing the Start-menu entry"
-cat > "$DESKTOP_DIR/factorai.desktop" <<DESKTOP
-[Desktop Entry]
+
+DESKTOP_BODY="[Desktop Entry]
 Type=Application
 Name=factorai
 Comment=Agentic Development Environment (ADE) for the AI era
@@ -170,17 +178,63 @@ Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 $APP
 Icon=factorai
 Terminal=false
 Categories=Development;IDE;
-StartupWMClass=factorai
-DESKTOP
+StartupWMClass=factorai"
+
+# Written to the home copy first regardless: it costs nothing, it is where a
+# real Linux desktop session inside this distribution would look, and it gives
+# the system copy below something to be a copy *of*.
+printf '%s\n' "$DESKTOP_BODY" > "$DESKTOP_DIR/factorai.desktop"
 update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
 
-say "factorai $VERSION is installed."
-cat <<'DONE'
+# The system copy is the one WSLg reads, and it needs root. **A failure here is
+# not fatal** — the app is installed and runnable either way, and the closing
+# message says how to launch it — but it is the difference between an icon in
+# the Start menu and a command to remember, so it is worth the prompt.
+SYS_APPS=/usr/local/share/applications
+SYS_ICONS=/usr/local/share/icons/hicolor/128x128/apps
+START_MENU=yes
+if ! sudo -n true 2>/dev/null; then
+	printf 'Adding factorai to the Start menu needs your password (sudo).\n'
+fi
+if sudo mkdir -p "$SYS_APPS" "$SYS_ICONS" 2>/dev/null \
+	&& printf '%s\n' "$DESKTOP_BODY" | sudo tee "$SYS_APPS/factorai.desktop" >/dev/null; then
+	sudo chmod 0644 "$SYS_APPS/factorai.desktop"
+	if [ -f "$ICON_DIR/factorai.png" ]; then
+		sudo cp "$ICON_DIR/factorai.png" "$SYS_ICONS/factorai.png" || true
+		sudo chmod 0644 "$SYS_ICONS/factorai.png" 2>/dev/null || true
+	fi
+	sudo update-desktop-database "$SYS_APPS" >/dev/null 2>&1 || true
+else
+	START_MENU=no
+fi
 
-  It is in your Start menu, under the name of this distribution.
+say "factorai $VERSION is installed."
+if [ "$START_MENU" = yes ]; then
+	cat <<'DONE'
+
+  It is in your Start menu, under the name of this distribution. If it is not
+  there yet, run `wsl --shutdown` in PowerShell and open the distribution
+  again -- WSLg builds that list when the distribution starts.
+
+DONE
+else
+	cat <<DONE
+
+  It is NOT in your Start menu: that needs a file under /usr/local, and the
+  step that writes it did not get root. Add it later with:
+
+    sudo cp ~/.local/share/applications/factorai.desktop $SYS_APPS/
+
+  Until then, start factorai from PowerShell with:
+
+    wsl -- $APP
+
+DONE
+fi
+cat <<'DONE'
   The app updates itself from here; you will not need this installer again.
 
-  Keep your projects inside this distribution, under ~ — a folder on the
+  Keep your projects inside this distribution, under ~ -- a folder on the
   Windows drive (/mnt/c/...) works, but the session list will not update on
   its own there and git is slow.
 DONE

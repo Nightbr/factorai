@@ -92,6 +92,20 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   by-hand command in the error, and a loud warning never to install the package
   called `fuse`, which removes `fuse3` and breaks the distribution.
 
+  **v0.40.3 put the `.desktop` file where WSLg actually looks.** v0.40.2
+  installed cleanly and nothing appeared in the Start menu. WSLg enumerates
+  `.desktop` entries from `/usr/share/applications`,
+  `/usr/local/share/applications` and the snap and flatpak export directories —
+  and **not** from `~/.local/share/applications`, which is where XDG says a
+  user-installed entry belongs and where this script wrote it. The claim that
+  "writing that file *is* appearing in the Start menu" was right about the
+  mechanism and wrong about the path, and it was never verified because nothing
+  on Linux or in CI can verify it. It goes to `/usr/local/share/applications`
+  now — the FHS location for locally installed software — which makes the
+  Start-menu entry the only step needing root on a machine that already has
+  FUSE 2, and a failure there is not fatal: the app is installed either way and
+  the closing message says how to launch it and how to add the entry later.
+
   **Shipped alongside:** `apps/desktop/installer/` (an NSIS bootstrapper built with `makensis`
   on the Linux runner, and the in-distro script it hands over to), an `installer` job in
   `release.yml` that blocks `publish`, and the floor written down — Windows 10 21H2 (build

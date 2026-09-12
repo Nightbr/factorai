@@ -81,6 +81,12 @@ in exchange for a native title bar.
 
 ### What option 4 costs
 
+- **The Start-menu entry has to be a system file.** WSLg enumerates `.desktop`
+  entries from `/usr/share/applications`, `/usr/local/share/applications` and
+  the snap and flatpak export directories — never `~/.local/share/applications`.
+  So the one part of this install that is not confined to the user's home is a
+  file in `/usr/local/share/applications`, and it is the only step that needs
+  root on a machine that already has FUSE 2.
 - **WSLg renders through a virtual GPU on a software GL path**, and WebKitGTK's
   accelerated compositing misbehaves there. The installed `.desktop` entry sets
   `WEBKIT_DISABLE_DMABUF_RENDERER=1` and `WEBKIT_DISABLE_COMPOSITING_MODE=1` for
