@@ -1528,3 +1528,134 @@ ad-hoc `codesign` step remains what item 36 says it is.
 of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
 user has granted. It does not break the update path the way losing the minisign key would, so it is
 one notch less fatal — but it is not a secret to regenerate casually.
+
+## 53. SOPS — decrypt a secrets file in the viewer, edit it, encrypt it back
+
+Asked for 2026-09-12. Nothing exists yet: `sops` appears nowhere in the tree, and the only
+"encrypted" in the viewer is pdf.js asking for a PDF password.
+
+**The shape, in one line.** Open a SOPS-encrypted file and the footer offers **Decrypt** in the
+slot the markdown **Preview** toggle already occupies; pressing it swaps the pane to the plaintext,
+editable; **Save encrypts and writes the encrypted file**, and the pane returns to showing the
+ciphertext. The encrypted file is what is on disk at every instant — the plaintext exists only in
+the renderer's buffer.
+
+**Why it belongs here at all.** `.env`-shaped secrets are the one file kind a project keeps that
+the tree can already show but nobody can usefully read, and the workaround today is a terminal
+running `sops` in `$EDITOR` — a second editor inside an app whose whole premise is that the
+session, not the file, is the unit of work. It is also the first file kind where *not* writing
+something to disk is the feature.
+
+### The hard constraint: plaintext never reaches disk, an index, or a database
+
+This is the part to get right first, because three existing subsystems would each happily persist
+it:
+
+- **`file_drafts`** (item 2 slice 2, ADR-0040) persists unsaved buffers to SQLite so they survive
+  a quit. A decrypted secret must be excluded from that table by path — an exclusion the draft
+  store has to carry *before* slice 2 lands, or the two ship in the wrong order and the first
+  quit writes the secret out. `store/draftStore.ts` is in memory today, which is why this is
+  cheap now and expensive later.
+- **The FTS5 index** (`services/indexer.rs`) and project-wide search (item 13). Only the
+  ciphertext is ever on disk, so this holds as long as nothing else writes the plaintext out.
+- **The diff and git surfaces.** `DiffView` diffs what is on disk; it must keep doing exactly
+  that and never be handed the decrypted buffer.
+
+Decrypt reads to memory (`sops` writes plaintext to stdout) and encrypt feeds plaintext to
+`sops` on **stdin**, so there is no temp file with secrets in it at any point — the atomic-rename
+dance in `services::files::write_file` is for the *ciphertext*, which is the only thing we write.
+
+### Detection
+
+A SOPS file is an otherwise ordinary YAML / JSON / dotenv / INI file carrying a `sops` metadata
+block (`sops.mac`, `sops.version`, and one of `sops.age` / `sops.pgp` / `sops.kms` / …), or the
+`binary` output format, which is JSON with the ciphertext under `data`. Decide it in Rust so
+there is one answer: a new field on `FileContents` alongside `lossy`, hand-mirrored into
+`packages/types` in the same commit (no code generation — `01-architecture.md`). Detection is a
+parse of the head of the file, not a filename rule: `.enc.yaml`, `secrets.yaml` and
+`.env.production` are all conventions, none of them load-bearing.
+
+An encrypted file is **read-only while encrypted** — editing ciphertext invalidates the MAC, so
+this is a fifth read-only reason in the footer beside binary / truncated / lossy / plan, and it
+reads `encrypted (SOPS)`.
+
+### Finding and running `sops`
+
+`sops` is resolved through **`services::shell_path`**, not `Command::new("sops")` against the
+process environment. A GUI app has launchd's or the session manager's `PATH`, and `sops` installed
+by Homebrew, mise or `go install` is in none of it — this is the exact failure that module exists
+for, and getting it wrong produces "works when I run the binary directly" (see the
+`backend-conventions` skill). The AppImage trap applies too: the release build's env leaks into
+children and must be stripped, same as for `pnpm dev` and `python3`.
+
+When `sops` is absent the control still renders, disabled, saying so, with the install hint — not
+a button that fails at click time.
+
+**Key material is the user's, and we hold none of it.** `SOPS_AGE_KEY_FILE`, the GPG agent, AWS /
+GCP / Azure credentials — all of it is whatever the child process inherits. factorai never reads a
+key, never caches one, and never prompts for a passphrase.
+
+### Errors, forwarded and readable
+
+The whole point of the ask. `sops` fails on stderr with prose that is nearly right already; the
+job is to classify the few cases that have a human meaning and to show the rest verbatim rather
+than swallowing it:
+
+- **Not authorized** — `Failed to get the data key required to decrypt the SOPS file` /
+  `no key could decrypt the data`. Say: none of your keys can decrypt this file, and name the
+  recipients the metadata lists, since "ask whoever holds one of these" is the actual next step.
+- **No key material configured** — no age key file, no GPG agent, no cloud credentials. Different
+  message, different fix, and easy to confuse with the one above.
+- **A cloud KMS refusal** (expired session, wrong profile, no network) — forward the provider's
+  own text; we cannot improve on it and paraphrasing it loses the request id.
+- **MAC mismatch / corrupt file** — the file was hand-edited or badly merged. Refuse and say so;
+  do not offer to save over it.
+- **`sops` missing, or too old** — one message, at the control, before anything is attempted.
+
+Rendering: the existing banner idiom (the Reload / Show diff / dismiss row) for a failure that
+blocks the pane, and the footer's `viewer-save-error` span for a failed save. **No new toast** —
+that primitive is item 7 and this item must not grow a private one.
+
+### The encrypt path is an open decision, and needs an ADR
+
+Re-encrypting an *existing* file has to keep that file's own recipients, and there are two ways:
+
+1. `sops encrypt --filename-override <original path>` with plaintext on stdin, which matches the
+   creation rules in `.sops.yaml` for that path. Simple, but it re-derives recipients from
+   configuration rather than from the file, so a file encrypted for someone not in the current
+   `.sops.yaml` silently loses them.
+2. Drive `sops edit` with `EDITOR` pointed at a tiny helper that dumps our buffer into the
+   temporary file SOPS itself manages, which is how SOPS keeps the original's key set. Faithful,
+   but it puts plaintext in a file SOPS chose the location of, which is the constraint above.
+
+Pick one, verify it against a file whose recipients differ from `.sops.yaml`, and write it up —
+"we re-encrypt this way and this is what it costs" is exactly an ADR.
+
+### Slices
+
+**Slice 1 — see that it is encrypted.** Detection in `services/files.rs`, the `FileContents` field
+and its TS mirror, the `encrypted (SOPS)` read-only reason, and the footer control rendered but
+inert (disabled with a reason when `sops` is missing). Rust tests over fixtures: age-encrypted
+YAML, JSON, dotenv, binary, a plain YAML file with a key called `sops`, and a truncated file.
+
+**Slice 2 — decrypt.** `commands/sops.rs::sops_decrypt(path) -> String` over
+`services/sops.rs`, `shell_path` resolution, the error classification above, the pane swap, and
+the draft-store exclusion so nothing persists the buffer. The decrypted buffer is dropped when the
+tab closes, when the project or session switches, and on Re-lock. **No idle timeout in v1** —
+name it here so it is a decision rather than an omission.
+
+**Slice 3 — encrypt on save.** `sops_encrypt(path, plaintext) -> FileContents`, plaintext on
+stdin, the chosen path from the ADR, Save relabelled **Encrypt & save**, and the return to the
+ciphertext view once it lands. Watcher behaviour for "the encrypted file changed on disk while you
+were editing the plaintext" is the existing changed-on-disk banner with its own words: there is no
+useful diff to show, so the choice is Reload (losing the buffer) or overwrite-with-confirm.
+
+**Testing note.** CI has no `sops` and no key. The Rust tests generate an age key into a temp dir
+and skip with a clear message when the binary is absent; the smoke test drives the mocked bridge
+(`tests/smoke`) and never shells out. Add a `manual-qa` pass for the real thing — a real key, a
+real refusal, and a save that round-trips.
+
+Specs when it lands: a new **F27** in [`05-features.md`](../05-features.md), a `sops` section in
+[`03-backend-rust.md`](../03-backend-rust.md), the amended `FileContents` in
+[`02-data-model.md`](../02-data-model.md), and the re-encryption ADR — each in the commit that
+changes the thing it describes.
