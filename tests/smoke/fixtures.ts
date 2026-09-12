@@ -854,6 +854,70 @@ export function fixtureFileTreeInTwoCheckouts(): TestFixture {
 }
 
 /**
+ * A file tree in **two projects**, one session each (F7, ADR-0043).
+ *
+ * The strip is per checkout and `?file=` rides across a navigation, so the one
+ * thing a single project cannot show is what happens when the subject changes
+ * outright: the file the last project was reading is in no tree this one has.
+ */
+export function fixtureFileTreeInTwoProjects(): TestFixture {
+	const base = fixtureWithFileTree();
+	const foo = base.projects?.[0];
+	if (!foo) throw new Error('base fixture has no project');
+
+	const zulu: Project = {
+		id: ZULU_ID,
+		realPath: '/home/alice/code/zulu',
+		displayName: 'zulu',
+		lastSessionAt: Date.now() - 30_000,
+		sessionCount: 1,
+		sortOrder: 1,
+		missing: false,
+		profileId: null,
+		profileName: null,
+	};
+	const zuluRoot = zulu.realPath;
+	const zuluSession: SessionSummary = {
+		id: 'zulu-session-001',
+		projectId: zulu.id,
+		title: 'Port the importer',
+		createdAt: Date.now() - 600_000,
+		updatedAt: Date.now() - 30_000,
+		turnCount: 7,
+		cwd: zuluRoot,
+		subagentOf: null,
+		worktree: null,
+		lastCwd: null,
+		touchedPaths: [],
+		routineId: null,
+		routineName: null,
+		routineStartedAt: null,
+		pinned: false,
+	};
+
+	return {
+		...base,
+		projects: [foo, zulu],
+		sessionsByProject: { ...base.sessionsByProject, [zulu.id]: [zuluSession] },
+		sessionPages: {
+			...base.sessionPages,
+			[zuluSession.id]: { id: zuluSession.id, events: [], offset: 0, limit: 100, total: 0 },
+		},
+		dirListings: {
+			...base.dirListings,
+			[zuluRoot]: listing([entry(zuluRoot, 'importer.ts'), entry(zuluRoot, 'zulu.toml')]),
+		},
+		files: {
+			...base.files,
+			[`${zuluRoot}/importer.ts`]: contents(
+				`${zuluRoot}/importer.ts`,
+				'export const importer = true;\n',
+			),
+		},
+	};
+}
+
+/**
  * The file tree, and **two sessions to switch between** (F7).
  *
  * What a session switch can break is invisible in a project with one session:

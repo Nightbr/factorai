@@ -24,3 +24,17 @@ export function relativeToRoot(path: string, root: string): string {
 	if (path === base) return '.';
 	return path.startsWith(`${base}/`) ? path.slice(base.length + 1) : path;
 }
+
+/**
+ * Is `path` inside `root`, as paths rather than as strings?
+ *
+ * The separator check is what makes it a path test: `/repo-old/a.ts` starts
+ * with `/repo` and is not in it, which a bare `startsWith` would get wrong —
+ * and would get wrong in the direction that shows one checkout's files under
+ * another's name. A root is inside itself, the way `git -C` treats it.
+ */
+export function isWithin(path: string, root: string): boolean {
+	if (path === root) return true;
+	const base = root.endsWith('/') ? root : `${root}/`;
+	return path.startsWith(base);
+}

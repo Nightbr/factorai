@@ -5,6 +5,7 @@ import { ShellDock } from '@components/terminal/ShellDock';
 import { ViewerPane } from '@components/viewer/ViewerPane';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useFileViewer } from '@hooks/useFileViewer';
+import { isWithin } from '@lib/paths';
 import { isMacOS } from '@lib/platform';
 import {
 	clampViewerWidth,
@@ -19,7 +20,7 @@ import {
 	SIDEBAR_RAIL_WIDTH,
 	useSidebarStore,
 } from '@store/sidebarStore';
-import { tabsFor, useViewerStore } from '@store/viewerStore';
+import { tabsFor, type ViewerSubject, useViewerStore, viewerHandoff } from '@store/viewerStore';
 import { PanelResizer } from './PanelResizer';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -53,7 +54,7 @@ export function AppShell({ children }: AppShellProps) {
 	// **Which checkout the open files belong to** (F21, ADR-0037). Set from here
 	// rather than from the panel because the panel can be closed, and a file
 	// opened from a terminal link with no panel showing still belongs to a tree.
-	const { root } = useActiveCheckout();
+	const { projectId, root } = useActiveCheckout();
 	useEffect(() => {
 		setCheckout(root ?? null);
 	}, [root, setCheckout]);
@@ -90,20 +91,12 @@ export function AppShell({ children }: AppShellProps) {
 	// second has to win before the first sees a path belonging to the checkout
 	// we just left (ADR-0042).
 	//
-	// **Re-seed `?file=` from this checkout's history** on launch and whenever
-	// the checkout changes. `?file=` survives a navigation now — the root
-	// route's retain middleware, ADR-0042 — but it cannot survive a *switch of
-	// subject*: a session working in a linked worktree has its own strip
-	// (F21), and the file the last one was reading is not in its tree. On
-	// launch a URL that already names a file wins — a deep link, a terminal
-	// click and the IDE bridge all arrive that way and must not be overwritten
-	// by history.
-	//
-	// A checkout with no history of its own leaves whatever is showing alone
-	// rather than closing the viewer. `root` resolves in two steps for a session
-	// in a worktree — the project's folder first, the worktree once
-	// `gitWorktrees` answers — so closing here would shut a deep link the moment
-	// the second step landed.
+	// **What the pane shows when the subject changes** is `viewerHandoff`, which
+	// is where that rule is written and tested: restore this checkout's own last
+	// file, close a file carried in from another project, or leave what is
+	// showing alone (ADR-0043). `?file=` survives a navigation — the root route's
+	// retain middleware, ADR-0042 — but a project switch is not a navigation
+	// inside one subject.
 	//
 	// **The strip always holds the file that is showing.** `?file=` can arrive
 	// without passing through `open()` — a reload restores it from the URL, and
@@ -113,7 +106,7 @@ export function AppShell({ children }: AppShellProps) {
 	// for it, which reads as a strip that has lost track of what you are looking
 	// at. Found in the dev app, after a reload (ADR-0037). A preview tab,
 	// because nothing about restoring a URL says the file was pinned.
-	const seen = useRef<string | null>(null);
+	const seen = useRef<ViewerSubject | null>(null);
 	useEffect(() => {
 		if (!root) return;
 		const state = useViewerStore.getState();
@@ -122,26 +115,34 @@ export function AppShell({ children }: AppShellProps) {
 		// exactly what it is here to prevent.
 		if (state.checkout !== root) return;
 
-		const first = seen.current === null;
-		const switched = !first && seen.current !== root;
-		seen.current = root;
+		const previous = seen.current;
+		const next: ViewerSubject = { projectId, root };
+		seen.current = next;
 
-		if (switched || (first && !viewer.path)) {
-			const last = state.activeByCheckout[root];
-			if (last && last !== viewer.path) {
-				const tab = tabsFor(state, root).find((t) => t.path === last);
-				// Restored **as it was left**, preview included: reopening it as a
-				// pinned tab would silently promote it, and the next click in the
-				// tree would then append beside it instead of replacing it.
-				viewer.open(last, { diff: tab?.diff ?? undefined, preview: tab?.preview });
-				return;
-			}
+		const handoff = viewerHandoff({
+			previous,
+			next,
+			showing: viewer.path,
+			last: state.activeByCheckout[root],
+			within: isWithin,
+		});
+		if (handoff.kind === 'close') {
+			viewer.close();
+			return;
+		}
+		if (handoff.kind === 'restore') {
+			const tab = tabsFor(state, root).find((t) => t.path === handoff.path);
+			// Restored **as it was left**, preview included: reopening it as a
+			// pinned tab would silently promote it, and the next click in the tree
+			// would then append beside it instead of replacing it.
+			viewer.open(handoff.path, { diff: tab?.diff ?? undefined, preview: tab?.preview });
+			return;
 		}
 
 		if (!viewer.path) return;
 		if (tabsFor(state, root).some((t) => t.path === viewer.path)) return;
 		state.openTab(viewer.path, { preview: true, diff: viewer.diff });
-	}, [root, viewer.path, viewer.diff, viewer.open]);
+	}, [projectId, root, viewer.path, viewer.diff, viewer.open, viewer.close]);
 
 	// **The stored width is clamped on every render, not only on drag.** A width
 	// dragged wide in a big window, or restored from a previous launch, would

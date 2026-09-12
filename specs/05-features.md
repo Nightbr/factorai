@@ -1119,11 +1119,17 @@ host-agnostic, which is what makes three hosts possible at all.
   which never runs a middleware at all.
 - **A change of checkout re-seeds it instead** (F21). The strip is per checkout,
   so when a session in a linked worktree comes to the front the pane shows
-  *that* checkout's last file, as it was left, preview included. A checkout with
-  no history of its own leaves whatever is showing alone rather than closing the
-  viewer: `root` resolves in two steps for a session in a worktree — the
-  project's folder, then the worktree once `gitWorktrees` answers — and closing
-  on the second step would shut a deep link a frame after it opened.
+  *that* checkout's last file, as it was left, preview included.
+- **A change of project closes what it cannot show**
+  ([ADR-0043](../docs/adr/0043-a-project-switch-does-not-carry-the-open-file.md)).
+  The viewer is isolated per project: switching to a project with no file of its
+  own on record leaves the pane empty rather than showing the file the last
+  project was reading, and that path is never adopted into the new project's
+  strip. Only a change of *project* does this — a change of checkout inside one
+  project leaves what is showing alone, because `root` resolves in two steps for
+  a session in a worktree (the project's folder, then the worktree once
+  `gitWorktrees` answers) and closing on the second step would shut a deep link a
+  frame after it opened.
 - **The modal is the expand, not the default** (ADR-0037). It is reached from
   the pane's header and from nowhere else, for a file too wide to read in a
   column, and closing it puts the file back in the pane rather than closing it.

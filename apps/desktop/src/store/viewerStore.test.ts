@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	nextActivePath,
 	type ViewerTab,
+	viewerHandoff,
 	withOpenTab,
 	withoutTab,
 	withPinnedTab,
@@ -81,5 +82,105 @@ describe('nextActivePath', () => {
 
 	it('closes the viewer when the only tab closes', () => {
 		expect(nextActivePath([tab('a')], 'a', 'a')).toBeNull();
+	});
+});
+
+describe('viewerHandoff', () => {
+	const within = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+	const factorai = { projectId: 'p1', root: '/dev/factorai' };
+	const panora = { projectId: 'p2', root: '/dev/panora' };
+	const handoff = (args: Parameters<typeof viewerHandoff>[0]) => viewerHandoff(args);
+
+	it('closes a file carried in from another project', () => {
+		expect(
+			handoff({
+				previous: panora,
+				next: factorai,
+				showing: '/dev/panora/apps/backoffice-api/src/health.module.ts',
+				last: undefined,
+				within,
+			}),
+		).toEqual({ kind: 'close' });
+	});
+
+	it('restores the new project own last file ahead of the carried one', () => {
+		expect(
+			handoff({
+				previous: panora,
+				next: factorai,
+				showing: '/dev/panora/a.ts',
+				last: '/dev/factorai/b.ts',
+				within,
+			}),
+		).toEqual({ kind: 'restore', path: '/dev/factorai/b.ts' });
+	});
+
+	it('keeps a deep link into the checkout the project just resolved to', () => {
+		// The two-step resolve for a session in a worktree: same project, new
+		// root, and the file is in the tree that arrived.
+		expect(
+			handoff({
+				previous: { projectId: 'p1', root: '/dev/factorai' },
+				next: { projectId: 'p1', root: '/dev/factorai-wt' },
+				showing: '/dev/factorai-wt/a.ts',
+				last: undefined,
+				within,
+			}),
+		).toEqual({ kind: 'keep' });
+	});
+
+	it('keeps a file from the main checkout when only the checkout changed', () => {
+		expect(
+			handoff({
+				previous: { projectId: 'p1', root: '/dev/factorai' },
+				next: { projectId: 'p1', root: '/dev/factorai-wt' },
+				showing: '/dev/factorai/a.ts',
+				last: undefined,
+				within,
+			}),
+		).toEqual({ kind: 'keep' });
+	});
+
+	it('keeps a deep link on the first resolve of a run', () => {
+		expect(
+			handoff({
+				previous: null,
+				next: factorai,
+				showing: '/dev/factorai/a.ts',
+				last: '/dev/factorai/b.ts',
+				within,
+			}),
+		).toEqual({ kind: 'keep' });
+	});
+
+	it('restores on launch when the URL names nothing', () => {
+		expect(
+			handoff({
+				previous: null,
+				next: factorai,
+				showing: null,
+				last: '/dev/factorai/b.ts',
+				within,
+			}),
+		).toEqual({ kind: 'restore', path: '/dev/factorai/b.ts' });
+	});
+
+	it('does not reopen the file a close just cleared', () => {
+		// Same subject, nothing showing: the effect re-ran because `?file=` moved.
+		expect(
+			handoff({
+				previous: factorai,
+				next: factorai,
+				showing: null,
+				last: '/dev/factorai/b.ts',
+				within,
+			}),
+		).toEqual({ kind: 'keep' });
+	});
+
+	it('closes nothing when the project switched with an empty viewer', () => {
+		expect(
+			handoff({ previous: panora, next: factorai, showing: null, last: undefined, within }),
+		).toEqual({ kind: 'keep' });
 	});
 });

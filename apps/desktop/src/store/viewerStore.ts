@@ -88,6 +88,66 @@ export function nextActivePath(
 	return remaining[Math.min(at, remaining.length - 1)].path;
 }
 
+/** Which checkout the viewer is showing, as the two things that identify one:
+ *  the project the route is on, and the checkout that project resolved to. */
+export interface ViewerSubject {
+	projectId: string | undefined;
+	root: string;
+}
+
+/** What the pane should do when the subject in front changes. Not exported:
+ *  every caller reads it off `viewerHandoff`'s return. */
+type ViewerHandoff = { kind: 'keep' } | { kind: 'close' } | { kind: 'restore'; path: string };
+
+/**
+ * What the viewer shows when the subject in front changes (F7, F21, ADR-0043).
+ *
+ * `?file=` rides across a navigation (ADR-0042), which is right while the
+ * subject holds and wrong the moment it does not: the strip is per checkout,
+ * and a path from another project is not in this one's tree. Three answers,
+ * first match wins:
+ *
+ * - **restore** — this checkout has a file of its own on record. It wins over
+ *   everything, including a carried path, on a switch and on a cold launch with
+ *   nothing in the URL.
+ * - **close** — the project changed and what is showing is not inside the new
+ *   checkout. That path belongs to the strip we just left; carrying it would
+ *   show one project's file over another project's tree, and the adopt rule in
+ *   `AppShell` would then write it into this checkout's strip.
+ * - **keep** — anything else, and deliberately the answer for a *checkout*
+ *   change inside one project. `root` resolves in two steps for a session in a
+ *   worktree — the project's folder first, the worktree once `gitWorktrees`
+ *   answers — so closing on that step would shut a deep link a frame after it
+ *   opened. A null `previous` is the first resolve of a run, which is that same
+ *   step seen from a cold start.
+ */
+export function viewerHandoff(args: {
+	previous: ViewerSubject | null;
+	next: ViewerSubject;
+	/** The file in `?file=`, which has ridden here from wherever it was open. */
+	showing: string | null;
+	/** `activeByCheckout` for the checkout being switched to. */
+	last: string | undefined;
+	/** `isWithin` from `@lib/paths`, passed so this stays free of imports it
+	 *  would otherwise share with the tree — and so a test can name its own. */
+	within: (path: string, root: string) => boolean;
+}): ViewerHandoff {
+	const { previous, next, showing, last, within } = args;
+	// The first resolve of a run. A URL that already names a file wins — a deep
+	// link, a terminal click and the IDE bridge all arrive that way, and must not
+	// be overwritten by history.
+	if (previous === null)
+		return !showing && last ? { kind: 'restore', path: last } : { kind: 'keep' };
+	// Same checkout: the effect re-ran because `?file=` moved, and this rule has
+	// no opinion about that. Restoring here would reopen the viewer the instant
+	// you closed it, which is what ADR-0042 guarded with a `Set` of checkouts.
+	if (previous.root === next.root) return { kind: 'keep' };
+	if (last && last !== showing) return { kind: 'restore', path: last };
+	if (!showing) return { kind: 'keep' };
+	if (previous.projectId === next.projectId) return { kind: 'keep' };
+	return within(showing, next.root) ? { kind: 'keep' } : { kind: 'close' };
+}
+
 interface ViewerState {
 	/**
 	 * The checkout the open files belong to (F21) — the store's actions read it

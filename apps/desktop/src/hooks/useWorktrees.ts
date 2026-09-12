@@ -1,5 +1,6 @@
 import type { GitWorktree } from '@factorai/types';
 import { useQuery } from '@tanstack/react-query';
+import { isWithin } from '@lib/paths';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 
@@ -58,20 +59,6 @@ export function checkoutContaining(
 	return worktrees
 		.filter((w) => w.exists && isWithin(path, w.path))
 		.sort((a, b) => b.path.length - a.path.length)[0];
-}
-
-/**
- * Is `path` inside `root`, as paths rather than as strings?
- *
- * The separator check is what makes it a path test: `/repo-old/a.ts` starts with
- * `/repo` and is not in it, which a bare `startsWith` would get wrong — and
- * would get wrong in the direction that shows one checkout's files under
- * another's name.
- */
-function isWithin(path: string, root: string): boolean {
-	if (path === root) return true;
-	const base = root.endsWith('/') ? root : `${root}/`;
-	return path.startsWith(base);
 }
 
 /**

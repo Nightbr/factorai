@@ -1,7 +1,9 @@
 import { type Page, expect, test } from '@playwright/test';
 import {
 	FOO_ID,
+	ZULU_ID,
 	fixtureFileTreeInTwoCheckouts,
+	fixtureFileTreeInTwoProjects,
 	fixtureFileTreeTwoSessions,
 	fixtureWithFileTree,
 	installMockBridge,
@@ -198,6 +200,36 @@ test.describe('file viewer', () => {
 		await expect(page).toHaveURL(/sessions\/session-uuid-002/);
 		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
 		expect(page.url()).toContain(`file=${encodeURIComponent(SWITCHER)}`);
+	});
+
+	test('@smoke switching project leaves that project\u2019s own viewer, not the last one\u2019s', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureFileTreeInTwoProjects());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/README\.md/);
+
+		// **A project that has read nothing shows nothing** (ADR-0043). `?file=`
+		// rides across a navigation, and a path in `foo` is in no tree `zulu`
+		// has — it would be one project's file over another project's tree.
+		await page.locator('aside').first().getByText('zulu').click();
+		await expect(page).toHaveURL(new RegExp(`projects/${ZULU_ID}`));
+		await expect(viewer).toBeHidden();
+		expect(page.url()).not.toContain('file=');
+
+		// And it is not adopted into this project's strip either: read something
+		// here, and the strip holds that alone.
+		await panel.getByRole('button', { name: 'importer.ts' }).click();
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/importer\.ts/);
+		await expect(viewer.getByTestId('file-tab')).toHaveCount(1);
+
+		// **Back, and each project returns to its own last file.**
+		await page.locator('aside').first().getByText('foo').click();
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/README\.md/);
+		expect(page.url()).toContain(`file=${encodeURIComponent(`${ROOT}/README.md`)}`);
 	});
 
 	test('@smoke a binary file gets a card instead of an editor', async ({ page }) => {

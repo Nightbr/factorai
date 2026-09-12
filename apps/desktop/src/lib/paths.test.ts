@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { relativeToRoot } from './paths';
+import { isWithin, relativeToRoot } from './paths';
 
 describe('relativeToRoot', () => {
 	it('strips the root and its separator, with no leading ./', () => {
@@ -29,5 +29,23 @@ describe('relativeToRoot', () => {
 
 	it('returns the path unchanged with no root', () => {
 		expect(relativeToRoot('/home/a/x.ts', '')).toBe('/home/a/x.ts');
+	});
+});
+
+describe('isWithin', () => {
+	it('holds for a file under the root', () => {
+		expect(isWithin('/home/a/code/foo/src/main.ts', '/home/a/code/foo')).toBe(true);
+	});
+
+	it('holds for the root itself', () => {
+		expect(isWithin('/home/a/code/foo', '/home/a/code/foo')).toBe(true);
+	});
+
+	it('rejects a sibling with a shared prefix', () => {
+		expect(isWithin('/home/a/code/foobar/x.ts', '/home/a/code/foo')).toBe(false);
+	});
+
+	it('tolerates a trailing slash on the root', () => {
+		expect(isWithin('/home/a/code/foo/src', '/home/a/code/foo/')).toBe(true);
 	});
 });
