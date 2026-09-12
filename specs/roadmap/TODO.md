@@ -258,24 +258,37 @@ swallows a keystroke breaks typing to Claude.
       it has the same terminal-focus problem as F2's sidebar navigation, and the F13 groups
       (Merge / Staged / Changes) mean "next file" has to cross a group boundary rather than stop
       at it. Read-only, so this adds no action beyond moving the selection — ADR-0009 stands.
-- [ ] **`Cmd+W` closes the focused tab — asked for by a user 2026-09-09.** It collides with the
-      table's current `Cmd/Ctrl + W` (kill active terminal), and there are two tab strips —
-      `SessionTabs` and the viewer's `FileTabs` — so "the tab" needs a focus rule before the
-      binding can be written. Closing a session tab is F10's close, `needsCloseConfirm` included,
-      not a silent kill; closing a file tab with an unsaved draft has to answer to F26's draft
-      store. § "Keyboard shortcuts" is amended in the same commit as whichever meaning wins.
-- [ ] **`Cmd+Q` quits factorai — same ask.** macOS supplies it through the app menu already; the
-      binding has to land on the *same* path as the window close so ADR-0020's quit guard and
-      kill-on-quit both still run. A renderer handler that exits around `CloseRequested` is
-      orphan zombies plus a skipped confirm. On Linux there is no menu equivalent, so it is a
-      real binding there rather than a no-op.
-- [ ] **`Cmd+F` focuses the search bar — same ask**, landing in the sidebar's
-      `Search sessions…` input. That is the action the table gives `Cmd/Ctrl + K`, on the row it
-      gives to find-in-viewer-or-terminal, so the two have to be resolved together: either they
-      swap, or `Cmd+F` becomes context-dependent (viewer or terminal focused keeps find,
-      anywhere else focuses search). Item 14 already wants a row *removed* from that table —
-      make both edits one amendment. "Session **and** files" is one bar only once items 12–13
-      land; today the bar searches transcripts.
+- [ ] **`Cmd+W` closes the focused tab — asked for by a user 2026-09-09, asked again
+      2026-09-12.** It collides with the table's current `Cmd/Ctrl + W` (kill active terminal),
+      and there are two tab strips — `SessionTabs` and the viewer's `FileTabs` — so "the tab"
+      needs a focus rule before the binding can be written. Closing a session tab is F10's
+      close, `needsCloseConfirm` included, not a silent kill; closing a file tab with an unsaved
+      draft has to answer to F26's draft store. § "Keyboard shortcuts" is amended in the same
+      commit as whichever meaning wins.
+- [ ] **`Cmd+Q` quits factorai — same ask, repeated 2026-09-12.** macOS supplies it through the
+      app menu already; the binding has to land on the *same* path as the window close so
+      ADR-0020's quit guard and kill-on-quit both still run. A renderer handler that exits
+      around `CloseRequested` is orphan zombies plus a skipped confirm. On Linux there is no
+      menu equivalent, so it is a real binding there rather than a no-op.
+- [ ] **`Cmd+F` focuses the search bar — same ask, repeated 2026-09-12**, landing in the
+      sidebar's `Search sessions…` input. That is the action the table gives `Cmd/Ctrl + K`, on
+      the row it gives to find-in-viewer-or-terminal, so the two have to be resolved together:
+      either they swap, or `Cmd+F` becomes context-dependent (viewer or terminal focused keeps
+      find, anywhere else focuses search). Item 14 already wants a row *removed* from that
+      table — make both edits one amendment. "Session **and** files" is one bar only once items
+      12–13 land; today the bar searches transcripts.
+
+- [ ] **Rebindable in settings — asked for by a user 2026-09-12.** The defaults above stay the
+      defaults, but the end state is a keyboard section in the settings modal where each action
+      shows its binding and can be reassigned, so a collision like `Cmd+W` or `Cmd+F` is the
+      user's call rather than ours. That only works if `useGlobalShortcuts()` reads an
+      action→binding map instead of hard-coding keys, so the scheme has to be built that way
+      from the start even if the settings UI lands later — retrofitting it means rewriting every
+      binding. Open questions before any of it is coded: where the map persists (F11's settings
+      store, or its own file), what happens to a binding the terminal or Monaco already owns,
+      whether a conflicting assignment is refused or steals the key, and how a user gets back to
+      the defaults. Write them into `07-open-questions.md` and amend `05-features.md`
+      § "Keyboard shortcuts" to say the table is defaults, not fixed keys.
 
 The table is also about to grow: **items 12–14** add `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`, and item
 14 wants the table's current `Cmd/Ctrl+G` (go to line) row *removed* because Monaco provides it
@@ -1224,7 +1237,8 @@ What it holds, in the order a new user meets it:
   **routines** (F22): the schedule presets and the custom cron, the next-runs echo, catch-up and
   its window, the concurrency cap, what `Run now` answers when it declines, and the blue dot for a
   session running with no tab.
-- **Settings**, and **keyboard shortcuts** once item 5 gives it a table worth publishing.
+- **Settings**, and **keyboard shortcuts** once item 5 gives it a table worth publishing —
+  including how to rebind them, if the configurable pass lands with it.
 - **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
   override, the AppImage's environment leaking into child processes, Linux specifics.
 - **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
