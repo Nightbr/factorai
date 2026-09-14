@@ -33,6 +33,7 @@ import type {
 	SessionsChangedEvent,
 	SettingKey,
 	ShellSpawnOpts,
+	SopsStatus,
 	SpawnOpts,
 	TerminalDataEvent,
 	TerminalExitEvent,
@@ -150,6 +151,30 @@ export const cmd = {
 	 *  instead of failing inside pdf.js. */
 	readPdf: (path: string, maxBytes?: number | null) =>
 		invoke<PdfContents>('read_pdf', { path, maxBytes }),
+	/** Whether `sops` can be driven at all (F27). Answered from the resolved
+	 *  child PATH and cached in Rust for the run — the viewer asks before it
+	 *  offers Decrypt, so a missing or too-old install is a disabled control
+	 *  that says why rather than a button that fails when pressed. */
+	sopsStatus: () => invoke<SopsStatus>('sops_status'),
+	/** Decrypt a SOPS file and hand back the plaintext (F27).
+	 *
+	 *  **The plaintext lives in the renderer's memory and nowhere else**: it is
+	 *  never written to disk, never drafted, and never handed to a diff. `sops`
+	 *  writes it to stdout, so nothing on disk holds it at any point either.
+	 *  Rejects with a sentence naming which failure this was — no key of yours
+	 *  opens it, no key material at all, a MAC that no longer matches — with
+	 *  `sops`'s own words kept on the end. */
+	sopsDecrypt: (path: string) => invoke<string>('sops_decrypt', { path }),
+	/** Encrypt a buffer and write it over the SOPS file at `path` (F27,
+	 *  ADR-0045).
+	 *
+	 *  **The recipients are the file's own**, read from the metadata of what is
+	 *  being replaced rather than re-derived from `.sops.yaml`, and the result
+	 *  is compared against them before anything is written — a save that would
+	 *  change who can open the file is refused. Answers with the encrypted file
+	 *  as written, so the cache can be corrected without a second read. */
+	sopsEncrypt: (path: string, plaintext: string) =>
+		invoke<FileContents>('sops_encrypt', { path, plaintext }),
 	/** Classify a batch of paths for the terminal's link provider (F19), in the
 	 *  order given. Never rejects: everything that isn't an openable path comes
 	 *  back `missing`. */
@@ -663,6 +688,13 @@ interface TestFixture {
 	 *  not listed validates as not installed, which is how a test reaches the
 	 *  bad-path branch of the override field. */
 	claudeBinaries?: Record<string, string | null>;
+	/** What the `sops` probe finds (F27). Absent means no `sops` on this
+	 *  machine, which is the honest browser-only answer and the state the
+	 *  disabled Decrypt control exists for. */
+	sopsStatus?: SopsStatus;
+	/** Plaintext keyed by absolute path, for `sops_decrypt` (F27). A path that
+	 *  is not listed rejects, which is how a spec reaches the failure banner. */
+	sopsPlaintext?: Record<string, string>;
 }
 
 /** One mocked command call, recorded in order while a fixture is installed. */
@@ -996,6 +1028,9 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 				// What was written is what the editor held: valid UTF-8, whole.
 				truncated: false,
 				lossy: false,
+				// Whatever the file was before the write it still is: nothing the
+				// editor can save turns ciphertext into plaintext or back (F27).
+				sopsEncrypted: before?.sopsEncrypted ?? false,
 			} as FileContents;
 			files[path] = written;
 			// The command answers with the file it wrote, so the renderer can put
@@ -1018,6 +1053,46 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			if (!pdf) throw { kind: 'InvalidInput', message: `not a PDF: ${path}` };
 			return pdf as unknown as T;
 		}
+		case 'sops_decrypt': {
+			// No `sops` and no keys in a browser: a fixture declares what the
+			// plaintext would be, and a path it does not list rejects the way a
+			// file none of your keys open does — which is the banner's path.
+			const path = String(args?.path ?? '');
+			const plain = fx?.sopsPlaintext?.[path];
+			if (plain === undefined) {
+				throw {
+					kind: 'Process',
+					message: 'none of your keys can decrypt this file. It is encrypted for age1example.',
+				};
+			}
+			return plain as unknown as T;
+		}
+		case 'sops_encrypt': {
+			// The mock has no `sops`, so "encrypting" is recording what would have
+			// been written and handing back a file that still reads as ciphertext
+			// — which is the half the renderer has to get right: the pane goes
+			// back to the encrypted view, and the plaintext is gone.
+			const path = String(args?.path ?? '');
+			const plaintext = String(args?.plaintext ?? '');
+			const files = fx?.files;
+			const before = files?.[path];
+			if (!files || !before) throw { kind: 'Io', message: `no fixture file at ${path}` };
+			if (fx?.sopsPlaintext) fx.sopsPlaintext[path] = plaintext;
+			const written = { ...before, size: before.size + 1 } as FileContents;
+			files[path] = written;
+			return written as unknown as T;
+		}
+		case 'sops_status':
+			// The mocked bridge has no PATH and no child processes, so a fixture
+			// declares the answer. Absent means a machine with no `sops` — the
+			// state the disabled control exists for, and the one a spec that
+			// never mentions SOPS should see.
+			return (fx?.sopsStatus ?? {
+				usable: false,
+				binaryPath: null,
+				version: null,
+				tooOld: false,
+			}) as unknown as T;
 		// No filesystem to watch in the browser. The call is still recorded, so a
 		// spec can assert the viewer subscribes on open and releases on close, and
 		// `__FACTORAI_EMIT__('file:changed', …)` stands in for the watch firing.

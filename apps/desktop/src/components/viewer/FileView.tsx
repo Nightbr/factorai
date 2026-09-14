@@ -4,6 +4,7 @@ import {
 	BinaryCard,
 	Centered,
 	ConflictBanner,
+	DecryptFailedBanner,
 	OverwriteConfirm,
 	SaveButton,
 	errorText,
@@ -22,6 +23,7 @@ import {
 	restoreFindState,
 	saveFindState,
 } from '@components/viewer/monaco';
+import type { SopsStatus } from '@factorai/types';
 import { Button } from '@factorai/ui';
 import { useEditBuffer } from '@hooks/useEditBuffer';
 import type { ViewerPosition } from '@hooks/useFileViewer';
@@ -32,9 +34,9 @@ import { type LineSelection, mentionFor, mentionLabel, mentionRange } from '@lib
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
 import { REREAD_ON_OPEN } from '@lib/viewerQuery';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
-import { Code2, Eye, Sparkles } from 'lucide-react';
+import { Code2, Eye, Lock, LockOpen, Sparkles } from 'lucide-react';
 import type { MutableRefObject, ReactNode } from 'react';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
@@ -130,6 +132,31 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 	// toggle is right there. Keyed off the initial value only: toggling to
 	// preview afterwards is the reader's decision and this must not undo it.
 	const [preview, setPreview] = useState(!position);
+	const queryClient = useQueryClient();
+
+	// ---- SOPS (F27) -----------------------------------------------------------
+	//
+	// **The plaintext is component state and nothing else.** Not a query, not a
+	// draft, not a ref the diff view can reach: it dies when this component
+	// unmounts, which is every way out of the file — closing the tab, switching
+	// checkout, project or session, or Re-lock. `TextFileView` is keyed by path,
+	// so opening another file cannot carry it either.
+	const [plaintext, setPlaintext] = useState<string | null>(null);
+	/** What the editor holds while decrypted. A ref for the reason the encrypted
+	 *  path uses one (F26): a keystroke must not re-render the footer. */
+	const plainBufferRef = useRef<string>('');
+	const [decrypting, setDecrypting] = useState(false);
+	const [decryptError, setDecryptError] = useState<string | null>(null);
+	/** The buffer differs from what `sops` handed back. */
+	const [plainDirty, setPlainDirty] = useState(false);
+	const [encrypting, setEncrypting] = useState(false);
+	const [encryptError, setEncryptError] = useState<string | null>(null);
+	/** The ciphertext this plaintext came out of. What a change on disk is
+	 *  measured against while the pane is showing the plaintext — the usual
+	 *  baseline is the file's own contents, and those are not what is on
+	 *  screen. */
+	const [cipherBaseline, setCipherBaseline] = useState<string | null>(null);
+	const [confirmEncryptOverwrite, setConfirmEncryptOverwrite] = useState(false);
 
 	const fileQ = useQuery({
 		queryKey: queryKeys.file(path, uncapped),
@@ -142,6 +169,84 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 	});
 
 	const file = fileQ.data;
+	const encrypted = !!file?.sopsEncrypted;
+	const decrypted = plaintext !== null;
+
+	// Asked only for a file that is encrypted, because it costs a process the
+	// first time and no other file has a use for the answer. Cached for the run
+	// on both sides: Rust probes once, and this key never goes stale.
+	const sopsQ = useQuery({
+		queryKey: queryKeys.sopsStatus(),
+		queryFn: () => cmd.sopsStatus(),
+		enabled: encrypted,
+		staleTime: Number.POSITIVE_INFINITY,
+		retry: false,
+	});
+
+	const decrypt = () => {
+		if (decrypting) return;
+		setDecrypting(true);
+		setDecryptError(null);
+		void cmd
+			.sopsDecrypt(path)
+			.then((text) => {
+				plainBufferRef.current = text;
+				setPlaintext(text);
+				setPlainDirty(false);
+				setCipherBaseline(file?.contents ?? null);
+			})
+			.catch((e) => setDecryptError(errorText(e)))
+			.finally(() => setDecrypting(false));
+	};
+
+	/** Throw the plaintext away. The only way back is to decrypt again, which
+	 *  asks the user's keys again — there is nothing cached to reuse. */
+	const relock = () => {
+		plainBufferRef.current = '';
+		setPlaintext(null);
+		setPlainDirty(false);
+		setCipherBaseline(null);
+		setDecryptError(null);
+		setEncryptError(null);
+	};
+
+	/** Something else wrote the encrypted file while the plaintext was on
+	 *  screen and edited (F27). No diff is offered: the two sides are one
+	 *  buffer's plaintext and somebody else's ciphertext, and there is nothing
+	 *  useful to show between them. */
+	const cipherChanged =
+		decrypted && cipherBaseline !== null && !!file && file.contents !== cipherBaseline;
+
+	/** Encrypt the buffer and write it over the file, then go back to showing
+	 *  the ciphertext — which is what is on disk, and what the reader should be
+	 *  looking at once the secret has been put away. */
+	const encryptAndSave = () => {
+		if (encrypting || !plainDirty) return;
+		setEncrypting(true);
+		setEncryptError(null);
+		void cmd
+			.sopsEncrypt(path, plainBufferRef.current)
+			.then((written) => {
+				// The cached read is stale the moment the write lands, and the
+				// command answers with the file it wrote precisely so this is exact.
+				queryClient.setQueryData(queryKeys.file(path, uncapped), written);
+				relock();
+			})
+			// **The buffer stays** on a failure: it is the only copy of the
+			// plaintext the reader typed, and throwing it away to report an error
+			// would be the worst thing this component could do.
+			.catch((e) => setEncryptError(errorText(e)))
+			.finally(() => setEncrypting(false));
+	};
+
+	/** Save, asking first when it would write over a change nobody has read. */
+	const requestEncryptSave = () => {
+		if (cipherChanged) {
+			setConfirmEncryptOverwrite(true);
+			return;
+		}
+		encryptAndSave();
+	};
 
 	// ---- the edit buffer (F26) ------------------------------------------------
 	//
@@ -201,11 +306,41 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 	// A dirty buffer keeps the editor on screen even when the read now fails:
 	// the file being gone is what the banner is for, and unmounting the editor
 	// would take the only copy of the text with it.
-	const showEditor = !!file && !file.isBinary && !showPreview;
+	const showEditor = !!file && !file.isBinary && !showPreview && !decrypted;
+	/** What the footer says instead of the file's own reason while the plaintext
+	 *  is on screen. The ciphertext's reason (`encrypted (SOPS)`) is about the
+	 *  file on disk, which is not what is being shown — and unlike it, this one
+	 *  is editable, so it names what saving will do rather than a refusal. */
+	const decryptedReason = 'decrypted — Save encrypts';
+	/** The plaintext's line count, not the ciphertext's — the footer describes
+	 *  what the reader is looking at. */
+	const plainLineCount = plaintext ? plaintext.replace(/\n$/, '').split('\n').length : 0;
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			{showBanner && (
+			{decryptError && (
+				<DecryptFailedBanner
+					message={decryptError}
+					onRetry={decrypt}
+					onDismiss={() => setDecryptError(null)}
+				/>
+			)}
+			{/* **The encrypted file moved while the plaintext was on screen** (F27).
+			    No `Show diff`: one side is this buffer's plaintext and the other
+			    is somebody else's ciphertext, and there is nothing legible
+			    between them. Reload costs more than usual, so it says so. */}
+			{cipherChanged && (
+				<ConflictBanner
+					deleted={false}
+					message="Changed on disk. Something else wrote the encrypted file while you were editing the plaintext."
+					reloadLabel="Discard and re-lock"
+					onReload={relock}
+					onShowDiff={null}
+					showingDiff={false}
+					onDismiss={() => setCipherBaseline(file?.contents ?? null)}
+				/>
+			)}
+			{showBanner && !decrypted && (
 				<ConflictBanner
 					deleted={deleted}
 					onReload={() => void reload()}
@@ -218,8 +353,24 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 				{fileQ.isPending && <Centered>Loading…</Centered>}
 				{fileQ.isError && !deleted && <Centered tone="error">{errorText(fileQ.error)}</Centered>}
 				{file?.isBinary && <BinaryCard path={path} size={file.size} />}
-				{file && !file.isBinary && file.contents.length === 0 && !dirty && (
+				{file && !file.isBinary && !decrypted && file.contents.length === 0 && !dirty && (
 					<Centered>This file is empty.</Centered>
+				)}
+				{/* **The plaintext, in its own editor** (F27). A second `Editor`
+				    rather than the one below with a different `baseline`, because
+				    the two are measured against different things: that one's
+				    baseline is what is on disk, and what is on disk here is the
+				    ciphertext. Read-only until the encrypt-on-save path lands. */}
+				{decrypted && (
+					<Editor
+						baseline={plaintext}
+						bufferRef={plainBufferRef}
+						language={language}
+						readOnly={false}
+						position={null}
+						onDirtyChange={setPlainDirty}
+						onSave={requestEncryptSave}
+					/>
 				)}
 				{showConflictDiff && conflict && diskContents !== null && (
 					<Suspense fallback={<Centered>Loading diff…</Centered>}>
@@ -249,7 +400,7 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 						onSave={requestSave}
 					/>
 				)}
-				{!showConflictDiff && file && !file.isBinary && showPreview && isMarkdown && (
+				{!showConflictDiff && !decrypted && file && !file.isBinary && showPreview && isMarkdown && (
 					<SearchablePreview source={previewSource}>
 						<MarkdownView
 							source={previewSource}
@@ -258,7 +409,7 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 						/>
 					</SearchablePreview>
 				)}
-				{!showConflictDiff && file && !file.isBinary && showPreview && isSvg && (
+				{!showConflictDiff && !decrypted && file && !file.isBinary && showPreview && isSvg && (
 					<SvgPreview source={previewSource} name={basename(path)} />
 				)}
 			</div>
@@ -275,7 +426,32 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 				   `h-7` and no `py-`: an explicit height, since the footer is chrome
 				   (DESIGN.md § Layout). */
 				<footer className="@container flex h-7 shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap border-t border-border px-3 text-muted-foreground text-xs">
-					{previewable && (
+					{(encrypted || decrypted) && (
+						/* **The Decrypt control sits in the Preview toggle's slot** (F27):
+					   both answer "show me this file the other way", and a file that is
+					   both encrypted and markdown has only one useful first step.
+
+					   Disabled with the reason on it rather than absent, and rather than
+					   a button that fails when pressed: "sops is not installed" is
+					   something the reader can act on, and only this control knows it.
+					   One line in the `title` — WebKitGTK renders only the first. */
+						<Button
+							variant="quiet"
+							size="sm"
+							className="-ml-1 h-6 shrink-0 gap-1.5 px-2 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3 disabled:opacity-40"
+							data-testid="viewer-decrypt"
+							disabled={!decrypted && (!sopsQ.data?.usable || decrypting)}
+							aria-pressed={decrypted}
+							title={decrypted ? 'Discard the plaintext' : sopsHint(sopsQ.data)}
+							onClick={decrypted ? relock : decrypt}
+						>
+							{decrypted ? <Lock /> : <LockOpen />}
+							<span className="@max-[22rem]:hidden">
+								{decrypted ? 'Re-lock' : decrypting ? 'Decrypting…' : 'Decrypt'}
+							</span>
+						</Button>
+					)}
+					{previewable && !encrypted && !decrypted && (
 						/* `quiet`, `size-3` glyph, lifted a pixel: the house shape for a
 						   labelled control in a chrome strip, and the same one
 						   `ShellFooter` uses for `+ Terminal`. `ghost` painted a filled
@@ -303,8 +479,21 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 					{/* One span, one string: three spans and two separators cannot
 					    ellipsize as a unit, and this is what gives way last. */}
 					<span className="min-w-0 truncate">
-						{languageLabel(language)} · {formatBytes(file.size)} · {file.lineCount} line
-						{file.lineCount === 1 ? '' : 's'}
+						{/* **While decrypted the numbers describe the plaintext**, and the
+						    size is dropped: the only size on disk is the ciphertext's, and
+						    printing it beside the plaintext's line count would be two files'
+						    worth of metadata in one row. */}
+						{decrypted ? (
+							<>
+								{languageLabel(language)} · decrypted · {plainLineCount} line
+								{plainLineCount === 1 ? '' : 's'}
+							</>
+						) : (
+							<>
+								{languageLabel(language)} · {formatBytes(file.size)} · {file.lineCount} line
+								{file.lineCount === 1 ? '' : 's'}
+							</>
+						)}
 					</span>
 
 					{/* One spacer, not one per right-hand item: two would leave whatever
@@ -316,9 +505,11 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 					    while nothing was editable. It comes back only where it is
 					    load-bearing: this file, unlike its neighbours, cannot be saved,
 					    and the reason is the whole of the message. */}
-					{reason && <span data-testid="viewer-read-only">{reason}</span>}
+					{(decrypted ? decryptedReason : reason) && (
+						<span data-testid="viewer-read-only">{decrypted ? decryptedReason : reason}</span>
+					)}
 
-					{file.truncated && (
+					{file.truncated && !decrypted && (
 						<>
 							{/* No byte count here on purpose: the cap lives in Rust and
 							    restating it in the renderer would drift. */}
@@ -333,10 +524,26 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 						</>
 					)}
 
-					{saveError && (
+					{/* One span for both writes: a failed `write_file` and a failed
+					    `sops_encrypt` are the same statement in the same place. */}
+					{(decrypted ? encryptError : saveError) && (
 						<span className="min-w-0 truncate text-destructive" data-testid="viewer-save-error">
-							{saveError}
+							{decrypted ? encryptError : saveError}
 						</span>
+					)}
+
+					{/* **Encrypt & save**, which is what the button does here: the
+					    buffer is plaintext and the file is not, so a bare `Save`
+					    would understate it (F27). Same control, same slot, same
+					    dirty-is-the-indicator rule as F26's. */}
+					{decrypted && (
+						<SaveButton
+							dirty={plainDirty}
+							saving={encrypting}
+							conflict={cipherChanged}
+							onSave={requestEncryptSave}
+							labels={{ idle: 'Encrypt & save', saving: 'Encrypting…' }}
+						/>
 					)}
 
 					{editable && (
@@ -354,7 +561,13 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 					    *does* something. Absent with no session in front, since there
 					    is nothing to send to and a disabled control in a row of
 					    metadata reads as broken rather than unavailable. */}
-					{sessionId && (
+					{/* **Absent on a SOPS file**, encrypted or decrypted — F26 § "Secrets"
+					    takes this control away from a `.env` for the reason that applies
+					    here in full: one click sends a selection into an agent's context
+					    and that click cannot be taken back. A file somebody encrypted is
+					    the clearest statement there is that its contents are not for
+					    onward travel. */}
+					{sessionId && !encrypted && !decrypted && (
 						<Button
 							variant="quiet"
 							size="sm"
@@ -397,8 +610,35 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 				onCancel={cancelOverwrite}
 				onConfirm={confirmedSave}
 			/>
+
+			<OverwriteConfirm
+				open={confirmEncryptOverwrite}
+				name={basename(path)}
+				description="Something else wrote the encrypted file after you decrypted it. Saving encrypts your buffer and replaces what is on disk."
+				onCancel={() => setConfirmEncryptOverwrite(false)}
+				onConfirm={() => {
+					setConfirmEncryptOverwrite(false);
+					encryptAndSave();
+				}}
+			/>
 		</div>
 	);
+}
+
+/**
+ * What the Decrypt control's tooltip says, which is also why it is disabled
+ * (F27 § "Finding and running `sops`").
+ *
+ * One line, joined with ` · ` where it needs two clauses: WebKitGTK draws a
+ * `title` as a GTK tooltip and shows only the first line.
+ */
+function sopsHint(status: SopsStatus | undefined): string {
+	if (!status || !status.binaryPath) {
+		return 'sops is not installed, or is not on the PATH your shell uses';
+	}
+	if (status.tooOld) return `sops ${status.version} is too old · 3.9 or newer is needed`;
+	if (!status.usable) return `${status.binaryPath} did not answer sops --version`;
+	return 'Decrypt and show the plaintext';
 }
 
 /**

@@ -15,7 +15,15 @@
 		"DISPLAY",
 		"WAYLAND_DISPLAY",
 		"DBUS_SESSION_BUS_ADDRESS",
-		"VITE_FACTORAI_SCREENSHOT"
+		"VITE_FACTORAI_SCREENSHOT",
+		"SOPS_*",
+		"AWS_*",
+		"AZURE_*",
+		"GOOGLE_*",
+		"VAULT_*",
+		"GNUPGHOME",
+		"GPG_TTY",
+		"SSH_AUTH_SOCK"
 	],
 	"tasks": {
 		"build": {

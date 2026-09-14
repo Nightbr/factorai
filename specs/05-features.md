@@ -5745,3 +5745,217 @@ agent's own store.
   deleted-on-disk banner; Save recreates it.
 
 **Roadmap.** Item 2, in three slices.
+
+## F27 — A SOPS-encrypted file, opened in the viewer
+
+**Behavior.** A SOPS-encrypted file is recognised as one when the viewer opens
+it, says so, and is never writable while it is ciphertext. The footer offers
+**Decrypt**; pressing it swaps the pane to the plaintext, editable; Save
+encrypts and writes the encrypted file back. **The encrypted file is what is on
+disk at every instant** — the plaintext exists only in the renderer's buffer.
+
+**Why it belongs in the viewer.** `.env`-shaped secrets are the one file kind a
+project keeps that the tree can already show and nobody can usefully read. The
+workaround is a terminal running `sops` in `$EDITOR`, which is a second editor
+inside an app whose premise is that the session, not the file, is the unit of
+work (`00-overview.md` § "The operating model" — the human sets the rules agents
+run under, and a `.env` an agent needs is one of them, F26).
+
+### Plaintext never reaches disk, an index, or a database
+
+The hard constraint, and the one to hold every later slice against. Three
+subsystems would each persist it given the chance:
+
+- **Drafts.** F26 § "Drafts" persists unsaved buffers so they survive a quit
+  (ADR-0040). A decrypted buffer is excluded — it is memory-only, and dies with
+  the tab.
+- **The FTS5 index** (`services/indexer.rs`) and project-wide search. Only the
+  ciphertext is ever on disk, so this holds as long as nothing writes the
+  plaintext out.
+- **The diff and git surfaces.** `DiffView` diffs what is on disk and keeps
+  doing exactly that; it is never handed the decrypted buffer.
+
+Decrypt reads to memory and encrypt feeds plaintext to `sops` on **stdin**, so
+no temp file holds a secret at any point. The atomic-rename dance in
+`services::files::write_file` is for the *ciphertext*, which is the only thing
+factorai writes.
+
+**Key material is the user's, and factorai holds none of it.**
+`SOPS_AGE_KEY_FILE`, the GPG agent, AWS / GCP / Azure credentials — all of it is
+whatever the child process inherits. No key is read, none is cached, and no
+passphrase is ever prompted for by us.
+
+### Detection
+
+A SOPS file is an ordinary YAML / JSON / dotenv / INI file carrying the metadata
+block SOPS writes beside the ciphertext, or the `binary` output format, which is
+JSON with the file under `data`. The test is that block: a `sops` section with
+**`mac`**, **`version`** and **at least one key source** (`age`, `pgp`, `kms`,
+`gcp_kms`, `azure_kv`, `hc_vault`). All three keys, so that a plain YAML file
+with a top-level `sops:` key of its own is not called encrypted and made
+read-only for no reason.
+
+**Decided in Rust, from the file's own bytes** —
+`FileContents.sopsEncrypted`, alongside `lossy`, hand-mirrored into
+`packages/types` (`01-architecture.md`: no code generation). One answer per
+file, whether it was read from disk or out of the object database, and it costs
+a scan of text the read already holds: no `sops` process, no key.
+
+**Never a filename rule.** `.enc.yaml`, `secrets.yaml` and `.env.production`
+are conventions and none of them is load-bearing; a rule built on them would
+both miss an encrypted `config.yaml` and claim a plaintext `secrets.yaml`. This
+is the opposite choice from F26 § "Secrets", and deliberately: that flag governs
+where a buffer may *go*, which has to be predictable from the name, while this
+one states what the bytes *are*.
+
+A read cut at the cap loses the block — SOPS writes it at the end of every
+format — so a truncated read is reported as not encrypted. That is the safe
+answer: such a file is already read-only for its own reason, so nothing offers
+to write a prefix of ciphertext back.
+
+### Read-only while encrypted
+
+Editing ciphertext invalidates the MAC, so an encrypted file is a **fifth
+read-only reason** in the footer beside binary / truncated / lossy / plan, and
+it reads `encrypted (SOPS) — read-only`. It is reported **before** the other
+four: it is the only one of them with a way out, and a file labelled
+`truncated` would hide the Decrypt control's reason for being there.
+
+### Finding and running `sops`
+
+`sops` is resolved through **`services::shell_path`** — the child `PATH`, not
+the process environment. A GUI app has launchd's or the session manager's
+`PATH`, and a `sops` installed by Homebrew, mise or `go install` is on none of
+it; this is the exact failure that module exists for. The AppImage strip
+(`services::child_env`) applies too, since our `LD_LIBRARY_PATH` points into a
+squashfs mount holding our own libraries.
+
+`sops_status()` answers whether it is usable **before** anything is attempted:
+found, what version it reports, and whether that is older than the **3.9** floor
+where `sops encrypt` and `sops decrypt` became subcommands. `sops --version` is
+run with `--disable-version-check`, because without it the probe reaches GitHub
+for a release check — opening a file must not become a network call
+(`PRODUCT.md`: nothing phones home).
+
+The probe is cached for the run: it spawns a process and reads a `PATH` that
+cost a login shell, and installing `sops` while the app is open is a restart
+either way.
+
+**Under `pnpm dev`, the key environment has to be passed through turbo.** A
+release build inherits the session's environment and finds `SOPS_AGE_KEY_FILE`,
+the GPG agent and the cloud credentials where they are; Turborepo 2.x strips
+everything not in `globalPassThroughEnv`, so without the `SOPS_*` / `AWS_*` /
+`AZURE_*` / `GOOGLE_*` / `VAULT_*` / `GNUPGHOME` / `GPG_TTY` / `SSH_AUTH_SOCK`
+entries in `turbo.json` a developer's Decrypt fails for a reason that has
+nothing to do with the app. Found in the first real-window pass of this feature
+(`.claude/rules/rust.md` — "env leaks both ways" — is the general form).
+
+### Decrypt, and the plaintext's life
+
+**Decrypt is in the footer's Preview slot**, and for the same reason the
+markdown toggle is there: both answer "show me this file the other way". A file
+that is both encrypted and markdown gets Decrypt — rendering ciphertext as
+markdown is not a step anyone wants first.
+
+- **Disabled with the reason on it** when `sops` is missing, too old, or did not
+  answer, rather than absent or failing when pressed. The `title` is one line —
+  WebKitGTK renders only the first line of a tooltip.
+- **Pressing it swaps the pane to the plaintext.** The footer's metadata
+  switches with it: the language, `decrypted`, and the **plaintext's** line
+  count. The byte size is dropped, because the only size on disk is the
+  ciphertext's.
+- **Re-lock throws the plaintext away.** The control becomes `Re-lock` while
+  decrypted, and there is nothing cached behind it: decrypting again asks the
+  user's keys again.
+
+**Where the plaintext lives: React state in the open file's component, and
+nowhere else.** Not a query cache, not a ref another surface can reach, and
+never `file_drafts` — `02-data-model.md` § `file_drafts` already excludes a
+secrets file for a weaker version of this reason, and this is the strong one.
+The component is keyed by path and unmounts on every way out of the file, so
+the buffer dies when the tab closes, when the checkout, project or session
+changes, and on Re-lock.
+
+**No idle timeout in v1**, stated here as a decision rather than left as an
+omission. A timer that wipes a buffer mid-edit is a way to lose work, the
+window it closes is small (the plaintext is already gone at every exit above),
+and the control to drop it immediately is right there in the footer.
+
+**F20's hand-to-the-agent control is absent on a SOPS file**, encrypted or
+decrypted. F26 § "Secrets" takes it away from a `.env` for the reason that
+applies here in full: one click puts a selection into an agent's context and
+cannot be taken back. A file somebody encrypted is the clearest statement there
+is that its contents are not for onward travel.
+
+### Errors, forwarded and readable
+
+`sops` fails with prose that is nearly right already. The job is to classify the
+few cases that have a human meaning and to show the rest verbatim rather than
+swallowing it. **The exit code classifies, the text informs** — `sops` has
+documented codes for exactly these cases, and they survive the rewordings its
+messages do not:
+
+- **Not authorised** (code 128) — none of your keys can decrypt this file, and
+  the recipients the metadata lists are **named**, because "ask whoever holds
+  one of these" is the actual next step.
+- **No key material configured** (the same code, separated by the text) — no age
+  identity, no GPG agent, no cloud credentials. A different message because it
+  is a different fix.
+- **A cloud KMS refusal** — an expired session, the wrong profile, no network.
+  Forwarded in the provider's own words; we cannot improve on them and
+  paraphrasing loses the request id.
+- **MAC mismatch** (code 51) — the file was hand-edited or badly merged.
+  Refused, and nothing is offered to save over it.
+- **`sops` missing or too old** — one message, at the control, before anything
+  is attempted.
+
+Rendered in the **banner** above the pane, the row the changed-on-disk banner
+uses, with `Try again` and `Dismiss`; a failed save uses the footer's
+`viewer-save-error` span. **No toast** — that primitive is its own roadmap item
+and this feature must not grow a private one.
+
+### Encrypting on save
+
+While the plaintext is on screen it is **editable**, and `Save` — labelled
+**Encrypt & save**, because a bare `Save` would understate what pressing it does
+— encrypts the buffer and writes the encrypted file. The pane then **returns to
+the ciphertext**, which is what is on disk, and the plaintext is gone with the
+buffer that held it. Everything else about saving is F26's: the button is the
+dirty indicator, `Cmd/Ctrl+S` inside the editor saves, and a failed write leaves
+the buffer alone because it is the only copy of what was typed.
+
+**The recipients are the file's own, never `.sops.yaml`'s** — ADR-0045, which
+records the three ways of re-encrypting an existing file and what each costs. In
+short: the configuration says who *new* files are for, the file says who *it* is
+for, and the two differ the moment somebody is added to one file directly. The
+result is compared against the original's key set before anything is written, so
+a save that would change who can open the file is refused rather than performed;
+a file using key groups is refused for the same reason.
+
+**Saving cannot rotate keys.** Adding or removing a recipient is `sops
+updatekeys`' job and stays there. A save preserves; it does not reconcile.
+
+**The encrypted file changed on disk while you were editing the plaintext** →
+the changed-on-disk banner, in its own words, with **no Show diff**: one side is
+this buffer's plaintext and the other is somebody else's ciphertext, and there
+is nothing legible between them. The choices are `Discard and re-lock`, which
+loses the buffer, and saving anyway, which asks first — the same overwrite
+confirm F26 uses, saying what this one actually replaces.
+
+**Backend.** `FileContents.sopsEncrypted` from `services/sops.rs::is_encrypted`,
+`sops_status() -> SopsStatus`, `sops_decrypt(path) -> String` and
+`sops_encrypt(path, plaintext) -> FileContents` in `commands/sops.rs`. See
+`03-backend-rust.md` § `sops`.
+
+**Edge cases.**
+- The file stopped being a SOPS file between decrypt and save → refused, with
+  that sentence; nothing is written.
+- `sops` produces output whose key set differs from the original's → refused,
+  and the counts are named.
+- A file that decrypts to bytes that are not text (the `binary` format over a
+  real binary) → refused at decrypt, since a lossy read would re-encrypt to a
+  different file.
+- The same encrypted file open in two checkouts → two paths, two tabs, two
+  independent plaintexts. Nothing to reconcile, as F26 says for drafts.
+
+**Roadmap.** Item 53, in three slices.

@@ -86,12 +86,20 @@ export function ConflictBanner({
 	onShowDiff,
 	showingDiff,
 	onDismiss,
+	message,
+	reloadLabel,
 }: {
 	deleted: boolean;
 	onReload: () => void;
 	onShowDiff: (() => void) | null;
 	showingDiff: boolean;
 	onDismiss: () => void;
+	/** What happened, when the default sentence is not it. The decrypted SOPS
+	 *  buffer overrides it (F27): what changed on disk is the *ciphertext*, and
+	 *  taking it means losing a plaintext that exists nowhere else. */
+	message?: string;
+	/** What Reload is called when it costs more than usual — see `message`. */
+	reloadLabel?: string;
 }) {
 	return (
 		<div
@@ -99,9 +107,10 @@ export function ConflictBanner({
 			className="flex shrink-0 items-center gap-2 border-border border-b bg-primary/10 px-3 py-1.5 text-xs"
 		>
 			<span className="min-w-0 flex-1 truncate">
-				{deleted
-					? 'Deleted on disk. Saving writes the file back.'
-					: 'Changed on disk. Something else wrote this file while you were editing it.'}
+				{message ??
+					(deleted
+						? 'Deleted on disk. Saving writes the file back.'
+						: 'Changed on disk. Something else wrote this file while you were editing it.')}
 			</span>
 			{!deleted && (
 				<Button
@@ -111,7 +120,7 @@ export function ConflictBanner({
 					data-testid="viewer-conflict-reload"
 					onClick={onReload}
 				>
-					Reload
+					{reloadLabel ?? 'Reload'}
 				</Button>
 			)}
 			{onShowDiff && (
@@ -157,12 +166,22 @@ export function SaveButton({
 	saving,
 	conflict,
 	onSave,
+	labels,
 }: {
 	dirty: boolean;
 	saving: boolean;
 	conflict: boolean;
 	onSave: () => void;
+	/** What the two non-conflict states are called. Defaulted rather than
+	 *  required: the only caller that overrides them is the decrypted SOPS
+	 *  buffer (F27), where a bare `Save` would understate what pressing it
+	 *  does — the buffer is plaintext and the file it writes is not. The
+	 *  `Overwrite` state keeps its own word in both, because what changed
+	 *  there is the *act*, not the kind of write. */
+	labels?: { idle: string; saving: string };
 }) {
+	const idle = labels?.idle ?? 'Save';
+	const busy = labels?.saving ?? 'Saving…';
 	return (
 		<Button
 			variant="quiet"
@@ -174,9 +193,7 @@ export function SaveButton({
 			onClick={onSave}
 		>
 			<Save className={dirty ? 'text-primary' : undefined} />
-			<span className="@max-[30rem]:hidden">
-				{saving ? 'Saving…' : conflict ? 'Overwrite' : 'Save'}
-			</span>
+			<span className="@max-[30rem]:hidden">{saving ? busy : conflict ? 'Overwrite' : idle}</span>
 		</Button>
 	);
 }
@@ -194,11 +211,16 @@ export function OverwriteConfirm({
 	name,
 	onCancel,
 	onConfirm,
+	description,
 }: {
 	open: boolean;
 	name: string;
 	onCancel: () => void;
 	onConfirm: () => void;
+	/** The sentence under the title, when the default one is not what saving
+	 *  would do — the decrypted SOPS buffer replaces a *ciphertext* somebody
+	 *  else wrote (F27). */
+	description?: string;
 }) {
 	return (
 		<Dialog
@@ -211,8 +233,8 @@ export function OverwriteConfirm({
 				<DialogHeader>
 					<DialogTitle>Overwrite {name}?</DialogTitle>
 					<DialogDescription>
-						Something else changed this file after you started editing. Saving replaces what is on
-						disk with your version.
+						{description ??
+							'Something else changed this file after you started editing. Saving replaces what is on disk with your version.'}
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
@@ -239,4 +261,59 @@ export function errorText(e: unknown): string {
 		return message;
 	}
 	return String(e);
+}
+
+/**
+ * `sops` refused, and the pane has nothing to show for it (F27 § "Errors,
+ * forwarded and readable").
+ *
+ * Above the pane, in `ConflictBanner`'s row, because it is the same kind of
+ * statement: something happened to this file that the footer's metadata cannot
+ * express. **No toast** — that primitive belongs to its own roadmap item, and a
+ * private one grown here would be the second answer to "where do transient
+ * messages go".
+ *
+ * The message arrives already classified by Rust, with `sops`'s own words on
+ * the end. It is not rewritten here: the renderer does not know more about a
+ * KMS refusal than the provider that issued it.
+ */
+export function DecryptFailedBanner({
+	message,
+	onRetry,
+	onDismiss,
+}: {
+	message: string;
+	onRetry: () => void;
+	onDismiss: () => void;
+}) {
+	return (
+		<div
+			data-testid="viewer-decrypt-error"
+			className="flex shrink-0 items-start gap-2 border-border border-b bg-destructive/10 px-3 py-1.5 text-xs"
+		>
+			{/* Wrapped rather than truncated, unlike the conflict banner's one
+			    line: this text is the whole content of the failure — which key,
+			    which recipients, which provider said no — and an ellipsis would
+			    cut off the half that says what to do next. */}
+			<span className="min-w-0 flex-1">{message}</span>
+			<Button
+				variant="quiet"
+				size="sm"
+				className="h-6 shrink-0 px-2 font-normal text-xs"
+				data-testid="viewer-decrypt-retry"
+				onClick={onRetry}
+			>
+				Try again
+			</Button>
+			<Button
+				variant="quiet"
+				size="sm"
+				className="h-6 shrink-0 px-2 font-normal text-xs"
+				data-testid="viewer-decrypt-dismiss"
+				onClick={onDismiss}
+			>
+				Dismiss
+			</Button>
+		</div>
+	);
 }

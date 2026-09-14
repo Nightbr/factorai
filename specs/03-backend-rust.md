@@ -29,6 +29,7 @@ commands/
                       #   read_claude_md/write_claude_md dropped: F26 makes
                       #   every text file editable through write_file
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
+  sops.rs             # sops_status — is there a `sops` we can drive (F27)
 agents/
   mod.rs              # Discovered, display_name_for_path — the store-agnostic bits
   claude.rs           # Claude's directory encoding, transcript paths, discovery
@@ -43,6 +44,8 @@ services/
   sessions.rs         # the small `sessions` reads something outside the
                       #   command layer needs — today, a recorded cwd
   files.rs            # list_dir, read_file, read_image, read_pdf, path_kinds
+  sops.rs             # what a SOPS-encrypted file looks like, and where the
+                      #   `sops` binary is (F27)
   file_watch.rs       # FileWatch — the one watch on the file the viewer has
                       #   open (F7), replaced on open and dropped on close
   reveal.rs           # show a path in the desktop's file manager with the
@@ -300,6 +303,23 @@ path_kinds(paths: Vec<String>) -> Vec<PathKind>                       // file | 
 // stopped anything.
 watch_file(path: String) -> ()
 unwatch_file(path: String) -> bool
+// Whether `sops` can be driven at all (F27), for the viewer's Decrypt control:
+// found on the child PATH, what version it reports, and whether that is under
+// the 3.9 floor. Asked before the control is pressed, so a missing or too-old
+// install is a control that says why rather than one that fails when clicked.
+// Reads no key material and touches no file.
+sops_status() -> SopsStatus
+// Decrypt one SOPS file (F27). The plaintext is returned to the renderer and
+// **never written anywhere**: `sops` puts it on stdout, it lands in the
+// viewer's buffer, and no draft, index or diff ever sees it. Errors arrive
+// classified — none of your keys, no key material at all, a MAC that no longer
+// matches — with `sops`'s own words kept on the end rather than swallowed.
+sops_decrypt(path: String) -> String
+// Encrypt the viewer's buffer and write it over the file (F27, ADR-0045). The
+// recipients come from the file being replaced, not from `.sops.yaml`, and the
+// result is verified against them before anything is written. Plaintext goes in
+// on stdin; the only thing written is the ciphertext, through `write_file`.
+sops_encrypt(path: String, plaintext: String) -> FileContents
 // Show a path in the desktop's file manager with the file **selected** (F7,
 // ADR-0033) — a different question from `plugin-shell`'s `open`, which hands
 // the file to the application that owns its type. NotFound on a path that has
@@ -968,6 +988,12 @@ Rules, all enforced in Rust so the renderer stays dumb:
   ruled out. **`lossy` says so** (added by F26), because every invalid byte came
   back as U+FFFD and writing that buffer to disk would destroy the original
   bytes — so a lossy read opens read-only.
+- **`sopsEncrypted` says the contents are a SOPS-encrypted file** (added by
+  F27), decided from the metadata block in the bytes and never from the name.
+  Ciphertext is readable and never writable — an edit invalidates its MAC — so
+  this is the fifth read-only reason the viewer's footer can name. A truncated
+  read reports `false`: SOPS writes the block at the end of the file, so the
+  evidence is exactly what the cap cut off.
 - No `mime` field. It existed in the original spec to pick a viewer, but the
   renderer resolves a language from the extension through Monaco's own
   language registry (ADR-0007), so a `mime_guess` dependency would be a
@@ -1012,6 +1038,61 @@ generalised rather than weakened.
   editor held, and it decoded, so there is nothing to truncate.
 - Errors are the same shapes the reads use — `permission denied`,
   `is a directory`, `NotFound` for a missing parent.
+
+### `sops`
+
+Two questions, deliberately in one module rather than spread across `files.rs`
+and a command — see [F27](05-features.md#f27--a-sops-encrypted-file-opened-in-the-viewer).
+
+`is_encrypted(text) -> bool` is asked on **every** text read, so it is a scan of
+text already in hand: no process, no key, no I/O. It looks for the metadata
+block SOPS writes beside the ciphertext — a `sops` section carrying `mac`,
+`version` and at least one key source (`age`, `pgp`, `kms`, `gcp_kms`,
+`azure_kv`, `hc_vault`) — in the four spellings SOPS emits, one per output
+format: nested under `sops:` in YAML, under `"sops"` in JSON (which is also the
+`binary` format), flattened to `sops_*` keys in dotenv, and as a `[sops]`
+section in INI. All three keys are required so that an ordinary file with a
+`sops:` key of its own is not called encrypted; JSON is parsed with `serde_json`
+and the other three are scanned line-wise, because no YAML parser is in the tree
+and pulling one in to read four key *names* would be a dependency for a question
+this answers exactly.
+
+`decrypt(path) -> String` runs `sops decrypt <path>` and answers with stdout.
+`decrypt`, not `-d`: the subcommand is the spelling 3.9 introduced and the floor
+guarantees, and it leaves no room for a path to be read as a flag. The child
+inherits the user's environment, because that is where every key lives; the
+plaintext is a `String` from stdout to the bridge, so nothing on disk holds it
+at any point. Non-UTF-8 output is refused rather than read lossily — a
+`binary`-format file can hold anything, and U+FFFD where a byte was would
+re-encrypt to a different file.
+
+Failures classify on the **exit code** (`128` could not retrieve key, `51` MAC
+mismatch, `24`/`25` decryption, `1` with `metadata not found`, `2`/`100`
+unreadable), with the stderr separating the two key cases — no identity at all
+versus no identity that matches — and every unclassified case forwarded
+verbatim. Recipients for the not-authorised message are read from the file's own
+metadata, since `sops` has already failed by then.
+
+`encrypt(path, plaintext) -> FileContents` re-makes the file: it reads the
+ciphertext it is about to replace, builds one key flag per backend that
+metadata names (`--age`, `--pgp`, `--kms`, `--gcp-kms`, `--azure-kv`,
+`--hc-vault-transit`), reproduces whichever shape setting the file carries
+(`encrypted_regex` / `unencrypted_regex` / `encrypted_suffix` /
+`unencrypted_suffix` — SOPS writes exactly one and rejects two), passes
+`--filename-override <path>` so the output format is the input's, and feeds the
+plaintext on stdin. **ADR-0045** is why the keys come from the file rather than
+from `.sops.yaml`. The new ciphertext's key identifiers are compared against the
+old one's **before** the write, and a difference refuses the save; key groups are
+refused outright, since flags describe one flat set. The write itself is
+`files::write_file`, so it is atomic and keeps the original's `0600`.
+
+`status() -> SopsStatus` resolves the binary on the **child** `PATH`
+(`shell_path::child_path`) by walking its entries, then runs
+`sops --version --disable-version-check` with the usual child environment
+(`child_env`, for the AppImage `LD_LIBRARY_PATH` strip). `--disable-version-check`
+is required, not cosmetic: without it the probe reaches GitHub for a release
+check, and opening a file must not become a network call. Cached in a
+`OnceLock` for the run.
 
 ### `reveal`
 

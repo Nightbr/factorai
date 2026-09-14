@@ -34,6 +34,10 @@ export const queryKeys = {
 	/** One PDF's bytes. Its own namespace for the same reason `image` is: the
 	 *  path decides which command answers, and only one ever does. */
 	pdf: (path: string) => ['pdf', path] as const,
+	/** Whether `sops` can be driven at all (F27). No path in the key: the answer
+	 *  is one per machine, the probe is cached in Rust for the run, and every
+	 *  encrypted file asks the same question. */
+	sopsStatus: () => ['sops-status'] as const,
 	/** Repository state for one project. **One key per project, shared by the
 	 *  Changes tab and the tree's decorations** — they read the same poll, which
 	 *  is why the interval follows the panel rather than the tab (Q20). */

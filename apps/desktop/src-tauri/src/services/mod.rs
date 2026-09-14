@@ -16,6 +16,7 @@ pub mod search;
 pub mod sessions;
 pub mod settings;
 pub mod shell_path;
+pub mod sops;
 pub mod terminal;
 pub mod watcher;
 pub mod wsl;

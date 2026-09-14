@@ -731,6 +731,13 @@ memory for the session and dies with the process, because persisting drafts buys
 crash-resistance and is not worth a plaintext copy of every half-edited
 credential sitting here indefinitely.
 
+**A decrypted SOPS buffer never reaches this table either**, and by a stronger
+route than an exclusion: [F27](05-features.md#f27--a-sops-encrypted-file-opened-in-the-viewer)
+keeps the plaintext in the open file's own component state, so there is nothing
+here to exclude and no way for a later change to this table to start persisting
+it by accident. The ciphertext is the only version of that file anything writes
+down.
+
 ### Indexes
 
 ```sql

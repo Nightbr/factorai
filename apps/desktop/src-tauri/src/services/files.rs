@@ -16,6 +16,7 @@ use base64::Engine;
 use crate::error::{AppError, AppResult};
 use crate::models::{DirEntry, DirListing, FileContents, ImageContents, PathKind, PdfContents};
 use crate::services::git::IgnoreChecker;
+use crate::services::sops;
 
 /// Upper bound on entries returned for a single directory. Generated
 /// directories (build output, caches) can hold tens of thousands of files and
@@ -321,6 +322,9 @@ pub(crate) fn contents_from_bytes(
 			truncated: false,
 			line_count: 0,
 			lossy: false,
+			// A binary read carries no `contents` to look at, and SOPS's own
+			// `binary` output format is JSON — text — so it never lands here.
+			sops_encrypted: false,
 		};
 	}
 
@@ -350,6 +354,11 @@ pub(crate) fn contents_from_bytes(
 	};
 	let line_count = if contents.is_empty() { 0 } else { contents.lines().count() };
 
+	// **Decided here rather than in the viewer** (F27). One answer for a file,
+	// whether it was read from disk or out of the object database, and it costs
+	// a scan of text we are already holding — no `sops` process, no key.
+	let sops_encrypted = sops::is_encrypted(&contents);
+
 	FileContents {
 		path: path.to_string(),
 		contents,
@@ -358,6 +367,7 @@ pub(crate) fn contents_from_bytes(
 		truncated,
 		line_count,
 		lossy,
+		sops_encrypted,
 	}
 }
 
@@ -862,6 +872,55 @@ mod tests {
 		let full = read_file(p.to_str().unwrap(), None).unwrap();
 		assert!(!full.truncated);
 		assert_eq!(full.contents, "0123456789");
+	}
+
+	/// A real file `sops` produced — the whole thing, MAC and all — read through
+	/// `read_file` rather than through the detector directly, because the wiring
+	/// is what this asserts: the flag the viewer reads comes off an ordinary
+	/// read with no `sops` process and no key (F27).
+	const SOPS_YAML: &str = r#"api_key: ENC[AES256_GCM,data:C5LpI9JZGR81BNW/J7g=,iv:xEumiTGqmmhXm2R+ckMWMtxyxICnIVKboRlkRLL4vko=,tag:kJrpIPlMaydO6ndFVIpb/g==,type:str]
+nested:
+    token: ENC[AES256_GCM,data:FgNuyFuCJg==,iv:quCuLXUzPu9e7J+cpmuHTCd92R84WVnU29DCjVeTkPU=,tag:dxUvcUkhCYdu9AU0zYYIYA==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAxVkZTMDhjWllheEovOE5m
+            TXhTZkcxYWN2OWJlM0JhSVF0WjVOWGorVGdRCkdMTTFUK0wxbzQwYTFYSlFDR3k0
+            OUZXcDVSQWc4YktMSGlFUnM4Y2piMTAKLS0tIE1jc2VvTFFMeWVvUTYzTVZHSC9T
+            RWFaSU9IR3FuWjU0TnZBQWRmSExvMDQKRbc4QRREaqOCDbBfpEblfz75lxu7LnBK
+            3wuATJDJJbu26+beb9kdfNRziJ66dtCgtybLf/QRaUW86r7hDWJYvg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age183pmep5vqgx4ld244frt0eaulz8kct2stjj9hau42njhwc44makqlsumed
+    lastmodified: "2026-09-14T15:29:16Z"
+    mac: ENC[AES256_GCM,data:k5c7moHOM14RA0bEEQwnOn+qrKx9aJybtQAGvW1/Oh+iTwFQEYLn2GOP23uCpPDf1rArCWpPp7EBXNiaSjGGA2z9mtZe8ZWfZIcLxeJo9XrFlxtfEkHnmVrZ+5ANUiIND4JuH2WCpzmbprFALJAYniXFJQZ8z41LJ30o4XpT0aI=,iv:Vue/bB8afK08gHzFOhlkoE9UjB32NBE4PMak+p95au8=,tag:pk07Gf7qB2qm/warmoQkKw==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.1
+"#;
+
+	#[test]
+	fn an_encrypted_file_is_read_and_flagged() {
+		let dir = tempdir().unwrap();
+		let p = dir.path().join("secrets.yaml");
+		fs::write(&p, SOPS_YAML).unwrap();
+
+		let f = read_file(p.to_str().unwrap(), None).unwrap();
+
+		// Ciphertext is text: it is readable, it is not binary, and the viewer
+		// shows it. What the flag adds is that it must not be written back.
+		assert!(f.sops_encrypted);
+		assert!(!f.is_binary);
+		assert!(f.contents.contains("ENC[AES256_GCM"));
+	}
+
+	#[test]
+	fn an_ordinary_file_is_not_flagged_encrypted() {
+		let dir = tempdir().unwrap();
+		// The name a convention would call encrypted, holding a file that is not.
+		let p = dir.path().join("secrets.yaml");
+		fs::write(&p, "api_key: sk-live-abc123\n").unwrap();
+
+		assert!(!read_file(p.to_str().unwrap(), None).unwrap().sops_encrypted);
 	}
 
 	#[test]

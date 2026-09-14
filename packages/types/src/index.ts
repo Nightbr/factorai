@@ -500,6 +500,34 @@ export interface FileContents {
 	 *  readable — but writing this string back would destroy the original
 	 *  bytes, so the viewer opens a lossy file read-only. */
 	lossy: boolean;
+	/** `contents` is a SOPS-encrypted file (F27), decided in Rust from the
+	 *  metadata block in the bytes and never from the filename.
+	 *
+	 *  Ciphertext is readable and never writable — an edit invalidates the MAC
+	 *  — so this is the fifth read-only reason in the viewer's footer. The way
+	 *  to change one is Decrypt, edit the plaintext, encrypt on save. */
+	sopsEncrypted: boolean;
+}
+
+/**
+ * Whether `sops` can be driven at all, for the viewer's Decrypt control (F27).
+ * Mirrors the Rust `SopsStatus`.
+ *
+ * Asked before the control is pressed rather than after: a disabled control
+ * that names the reason is the point, and a button that fails on click is what
+ * it replaces. No key material is read to answer it.
+ */
+export interface SopsStatus {
+	/** A `sops` that ran and is new enough for the subcommands we call. The one
+	 *  question the control asks. */
+	usable: boolean;
+	/** Where it was found, for the message when it is not usable. */
+	binaryPath: string | null;
+	/** `3.13.1`, from `sops --version`. Null for a binary that did not answer —
+	 *  a wrapper script, a broken install — which is not the same as absent. */
+	version: string | null;
+	/** Found, answered, and older than the 3.9 floor. */
+	tooOld: boolean;
 }
 
 /**

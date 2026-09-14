@@ -17,6 +17,7 @@ function file(over: Partial<FileContents> = {}): FileContents {
 		truncated: false,
 		lineCount: 1,
 		lossy: false,
+		sopsEncrypted: false,
 		...over,
 	};
 }
@@ -62,6 +63,20 @@ describe('readOnlyReason', () => {
 		expect(readOnlyReason(file({ truncated: true, lossy: true }), '/repo/a.ts')).toMatch(
 			/truncated/,
 		);
+	});
+
+	it('refuses ciphertext, whose MAC any edit would invalidate', () => {
+		expect(readOnlyReason(file({ sopsEncrypted: true }), '/repo/secrets.yaml')).toMatch(
+			/encrypted \(SOPS\)/,
+		);
+	});
+
+	it('reports encrypted before anything else — it is the reason with a way out', () => {
+		// A big encrypted file is both truncated and encrypted. Labelling it
+		// `truncated` would hide the Decrypt control's reason for being there.
+		expect(
+			readOnlyReason(file({ sopsEncrypted: true, truncated: true }), '/repo/secrets.yaml'),
+		).toMatch(/encrypted \(SOPS\)/);
 	});
 });
 

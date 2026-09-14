@@ -21,16 +21,23 @@ export function isPlanPath(path: string): boolean {
 /**
  * Why this file cannot be edited, or `null` when it can.
  *
- * The two technical cases are both "saving this buffer would destroy
- * something": a truncated read is a prefix, and writing it back deletes
- * everything past the cap; a lossy read carries U+FFFD where bytes failed to
- * decode, and writing it back replaces those bytes for good. Binary never
- * reaches here — it gets the card instead.
+ * Three of the cases are "saving this buffer would destroy something": a
+ * truncated read is a prefix, and writing it back deletes everything past the
+ * cap; a lossy read carries U+FFFD where bytes failed to decode, and writing it
+ * back replaces those bytes for good; ciphertext has a MAC over it, and any
+ * edit to it invalidates the file for every key that could open it (F27).
+ * Binary never reaches here — it gets the card instead.
  *
  * The string is the footer's label, so it names the reason rather than saying
- * `read-only` and leaving the reader to guess which of four things happened.
+ * `read-only` and leaving the reader to guess which of five things happened.
+ *
+ * **Encrypted comes before the two damage cases** — not for severity, but
+ * because it is the only reason with a way out: the footer's control beside it
+ * offers Decrypt, and a file labelled `truncated` would hide that the thing the
+ * reader is looking at is also encrypted.
  */
 export function readOnlyReason(file: FileContents, path: string): string | null {
+	if (file.sopsEncrypted) return 'encrypted (SOPS) — read-only';
 	if (file.truncated) return 'truncated — read-only';
 	if (file.lossy) return 'not valid UTF-8 — read-only';
 	if (isPlanPath(path)) return 'plan — read-only';

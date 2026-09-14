@@ -30,6 +30,7 @@ import type {
 	SessionPage,
 	SessionSummary,
 	SettingKey,
+	SopsStatus,
 	TerminalId,
 	SidebarRow,
 } from '@factorai/types';
@@ -103,6 +104,13 @@ export interface TestFixture {
 	 *  Anything not listed validates as not installed — which is how a spec
 	 *  reaches the override field's inline error. */
 	claudeBinaries?: Record<string, string | null>;
+	/** What the `sops` probe finds (F27). Omit for a machine with no `sops` on
+	 *  it — the browser-only default, and the state the disabled Decrypt
+	 *  control exists for. */
+	sopsStatus?: SopsStatus;
+	/** Plaintext keyed by absolute path, for `sops_decrypt` (F27). A path that
+	 *  is not listed rejects, which is how a spec reaches the failure banner. */
+	sopsPlaintext?: Record<string, string>;
 }
 
 declare global {
@@ -676,6 +684,9 @@ function contents(path: string, text: string, over: Partial<FileContents> = {}):
 		lineCount: text ? text.replace(/\n$/, '').split('\n').length : 0,
 		// Fixtures are text somebody typed into this file, so it decoded (F26).
 		lossy: false,
+		// Encrypted is the exception, not the default: a fixture that wants
+		// ciphertext says so, the way the Rust detector would (F27).
+		sopsEncrypted: false,
 		...over,
 	};
 }
@@ -719,6 +730,7 @@ export function fixtureWithFileTree(): TestFixture {
 				entry(root, 'data.bin'),
 				entry(root, 'huge.log'),
 				entry(root, 'main.py'),
+				entry(root, 'secrets.yaml'),
 			]),
 			// 2 of 12 — exercises the truncation row.
 			[apps]: listing([entry(apps, 'desktop', { isDir: true }), entry(apps, 'index.ts')], {
@@ -806,6 +818,22 @@ export function fixtureWithFileTree(): TestFixture {
 				size: 12_582_912,
 				truncated: true,
 			}),
+			// A SOPS-encrypted file (F27). Ciphertext trimmed to the shape the
+			// backend's detector answers on — the renderer never parses it, it
+			// only renders what `sopsEncrypted` says about it.
+			[`${root}/secrets.yaml`]: contents(
+				`${root}/secrets.yaml`,
+				[
+					'api_key: ENC[AES256_GCM,data:C5LpI9JZ,iv:xEumiTGq,tag:kJrpIPlM,type:str]',
+					'sops:',
+					'    age:',
+					'        - recipient: age183pmep5vqgx4ld244frt0eaulz8kct2stjj9hau42njhwc44makqlsumed',
+					'    mac: ENC[AES256_GCM,data:k5c7moHO,iv:Vue/bB8a,tag:pk07Gf7q,type:str]',
+					'    version: 3.13.1',
+					'',
+				].join('\n'),
+				{ sopsEncrypted: true },
+			),
 			// Long enough that `&line=` has somewhere off-screen to land (F19).
 			// Deliberately **not** in `dirListings`: it is reached by URL, which is
 			// also how a terminal link reaches a file — through `?file=`, not
@@ -823,6 +851,31 @@ export function fixtureWithFileTree(): TestFixture {
 		pdfs: {
 			[`${root}/spec.pdf`]: pdf(`${root}/spec.pdf`),
 			[`${root}/locked.pdf`]: pdf(`${root}/locked.pdf`, { base64: LOCKED_PDF, size: 898 }),
+		},
+	};
+}
+
+/**
+ * The same tree, on a machine that has a usable `sops` and a key that opens
+ * `secrets.yaml` (F27).
+ *
+ * Its own factory rather than a field on the base: **the default is a machine
+ * with no `sops`**, which is what every spec that never mentions SOPS should
+ * see, and what the disabled Decrypt control exists for.
+ */
+export function fixtureFileTreeWithSops(): TestFixture {
+	const tree = fixtureWithFileTree();
+	const root = tree.projects?.[0]?.realPath ?? '';
+	return {
+		...tree,
+		sopsStatus: {
+			usable: true,
+			binaryPath: '/opt/homebrew/bin/sops',
+			version: '3.13.1',
+			tooOld: false,
+		},
+		sopsPlaintext: {
+			[`${root}/secrets.yaml`]: 'api_key: sk-live-abc123\nnested:\n    token: hunter2\n',
 		},
 	};
 }

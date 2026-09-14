@@ -357,6 +357,40 @@ pub struct FileContents {
 	/// is readable — but writing this string back would destroy the original
 	/// bytes, so the viewer opens a lossy file read-only.
 	pub lossy: bool,
+	/// `contents` is a SOPS-encrypted file (F27), decided from the metadata
+	/// block in the bytes themselves and never from the filename — see
+	/// [`crate::services::sops::is_encrypted`].
+	///
+	/// Ciphertext is readable and never writable: an edit invalidates the MAC,
+	/// so this is the fifth read-only reason in the viewer's footer. The way to
+	/// change one is Decrypt, edit the plaintext, and encrypt on save.
+	pub sops_encrypted: bool,
+}
+
+/// What the viewer needs to know about `sops` before it offers to use it.
+///
+/// Shaped like [`crate::services::claude_cli::ClaudeCliStatus`] and for the
+/// same reason: "the binary resolved" and "the binary answered `--version`" are
+/// different facts, and folding the second into the first lets a version probe
+/// veto an install that works. The extra field here is [`Self::too_old`],
+/// because unlike `claude` there is a floor below which the subcommands we call
+/// do not exist.
+///
+/// Mirrors `@factorai/types` `SopsStatus`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SopsStatus {
+	/// A `sops` we could run, new enough to have the subcommands we call. The
+	/// one question the footer's control asks.
+	pub usable: bool,
+	/// Where it was found, for the message when it is not usable.
+	pub binary_path: Option<String>,
+	/// `3.13.1`, from `sops --version`. `None` for a binary that did not answer
+	/// — a wrapper script, a broken install — which is a real state and not the
+	/// same as absent.
+	pub version: Option<String>,
+	/// Found, answered, and older than [`MIN_VERSION`].
+	pub too_old: bool,
 }
 
 /// One image, ready for an `<img src>` (F7).

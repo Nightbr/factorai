@@ -5,6 +5,7 @@ import {
 	fixtureFileTreeInTwoCheckouts,
 	fixtureFileTreeInTwoProjects,
 	fixtureFileTreeTwoSessions,
+	fixtureFileTreeWithSops,
 	fixtureWithFileTree,
 	installMockBridge,
 } from './fixtures';
@@ -1263,6 +1264,7 @@ test.describe('file viewer', () => {
 				truncated: false,
 				lineCount: 1,
 				lossy: false,
+				sopsEncrypted: false,
 			},
 		};
 		fx.dirListings[ROOT] = {
@@ -1377,5 +1379,150 @@ test.describe('file viewer', () => {
 		// And going back to the first tab scrolls the other way.
 		await tabs.first().click();
 		await expect(tabs.first()).toBeInViewport();
+	});
+});
+
+test.describe('SOPS (F27)', () => {
+	/** Every `write_file` the renderer attempted. Its own copy rather than the
+	 *  editing block's, which is scoped to that describe. */
+	async function writes(page: Page) {
+		return page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? []).filter((c) => c.name === 'write_file'),
+		);
+	}
+
+	test('@smoke an encrypted file reads, says it is encrypted, and cannot be saved', async ({
+		page,
+	}) => {
+		// The default fixture is a machine with no `sops` on it.
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'secrets.yaml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		// The ciphertext is shown — it is text, and refusing to render it would
+		// teach the reader nothing about what the file is.
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('encrypted (SOPS) — read-only');
+		await expect(viewer.getByTestId('viewer-save')).toHaveCount(0);
+
+		// The control is there and disabled, with the reason on it, rather than
+		// absent or failing when pressed.
+		const decrypt = viewer.getByTestId('viewer-decrypt');
+		await expect(decrypt).toBeDisabled();
+		await expect(decrypt).toHaveAttribute('title', /not installed/);
+	});
+
+	test('@smoke Decrypt shows the plaintext, and Re-lock takes it away again', async ({ page }) => {
+		await installMockBridge(page, fixtureFileTreeWithSops());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'secrets.yaml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const editor = page.getByTestId('file-view-editor');
+		await expect(editor).toContainText('ENC[AES256_GCM');
+
+		await viewer.getByTestId('viewer-decrypt').click();
+
+		await expect(editor).toContainText('sk-live-abc123');
+		await expect(editor).not.toContainText('ENC[AES256_GCM');
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('decrypted — Save encrypts');
+		// Nothing was written: the encrypted file is what is on disk throughout.
+		expect(await writes(page)).toEqual([]);
+
+		await viewer.getByTestId('viewer-decrypt').click();
+
+		await expect(editor).toContainText('ENC[AES256_GCM');
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('encrypted (SOPS) — read-only');
+	});
+
+	test('@smoke a refusal is shown with its reason, and can be retried', async ({ page }) => {
+		const fx = fixtureFileTreeWithSops();
+		// A usable `sops`, and no key that opens this file — the case the
+		// classified message exists for.
+		fx.sopsPlaintext = {};
+		await installMockBridge(page, fx);
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'secrets.yaml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		await viewer.getByTestId('viewer-decrypt').click();
+
+		const banner = viewer.getByTestId('viewer-decrypt-error');
+		await expect(banner).toContainText('none of your keys can decrypt this file');
+		// The recipients are named, because "ask whoever holds one of these" is
+		// the next step and only the file knows who they are.
+		await expect(banner).toContainText('age1example');
+		// The ciphertext is still what is on screen.
+		await expect(page.getByTestId('file-view-editor')).toContainText('ENC[AES256_GCM');
+
+		await viewer.getByTestId('viewer-decrypt-dismiss').click();
+		await expect(banner).toHaveCount(0);
+	});
+
+	test('@smoke editing the plaintext and saving writes the encrypted file back', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureFileTreeWithSops());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'secrets.yaml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		await viewer.getByTestId('viewer-decrypt').click();
+		const editor = page.getByTestId('file-view-editor');
+		await expect(editor).toContainText('sk-live-abc123');
+
+		// Nothing to save until something is typed — Save is the dirty indicator
+		// here exactly as it is for an ordinary file (F26).
+		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+
+		await editor.click();
+		await expect(editor.locator('.monaco-editor').first()).toHaveClass(/(^|\s)focused(\s|$)/);
+		await page.keyboard.insertText('rotated-');
+		const save = viewer.getByTestId('viewer-save');
+		await expect(save).toBeEnabled();
+		await expect(save).toContainText('Encrypt & save');
+
+		await save.click();
+
+		// **Back to the ciphertext**, because that is what is on disk — and the
+		// plaintext is gone with the buffer that held it.
+		await expect(editor).toContainText('ENC[AES256_GCM');
+		await expect(viewer.getByTestId('viewer-read-only')).toHaveText('encrypted (SOPS) — read-only');
+		// Written through `sops_encrypt`, never through `write_file`: the one
+		// command that would have put the plaintext on disk was not called.
+		const calls = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'sops_encrypt' || c.name === 'write_file')
+				.map((c) => c.name),
+		);
+		expect(calls).toEqual(['sops_encrypt']);
+	});
+
+	test('@smoke an encrypted file is never offered to the agent', async ({ page }) => {
+		await installMockBridge(page, fixtureFileTreeWithSops());
+		await page.goto('/');
+		// Through a session, so there is an agent to send to at all (F20).
+		await page.locator('aside').first().getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+		const session = page.url().split('?')[0];
+		await page.goto(`${session}?file=${encodeURIComponent(`${ROOT}/Cargo.toml`)}`);
+
+		const viewer = page.getByTestId('file-viewer');
+		// The control is there for an ordinary file in a session…
+		await expect(viewer.getByTestId('viewer-add-to-claude')).toBeVisible();
+
+		await page.goto(`${session}?file=${encodeURIComponent(`${ROOT}/secrets.yaml`)}`);
+		// …and gone for this one, encrypted (F26 § "Secrets": a selection sent to
+		// an agent cannot be taken back)…
+		await expect(viewer.getByTestId('viewer-add-to-claude')).toHaveCount(0);
+
+		await viewer.getByTestId('viewer-decrypt').click();
+		await expect(page.getByTestId('file-view-editor')).toContainText('sk-live-abc123');
+		// …and still gone once it is decrypted, which is when it matters most.
+		await expect(viewer.getByTestId('viewer-add-to-claude')).toHaveCount(0);
 	});
 });

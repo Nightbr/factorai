@@ -7,4 +7,5 @@ pub mod routines;
 pub mod sessions;
 pub mod settings;
 pub mod sidebar;
+pub mod sops;
 pub mod terminal;
