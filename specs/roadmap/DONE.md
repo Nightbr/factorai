@@ -3,6 +3,56 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **SOPS in the viewer — item 53, F27, ADR-0045** — 2026-09-14, asked for 2026-09-12. A
+  SOPS-encrypted file now opens in the viewer, says that is what it is, decrypts to an editable
+  plaintext, and **Save encrypts and writes the encrypted file back**. The encrypted file is what
+  is on disk at every instant.
+
+  **Detection is a parse, never a filename rule.** `services/sops.rs::is_encrypted` looks for the
+  metadata block SOPS writes — a `sops` section carrying `mac`, `version` and at least one key
+  source — in the four spellings it emits, one per output format: nested under `sops:` in YAML,
+  under `"sops"` in JSON (which is also the `binary` format), flattened to `sops_*` keys in
+  dotenv, and as a `[sops]` section in INI. All three keys are required so a plain file with a
+  `sops:` key of its own is not called encrypted. It runs on every text read, off text already in
+  hand, with no `sops` process and no key, and the answer rides on `FileContents.sopsEncrypted`.
+  Ciphertext is a fifth read-only reason in the footer and is reported **before** the other four,
+  because it is the only one with a way out.
+
+  **The plaintext lives in one place and dies there.** Component state in the open file's view —
+  not a query cache, not a draft, not a ref the diff view can reach — so it goes when the tab
+  closes, when the checkout, project or session changes, and on Re-lock. `sops` writes it to
+  stdout and we feed it back on stdin, so no temp file holds a secret at any point. No idle
+  timeout in v1, which is a decision rather than an omission: a timer that wipes a buffer
+  mid-edit loses work, and the control to drop it is in the footer.
+
+  **The re-encryption question was the real one, and it needed the prototype to settle.** The
+  file that made it concrete: two age recipients, and a `.sops.yaml` naming one — which is the
+  ordinary state of a repository where somebody was added to a single file. Deriving the key set
+  from the configuration, the obvious implementation, wrote a file **one** of them could open
+  and reported success. Driving `sops edit` through an `EDITOR` helper kept both and wrote the
+  plaintext to `/tmp/130949898/edited.yaml` on the way, which is the constraint this feature
+  exists to hold. ADR-0045 takes the third way: build the key flags from the file's **own**
+  metadata, and compare the key set of what came back against what went in **before** writing —
+  so a backend this code reads wrongly is a refused save rather than a colleague who finds out
+  in a week. Key groups are refused outright; flags describe one flat set.
+
+  **Two things only the real window could say.** `sops --version` reaches GitHub for a release
+  check unless `--disable-version-check` is passed, so the probe would have made opening a file
+  a silent network call. And `pnpm dev` could never decrypt anything: Turborepo 2.x strips every
+  variable not in `globalPassThroughEnv`, which is where the user's `SOPS_AGE_KEY_FILE`, GPG
+  agent and cloud credentials live — a release build inherits the session's environment and was
+  always fine. `turbo.json` now passes them through. Same family as the AppImage env leak in
+  `.claude/rules/rust.md`, and the same failure signature: works when you run the binary
+  directly, not under `pnpm dev`.
+
+  **Tests.** Unit tests over every format SOPS writes plus the false positives; an integration
+  test that drives the real binary — decrypt, the four failure classes, and a two-recipient file
+  re-encrypted through the viewer coming back with both — skipping loudly where `sops` is absent,
+  since CI has none. It carries a throwaway age key as a constant: generating one needs
+  `age-keygen` on the machine or an X25519 dependency, to protect a key that only ever opens
+  files the test wrote seconds earlier into a temp directory. Five smoke specs cover the
+  renderer through the mocked bridge, and a real-window pass did the round trip with real keys.
+
 - **Windows, through WSL 2 (ADR-0044)** — 2026-09-12, user ask: more people want a Windows
   build. What shipped is deliberately *not* a Windows port. factorai on Windows is the same
   `x86_64` Linux AppImage the release already produced, running inside the user's own WSL 2
