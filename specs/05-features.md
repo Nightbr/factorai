@@ -3466,7 +3466,7 @@ section that edits them.
 | `Mod + K`            | Focus sidebar search — from anywhere      |
 | `Mod + F`            | Find, in a focused viewer or terminal; focus sidebar search anywhere else |
 | `Mod + N`            | New session in the active project         |
-| `Mod + W`            | Close the focused tab — not over a focused terminal on Linux, where `Ctrl+W` is readline's |
+| `Mod + W`            | Close the focused tab                     |
 | `Mod + Shift + E`    | Toggle the file panel                     |
 | `Mod + ,`            | Open settings                             |
 | `Mod + Q`            | Quit — the menu's on macOS, a binding on Linux |
@@ -6040,14 +6040,19 @@ to F26's draft store, exactly as the `×` does.
 
 On macOS this key only exists because the menu gives it up; see below.
 
-**Whether it fires over a focused terminal is the one rule that differs by
-platform**, and `Mod` hides the difference: `Cmd+W` means nothing to a shell, so
-on macOS it fires and xterm is told to let it through; `Ctrl+W` is readline's
-delete-previous-word, so on Linux the terminal keeps it. The consequence is worth
-stating plainly rather than discovering: **on Linux, closing a tab from the
-keyboard needs focus outside the terminal** — the tab strip, the sidebar, the
-viewer — and the terminal holds focus most of the time. Verified in the real
-window, 2026-09-15.
+**It fires over a focused terminal, on both platforms — and that is a correction
+made the day it shipped.** It went out suppressed there, because `Ctrl+W` is
+readline's delete-previous-word and taking it breaks a key people use inside
+Claude's prompt. The reasoning was sound and the result was still wrong: the
+terminal holds focus nearly all the time, so the binding was unreachable exactly
+when it was wanted, and a shortcut that works only where you are not looking
+reads as broken rather than as careful.
+
+So xterm is told to let this chord through, which means the PTY never sees it and
+readline's delete-previous-word is gone at the default binding. That cost is
+affordable **because it is a default**: the Keyboard section is where somebody
+who wants that key back moves this row. A key nobody can press is not affordable,
+which is the asymmetry that decided it.
 
 ### `Mod+F` is context-dependent, `Mod+K` is not
 

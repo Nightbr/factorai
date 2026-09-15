@@ -1,12 +1,6 @@
 import { type UseHotkeyDefinition, formatForDisplay, useHotkeys } from '@tanstack/react-hotkeys';
 import { useMemo, useRef } from 'react';
-import {
-	type Keymap,
-	type ShortcutAction,
-	SHORTCUT_SPECS,
-	firesOverTerminal,
-	mergeKeymap,
-} from '@lib/keymap';
+import { type Keymap, type ShortcutAction, SHORTCUT_SPECS, mergeKeymap } from '@lib/keymap';
 import { isMacOS } from '@lib/platform';
 import { usePrefsStore } from '@store/prefsStore';
 import { useRecordingStore } from '@store/recordingStore';
@@ -75,7 +69,7 @@ export function useShortcuts(handlers: ShortcutHandlers, options: ShortcutOption
 			defs.push({
 				hotkey,
 				callback: () => handlersRef.current[spec.action]?.(),
-				options: { ignoreInputs: !firesOverTerminal(spec, mac ? 'mac' : 'linux') },
+				options: { ignoreInputs: !spec.overTerminal },
 			});
 		}
 		return defs;

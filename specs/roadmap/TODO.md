@@ -291,12 +291,11 @@ and this machine cannot test it. That is the `[~]` above.
 
 **Two things the QA pass settled, and one it left open.** A focused terminal
 keeps `Mod+F` and gets no find bar, since `SearchAddon` has no UI to open — F28
-says so now. `Mod+W` is `'mac-only'` over the terminal, so **on Linux closing a
-tab from the keyboard needs focus outside the terminal**, which holds focus most
-of the time. Still open: whether Linux should get its own default for that action
-— one that fires over a focused terminal, `Mod+Shift+W` being the obvious
-candidate since readline binds no `Ctrl+Shift`+letter — or whether the current
-answer is the right one and it is simply a mouse gesture there.
+says so now. `Mod+W` shipped suppressed over the terminal and **that was
+reverted the same day, on user feedback**: the terminal holds focus nearly all
+the time, so the binding was unreachable exactly when it was wanted. It now fires
+there on both platforms, which costs readline's `Ctrl+W` at the default binding —
+affordable only because the Keyboard section can move the row back.
 
 **What proof looks like.** Playwright cannot press any of this — CDP keystrokes
 never reach Monaco (item 4), and `Mod` chords are worse — so it is vitest on the

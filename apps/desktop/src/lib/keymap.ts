@@ -30,21 +30,21 @@ interface ShortcutSpec {
 	/**
 	 * Does this fire while the terminal (or Monaco, or a text field) has focus?
 	 *
-	 * **`'never'` is the safe answer**: xterm's focus target is a real hidden
+	 * **False is the safe answer**: xterm's focus target is a real hidden
 	 * `<textarea>`, so the library's `ignoreInputs` already suppresses hotkeys
 	 * there, and a global handler that swallows a keystroke breaks typing to
-	 * Claude. `'always'` is for the bindings whose whole point is reaching the
-	 * rest of the app *from* a terminal you are typing in — and every one of them
-	 * also needs `attachCustomKeyEventHandler` to let it past xterm, which is why
+	 * Claude. True is for the bindings whose whole point is reaching the rest of
+	 * the app *from* a terminal you are typing in — and every one of them also
+	 * needs `attachCustomKeyEventHandler` to let it past xterm, which is why
 	 * `hotkeysOverTerminal` derives that list from here rather than from a second
 	 * list kept by hand.
 	 *
-	 * **`'mac-only'` exists because `Mod` hides a real difference.** `Cmd+W`
-	 * means nothing to a shell; `Ctrl+W` is readline's delete-previous-word, and
-	 * taking it would break a key people use inside Claude's prompt. One chord,
-	 * two answers, and pretending otherwise picks a platform to be wrong on.
+	 * A binding that fires over the terminal **takes** the chord: xterm is told
+	 * not to handle it, so nothing is written to the PTY either. That is a real
+	 * cost where the shell wanted the key, and it is the reason this is per
+	 * action rather than a blanket rule.
 	 */
-	overTerminal: 'always' | 'never' | 'mac-only';
+	overTerminal: boolean;
 	/** Linux only. macOS gets this action from the app menu instead, because
 	 *  AppKit consumes the accelerator before the webview sees it (ADR-0046). */
 	linuxOnly?: true;
@@ -61,13 +61,13 @@ export const SHORTCUT_SPECS: readonly ShortcutSpec[] = [
 		action: 'newSession',
 		label: 'New session in the active project',
 		defaultHotkey: 'Mod+N',
-		overTerminal: 'always',
+		overTerminal: true,
 	},
 	{
 		action: 'focusSidebarSearch',
 		label: 'Focus the sidebar search',
 		defaultHotkey: 'Mod+K',
-		overTerminal: 'always',
+		overTerminal: true,
 	},
 	{
 		// One action, two meanings, decided by focus: find inside the viewer, and
@@ -82,7 +82,7 @@ export const SHORTCUT_SPECS: readonly ShortcutSpec[] = [
 		action: 'findOrSearch',
 		label: 'Find here, or focus the sidebar search',
 		defaultHotkey: 'Mod+F',
-		overTerminal: 'never',
+		overTerminal: false,
 	},
 	{
 		// Q15 deferred this binding to exactly this feature. `Ctrl+B` is
@@ -92,30 +92,36 @@ export const SHORTCUT_SPECS: readonly ShortcutSpec[] = [
 		action: 'toggleFilePanel',
 		label: 'Toggle the file panel',
 		defaultHotkey: 'Mod+Shift+E',
-		overTerminal: 'always',
+		overTerminal: true,
 	},
 	{
-		// The `'mac-only'` case, and the reason that value exists. On macOS the
-		// terminal has focus nearly all the time, so a Cmd+W that only worked
-		// elsewhere would read as broken — and `Cmd+W` is nothing to a shell. On
-		// Linux the same chord is `Ctrl+W`, readline's delete-previous-word, which
-		// the terminal keeps.
+		// **Over the terminal, on both platforms — corrected 2026-09-15 on user
+		// feedback.** It shipped suppressed there, on the reasoning that `Ctrl+W`
+		// is readline's delete-previous-word and taking it would break a key used
+		// inside Claude's prompt. That reasoning is sound and the result was still
+		// wrong: the terminal holds focus nearly all the time, so the binding was
+		// unreachable exactly when you want it, and a shortcut that works only
+		// where you are not looking reads as broken rather than as careful.
+		//
+		// What makes this affordable is that it is a *default*: somebody who wants
+		// readline's `Ctrl+W` back moves this row in settings, which is the point
+		// of the map. What is not affordable is a key nobody can press.
 		action: 'closeFocusedTab',
 		label: 'Close the focused tab',
 		defaultHotkey: 'Mod+W',
-		overTerminal: 'mac-only',
+		overTerminal: true,
 	},
 	{
 		action: 'openSettings',
 		label: 'Open settings',
 		defaultHotkey: 'Mod+,',
-		overTerminal: 'always',
+		overTerminal: true,
 	},
 	{
 		action: 'quit',
 		label: 'Quit factorai',
 		defaultHotkey: 'Mod+Q',
-		overTerminal: 'always',
+		overTerminal: true,
 		linuxOnly: true,
 	},
 ] as const;
@@ -233,21 +239,13 @@ export function isOverridden(map: Keymap, action: ShortcutAction): boolean {
  * pass-through and the bindings drift apart — and the symptom of that drift is a
  * key that works everywhere except where the user is typing.
  */
-export function hotkeysOverTerminal(map: Keymap, platform: 'mac' | 'linux'): Hotkey[] {
+export function hotkeysOverTerminal(map: Keymap): Hotkey[] {
 	const out: Hotkey[] = [];
 	for (const spec of SHORTCUT_SPECS) {
 		const hotkey = map[spec.action];
-		if (hotkey && firesOverTerminal(spec, platform)) out.push(hotkey);
+		if (hotkey && spec.overTerminal) out.push(hotkey);
 	}
 	return out;
-}
-
-/** The one rule, in one place: `useShortcuts` turns it into `ignoreInputs` and
- *  the terminal turns it into a pass-through, and they must agree. */
-export function firesOverTerminal(spec: ShortcutSpec, platform: 'mac' | 'linux'): boolean {
-	if (spec.overTerminal === 'always') return true;
-	if (spec.overTerminal === 'never') return false;
-	return platform === 'mac';
 }
 
 /** The specs this platform actually has. macOS drops the Linux-only rows, so

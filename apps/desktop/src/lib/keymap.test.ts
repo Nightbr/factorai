@@ -6,7 +6,6 @@ import {
 	assignHotkey,
 	clearHotkey,
 	defaultKeymap,
-	firesOverTerminal,
 	hotkeysOverTerminal,
 	isOverridden,
 	mergeKeymap,
@@ -105,38 +104,36 @@ describe('what gets persisted', () => {
 
 describe('the chords xterm must let through', () => {
 	it('is every over-terminal action that has a binding', () => {
-		const through = hotkeysOverTerminal(defaultKeymap(), 'linux');
+		const through = hotkeysOverTerminal(defaultKeymap());
 		expect(through).toContain('Mod+,');
 		expect(through).toContain('Mod+Shift+E');
 	});
 
-	// The one binding whose answer is not the same on both platforms: Ctrl+W is
-	// readline's delete-previous-word and stays the terminal's, while Cmd+W means
-	// nothing to a shell and a Mac user has the terminal focused nearly always.
-	it('lets close-tab through on macOS and not on Linux', () => {
-		expect(hotkeysOverTerminal(defaultKeymap(), 'mac')).toContain('Mod+W');
-		expect(hotkeysOverTerminal(defaultKeymap(), 'linux')).not.toContain('Mod+W');
+	// Corrected on user feedback: it shipped suppressed over the terminal, which
+	// is where the focus almost always is, so the binding was unreachable exactly
+	// when it was wanted.
+	it('lets close-tab through, which costs the terminal that chord', () => {
+		expect(hotkeysOverTerminal(defaultKeymap())).toContain('Mod+W');
 	});
 
 	it('never lets find through: the terminal keeps that chord', () => {
-		expect(hotkeysOverTerminal(defaultKeymap(), 'mac')).not.toContain('Mod+F');
-		expect(hotkeysOverTerminal(defaultKeymap(), 'linux')).not.toContain('Mod+F');
+		expect(hotkeysOverTerminal(defaultKeymap())).not.toContain('Mod+F');
 	});
 
 	it('drops an action the user unbound', () => {
 		const map = clearHotkey(defaultKeymap(), 'openSettings');
-		expect(hotkeysOverTerminal(map, 'linux')).not.toContain('Mod+,');
+		expect(hotkeysOverTerminal(map)).not.toContain('Mod+,');
 	});
 
 	it('follows a rebind rather than the default', () => {
 		const map = assignHotkey(defaultKeymap(), 'openSettings', 'Mod+Shift+P');
-		const through = hotkeysOverTerminal(map, 'linux');
+		const through = hotkeysOverTerminal(map);
 		expect(through).toContain('Mod+Shift+P');
 		expect(through).not.toContain('Mod+,');
 	});
 
 	it('covers every spec that claims it', () => {
-		const claiming = SHORTCUT_SPECS.filter((s) => firesOverTerminal(s, 'linux')).length;
-		expect(hotkeysOverTerminal(defaultKeymap(), 'linux')).toHaveLength(claiming);
+		const claiming = SHORTCUT_SPECS.filter((s) => s.overTerminal).length;
+		expect(hotkeysOverTerminal(defaultKeymap())).toHaveLength(claiming);
 	});
 });

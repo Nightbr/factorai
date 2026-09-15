@@ -13,7 +13,6 @@ import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
 import type { ResolveContext, ResolvedLink } from '@lib/fileLinks';
 import { hotkeysOverTerminal, mergeKeymap } from '@lib/keymap';
-import { isMacOS } from '@lib/platform';
 import { cmd, events, homeDir, openExternally } from '@lib/tauri';
 import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
@@ -382,7 +381,7 @@ export function getOrCreateTerm(
 		// keystroke typed into the terminal.
 		if (!event.ctrlKey && !event.metaKey) return true;
 		const keymap = mergeKeymap(usePrefsStore.getState().keymapOverrides);
-		for (const hotkey of hotkeysOverTerminal(keymap, isMacOS() ? 'mac' : 'linux')) {
+		for (const hotkey of hotkeysOverTerminal(keymap)) {
 			if (matchesKeyboardEvent(event, hotkey)) return false;
 		}
 		return true;
