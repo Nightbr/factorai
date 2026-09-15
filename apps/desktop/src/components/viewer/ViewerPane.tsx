@@ -4,6 +4,7 @@ import { type KeyboardEvent, Suspense, useRef } from 'react';
 import { FileTabs } from '@components/viewer/FileTabs';
 import { FindHandleProvider, useFindHandleSlot } from '@components/viewer/findHandle';
 import { useKeymap, useShortcuts } from '@hooks/useShortcuts';
+import { stepTab } from '@lib/keymap';
 import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import { LazyDiffView, LazyFileView } from '@components/viewer/lazyViews';
 import { useFileViewer } from '@hooks/useFileViewer';
@@ -59,9 +60,27 @@ export function ViewerPane() {
 			closeFocusedTab: () => {
 				if (openPath) close(openPath);
 			},
+			// The file strip's half of the same two actions: with this pane focused
+			// the tab keys step through open files, and the session strip's
+			// registration never sees them.
+			nextTab: () => stepToFile(1),
+			previousTab: () => stepToFile(-1),
 		},
 		{ target: paneRef },
 	);
+
+	/** One file tab along, in strip order, wrapping (F28). */
+	function stepToFile(delta: 1 | -1) {
+		if (!openPath) return;
+		const next = stepTab(
+			tabs.map((t) => t.path),
+			openPath,
+			delta,
+		);
+		if (!next || next === openPath) return;
+		const tab = tabs.find((t) => t.path === next);
+		if (tab) show(tab);
+	}
 
 	if (!viewer.path) return null;
 

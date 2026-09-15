@@ -16,6 +16,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dn
 import { CSS as DndCss } from '@dnd-kit/utilities';
 import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
 import { useShortcuts } from '@hooks/useShortcuts';
+import { stepTab } from '@lib/keymap';
 import { queryKeys } from '@lib/queryKeys';
 import { tabsInKnownProjects } from '@lib/sessionGroups';
 import { cmd } from '@lib/tauri';
@@ -209,7 +210,29 @@ export function SessionTabs() {
 			const tab = tabs.find((t) => t.id === activeId);
 			if (tab) requestClose(activeId, tab.projectId, 'button');
 		},
+		// **Strip order, not recency.** The tabs are draggable (F16), so their
+		// order is one the user arranged; stepping through it goes where the eye
+		// expects, and a most-recently-used cycle would make the same keystroke
+		// mean something different each time. `stepTab` wraps, so holding the key
+		// goes round rather than stopping at the end.
+		//
+		// `openSession` rather than a bare navigate, because a stopped tab is a
+		// restart (F16) — stepping onto a dead one must not land on an empty pane.
+		nextTab: () => stepToTab(1),
+		previousTab: () => stepToTab(-1),
 	});
+
+	/** One tab along the strip, in the order the tabs are actually in. */
+	const stepToTab = useCallback(
+		(delta: 1 | -1) => {
+			if (!activeId) return;
+			const nextId = stepTab(tabIds, activeId, delta);
+			if (!nextId || nextId === activeId) return;
+			const tab = tabs.find((t) => t.id === nextId);
+			if (tab) openSession(tab.id, tab.projectId);
+		},
+		[activeId, openSession, tabIds, tabs],
+	);
 
 	/** `arrayMove` semantics, which is what `terminalStore.reorder` already does:
 	 *  lift the tab out, then insert it at the index the drop landed on. */

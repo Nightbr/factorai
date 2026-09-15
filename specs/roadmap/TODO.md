@@ -297,6 +297,13 @@ the time, so the binding was unreachable exactly when it was wanted. It now fire
 there on both platforms, which costs readline's `Ctrl+W` at the default binding —
 affordable only because the Keyboard section can move the row back.
 
+**Tab stepping arrived after the fact, 2026-09-15**, asked for once the rest was
+in: `Mod+PageDown` / `Mod+PageUp` move one tab along, in strip order, wrapping,
+and follow the same focus rule as `Mod+W` — the viewer's files while the viewer
+has focus, the session strip otherwise. Stepping onto a stopped session tab
+restarts it exactly as clicking it does, which is worth knowing before holding
+the key down through a strip of stopped tabs.
+
 **What proof looks like.** Playwright cannot press any of this — CDP keystrokes
 never reach Monaco (item 4), and `Mod` chords are worse — so it is vitest on the
 pure module plus the `manual-qa` lane on **both** engines, with every binding

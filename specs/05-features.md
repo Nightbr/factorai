@@ -3467,6 +3467,8 @@ section that edits them.
 | `Mod + F`            | Find, in a focused viewer or terminal; focus sidebar search anywhere else |
 | `Mod + N`            | New session in the active project         |
 | `Mod + W`            | Close the focused tab                     |
+| `Mod + PageDown`     | Next tab                                  |
+| `Mod + PageUp`       | Previous tab                              |
 | `Mod + Shift + E`    | Toggle the file panel                     |
 | `Mod + ,`            | Open settings                             |
 | `Mod + Q`            | Quit — the menu's on macOS, a binding on Linux |
@@ -6053,6 +6055,28 @@ readline's delete-previous-word is gone at the default binding. That cost is
 affordable **because it is a default**: the Keyboard section is where somebody
 who wants that key back moves this row. A key nobody can press is not affordable,
 which is the asymmetry that decided it.
+
+### Stepping through the strip
+
+`Mod+PageDown` and `Mod+PageUp` move one tab along, and **which strip is the
+same question `Mod+W` answers**: the viewer's files while the viewer has focus,
+the session strip otherwise. One rule for all three tab actions rather than three
+to remember.
+
+**In strip order, not by recency.** The tabs are draggable (F16), so their order
+is one the user arranged; stepping through it goes where the eye expects, where a
+most-recently-used cycle makes the same keystroke mean something different each
+time. **It wraps**, because a strip of two is the ordinary case here and a
+next-tab that stops at the end turns a repeated keystroke into "check where you
+are first". Stepping onto a stopped session tab restarts it, exactly as clicking
+it does (F16) — landing on a dead pane is not a switch.
+
+The page keys rather than the two conventions that were closer to hand:
+`Mod+Shift+[` / `]` is what editors use and needs AltGr on a French layout, which
+makes it a two-hand gesture; `Ctrl+Tab` is what browsers use, and Tab is how you
+accept a completion in Claude's prompt. The page keys are in the same place on
+every layout, and xterm binds only `Shift+PageUp` / `Shift+PageDown`, so
+scrolling the terminal is untouched.
 
 ### `Mod+F` is context-dependent, `Mod+K` is not
 

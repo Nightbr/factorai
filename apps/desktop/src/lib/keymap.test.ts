@@ -11,6 +11,7 @@ import {
 	mergeKeymap,
 	overridesFrom,
 	specsFor,
+	stepTab,
 } from './keymap';
 
 describe('the shipped map', () => {
@@ -135,5 +136,28 @@ describe('the chords xterm must let through', () => {
 	it('covers every spec that claims it', () => {
 		const claiming = SHORTCUT_SPECS.filter((s) => s.overTerminal).length;
 		expect(hotkeysOverTerminal(defaultKeymap())).toHaveLength(claiming);
+	});
+});
+
+describe('stepping through a tab strip', () => {
+	const strip = ['a', 'b', 'c'];
+
+	it('moves one step in each direction', () => {
+		expect(stepTab(strip, 'a', 1)).toBe('b');
+		expect(stepTab(strip, 'b', -1)).toBe('a');
+	});
+
+	it('wraps at both ends, so a repeated keystroke never dead-ends', () => {
+		expect(stepTab(strip, 'c', 1)).toBe('a');
+		expect(stepTab(strip, 'a', -1)).toBe('c');
+	});
+
+	it('stays put with one tab open', () => {
+		expect(stepTab(['only'], 'only', 1)).toBe('only');
+	});
+
+	it('has nowhere to go from an empty strip or an unknown tab', () => {
+		expect(stepTab([], 'a', 1)).toBeNull();
+		expect(stepTab(strip, 'gone', 1)).toBeNull();
 	});
 });

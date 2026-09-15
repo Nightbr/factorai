@@ -14,6 +14,8 @@ export type ShortcutAction =
 	| 'findOrSearch'
 	| 'toggleFilePanel'
 	| 'closeFocusedTab'
+	| 'nextTab'
+	| 'previousTab'
 	| 'openSettings'
 	| 'quit';
 
@@ -109,6 +111,26 @@ export const SHORTCUT_SPECS: readonly ShortcutSpec[] = [
 		action: 'closeFocusedTab',
 		label: 'Close the focused tab',
 		defaultHotkey: 'Mod+W',
+		overTerminal: true,
+	},
+	{
+		// **Page keys rather than brackets or `Ctrl+Tab`.** `Mod+Shift+[` / `]` is
+		// the editor convention and needs AltGr on a French layout, which makes it
+		// a two-hand gesture for half the people who would use it. `Ctrl+Tab` is
+		// the browser one, and Tab is how you accept a completion in Claude's
+		// prompt, so it reads as risky even where it works. The page keys mean the
+		// same thing in every editor and are in the same place on every layout;
+		// xterm binds only `Shift+PageUp` / `Shift+PageDown`, so scrolling the
+		// terminal is untouched.
+		action: 'nextTab',
+		label: 'Next tab',
+		defaultHotkey: 'Mod+PageDown',
+		overTerminal: true,
+	},
+	{
+		action: 'previousTab',
+		label: 'Previous tab',
+		defaultHotkey: 'Mod+PageUp',
 		overTerminal: true,
 	},
 	{
@@ -254,4 +276,24 @@ export function hotkeysOverTerminal(map: Keymap): Hotkey[] {
 export function specsFor(platform: 'mac' | 'linux'): readonly ShortcutSpec[] {
 	if (platform === 'mac') return SHORTCUT_SPECS.filter((s) => s.linuxOnly !== true);
 	return SHORTCUT_SPECS;
+}
+
+/**
+ * The tab one step away, wrapping at both ends (F28).
+ *
+ * **It wraps**, which is the decision here: a strip of two is the ordinary case
+ * in this app, and a next-tab that stops at the end turns a repeated keystroke
+ * into "check where you are first". Both tab strips step through this, so they
+ * cannot disagree about what the last tab's next is.
+ *
+ * Returns `null` when there is nothing to move to — an empty strip, or a
+ * current tab the list does not contain, which is what a just-closed tab looks
+ * like for one render.
+ */
+export function stepTab<T>(items: readonly T[], current: T, delta: 1 | -1): T | null {
+	if (items.length === 0) return null;
+	const from = items.indexOf(current);
+	if (from < 0) return null;
+	const to = (from + delta + items.length) % items.length;
+	return items[to] ?? null;
 }
