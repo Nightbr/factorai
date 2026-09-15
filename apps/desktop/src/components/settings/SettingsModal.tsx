@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { type RefObject, useRef, useState } from 'react';
 import { type BinaryProbe, ClaudeSection } from '@components/settings/ClaudeSection';
+import { KeyboardSection } from '@components/settings/KeyboardSection';
 import { ProfilesSection } from '@components/settings/ProfilesSection';
 import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
@@ -29,6 +30,7 @@ import { currentPrefs, type Prefs, usePrefsStore } from '@store/prefsStore';
 
 const SECTION_LABELS: Record<SettingsSection, string> = {
 	appearance: 'Appearance',
+	keyboard: 'Keyboard',
 	claude: 'Claude',
 	profiles: 'Profiles',
 	editor: 'Editor',
@@ -357,6 +359,13 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 								/>
 							</SettingRow>
 						</div>
+					)}
+
+					{section === 'keyboard' && (
+						<KeyboardSection
+							value={draft.keymapOverrides}
+							onChange={(next) => set('keymapOverrides', next)}
+						/>
 					)}
 
 					{section === 'routines' && (

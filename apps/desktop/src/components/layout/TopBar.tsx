@@ -3,6 +3,7 @@ import { DevBadge } from '@components/layout/DevBadge';
 import { SessionTabs } from '@components/layout/SessionTabs';
 import { IconButton } from '@factorai/ui';
 import { useSettingsModal } from '@hooks/useSettingsModal';
+import { useChordTitle } from '@hooks/useShortcuts';
 import { usePanelStore } from '@store/panelStore';
 import { PanelRight, Settings } from 'lucide-react';
 
@@ -16,6 +17,9 @@ export function TopBar() {
 	const open = usePanelStore((s) => s.open);
 	const toggle = usePanelStore((s) => s.toggle);
 	const settings = useSettingsModal();
+	// The chord rides on the tooltip these buttons already had (F28).
+	const settingsTitle = useChordTitle('Settings', 'openSettings');
+	const panelTitle = useChordTitle('Toggle file tree', 'toggleFilePanel');
 
 	return (
 		<header className="flex h-10.5 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
@@ -43,7 +47,7 @@ export function TopBar() {
 			<IconButton
 				size="md"
 				aria-label="Settings"
-				title="Settings"
+				title={settingsTitle}
 				data-testid="open-settings"
 				onClick={() => settings.open()}
 			>
@@ -62,7 +66,7 @@ export function TopBar() {
 				size="md"
 				aria-label="Toggle file tree"
 				aria-pressed={open}
-				title="Toggle file tree"
+				title={panelTitle}
 				onClick={toggle}
 			>
 				<PanelRight />

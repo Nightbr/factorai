@@ -3466,7 +3466,7 @@ section that edits them.
 | `Mod + K`            | Focus sidebar search — from anywhere      |
 | `Mod + F`            | Find, in a focused viewer or terminal; focus sidebar search anywhere else |
 | `Mod + N`            | New session in the active project         |
-| `Mod + W`            | Close the focused tab                     |
+| `Mod + W`            | Close the focused tab — not over a focused terminal on Linux, where `Ctrl+W` is readline's |
 | `Mod + Shift + E`    | Toggle the file panel                     |
 | `Mod + ,`            | Open settings                             |
 | `Mod + Q`            | Quit — the menu's on macOS, a binding on Linux |
@@ -6040,13 +6040,28 @@ to F26's draft store, exactly as the `×` does.
 
 On macOS this key only exists because the menu gives it up; see below.
 
+**Whether it fires over a focused terminal is the one rule that differs by
+platform**, and `Mod` hides the difference: `Cmd+W` means nothing to a shell, so
+on macOS it fires and xterm is told to let it through; `Ctrl+W` is readline's
+delete-previous-word, so on Linux the terminal keeps it. The consequence is worth
+stating plainly rather than discovering: **on Linux, closing a tab from the
+keyboard needs focus outside the terminal** — the tab strip, the sidebar, the
+viewer — and the terminal holds focus most of the time. Verified in the real
+window, 2026-09-15.
+
 ### `Mod+F` is context-dependent, `Mod+K` is not
 
-Viewer or terminal focused, `Mod+F` opens find — Monaco's widget through the
-`findHandle` the viewer already provides, or the terminal's search. Anywhere else
-it focuses the sidebar search, which is what was asked for. `Mod+K` focuses the
-sidebar search regardless of focus, so there is one key whose meaning never
-depends on where you were looking.
+Viewer focused, `Mod+F` opens find — Monaco's widget through the `findHandle` the
+viewer already provides. Anywhere else it focuses the sidebar search, which is
+what was asked for. `Mod+K` focuses the sidebar search regardless of focus, so
+there is one key whose meaning never depends on where you were looking.
+
+**A focused terminal keeps `Mod+F` and gets no find bar**, which is the honest
+state rather than the tidy one: `SearchAddon` is loaded and has no UI, so there
+is nothing for the chord to open. Taking the key to focus the sidebar instead
+would pull focus out from under somebody typing to Claude, which is worse than
+doing nothing. A terminal find bar is its own feature; when it exists, this
+action gains a third meaning and no binding changes.
 
 Today that bar searches transcripts; it becomes "sessions and files" when items 12
 and 13 land, and neither binding changes when it does.

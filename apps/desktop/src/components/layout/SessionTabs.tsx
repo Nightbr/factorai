@@ -15,6 +15,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dn
 // `CSS.escape is not a function` the moment you switch session.
 import { CSS as DndCss } from '@dnd-kit/utilities';
 import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
+import { useShortcuts } from '@hooks/useShortcuts';
 import { queryKeys } from '@lib/queryKeys';
 import { tabsInKnownProjects } from '@lib/sessionGroups';
 import { cmd } from '@lib/tauri';
@@ -189,6 +190,26 @@ export function SessionTabs() {
 		},
 		[bySession, closeSession, confirmPrefs],
 	);
+
+	/**
+	 * `Mod+W` closes the session tab you are looking at (F28).
+	 *
+	 * **The same path the `×` takes**, gesture and all: an aimed keystroke is an
+	 * aimed gesture, so it asks when Claude is working exactly as the button
+	 * does. A keyboard close that skipped `needsCloseConfirm` would be a silent
+	 * kill wearing the same name.
+	 *
+	 * Registered here rather than at the shell because this strip owns the
+	 * close; the viewer registers the same action for its own tabs, scoped to
+	 * itself, and wins while it has focus.
+	 */
+	useShortcuts({
+		closeFocusedTab: () => {
+			if (!activeId) return;
+			const tab = tabs.find((t) => t.id === activeId);
+			if (tab) requestClose(activeId, tab.projectId, 'button');
+		},
+	});
 
 	/** `arrayMove` semantics, which is what `terminalStore.reorder` already does:
 	 *  lift the tab out, then insert it at the index the drop landed on. */

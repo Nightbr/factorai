@@ -1,7 +1,9 @@
 import { Dialog, DialogClose, DialogContent, DialogTitle, IconButton } from '@factorai/ui';
 import { Check, Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
-import { FindHandleProvider, isFindKey, useFindHandleSlot } from '@components/viewer/findHandle';
+import { FindHandleProvider, useFindHandleSlot } from '@components/viewer/findHandle';
+import { useKeymap } from '@hooks/useShortcuts';
+import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import type { DiffMode, ViewerPosition } from '@hooks/useFileViewer';
 import { isMacOS } from '@lib/platform';
 import { cmd, copyText, openExternally } from '@lib/tauri';
@@ -61,6 +63,7 @@ export function FileViewerModal({
 	const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
 	const [revealFailed, setRevealFailed] = useState(false);
 	const findSlot = useFindHandleSlot();
+	const keymap = useKeymap();
 
 	if (!path) return null;
 	const { name, parent } = splitPath(path);
@@ -119,7 +122,8 @@ export function FileViewerModal({
 				// controls a reader's focus can be on. Monaco stops the event when
 				// it handles the key itself.
 				onKeyDown={(event) => {
-					if (!isFindKey(event)) return;
+					const findKey = keymap.findOrSearch;
+					if (!findKey || !matchesKeyboardEvent(event.nativeEvent, findKey)) return;
 					const handle = findSlot.current;
 					if (!handle) return;
 					event.preventDefault();

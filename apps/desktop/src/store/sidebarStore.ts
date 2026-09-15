@@ -68,9 +68,21 @@ interface SidebarState {
 	 *  expanding restores the width you dragged rather than the default. */
 	collapsed: boolean;
 
+	/** Bumped when something asks for the search field (F28's `Mod+K`).
+	 *
+	 *  **A counter, not a boolean**, because the request is an event: pressing
+	 *  the key again while the field already has focus has to select its text
+	 *  again, and a flag that is already `true` produces nothing. Deliberately
+	 *  **not persisted** — a focus request cannot survive a launch. */
+	searchFocusRequest: number;
+
 	setSort: (sort: ProjectSort) => void;
 	setWidth: (width: number) => void;
 	toggleCollapsed: () => void;
+	/** Ask for the sidebar's search field, expanding the rail first if it is
+	 *  collapsed: a keystroke that focuses something invisible is a keystroke
+	 *  that did nothing. */
+	focusSearch: () => void;
 	toggleProject: (projectId: string) => void;
 	expandAll: (projectIds: string[]) => void;
 	collapseAll: () => void;
@@ -112,12 +124,15 @@ export const useSidebarStore = create<SidebarState>()(
 			expanded: [],
 			width: DEFAULT_SIDEBAR_WIDTH,
 			collapsed: false,
+			searchFocusRequest: 0,
 
 			setSort: (sort) => set({ sort }),
 			setWidth: (width) => set({ width: clampSidebarWidth(width) }),
 			// Writes the boolean and nothing else. See `collapsed` for why `width`
 			// is not touched here.
 			toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
+			focusSearch: () =>
+				set((s) => ({ collapsed: false, searchFocusRequest: s.searchFocusRequest + 1 })),
 			toggleProject: (projectId) =>
 				set((s) => ({
 					expanded: s.expanded.includes(projectId)
@@ -131,6 +146,15 @@ export const useSidebarStore = create<SidebarState>()(
 			name: 'factorai.sidebar',
 			version: 2,
 			migrate: migrateSidebarState,
+			// Spelled out so a field added to the state and not to storage is a
+			// deliberate choice rather than an accident — `searchFocusRequest` is
+			// the first one that must *not* persist.
+			partialize: (s) => ({
+				sort: s.sort,
+				expanded: s.expanded,
+				width: s.width,
+				collapsed: s.collapsed,
+			}),
 		},
 	),
 );

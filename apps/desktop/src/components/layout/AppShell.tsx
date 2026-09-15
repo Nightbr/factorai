@@ -5,6 +5,7 @@ import { ShellDock } from '@components/terminal/ShellDock';
 import { ViewerPane } from '@components/viewer/ViewerPane';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useFileViewer } from '@hooks/useFileViewer';
+import { useGlobalShortcuts } from '@hooks/useGlobalShortcuts';
 import { isWithin } from '@lib/paths';
 import { isMacOS } from '@lib/platform';
 import {
@@ -30,6 +31,11 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+	// The app-level bindings, registered once for the app's life (F28). Here
+	// rather than in a route, for the same reason the file panel is: a route
+	// change must not unregister a shortcut.
+	useGlobalShortcuts();
+
 	const storedSidebarWidth = useSidebarStore((s) => s.width);
 	const sidebarCollapsed = useSidebarStore((s) => s.collapsed);
 	const setSidebarWidth = useSidebarStore((s) => s.setWidth);

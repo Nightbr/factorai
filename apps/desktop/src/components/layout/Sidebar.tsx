@@ -511,6 +511,19 @@ export function Sidebar() {
 	// Debounced search: typing navigates to /search?q=… (the route runs the
 	// query). Empty input doesn't navigate, so clearing the box is harmless.
 	const [term, setTerm] = useState('');
+
+	// `Mod+K` and `Mod+F` land here (F28). The store bumps a counter rather than
+	// setting a flag, so pressing the key while the field already has focus
+	// selects its text again instead of doing nothing. The rail has already been
+	// expanded by the time this runs — `focusSearch` does that — but the input
+	// only exists after that render, so the select happens in an effect.
+	const searchRef = useRef<HTMLInputElement>(null);
+	const searchFocusRequest = useSidebarStore((s) => s.searchFocusRequest);
+	useEffect(() => {
+		if (searchFocusRequest === 0) return;
+		searchRef.current?.focus();
+		searchRef.current?.select();
+	}, [searchFocusRequest]);
 	useEffect(() => {
 		const q = term.trim();
 		if (!q) return;
@@ -581,6 +594,7 @@ export function Sidebar() {
 				<div className="relative min-w-0 flex-1">
 					<Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 size-3.5 text-muted-foreground" />
 					<Input
+						ref={searchRef}
 						type="search"
 						value={term}
 						onChange={(e) => setTerm(e.target.value)}

@@ -1,8 +1,10 @@
 import { IconButton } from '@factorai/ui';
 import { Maximize2 } from 'lucide-react';
-import { type KeyboardEvent, Suspense } from 'react';
+import { type KeyboardEvent, Suspense, useRef } from 'react';
 import { FileTabs } from '@components/viewer/FileTabs';
-import { FindHandleProvider, isFindKey, useFindHandleSlot } from '@components/viewer/findHandle';
+import { FindHandleProvider, useFindHandleSlot } from '@components/viewer/findHandle';
+import { useKeymap, useShortcuts } from '@hooks/useShortcuts';
+import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import { LazyDiffView, LazyFileView } from '@components/viewer/lazyViews';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { tabsFor, useViewerStore, type ViewerTab } from '@store/viewerStore';
@@ -31,11 +33,35 @@ import { tabsFor, useViewerStore, type ViewerTab } from '@store/viewerStore';
 export function ViewerPane() {
 	const viewer = useFileViewer();
 	const findSlot = useFindHandleSlot();
+	const keymap = useKeymap();
 	const checkout = useViewerStore((s) => s.checkout);
 	const tabs = useViewerStore((s) => tabsFor(s, s.checkout));
 	const pinTab = useViewerStore((s) => s.pinTab);
 	const closeTab = useViewerStore((s) => s.closeTab);
 	const setExpanded = useViewerStore((s) => s.setExpanded);
+
+	/**
+	 * `Mod+W` closes the **file** tab while this pane has focus (F28).
+	 *
+	 * Scoped to the pane with `target`, which is how a context-dependent binding
+	 * is expressed — the library has no named scopes. The session strip
+	 * registers the same action on the document, and this one runs first and
+	 * stops the event, so "the tab" means whichever strip you are looking at
+	 * rather than a rule anybody has to remember.
+	 *
+	 * An unsaved draft is F26's problem exactly as it is for the tab's `×`:
+	 * `closeTab` is the same call.
+	 */
+	const paneRef = useRef<HTMLDivElement>(null);
+	const openPath = viewer.path;
+	useShortcuts(
+		{
+			closeFocusedTab: () => {
+				if (openPath) close(openPath);
+			},
+		},
+		{ target: paneRef },
+	);
 
 	if (!viewer.path) return null;
 
@@ -57,9 +83,15 @@ export function ViewerPane() {
 
 	/** Forward the key, or leave it alone. Monaco stops the event when it
 	 *  handles it itself, so this only ever runs for a keystroke the editor
-	 *  never saw. */
+	 *  never saw.
+	 *
+	 *  **The chord comes from the keymap** (F28): this is the viewer half of
+	 *  `findOrSearch`, and rebinding it in settings has to move both halves. The
+	 *  shell's half never fires here — its registration ignores input-like
+	 *  elements, and the editor is one. */
 	function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-		if (!isFindKey(event)) return;
+		const findKey = keymap.findOrSearch;
+		if (!findKey || !matchesKeyboardEvent(event.nativeEvent, findKey)) return;
 		const handle = findSlot.current;
 		if (!handle) return;
 		event.preventDefault();
@@ -68,6 +100,7 @@ export function ViewerPane() {
 
 	return (
 		<div
+			ref={paneRef}
 			data-testid="file-viewer"
 			className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
 			onKeyDown={onKeyDown}

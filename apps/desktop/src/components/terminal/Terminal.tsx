@@ -8,10 +8,14 @@ import { createFileLinkProvider } from '@components/terminal/fileLinkProvider';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { useRevealInTree } from '@hooks/useRevealInTree';
 import type { RoutineFireEvent } from '@factorai/types';
+import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
 import type { ResolveContext, ResolvedLink } from '@lib/fileLinks';
+import { hotkeysOverTerminal, mergeKeymap } from '@lib/keymap';
+import { isMacOS } from '@lib/platform';
 import { cmd, events, homeDir, openExternally } from '@lib/tauri';
+import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 
 /**
@@ -357,6 +361,32 @@ export function getOrCreateTerm(
 		linkHandler: createOscLinkHandler(),
 	});
 	term.loadAddon(new SearchAddon());
+
+	// **The app's own bindings, let past xterm on purpose** (F28, ADR-0046).
+	//
+	// xterm owns every chord while it has focus, which is the rule that keeps
+	// typing to Claude working. A handful of actions have to reach the app
+	// anyway — settings, the sidebar search, a new session, the file panel — or
+	// they are unreachable from the one surface you spend the day in. Returning
+	// `false` means "xterm does not handle this": the key is not written to the
+	// PTY and not defaulted, so it bubbles to the document listener the hotkey
+	// manager registered.
+	//
+	// The list is **derived from the keymap**, read at the keystroke rather than
+	// captured, because this terminal outlives every rebind: the pool keeps it
+	// for the app's life (see below), and a snapshot taken at construction would
+	// pass the chord the user has since moved away from.
+	term.attachCustomKeyEventHandler((event) => {
+		if (event.type !== 'keydown') return true;
+		// Nothing without a modifier can be one of ours, and this runs on every
+		// keystroke typed into the terminal.
+		if (!event.ctrlKey && !event.metaKey) return true;
+		const keymap = mergeKeymap(usePrefsStore.getState().keymapOverrides);
+		for (const hotkey of hotkeysOverTerminal(keymap, isMacOS() ? 'mac' : 'linux')) {
+			if (matchesKeyboardEvent(event, hotkey)) return false;
+		}
+		return true;
+	});
 
 	// **Registration order is load-bearing, and getting it wrong is silent.**
 	// xterm's `Linkifier._checkLinkProviderResult` only shows provider N's links
