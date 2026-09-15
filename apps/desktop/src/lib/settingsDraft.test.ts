@@ -21,6 +21,7 @@ const SAVED: SettingsValues = {
 	confirmCloseMiddleClick: true,
 	frontmatterOpen: true,
 	restoreTabs: true,
+	keymapOverrides: {},
 };
 
 describe('isSettingsSection', () => {
@@ -65,6 +66,7 @@ describe('dirtySections', () => {
 			if (key === 'claudeBinary') draft.claudeBinary = '/usr/local/bin/claude';
 			else if (key === 'routinesCatchupHours') draft.routinesCatchupHours = '12';
 			else if (key === 'routinesMaxConcurrent') draft.routinesMaxConcurrent = '4';
+			else if (key === 'keymapOverrides') draft.keymapOverrides = { openSettings: null };
 			else draft[key] = !SAVED[key];
 			expect(dirtySections(SAVED, draft)).toEqual([SECTION_FOR[key]]);
 		}
@@ -129,5 +131,25 @@ describe('the routine settings', () => {
 		const saved: SettingsValues = { ...SAVED, routinesMaxConcurrent: '3' };
 		expect(isDirty(saved, { ...saved, routinesMaxConcurrent: ' 3 ' })).toBe(false);
 		expect(isDirty(saved, { ...saved, routinesMaxConcurrent: '4' })).toBe(true);
+	});
+});
+
+describe('the keyboard section', () => {
+	it('is dirty when a binding moves', () => {
+		const draft: SettingsValues = { ...SAVED, keymapOverrides: { openSettings: 'Mod+Shift+P' } };
+		expect(dirtySections(SAVED, draft)).toEqual(['keyboard']);
+	});
+
+	it('is dirty when a binding is cleared', () => {
+		const draft: SettingsValues = { ...SAVED, keymapOverrides: { openSettings: null } };
+		expect(isDirty(SAVED, draft)).toBe(true);
+	});
+
+	// Compared as the map each side produces, not as two objects: an override
+	// that restates the shipped chord has changed nothing, and a draft copy must
+	// not read as an edit.
+	it('is clean when an override only restates the default', () => {
+		const draft: SettingsValues = { ...SAVED, keymapOverrides: { openSettings: 'Mod+,' } };
+		expect(isDirty(SAVED, draft)).toBe(false);
 	});
 });

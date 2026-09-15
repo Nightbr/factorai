@@ -1,3 +1,4 @@
+import { type ShortcutAction, SHORTCUT_SPECS, mergeKeymap } from '@lib/keymap';
 import type { Prefs } from '@store/prefsStore';
 
 /**
@@ -16,6 +17,9 @@ import type { Prefs } from '@store/prefsStore';
  *  the same reason: an empty section reads as a bug. */
 export const SETTINGS_SECTIONS = [
 	'appearance',
+	// After Appearance because both are app-wide chrome you set once, and before
+	// the sections that are about the agent (F28).
+	'keyboard',
 	'claude',
 	'profiles',
 	'editor',
@@ -68,6 +72,7 @@ export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
 	routinesCatchupHours: 'routines',
 	routinesMaxConcurrent: 'routines',
 	clock24: 'appearance',
+	keymapOverrides: 'keyboard',
 };
 
 /**
@@ -146,6 +151,17 @@ function sameValue(
 	}
 	if (key === 'routinesMaxConcurrent') {
 		return CONCURRENT(saved.routinesMaxConcurrent) === CONCURRENT(draft.routinesMaxConcurrent);
+	}
+	// Compared as the map each side *produces*, not as two objects: a row set
+	// back to the chord it already had is not an edit, and neither is the same
+	// override written twice. Object identity would mark the section dirty the
+	// moment the draft was copied.
+	if (key === 'keymapOverrides') {
+		const a = mergeKeymap(saved.keymapOverrides);
+		const b = mergeKeymap(draft.keymapOverrides);
+		return SHORTCUT_SPECS.every((spec: { action: ShortcutAction }) => {
+			return a[spec.action] === b[spec.action];
+		});
 	}
 	return saved[key] === draft[key];
 }

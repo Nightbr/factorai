@@ -1,3 +1,4 @@
+import type { KeymapOverrides } from '@lib/keymap';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { legacyDiffInline } from '@store/diffInlineHandover';
@@ -68,6 +69,14 @@ interface PrefsState {
 	 *  the routine editor's time field, which is why that field is ours rather
 	 *  than the native control (F22). */
 	clock24: boolean;
+	/** The keyboard bindings the user has changed, and **only** those (F28).
+	 *
+	 *  The whole table is not stored: what is saved is the difference from the
+	 *  shipped map, so a default we change in a later release still reaches
+	 *  somebody who pressed Save once. A key present with a `null` value means
+	 *  deliberately unbound, which is a different state from absent. See
+	 *  `lib/keymap.ts` for the merge. */
+	keymapOverrides: KeymapOverrides;
 
 	/** The diff footer's own toggle (F13), which sets the same value the Editor
 	 *  section defaults: flipping it there is a choice about how you read diffs,
@@ -97,6 +106,10 @@ const DEFAULT_PREFS: Prefs = {
 	// 24-hour by default: this app is a developer tool, and every timestamp it
 	// already prints beside a clock — a commit, a log line — is unambiguous.
 	clock24: true,
+	// Nothing overridden: the shipped map is `SHORTCUT_SPECS`, and an empty
+	// object here is what makes "reset all" a deletion rather than a copy of a
+	// table that would go stale.
+	keymapOverrides: {},
 };
 
 export const usePrefsStore = create<PrefsState>()(
@@ -123,6 +136,7 @@ export const usePrefsStore = create<PrefsState>()(
 				frontmatterOpen: s.frontmatterOpen,
 				restoreTabs: s.restoreTabs,
 				clock24: s.clock24,
+				keymapOverrides: s.keymapOverrides,
 			}),
 		},
 	),
@@ -139,5 +153,6 @@ export function currentPrefs(): Prefs {
 		frontmatterOpen: s.frontmatterOpen,
 		restoreTabs: s.restoreTabs,
 		clock24: s.clock24,
+		keymapOverrides: s.keymapOverrides,
 	};
 }
