@@ -51,7 +51,19 @@ pub fn run() {
 		)
 		.init();
 
-	tauri::Builder::default()
+	let builder = tauri::Builder::default();
+
+	// The app menu, macOS only and for one reason: Tauri's default menu binds
+	// `Cmd+W` to Close Window, and AppKit consumes that before the webview sees
+	// it — so F28's tab close could not exist. Ours moves Close Window to
+	// `Cmd+Shift+W` and keeps `Cmd+Q` on the same `CloseRequested` path as the
+	// close button (ADR-0046).
+	#[cfg(target_os = "macos")]
+	let builder = builder
+		.menu(|handle| services::menu::build(handle))
+		.on_menu_event(|app, event| services::menu::on_menu_event(app, event.id().as_ref()));
+
+	builder
 		.plugin(tauri_plugin_shell::init())
 		// Copying needs a route the webview can't provide: WebKitGTK implements
 		// neither `ClipboardItem` nor, since 2.52, a `writeText` it will allow, so
