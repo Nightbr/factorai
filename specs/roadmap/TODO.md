@@ -261,27 +261,42 @@ One correction to what this item assumed before the interview: the library has
 - [x] **Spec and ADR first, no code.** F28, the amended § "Keyboard shortcuts"
       table, the Keyboard paragraph in F11, Q26, and the Q15 / Q24 pointers.
       ADR-0046. Landed 2026-09-15.
-- [ ] **The engine.** `pnpm add` pinned exact, plus `lib/keymap.ts`: the `Action`
+- [x] **The engine.** `pnpm add` pinned exact, plus `lib/keymap.ts`: the `Action`
       union, the defaults, `mergeKeymap(defaults, overrides)`, the steal scan,
       the over-terminal set and the display string — pure, and vitest'd, because
       nothing downstream is testable any other way. `useGlobalShortcuts()` exists
       and registers nothing yet. `prefsStore` gains the overrides object.
-- [ ] **The Rust menu.** A menu module in `src-tauri`, macOS only: Quit on
+- [~] **The Rust menu.** A menu module in `src-tauri`, macOS only: Quit on
       `Cmd+Q` down the existing `CloseRequested` path, Close Window
       re-accelerated to `Cmd+Shift+W`. **Prove on macOS that `Cmd+W` then
       actually reaches the webview** — that is the one thing nothing else can
       tell us, and it is the assumption the tab-close binding rests on.
-- [ ] **The bindings.** App-level ones at the shell (`Mod+N`, `Mod+K`, `Mod+,`,
+- [x] **The bindings.** App-level ones at the shell (`Mod+N`, `Mod+K`, `Mod+,`,
       `Mod+Shift+E`, and `Mod+Q` on Linux); context-dependent ones at their owner
       (`Mod+F` through the viewer's existing `findHandle`, `Mod+W` at the two tab
       strips). xterm's `attachCustomKeyEventHandler` derived from the same map.
       F2's sidebar navigation and F13's Changes-tab diff navigation land in this
       slice as **local** handlers — same pass, same focus thinking, not map rows.
-- [ ] **The settings section.** `keyboard` after `appearance` in
+- [x] **The settings section.** `keyboard` after `appearance` in
       `SETTINGS_SECTIONS`, one row per action, `useHotkeyRecorder` behind the
       chord, `×` to unbind, per-row reset while overridden, Reset all at the
       foot — all of it draft edits under Q24's explicit Save. Tooltips on the
       controls that have a binding read the same map.
+
+**Landed 2026-09-15, except the macOS half.** The engine, the bindings and the
+settings section are in and were driven in the real window on WebKitGTK. The menu
+module compiles and is **unverified on macOS**: that `Cmd+W` reaches WKWebView
+once Close Window moves to `Cmd+Shift+W` is the assumption tab close rests on,
+and this machine cannot test it. That is the `[~]` above.
+
+**Two things the QA pass settled, and one it left open.** A focused terminal
+keeps `Mod+F` and gets no find bar, since `SearchAddon` has no UI to open — F28
+says so now. `Mod+W` is `'mac-only'` over the terminal, so **on Linux closing a
+tab from the keyboard needs focus outside the terminal**, which holds focus most
+of the time. Still open: whether Linux should get its own default for that action
+— one that fires over a focused terminal, `Mod+Shift+W` being the obvious
+candidate since readline binds no `Ctrl+Shift`+letter — or whether the current
+answer is the right one and it is simply a mouse gesture there.
 
 **What proof looks like.** Playwright cannot press any of this — CDP keystrokes
 never reach Monaco (item 4), and `Mod` chords are worse — so it is vitest on the
