@@ -233,99 +233,65 @@ either still holds.
 
 ## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
 
-`05-features.md` § "Keyboard shortcuts" lists six bindings; **none are wired**. The table is not
-the hard part — the hard part is that this app has a terminal in it, so a global handler that
-swallows a keystroke breaks typing to Claude.
+**Decided 2026-09-15 — ADR-0046, spec F28, Q26.** The interview settled every
+branch this item had been carrying; what is left is five slices in order. The
+table in `05-features.md` is amended, and it now says what it always should have:
+those are *defaults*, not fixed keys.
 
-- [ ] `useGlobalShortcuts()` at the shell layer, with an explicit rule for when the embedded
-      terminal has focus (xterm gets first refusal on everything it binds).
-- [ ] `Cmd/Ctrl + N` → new session in the active project. F6 shipped the buttons and explicitly
-      left this unwired; it's the cheapest win in the table.
-- [ ] `Cmd/Ctrl + K` (focus search), `Cmd/Ctrl + W` (kill active terminal),
-      `Cmd/Ctrl + ,` (settings). **F11 shipped without wiring this one**, deliberately, and it is
-      still here: adding a seventh one-off `useEffect` that this pass would immediately delete is
-      the churn this item exists to end, and it would have to get the terminal-focus rule right on
-      its own. The modal exists and `useSettingsModal().open()` is the whole call. Per Q24 the
-      binding **opens and focuses, and does nothing when settings is already open** — both target
-      platforms treat that key as idempotent, and the modal already has two dismissals.
-- [ ] A binding for the file-tree toggle. **`Ctrl+B` is unavailable** — readline's back-a-char
-      and tmux's prefix (Q15). Pick something that survives a terminal-focused window, or accept
-      that the toggle stays mouse-only and say so in F12.
-- [ ] Sidebar list navigation (F2: ↑/↓, Enter) belongs to the same pass.
-- [ ] **Changes-tab diff navigation — asked for by a user 2026-09-07.** Reviewing a diff means
-      closing the file and opening the next row; ↑/↓ should step from one changed file to the
-      next with the diff staying open, so a review is one pass down the list. Same pass because
-      it has the same terminal-focus problem as F2's sidebar navigation, and the F13 groups
-      (Merge / Staged / Changes) mean "next file" has to cross a group boundary rather than stop
-      at it. Read-only, so this adds no action beyond moving the selection — ADR-0009 stands.
-- [ ] **`Cmd+W` closes the focused tab — asked for by a user 2026-09-09, asked again
-      2026-09-12.** It collides with the table's current `Cmd/Ctrl + W` (kill active terminal),
-      and there are two tab strips — `SessionTabs` and the viewer's `FileTabs` — so "the tab"
-      needs a focus rule before the binding can be written. Closing a session tab is F10's
-      close, `needsCloseConfirm` included, not a silent kill; closing a file tab with an unsaved
-      draft has to answer to F26's draft store. § "Keyboard shortcuts" is amended in the same
-      commit as whichever meaning wins.
-- [ ] **`Cmd+Q` quits factorai — same ask, repeated 2026-09-12.** macOS supplies it through the
-      app menu already; the binding has to land on the *same* path as the window close so
-      ADR-0020's quit guard and kill-on-quit both still run. A renderer handler that exits
-      around `CloseRequested` is orphan zombies plus a skipped confirm. On Linux there is no
-      menu equivalent, so it is a real binding there rather than a no-op.
-- [ ] **`Cmd+F` focuses the search bar — same ask, repeated 2026-09-12**, landing in the
-      sidebar's `Search sessions…` input. That is the action the table gives `Cmd/Ctrl + K`, on
-      the row it gives to find-in-viewer-or-terminal, so the two have to be resolved together:
-      either they swap, or `Cmd+F` becomes context-dependent (viewer or terminal focused keeps
-      find, anywhere else focuses search). Item 14 already wants a row *removed* from that
-      table — make both edits one amendment. "Session **and** files" is one bar only once items
-      12–13 land; today the bar searches transcripts.
-- [ ] **Rebindable in settings — asked for by a user 2026-09-12.** The defaults above stay the
-      defaults, but the end state is a keyboard section in the settings modal where each action
-      shows its binding and can be reassigned, so a collision like `Cmd+W` or `Cmd+F` is the
-      user's call rather than ours. That only works if `useGlobalShortcuts()` reads an
-      action→binding map instead of hard-coding keys, so the scheme has to be built that way
-      from the start even if the settings UI lands later — retrofitting it means rewriting every
-      binding. Open questions before any of it is coded: where the map persists (F11's settings
-      store, or its own file), what happens to a binding the terminal or Monaco already owns,
-      whether a conflicting assignment is refused or steals the key, and how a user gets back to
-      the defaults. Write them into `07-open-questions.md` and amend `05-features.md`
-      § "Keyboard shortcuts" to say the table is defaults, not fixed keys.
+**What was decided, in one paragraph each.** Bindings are one action→binding map;
+defaults are a module constant, the user's **overrides only** live in `prefsStore`,
+and a `null` override means deliberately unbound. `@tanstack/react-hotkeys` is
+adopted, pinned exact at `0.10.0`, and used as intended — `useHotkey`,
+`useHotkeyRecorder`, `formatForDisplay`, `conflictBehavior: 'error'` — with the
+action list, defaults and merge kept ours in a pure module. A focused terminal
+keeps every chord it binds (`ignoreInputs`), except for the actions that declare
+otherwise and get a matching `attachCustomKeyEventHandler` entry. `Mod+W` closes
+the focused tab and kill-active-terminal loses its binding; `Mod+F` is
+context-dependent and `Mod+K` is not; the app-level go-to-line row is gone. On
+macOS we own the menu, Quit keeps `Cmd+Q` on the `CloseRequested` path, and
+**Close Window moves to `Cmd+Shift+W`** so `Cmd+W` reaches the webview; on Linux
+`Ctrl+Q` is a real binding calling `getCurrentWindow().close()`. Arrow-key list
+navigation is *not* in the map — it stays local, the way F18's graph already does
+it.
 
-**Candidate: `@tanstack/react-hotkeys`** (evaluated 2026-09-12, alpha, latest `0.10.0`, peer
-`react >=16.8`). It is the shape this item wants rather than a helper bolted onto it, and it
-covers most of the list above:
+One correction to what this item assumed before the interview: the library has
+**no named-scope registry**. "A key means something else inside the editor" is
+`enabled`, `target` (a ref) and `ignoreInputs`, not a scope name.
 
-- `useHotkey('Mod+S', fn, options)` — `Mod` resolves to Meta on macOS and Control on Linux, so
-  one binding covers both targets, and the Linux branch is also what a WSLg window gets
-  (ADR-0044).
-- **Scopes**: a key can mean one thing globally, another inside the editor, and nothing while the
-  user is typing — the terminal-focus rule as a first-class concept instead of a condition
-  repeated in every handler.
-- **`useHotkeyRecorder` + `formatForDisplay`**: the rebinding panel the bullet above asks for, and
-  an action→binding map is the library's native shape, so building on it gets that constraint for
-  free rather than by discipline.
-- `ignoreInputs` per binding, and `conflictBehavior: 'warn' | 'error' | 'replace' | 'allow'` —
-  the conflict detection those two colliding asks need.
+- [x] **Spec and ADR first, no code.** F28, the amended § "Keyboard shortcuts"
+      table, the Keyboard paragraph in F11, Q26, and the Q15 / Q24 pointers.
+      ADR-0046. Landed 2026-09-15.
+- [ ] **The engine.** `pnpm add` pinned exact, plus `lib/keymap.ts`: the `Action`
+      union, the defaults, `mergeKeymap(defaults, overrides)`, the steal scan,
+      the over-terminal set and the display string — pure, and vitest'd, because
+      nothing downstream is testable any other way. `useGlobalShortcuts()` exists
+      and registers nothing yet. `prefsStore` gains the overrides object.
+- [ ] **The Rust menu.** A menu module in `src-tauri`, macOS only: Quit on
+      `Cmd+Q` down the existing `CloseRequested` path, Close Window
+      re-accelerated to `Cmd+Shift+W`. **Prove on macOS that `Cmd+W` then
+      actually reaches the webview** — that is the one thing nothing else can
+      tell us, and it is the assumption the tab-close binding rests on.
+- [ ] **The bindings.** App-level ones at the shell (`Mod+N`, `Mod+K`, `Mod+,`,
+      `Mod+Shift+E`, and `Mod+Q` on Linux); context-dependent ones at their owner
+      (`Mod+F` through the viewer's existing `findHandle`, `Mod+W` at the two tab
+      strips). xterm's `attachCustomKeyEventHandler` derived from the same map.
+      F2's sidebar navigation and F13's Changes-tab diff navigation land in this
+      slice as **local** handlers — same pass, same focus thinking, not map rows.
+- [ ] **The settings section.** `keyboard` after `appearance` in
+      `SETTINGS_SECTIONS`, one row per action, `useHotkeyRecorder` behind the
+      chord, `×` to unbind, per-row reset while overridden, Reset all at the
+      foot — all of it draft edits under Q24's explicit Save. Tooltips on the
+      controls that have a binding read the same map.
 
-Two things it does **not** solve, and they are the hard two:
+**What proof looks like.** Playwright cannot press any of this — CDP keystrokes
+never reach Monaco (item 4), and `Mod` chords are worse — so it is vitest on the
+pure module plus the `manual-qa` lane on **both** engines, with every binding
+pressed once with the terminal focused and once without. Linux dev is WebKitGTK,
+which is the engine that has already diverged here on clipboard and on zoom.
 
-- **`Cmd+Q`, and `Cmd+W` on macOS, never reach the webview** — AppKit menu accelerators consume
-  them first. Those stay Rust-side menu items on the same `CloseRequested` path as ADR-0020's
-  quit guard, exactly as the bullet above says. On Linux (and so under WSLg) there is no menu, so
-  there they are real `useHotkey` bindings: one action, two implementations.
-- **xterm's focus target is a real hidden `<textarea>`**, so the default `ignoreInputs` suppresses
-  hotkeys whenever the terminal has focus. That is the right default, but every binding meant to
-  fire over a focused terminal needs `ignoreInputs: false` *and* `attachCustomKeyEventHandler` on
-  the xterm side not to swallow it first. The library supplies the mechanism, not the decision —
-  same for Monaco owning find and go-to-line inside the editor.
-
-Adopting it is a dependency plus that renderer/Rust split, so it is an ADR, not a silent
-`pnpm add`. Two things to settle in it: the package is pre-1.0 and this surface is every shortcut
-in the app, and it has to be proven on WebKitGTK before the ADR is written — that engine has
-already diverged here on the clipboard and on zoom.
-
-The table is also about to grow: **items 12–14** add `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`, and item
-14 wants the table's current `Cmd/Ctrl+G` (go to line) row *removed* because Monaco provides it
-natively. Land the scheme first if those items get picked up together — three more global bindings
-is exactly the point where one `useEffect` per shortcut stops being survivable.
+**Items 12–14 depend on this landing first.** `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`
+are then a map entry plus a call site each. Nothing is reserved for them now: a
+settings row for an action that does nothing is a bug report.
 
 ## 6. M5 — custom window titlebar
 
@@ -505,9 +471,10 @@ means nothing currently tells us a project file changed.
 **Binding.** The user's preference is `Cmd+G`, and taking it means resolving two collisions
 honestly:
 
-- `05-features.md`'s keyboard table currently assigns `Cmd/Ctrl+G` to **go to line**. That row can
-  simply go: Monaco ships go-to-line natively (`Ctrl+G`) inside the editor, so the app-level
-  binding is redundant.
+- `05-features.md`'s keyboard table assigned `Cmd/Ctrl+G` to **go to line**. **That row is
+  already gone** — removed 2026-09-15 with item 5's amendment, since Monaco ships go-to-line
+  natively (`Ctrl+G`) inside the editor and the app-level binding was redundant. This collision
+  no longer needs resolving; the chord is free.
 - On macOS, `Cmd+G` is the system-wide **find-next**, and it's what Monaco's own find widget uses
   once `Cmd+F` is open. So a global `Cmd+G` must not fire while the find widget has focus — the
   same "who owns this keystroke" rule item 5 needs for the terminal.
@@ -1528,3 +1495,106 @@ ad-hoc `codesign` step remains what item 36 says it is.
 of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
 user has granted. It does not break the update path the way losing the minisign key would, so it is
 one notch less fatal — but it is not a secret to regenerate casually.
+
+## 54. Switching session — time to the first thing on screen
+
+**Asked for 2026-09-15**, unmeasured: the report is that changing session takes visibly longer to
+show anything than it should. So the first task is a number, not a patch — the candidates below
+are what reading the code suggests, and at least two of them are cheap enough that fixing the
+wrong one would be indistinguishable from fixing nothing.
+
+**What is already right, and must stay right.** The xterm pool (`Terminal.tsx` § "Persistent xterm
+pool") keeps one terminal per session alive for the app's life: a switch toggles `visibility` in
+`showOnly`, it does not rebuild a buffer or reparent a host, and the reason it does not reparent is
+a macOS wheel bug the comment there records. `FileTreePanel` and the shell footer hang off
+`AppShell`, not off the route, so neither unmounts on a switch (ADR-0032). Nothing in this item may
+be paid for by disposing, detaching or re-creating a pooled terminal — that is the change that
+looks like a win in a profile and is a regression in the window.
+
+- [ ] **Measure first, in the real window.** Click-to-first-paint for three cases, which are not
+      the same case: a session whose terminal is already pooled, one being opened for the first
+      time this run (a `terminal_spawn` plus `claude --resume` redrawing the transcript), and a
+      switch that also crosses projects. The `manual-qa` lane, with the React profiler on;
+      a Playwright smoke run cannot see any of this.
+
+**The candidates, in the order they are worth checking.**
+
+- **The route's three queries gate the header.** `SessionView` reads `list_projects`,
+  `list_sessions` and `list_profiles`, and `App.tsx`'s app-wide default is `staleTime: 1000` — so
+  any switch more than a second after the last read refetches. Cached data still renders, so
+  this should not be visible; what *is* visible is that `projectCwd` is `null` until
+  `list_projects` answers, and `projectCwd` is in the dependency list of `Terminal`'s mount effect.
+  A cold switch therefore runs that effect twice, and the first run reaches `attachPty` with a null
+  cwd. Worth fixing on its own merits whatever the profile says.
+- **The first frame is deliberately the old grid.** The mount effect defers `fitToHost`,
+  `scrollToBottom` and `focus` into a `setTimeout(…, 0)`, and an adopted host gets a second
+  `fitToHost` plus a full `refresh` in a `requestAnimationFrame`. Both are correct — the layout is
+  not real any earlier — but they are also the two places a switch can be seen to settle rather
+  than appear.
+- **Every hidden terminal still has layout.** `showOnly`'s own note says it: a background session's
+  rows are laid out, though never painted, as its output arrives, and `content-visibility: hidden`
+  is not used because it zeroes descendant geometry and brings back the measurement bug the pool
+  exists to avoid. That comment asks for exactly this — a profile at a session count that hurts.
+  Ten live sessions is the case to measure; if it is flat, say so in the comment and close the
+  question.
+- **The panel re-roots on the switch.** `useActiveCheckout` recomputes `root`, `FileTreePanel`
+  draws `Loading…` while `isLoading`, and the tree relists. For two sessions in the same checkout
+  the root does not change, so this should be free; confirm that it actually is, rather than the
+  panel blanking and redrawing the same tree.
+
+**What good looks like.** Switching between two pooled sessions in one checkout paints the header
+and the terminal in the frame after the click, with no `Loading…` anywhere in the panel. A session
+being opened for the first time cannot do that — the transcript comes back through the PTY — but
+it can paint its chrome immediately and wait for the body, which is not what "nothing for a
+moment, then everything" does today.
+
+## 55. The markdown preview re-parses far more often than it changes, and mermaid pays for it
+
+**Asked for 2026-09-15**, with a large document and a document full of diagrams as the two cases
+that hurt. Two separate causes with one symptom, and the first one is the one to fix.
+
+**The document is re-parsed on every render of its host.** `MarkdownView` is not memoized, and
+react-markdown 10 has no incremental parse — it runs remark and rebuilds the whole hast tree every
+time it renders. Its host is `FileView`, which holds the edit buffer's state machine
+(`useEditBuffer`: dirty, saving, save error, conflict, banner), the SOPS plaintext and its four
+states, a `sops` status query, the selection the footer's mention button reads, and the preview
+toggle itself. Every one of those state changes re-parses the entire document. Even a host that
+re-rendered for a good reason would not be able to skip it: `remarkPlugins={[remarkGfm]}` and the
+`components` object are fresh literals on each render, so no `memo` would ever bail out.
+
+- [ ] **Hoist what does not change and memoize what does.** `remarkPlugins` becomes a module
+      constant; `components` becomes a `useMemo` on `[path, onOpenPath]`, which is all the three
+      overrides actually capture; `MarkdownView` gets `memo`. Confirm with the profiler that a
+      keystroke in the footer's search, a save, and a `sops` query settling each stop re-parsing
+      the document.
+- [ ] **`previewSource` reads a ref during render** (`FileView.tsx:304`:
+      `dirty ? bufferRef.current : file.contents`). It works because the editor is unmounted while
+      the preview is up, so the buffer cannot move underneath it — but it is a render-time read of
+      mutable state, and it is what makes the preview's input look like it changes on every render
+      when it does not. Whatever shape the memo takes has to make that explicit rather than inherit
+      it.
+- [ ] **Measure a genuinely large document before deciding anything else is needed.** There is no
+      virtualization: a long README becomes one DOM tree under the `prose` classes in one pass. If
+      re-parse-on-every-render is the whole story, stop there — chunked rendering is a much
+      larger change and should not be started on a guess.
+
+**Mermaid is the second cause, and it multiplies the first.** Each fence is a `MermaidDiagram` that
+calls `loadMermaid()` in its own effect:
+
+- **`loadMermaid` reads the palette off the document on every call** — nine `getComputedStyle`
+  reads through `diagramPalette` and `currentFontFamily`, one forced style recalculation per
+  diagram, to compute a key that is almost always identical to the last one. The module already
+  caches the *configuration* behind `configuredFor`; it does not cache the reads that produce the
+  key. A palette moves on a theme switch (item 32), which is an event, not a per-render condition.
+- **Every diagram renders independently and concurrently** against the one global mermaid
+  instance — no queue, no batching — and each `render` builds a temporary node, runs DOMPurify
+  and hands back an SVG *string*, which `MermaidDiagram` then parses a second time with
+  `DOMParser` and adopts with `importNode`. A document with twenty diagrams does that twenty
+  times, unthrottled, on the first frame the preview is up.
+- **A `code` change empties the host before the new SVG lands** — state goes back to `pending` and
+  the effect `replaceChildren()`s the node — so each diagram collapses to zero height and the page
+  reflows through it. Keeping the old SVG until the new one is ready is the obvious fix and costs
+  nothing, since the failure path already keeps the source.
+
+The 2.5MB dynamic `import()` (ADR-0021) is not on this list: it is paid once, only by documents
+that have a fence, and it is the right trade.

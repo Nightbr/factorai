@@ -258,7 +258,8 @@ leaves the app with two header rows at different offsets in the meantime.
 No keyboard shortcut ships with it: `Ctrl+B` — the obvious binding — is
 readline's back-a-char and tmux's prefix, so a global handler would break
 typing inside the embedded claude terminal. Deferred to M5's keybinding
-work.
+work — **answered by Q26**: the toggle is `Mod+Shift+E`, and it is one of
+the few bindings that fires over a focused terminal on purpose.
 
 ---
 
@@ -520,7 +521,8 @@ platforms treat that key as idempotent for preferences, and the modal already ha
 two dismissals — a third gesture that also closes would give one key two meanings
 depending on state you may not be looking at. **The binding is not wired by F11**:
 roadmap item 5 replaces the per-shortcut `useEffect` pattern, and a seventh one-off
-that item 5 would immediately delete is the churn that item exists to end.
+that item 5 would immediately delete is the churn that item exists to end. **Wired
+by F28**, with this behaviour unchanged.
 
 **The entry point is a gear in `TopBar`**, not the sidebar footer. The footer was the
 first recommendation (it is where the app's other app-level controls live) and was
@@ -557,3 +559,49 @@ prevent.
 concurrency cap, whether a queued fire is visible while it waits, where a failed
 fire surfaces (a `last_error` row, item 7's toast, or both), and whether run
 history grows past one `last_run_at`.
+
+---
+
+## Q26 — What shape does a rebindable keymap take? → **one map, stolen chords, a menu that yields**
+
+**Decision (2026-09-15, from the item 5 interview). ADR-0046, spec F28.**
+Roadmap item 5 listed four things to settle before any of it was coded. All four
+are answered here, and the reasoning matters more than the answers because each
+one has a cheaper-looking alternative that fails later rather than immediately.
+
+**Where the map persists → `prefsStore`, overrides only.** No Rust reads a
+binding, and `prefsStore`'s rule is exactly this case: renderer-only, so
+`localStorage` and read synchronously, because an async store hydrates a tick
+after first paint and every shortcut would show its default for a frame. Storing
+only the *difference* from the defaults is what lets a default we change in a
+later release actually reach a user who has saved once, and it makes "reset to
+defaults" a deletion rather than a copy of a table that will go stale.
+
+**A binding the terminal or Monaco already owns → the terminal wins by default,
+and each action may say otherwise.** xterm's focus target is a real hidden
+`<textarea>`, so the library's default `ignoreInputs` suppresses hotkeys while it
+has focus, which is the behaviour that cannot break typing to Claude. The
+handful of actions that must fire anyway carry `ignoreInputs: false` and a
+matching entry in `attachCustomKeyEventHandler`, both derived from the one map.
+A user may still assign a chord the terminal owns, and settings says so rather
+than refusing: the human sets the rules agents run under.
+
+**A conflicting assignment → it steals the chord, and the displaced row goes
+blank.** Refusing sounds safer and makes swapping two bindings impossible without
+unbinding one first. Stealing is safe here because the steal happens in Q24's
+*draft*: Save commits it, Cancel discards it, and the nav's dot says the section
+holds an edit. The library's own `conflictBehavior` is set to `'error'` for a
+different conflict — two call sites registering one chord, which is a programming
+mistake and should be loud.
+
+**Getting back to the defaults → three granularities.** A `×` unbinds one action
+(stored as an explicit `null`, so it survives a default changing under it); a
+per-row reset appears only while that row differs from its default; one **Reset
+all** deletes the overrides object.
+
+**Q15's deferred binding is answered:** the file panel toggles on
+`Mod+Shift+E`. `Ctrl+B` stays unavailable for the reason Q15 gave, and `Mod+J`
+is out because on Linux `Mod` is Control and `Ctrl+J` is a literal line feed.
+
+**Q24's unwired `Cmd/Ctrl+,` is wired here**, with the idempotent behaviour Q24
+specified — it opens and focuses, and does nothing when settings is already open.

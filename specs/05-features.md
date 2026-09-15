@@ -2113,6 +2113,14 @@ can follow this rather than the browser's locale (F22). This is the section
 that was "absent until it has content"; theme joins it when the roadmap's item
 32 lands.
 
+**Keyboard.** One row per bindable action, added by F28 and sitting directly
+after Appearance because both are app-wide chrome you set once, before the
+sections that are about the agent. It is the only section whose rows are
+*recorded* rather than typed or switched, and the one where Save is doing the
+most work: a reassignment steals the chord from whichever action held it, and
+that row goes blank in the draft — recoverable by Cancel right up until Save.
+See F28 for the map behind it.
+
 **Routines.** Two numbers, added by F22 and both in the SQLite table because
 **Rust** reads them — `RoutineRunner` does, on every tick. *Run missed routines
 for up to N hours* is the app-wide catch-up default a routine may override, where
@@ -3448,17 +3456,33 @@ the detail pane rather than inline on a row that has no room for it.
 
 ### Keyboard shortcuts
 
-| Shortcut          | Action                          |
-| ----------------- | ------------------------------- |
-| `Cmd/Ctrl + K`    | Focus sidebar search            |
-| `Cmd/Ctrl + F`    | Find in viewer or terminal      |
-| `Cmd/Ctrl + G`    | Go to line (editor only)        |
-| `Cmd/Ctrl + N`    | New session in active project (not wired yet — F6 ships the buttons only) |
-| `Cmd/Ctrl + W`    | Kill active terminal            |
-| `Cmd/Ctrl + ,`    | Open settings                   |
+**These are defaults, not fixed keys.** Every row is rebindable from
+settings, and the table below is what the app ships with. F28 is the
+feature: the map, the terminal rule, the menu split, and the settings
+section that edits them.
 
-Implemented via a single `useGlobalShortcuts()` hook listening at the
-shell layer.
+| Shortcut             | Action                                    |
+| -------------------- | ----------------------------------------- |
+| `Mod + K`            | Focus sidebar search — from anywhere      |
+| `Mod + F`            | Find, in a focused viewer or terminal; focus sidebar search anywhere else |
+| `Mod + N`            | New session in the active project         |
+| `Mod + W`            | Close the focused tab                     |
+| `Mod + Shift + E`    | Toggle the file panel                     |
+| `Mod + ,`            | Open settings                             |
+| `Mod + Q`            | Quit — the menu's on macOS, a binding on Linux |
+
+`Mod` is Meta on macOS and Control on Linux, which is also what a WSLg
+window gets (ADR-0044).
+
+Two rows that used to be here are gone, and both removals are decisions
+rather than tidying. **Go to line** was `Cmd/Ctrl + G` at app level while
+Monaco has shipped it natively inside the editor all along. **Kill the
+active terminal** held `Cmd/Ctrl + W`, which two users asked for as tab
+close; it loses the binding rather than moving to another one.
+
+Implemented against one action→binding map: `useGlobalShortcuts()` at the
+shell layer registers what is true everywhere, and the context-dependent
+bindings register at whoever owns the focus (ADR-0046).
 
 ### Error UX
 
@@ -5959,3 +5983,141 @@ confirm F26 uses, saying what this one actually replaces.
   independent plaintexts. Nothing to reconcile, as F26 says for drafts.
 
 **Roadmap.** Item 53, in three slices.
+
+## F28 — Keyboard shortcuts, as a rebindable map
+
+The cross-cutting § "Keyboard shortcuts" table is what the app ships with. This
+is the feature that makes it real, makes it the user's to change, and answers the
+one question that makes this app different from an editor: **what happens when the
+terminal has focus.**
+
+Decided in ADR-0046, which also carries the reasoning for the two collisions
+resolved below.
+
+### One map, three layers
+
+An `Action` names what can be bound. A module constant holds each action's
+default. `prefsStore` holds **only the overrides** — renderer-only state, so
+`localStorage` and read synchronously, by that store's own rule.
+
+The effective keymap is `defaults → overrides → one conflict scan`, computed in a
+pure module. Three properties come out of that shape and each is load-bearing:
+
+- **A `null` override is "deliberately unbound"**, which is a different state from
+  "not overridden". It is what the `×` on a settings row writes.
+- **A default we change later moves with the app**, because what was saved is the
+  difference, not the whole table.
+- **A user's override outranks a default that arrives later.** When a future
+  feature ships a default this user has already taken, the override stays and the
+  arriving action starts unbound, showing as a blank row. Removing a key somebody
+  chose, silently, to make room for one they have never seen is the alternative.
+
+### The terminal keeps everything it binds, unless the action says otherwise
+
+xterm's focus target is a real hidden `<textarea>`, so the library's default
+`ignoreInputs` already suppresses hotkeys while the terminal — or Monaco, or the
+sidebar's search field — has focus. That is the default, and it is the one that
+cannot break typing to Claude.
+
+Each action declares whether it fires anyway. `Mod+,`, `Mod+K`, `Mod+N` and
+`Mod+Shift+E` do: they are how you reach the rest of the app from a terminal you
+are typing in. Those get `ignoreInputs: false` **and** an entry in xterm's
+`attachCustomKeyEventHandler`, because otherwise xterm consumes the chord first.
+Both lists are derived from the one map; written twice, they drift.
+
+`Mod+Shift+E` for the file panel is Q15's deferred binding, answered. `Ctrl+B` was
+the obvious one and is unavailable — readline's back-a-char and tmux's prefix.
+`Mod+J` is worse than it looks: on Linux `Mod` is Control and `Ctrl+J` is a
+literal line feed. No readline binding uses `Ctrl+Shift`+letter, so this chord
+passes through cleanly.
+
+### `Mod+W` closes the focused tab
+
+Focus decides which strip: the viewer's `FileTabs` while the viewer has focus,
+otherwise `SessionTabs`. A session tab closes through F10's close — `needsCloseConfirm`
+included, so this is not a silent kill. A file tab with an unsaved draft answers
+to F26's draft store, exactly as the `×` does.
+
+On macOS this key only exists because the menu gives it up; see below.
+
+### `Mod+F` is context-dependent, `Mod+K` is not
+
+Viewer or terminal focused, `Mod+F` opens find — Monaco's widget through the
+`findHandle` the viewer already provides, or the terminal's search. Anywhere else
+it focuses the sidebar search, which is what was asked for. `Mod+K` focuses the
+sidebar search regardless of focus, so there is one key whose meaning never
+depends on where you were looking.
+
+Today that bar searches transcripts; it becomes "sessions and files" when items 12
+and 13 land, and neither binding changes when it does.
+
+### Quit, and the menu that gives up `Mod+W`
+
+Two implementations of one action, for a reason that is not ours to fix: AppKit
+consumes menu accelerators before the webview sees them.
+
+- **macOS.** The app owns its menu rather than taking Tauri's default. Quit keeps
+  `Cmd+Q` and runs the *same* path as the window close, so ADR-0020's quit guard
+  and `kill_all()` both run. **Close Window moves to `Cmd+Shift+W`**, which is
+  what frees `Cmd+W` for tab close.
+- **Linux.** No menu, so `Ctrl+Q` is a real binding. Its handler calls
+  `getCurrentWindow().close()` and lands in the same `CloseRequested` handler.
+  It must never call `app_quit_confirmed` — that is the dialog's confirm, and
+  binding it kills live sessions with no ask.
+
+### The settings section
+
+A **Keyboard** section in F11's modal, after Appearance. One row per action: the
+action's name, its chord through `formatForDisplay`, and the controls that change
+it.
+
+- **Recording.** Click the chord to record; the next chord replaces it. Escape
+  cancels the recording rather than being captured, which is also why Escape can
+  never be bound.
+- **Stealing.** Assigning a chord another action holds takes it, and the action
+  that lost it renders as a **blank row**. Refusing would make swapping two
+  bindings impossible without unbinding one first; a row that visibly empties says
+  what happened better than an error naming a row you were not looking at.
+- **Unbinding.** A `×` clears the row. The action then has no key, which is a
+  state a user is allowed to want.
+- **Resetting.** A per-row reset appears only while that row differs from its
+  default. One **Reset all** at the foot of the section deletes the overrides
+  object.
+
+All four are draft edits: Q24's explicit Save commits them, Cancel discards, and
+the nav's dirty dot covers the section like any other.
+
+### Where a binding shows outside settings
+
+The controls that have one append their chord to the tooltip they already have —
+the new-session button, the settings gear, the panel toggle, a tab's close. They
+read the same map, so a rebind shows up everywhere at once. It is also how anyone
+finds out the key exists: nobody opens settings to learn a shortcut is there.
+
+### Not in the map
+
+Arrow-key navigation inside a focused list — F2's sidebar, F13's Changes tab
+stepping from one changed file to the next with the diff staying open — is list
+behaviour, not an app shortcut. It stays a local `onKeyDown` with a roving
+tabindex, the way F18's graph already does it. Those keys are not rebindable and
+do not appear in the settings section; a row offering to reassign `↓` would be
+offering something that cannot work.
+
+### Verification
+
+Nothing here is provable by Playwright: CDP keystrokes never reach Monaco, and
+`Mod` chords are worse. The pure module — merge, override precedence, the steal
+scan, the display string, the over-terminal set — is vitest. The rest is the
+`manual-qa` lane on **both** engines: Linux dev is WebKitGTK, and macOS is the
+only place the menu change can be checked at all.
+
+**Backend.** A menu module in `src-tauri`, macOS only, on the existing
+`CloseRequested` path. No new command, no new event.
+
+**Edge cases.**
+- A chord the OS takes first (`Cmd+Tab`, `Cmd+Space`) never reaches the recorder
+  → nothing is recorded and the row keeps its chord.
+- An override naming an action that no longer exists → dropped on merge.
+- Two sessions of the app are not a case: single window (Q9).
+
+**Roadmap.** Item 5, in five slices.
