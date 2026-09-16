@@ -62,6 +62,10 @@ export interface TestFixture {
 	pendingRoutineFires?: RoutineFireEvent[];
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	/** The id `shell_spawn` hands back (F23). Pin it and every pane of a chip
+	 *  gets the same PTY, so only a one-pane spec should — what it buys is a
+	 *  known id to fire `terminal:data` at. Unpinned, the mock counts spawns. */
+	shellSpawnId?: TerminalId;
 	/** Session id `start_session` hands back for a new-session click (F6). The
 	 *  mock falls back to a fixed uuid, so a spec only sets this when it wants
 	 *  to talk about the id. */
@@ -833,6 +837,13 @@ export function fixtureWithFileTree(): TestFixture {
 					'',
 				].join('\n'),
 				{ sopsEncrypted: true },
+			),
+			// A bare filename with an extension, which is the shape `terraform`
+			// prints its errors against — and the case F19's grammar allows only
+			// because every candidate is verified against disk (item 56).
+			[`${root}/main.tf`]: contents(
+				`${root}/main.tf`,
+				'resource "aws_instance" "web" {\n  ami = "ami-000000"\n}\n',
 			),
 			// Long enough that `&line=` has somewhere off-screen to land (F19).
 			// Deliberately **not** in `dirListings`: it is reached by URL, which is

@@ -11,6 +11,7 @@ import {
 	showOnly,
 } from '@components/terminal/Terminal';
 import { closePane } from '@components/terminal/shells';
+import { useFileLinks } from '@hooks/useFileLinks';
 import {
 	availableWidth,
 	clampPaneWidth,
@@ -35,11 +36,19 @@ import { type ShellPaneTab, type ShellTab, useShellStore } from '@store/shellSto
  * sessions does not**, since ADR-0032 put the footer in the app shell: the row
  * is the project's, so it is the same element and the same hosts.
  */
-export function ShellPane({ projectId }: { projectId: string }) {
+export function ShellPane({
+	projectId,
+	projectRoot,
+}: {
+	projectId: string;
+	/** The project's own folder — the second base a path a pane prints resolves
+	 *  against, and what a directory link's reveal is rooted at (F19). */
+	projectRoot: string | null;
+}) {
 	const activeKey = useShellStore((s) => s.activeByProject[projectId] ?? null);
 	const chip = useShellStore((s) => s.byProject[projectId]?.find((c) => c.key === activeKey));
 	if (!chip) return null;
-	return <PaneRow chip={chip} />;
+	return <PaneRow chip={chip} projectRoot={projectRoot} />;
 }
 
 /**
@@ -47,7 +56,7 @@ export function ShellPane({ projectId }: { projectId: string }) {
  * measured once on mount and then watched. A chip switch keeps this element —
  * the row is the same box whichever chip fills it — so the observer survives.
  */
-function PaneRow({ chip }: { chip: ShellTab }) {
+function PaneRow({ chip, projectRoot }: { chip: ShellTab; projectRoot: string | null }) {
 	const rowRef = useRef<HTMLDivElement>(null);
 	const [rowWidth, setRowWidth] = useState(0);
 	const dragged = useShellStore((s) => s.widthsByChip[chip.key]);
@@ -89,6 +98,7 @@ function PaneRow({ chip }: { chip: ShellTab }) {
 						)}
 						<PaneHost
 							projectId={chip.projectId}
+							projectRoot={projectRoot}
 							chipKey={chip.key}
 							pane={pane}
 							focused={chip.focus === pane.key}
@@ -145,6 +155,7 @@ function ensureShell(
  */
 function PaneHost({
 	projectId,
+	projectRoot,
 	chipKey,
 	pane,
 	focused,
@@ -152,6 +163,7 @@ function PaneHost({
 	fraction,
 }: {
 	projectId: string;
+	projectRoot: string | null;
 	chipKey: string;
 	pane: ShellPaneTab;
 	focused: boolean;
@@ -169,6 +181,24 @@ function PaneHost({
 	// when anything on the pane changes, and an effect keyed on identity would
 	// tear down and re-run on an `attach`.
 	const { key, cwd, dead } = pane;
+
+	// File links in this pane's output (F19). **The pane's own cwd first**, then
+	// the project root: a pane spawns where it was opened and keeps that
+	// directory (F23, per split in F24), so that — not any session's cwd — is
+	// what a relative path a command printed resolves against.
+	//
+	// The cwd is the pane's *spawn* cwd, and a `cd` inside the shell moves the
+	// real one somewhere the renderer does not know. F19 § "A `cd` inside a pane"
+	// records why that is accepted rather than tracked.
+	useFileLinks({
+		termKey: key,
+		bases: [cwd, projectRoot],
+		treeRoot: projectRoot,
+		focus: () => {
+			const entry = entryRef.current;
+			if (entry && !entry.disposed) entry.term.focus();
+		},
+	});
 
 	useEffect(() => {
 		const container = containerRef.current;

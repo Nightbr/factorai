@@ -3571,7 +3571,7 @@ and it closes for every gesture at once when it lands.
 
 ## F19 — Clickable file links in terminal output
 
-**Behavior.** `Ctrl`/`Cmd`-click a path in the agent's output and it opens in
+**Behavior.** `Ctrl`/`Cmd`-click a path in a terminal's output and it opens in
 the viewer (F7) — at the line, if the path carried one. A directory reveals
 itself in the file tree instead (F12). A path that isn't on disk was never a
 link in the first place.
@@ -3579,6 +3579,13 @@ link in the first place.
 This is the fourth member of the navigation family: F12–F14 are "I know roughly
 what I want, find it"; this is "the thing on screen right now, open it", which
 is both cheaper and far more frequent.
+
+**Which terminals carry file links: both of them.** The agent's (F3) and every
+pane of the project's footer shell (F23, F24). It shipped over the agent's
+output alone and that was never a rule, only the surface that existed — a plain
+`cargo build` or `terraform apply` in a pane prints the file its error is in,
+and that is the same click. One provider serves both, and what differs is only
+the bases below.
 
 ### It is a link provider, not OSC 8 — settled 2026-08-19
 
@@ -3621,6 +3628,15 @@ Out of scope, deliberately: **paths containing spaces.** Nothing in the output
 quotes them, so there is no way to know where the path ends, and guessing turns
 "open the file" into "open some prefix of the file".
 
+**The grammar was read off the agent's prose and then checked against tools that
+are not it** (2026-09-16), since a footer shell prints whatever you ran. `rustc`
+and `tsc --pretty` print `path:line:col`, `cargo` prints `path:line`, and both
+are the suffix above. `terraform` prints `on main.tf line 42, in resource …`,
+where the **path links and the line does not**: `line 42` is prose, a third
+grammar, and reading it would mean guessing at every tool's phrasing. A file
+opened at its top is right; a file opened at a line inferred from a sentence is
+a wrong answer that looks like a right one.
+
 ### Verification is what makes that grammar affordable
 
 `path_kinds(paths) -> Vec<PathKind>` (`03-backend-rust.md` § `files`) answers
@@ -3638,13 +3654,46 @@ candidate on it and memoised in the renderer. Three things fall out of it:
 
 ### The base a relative path resolves against
 
-Session `cwd` first, then the project's `realPath`. Whichever resolves to
-something real wins; if neither does, it was not a link.
+**The terminal's own directory first, then the project's `realPath`.** Whichever
+resolves to something real wins; if neither does, it was not a link. Which
+directory that first base is depends on the surface, and there is no third
+answer:
 
-Worth knowing that **today this chain is a no-op**: `Terminal.tsx` spawns the
-PTY with `cwd: projectCwd`, so the two are the same string. It earns its place
-for **resumed** sessions, where `SessionSummary.cwd` comes from the transcript
-and can be a subdirectory of the project.
+- **The agent's terminal**: the session `cwd`. Worth knowing that for a *fresh*
+  session this chain is a no-op — `Terminal.tsx` spawns the PTY with
+  `cwd: projectCwd`, so the two are the same string. It earns its place for
+  **resumed** sessions, where `SessionSummary.cwd` comes from the transcript and
+  can be a subdirectory of the project, and for a session working in a worktree
+  (F21).
+- **A footer shell's pane**: that pane's own `cwd`, the directory it was spawned
+  in and keeps (F23, per split in F24). There is no session cwd in this surface
+  and a session's would be the wrong answer anyway — a pane opened from the
+  project page belongs to no session at all.
+
+A directory only links when it is inside one of the bases, which is the rule
+under § "Where the click lands", and it is read off the same chain.
+
+### A `cd` inside a pane is not tracked — settled 2026-09-16
+
+A pane's recorded `cwd` is its **spawn** cwd. After `cd terraform/prod` the
+shell's relative paths resolve against a directory the renderer does not know,
+and a path printed there links only if the project root happens to answer for
+it. That is accepted rather than fixed, and the alternatives are why:
+
+- **Read the child's cwd on demand** — `/proc/<pid>/cwd` on Linux,
+  `proc_pidinfo` on macOS. A runtime branch per platform in the backend, on the
+  hover path, to answer a question the next keystroke can invalidate.
+- **Have the shell report it with OSC 7**, which is the correct answer and the
+  most invasive one: it means writing to the user's shell init, which this app
+  does not otherwise do, in a repository whose whole promise is that it runs
+  your tools rather than replacing them.
+
+What makes accepting it reasonable is that the tools this is for print paths
+relative to a *root* rather than to `$PWD` — `terraform` to the module root,
+`cargo` and `tsc` to the manifest's directory — so the project base catches
+most of what the case was raised for. If the failure turns out to be real and
+frequent, OSC 7 is the option to take, and it is a decision that wants its own
+ADR at that point.
 
 ### Modifier-click, the same gate as F5
 
@@ -3657,11 +3706,12 @@ three rules alone.
 
 ### Where the click lands
 
-The existing `FileViewerModal` via `?file=`, plus a new **`?line=`** (and
-`?col=`) driving Monaco's `revealLineInCenter` + `setPosition`. One viewer, one
-entry point, URL-driven — so browser-back closes it, and the F20 bridge's
-`openFile` calls exactly the same `useFileViewer().open(path, { line })` rather
-than inventing a second way in.
+The viewer via `?file=`, plus a new **`?line=`** (and `?col=`) driving Monaco's
+`revealLineInCenter` + `setPosition`. One viewer, one entry point, URL-driven —
+so browser-back closes it, and the F20 bridge's `openFile` calls exactly the
+same `useFileViewer().open(path, { line })` rather than inventing a second way
+in. It was a modal when this was written and is a pane beside the terminal since
+ADR-0037; the entry point did not change.
 
 **A directory opens the panel, expands to it and selects it.** This is the one
 place a programmatic panel change is justified against `panelStore`'s rule that
@@ -3673,21 +3723,34 @@ real, and interesting, and the tree only shows this project — so clicking it
 would do nothing at all. A link that underlines and then ignores you is worse
 than plain text, so a directory only links when it is inside one of the bases.
 
-**Focus returns to the terminal on close.** The modal is a Radix `Dialog` and
-traps focus already; the missing half is restoring it to the xterm textarea. Skip
-it and the sequence is: click a path, read it, press `Esc`, type — and the
-keystrokes go nowhere.
+**Focus returns to the terminal on close — the terminal the link was in.** The
+viewer takes focus while it is open and leaves it on `<body>` when the file it
+was showing closes (ADR-0047); the missing half is restoring it to the xterm
+textarea. Skip it and the sequence is: click a path, read it, close it, type —
+and the keystrokes go nowhere. **A pane gets this as well as the agent**, and it
+has to be the terminal that was clicked: putting the caret in the agent after a
+click in a shell would be the same bug with an extra step.
 
 ### Shape
 
 Resolution — candidate matching, `~` expansion, base resolution, the
 `path_kinds` cache, and the open — lives in `lib/fileLinks.ts`, separate from
-the xterm wiring that calls it. **The live terminal is the only consumer for
-now**; a rendered transcript is a completely different implementation of the
-same idea, and the split exists so that one can be added without a rewrite
-rather than because it is being added.
+the xterm wiring that calls it. **Live terminals are the only consumers**; a
+rendered transcript is a completely different implementation of the same idea,
+and the split exists so that one can be added without a rewrite rather than
+because it is being added.
 
-**Roadmap.** Item 15.
+**One registration, one seam, two surfaces.** The provider is registered when a
+pooled xterm is built, and everything it needs from React — the bases, the
+viewer, the tree — it reads through a map keyed by the pool's own key: a session
+id for the agent, a pane key for a shell. The first version kept that map inside
+the agent's component and keyed it by session id, which is exactly why a pane's
+paths were dead text: the provider was there, the entry never was. The map
+therefore belongs to the provider, and a mounted component writes its entry and
+clears it on unmount — so an off-screen terminal has no links, which is right,
+since there is nothing to hover and nobody is looking.
+
+**Roadmap.** Items 15 and 56.
 
 ---
 
@@ -5064,6 +5127,14 @@ throwing that away to save a crowded strip is the wrong side of that trade. The
 cost is real and accepted: a project whose sessions each had a chip restores
 them all in one strip, dead, and the `×` is right there.
 
+**A path a pane prints is a link, on the same rules as the agent's** (F19 as
+amended 2026-09-16). The provider is registered on every pooled terminal, so
+this is one map entry rather than a second implementation: the pane's own cwd is
+the first base a relative path resolves against, the project's `realPath` the
+second, and `Esc` out of the viewer puts the caret back in the pane that was
+clicked. F19 owns the grammar, the verification and the deliberate limit on a
+`cd` inside the shell; nothing about it is restated here.
+
 **One stream, and a shell's `OSC 0` is not read at all.** For an agent the
 title is Claude's state (F10, ADR-0015); for a shell it is noise — most prompts
 write one on every command. A shell that titles itself with the CLI's own idle
@@ -5104,8 +5175,8 @@ the same way, so the guard is on the shared path rather than on this one.
   is refused by the backend anyway, and not offering the control is the honest
   version of that.
 
-**Roadmap.** Item 47, the splits and the static label F24 owns as item 49, and
-the project rescope as item 50.
+**Roadmap.** Item 47, the splits and the static label F24 owns as item 49, the
+project rescope as item 50, and the file links as item 56.
 
 ## F24 — Splits in the footer shell
 
@@ -5185,7 +5256,10 @@ pane.
   its life, so a pane split in a worktree stays there when you switch session
   (F23 as amended by ADR-0032). A shell's live cwd is not tracked,
   so "split with the focused pane's directory" is not offered; `OSC 7` would
-  make it possible later without changing the UI.
+  make it possible later without changing the UI. **That per-pane cwd is also
+  the first base a file link in that pane resolves against**, and the same
+  untracked live cwd is the limit F19 § "A `cd` inside a pane" accepts — one
+  missing signal, two features waiting on it.
 - **Closing a pane kills its process.** The corner `×`, and `exit`, remove the
   pane; the remaining panes re-equalise; focus moves to the pane that was to
   its left, or the first. Closing the last pane closes the chip. **Closing a
@@ -5249,7 +5323,7 @@ non-persisted map keyed by chip.
   theme decides. The foreground command via `tcgetpgrp`, which ADR-0031 names,
   is the honest upgrade if names are wanted later, and it changes no UI.
 
-**Roadmap.** Item 49.
+**Roadmap.** Item 49, and the file links as item 56.
 
 ---
 

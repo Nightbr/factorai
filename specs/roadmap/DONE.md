@@ -3,6 +3,54 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **File links in the footer shell's panes — item 56, F19, F23/F24** — 2026-09-16, asked for
+  2026-09-16 with `terraform apply` as the case. `Ctrl`/`Cmd`-clicking a path a plain shell
+  command printed now opens it in the viewer, exactly as it has over the agent's output since
+  item 15 — same modifier gate, same `?file=`/`?line=` entry point, same "a path that isn't on
+  disk was never a link" rule.
+
+  **The feature was already there and the gap was one map.** The footer's panes are pooled
+  through the same `getOrCreateTerm`, so `createFileLinkProvider` was registered on every one of
+  them, ahead of `WebLinksAddon`, with F19's ordering contract intact. What the provider reads
+  through is a map keyed by the pooled xterm's key — and that map lived inside `Terminal.tsx`,
+  written only by the session component, so a pane's key was never in it: the provider fell back
+  to an empty base chain, resolved nothing, and every path stayed plain text. The map moved to
+  `components/terminal/fileLinkWiring.ts` with the click gate beside it, and the per-mount half —
+  bases, viewer, tree, focus return — became one `useFileLinks` hook both surfaces call. Two
+  copies of that wiring would have been two surfaces free to drift about what a path click means.
+
+  **The bases are the pane's own.** A pane spawns with a cwd and keeps it (F23, per split in
+  F24), so that is the first base a relative path in its output resolves against, with the
+  project's `realPath` second. No session cwd reaches this surface, and a pane opened from the
+  project page belongs to no session at all.
+
+  **A `cd` inside the pane is accepted, not tracked** — the one open question in the ask, and the
+  decision is recorded in F19 rather than in an ADR because nothing is built on it. The recorded
+  cwd is the *spawn* cwd, so after `cd terraform/prod` a relative path resolves against a
+  directory the renderer does not know. Reading the child's cwd per hover (`/proc/<pid>/cwd`,
+  `proc_pidinfo`) buys an answer the next keystroke invalidates; OSC 7 is the correct answer and
+  means writing to the user's shell init, which this app does not otherwise do. What makes
+  accepting it reasonable is that the tools this was asked for print paths relative to a *root* —
+  `terraform` to the module root, `cargo` and `tsc` to the manifest's — so the project base
+  catches most of it. OSC 7 is the option to take if that stops being true, and it would want its
+  own ADR.
+
+  **Verified against tools that are not Claude Code**, since F19's grammar was read off the
+  agent's prose. `path:line:col` and `path:line` already worked. `terraform`'s
+  `on main.tf line 42, in resource …` links the **file** and deliberately not the line: that is a
+  third grammar, and a file opened at a line inferred from a sentence is a wrong answer that
+  looks like a right one. F19 says so now.
+
+  **Tests.** Five smoke specs drive the whole path for the first time — output emitted on
+  `terminal:data`, hover, modifier-click, viewer — where the existing `?line=` specs entered
+  through the URL the link ends at. Two things they pinned on the way: xterm activates only a
+  link its *hover* already resolved (`_handleMouseUp` reads what the mousemove found), so the
+  gesture is move, wait, click; and the underline it draws on that hover is an inline
+  `text-decoration` on a span it splits out of the row, not an `xterm-underline-*` class — that
+  class is for an underline the program asked for with SGR 4. The focus-return spec was checked
+  by removing the wiring and watching it fail. Unit tests cover the wiring map itself, including
+  the re-register-then-stale-cleanup order a remount can produce.
+
 - **SOPS in the viewer — item 53, F27, ADR-0045** — 2026-09-14, asked for 2026-09-12. A
   SOPS-encrypted file now opens in the viewer, says that is what it is, decrypts to an editable
   plaintext, and **Save encrypts and writes the encrypted file back**. The encrypted file is what

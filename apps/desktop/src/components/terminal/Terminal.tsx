@@ -5,15 +5,14 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
 import { createFileLinkProvider } from '@components/terminal/fileLinkProvider';
-import { useFileViewer } from '@hooks/useFileViewer';
-import { useRevealInTree } from '@hooks/useRevealInTree';
+import { activateFileLink, fileLinkContext } from '@components/terminal/fileLinkWiring';
+import { useFileLinks } from '@hooks/useFileLinks';
 import type { RoutineFireEvent } from '@factorai/types';
 import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
-import type { ResolveContext, ResolvedLink } from '@lib/fileLinks';
 import { hotkeysOverTerminal, mergeKeymap } from '@lib/keymap';
-import { cmd, events, homeDir, openExternally } from '@lib/tauri';
+import { cmd, events, openExternally } from '@lib/tauri';
 import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 
@@ -62,62 +61,6 @@ export function createOscLinkHandler(open: (uri: string) => void = openExternall
 } {
 	return { activate: (event, uri) => onLinkActivated(event, uri, open) };
 }
-
-/** Where a resolved file link goes: the viewer for a file, the tree for a
- *  directory. Passed in rather than imported so this stays testable without a
- *  router, and so the terminal knows nothing about either destination. */
-export interface FileLinkTargets {
-	openInViewer: (path: string, position: { line?: number; col?: number }) => void;
-	revealInTree: (path: string) => void;
-}
-
-/**
- * What a modifier-click on a **path** does (F19).
- *
- * The third kind of link in this terminal, and it takes the same gate as the
- * other two on purpose — see `onLinkActivated`. The ambush argument is if
- * anything stronger here: throwing a near-fullscreen viewer over the terminal
- * you were reading is more disruptive than opening a browser beside it.
- *
- * The destination is the only thing that differs. A file the agent touched
- * belongs in the viewer (F7), not in whatever the OS says owns `.ts` — that is
- * the correction roadmap item 15 exists to make.
- */
-export function onFileLinkActivated(
-	event: MouseEvent,
-	link: ResolvedLink,
-	targets: FileLinkTargets,
-): void {
-	if (!event.ctrlKey && !event.metaKey) return;
-	if (link.kind === 'directory') {
-		targets.revealInTree(link.path);
-		return;
-	}
-	targets.openInViewer(link.path, {
-		line: link.line ?? undefined,
-		col: link.col ?? undefined,
-	});
-}
-
-/**
- * What the file-link provider needs from React, per session (F19).
- *
- * The provider has to be registered when the pooled terminal is built — see the
- * ordering note there — but what it needs (the router, the panel store, the
- * session's cwd) only exists inside the component. So the provider is
- * registered once and reads through this, which the component keeps current
- * while it is mounted and clears when it isn't.
- *
- * An unmounted session therefore has no links, which is right: there is nothing
- * on screen to hover, and opening a viewer for a terminal nobody is looking at
- * would be the ambush `onLinkActivated` exists to prevent.
- */
-interface FileLinkWiring {
-	context: () => ResolveContext;
-	activate: (event: MouseEvent, link: ResolvedLink) => void;
-}
-
-const fileLinkWiring = new Map<string, FileLinkWiring>();
 
 // ── Sizing the grid ────────────────────────────────────────────────────────
 //
@@ -406,8 +349,8 @@ export function getOrCreateTerm(
 			t.registerLinkProvider(
 				createFileLinkProvider(
 					t,
-					() => fileLinkWiring.get(key)?.context() ?? { bases: [], home: null },
-					(event, link) => fileLinkWiring.get(key)?.activate(event, link),
+					() => fileLinkContext(key),
+					(event, link) => activateFileLink(key, event, link),
 				),
 			),
 		dispose: () => undefined,
@@ -673,85 +616,23 @@ interface TerminalProps {
 
 export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: TerminalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
-	const { open: openInViewer, path: viewerPath } = useFileViewer();
-	const revealInTree = useRevealInTree(projectCwd);
-
-	/** Did the open viewer come from a link in *this* terminal? Decides whether
-	 *  closing it hands focus back here — see the effect below. */
-	const cameFromHereRef = useRef(false);
-
-	// Read through a ref inside `provideLinks`, which runs on mouse move and
-	// must not be re-registered every time a query resolves.
-	const targetsRef = useRef<FileLinkTargets>({ openInViewer: () => {}, revealInTree });
-	targetsRef.current = {
-		openInViewer: (path, position) => {
-			cameFromHereRef.current = true;
-			openInViewer(path, position);
-		},
-		revealInTree,
-	};
-
-	/**
-	 * Closing a viewer that was opened from this terminal puts the caret back in
-	 * the terminal.
-	 *
-	 * Without it the sequence is: ctrl-click a path, read the file, press `Esc`,
-	 * type — and the keystrokes go nowhere. The `Dialog` traps focus and Radix's
-	 * own restoration does not reach xterm's helper textarea; **measured in the
-	 * running app, not assumed** — an `x` typed after `Esc` never reached the
-	 * prompt.
-	 *
-	 * Deferred by a tick because Radix restores focus during its own unmount, so
-	 * focusing synchronously here would simply be overwritten. Same reason the
-	 * mount effect below defers its first `focus()`.
-	 *
-	 * Only when the viewer came from here. Opening a file from the tree and
-	 * closing it should leave focus where the tree put it, not yank it into a
-	 * terminal the reader was not using.
-	 */
-	useEffect(() => {
-		if (viewerPath || !cameFromHereRef.current) return;
-		cameFromHereRef.current = false;
-		const timer = setTimeout(() => pool.get(sessionId)?.term.focus(), 0);
-		return () => clearTimeout(timer);
-	}, [viewerPath, sessionId]);
-
-	// The base chain, same shape. `home` is resolved once and cached by the
-	// bridge; until it lands, a `~/` path just isn't a link yet.
-	const homeRef = useRef<string | null>(null);
-	useEffect(() => {
-		void homeDir().then((h) => {
-			homeRef.current = h;
-		});
-	}, []);
-
-	const contextRef = useRef<ResolveContext>({ bases: [], home: null });
-	contextRef.current = {
-		// Session cwd first, then the project root. The same string for a fresh
-		// session, and different for a resumed one started in a subdirectory — or
-		// in another worktree, which is the case F21 turns on.
-		//
-		// **The PTY itself is spawned from the session's recorded cwd too**, but
-		// that decision is Rust's rather than this component's: `attachPty` passes
-		// `projectCwd` and `TerminalManager::resume_cwd` overrides it out of the
-		// index. It has to be there, because this component learns `sessionCwd`
-		// from a query that resolves after it has already mounted and spawned.
-		bases: [sessionCwd, projectCwd].filter((b): b is string => Boolean(b)),
-		home: homeRef.current,
-	};
-
-	// Hand the provider what it can't reach on its own. The provider itself is
-	// registered with the pooled terminal, ahead of `WebLinksAddon`, and cannot
-	// move here — see the ordering note at its registration.
-	useEffect(() => {
-		fileLinkWiring.set(sessionId, {
-			context: () => contextRef.current,
-			activate: (event, link) => onFileLinkActivated(event, link, targetsRef.current),
-		});
-		return () => {
-			fileLinkWiring.delete(sessionId);
-		};
-	}, [sessionId]);
+	// File links in the agent's output (F19). **Session cwd first, then the
+	// project root**: the same string for a fresh session, and different for a
+	// resumed one started in a subdirectory — or in another worktree, which is
+	// the case F21 turns on.
+	//
+	// **The PTY itself is spawned from the session's recorded cwd too**, but that
+	// decision is Rust's rather than this component's: `attachPty` passes
+	// `projectCwd` and `TerminalManager::resume_cwd` overrides it out of the
+	// index. It has to be here as well, because this component learns
+	// `sessionCwd` from a query that resolves after it has already mounted and
+	// spawned.
+	useFileLinks({
+		termKey: sessionId,
+		bases: [sessionCwd, projectCwd],
+		treeRoot: projectCwd,
+		focus: () => pool.get(sessionId)?.term.focus(),
+	});
 
 	useEffect(() => {
 		const container = containerRef.current;

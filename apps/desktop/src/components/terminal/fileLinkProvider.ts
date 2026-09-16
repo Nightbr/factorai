@@ -2,7 +2,7 @@ import type { IBufferLine, ILink, ILinkProvider, Terminal as XTerm } from '@xter
 import { type ResolveContext, type ResolvedLink, resolveLinks } from '@lib/fileLinks';
 
 /**
- * xterm's third link path: a **path** in the agent's output (F19).
+ * xterm's third link path: a **path** in a terminal's output (F19).
  *
  * The other two are `WebLinksAddon`'s regex over URLs and `options.linkHandler`
  * for OSC 8, both in `Terminal.tsx`. This one exists because the CLI marks up
@@ -11,7 +11,9 @@ import { type ResolveContext, type ResolvedLink, resolveLinks } from '@lib/fileL
  *
  * Everything about *what is a path* lives in `lib/fileLinks.ts`. What lives here
  * is the part that is genuinely about xterm: reading a logical line out of a
- * wrapped buffer, and mapping a string offset back to a cell.
+ * wrapped buffer, and mapping a string offset back to a cell. Both terminals
+ * that carry file links — the agent's and a footer shell's pane — register this
+ * same provider and differ only in what `fileLinkWiring.ts` hands it.
  */
 
 /** How far the wrap walk will go in either direction. The same bound
@@ -121,15 +123,16 @@ export function cellAt(
 	return { row, col };
 }
 
-/** What a resolved link does when clicked. The gate lives in `Terminal.tsx`
- *  alongside the URL one, so all three kinds of link agree about what a click
- *  means. */
+/** What a resolved link does when clicked. The gate is
+ *  `onFileLinkActivated` in `fileLinkWiring.ts`, and it is the same one
+ *  `Terminal.tsx` applies to a URL, so all three kinds of link agree about what
+ *  a click means. */
 type ActivateFileLink = (event: MouseEvent, link: ResolvedLink) => void;
 
 /**
  * Build the provider. `context` is read at call time rather than captured, so a
- * session whose cwd or project changes under a pooled terminal resolves against
- * the current one.
+ * terminal whose cwd or project changes under it — a session resumed elsewhere,
+ * a pane respawned after its shell died — resolves against the current one.
  */
 export function createFileLinkProvider(
 	term: XTerm,

@@ -57,7 +57,12 @@ export function ShellDock() {
 						clamp={clampShellHeight}
 					/>
 					<div style={{ height: shellHeight }} className="shrink-0 overflow-hidden">
-						<ShellPane projectId={projectId} />
+						{/* `projectRoot`, not `root`: it is the second base a path a
+						    pane's output resolves against and the root a directory link
+						    reveals from, and both of those are the project's own folder
+						    (F19). The pane's first base is its own cwd, which is where a
+						    worktree checkout already reaches it from (F21). */}
+						<ShellPane projectId={projectId} projectRoot={projectRoot} />
 					</div>
 				</>
 			)}
