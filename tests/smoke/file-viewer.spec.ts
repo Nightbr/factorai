@@ -487,6 +487,8 @@ test.describe('file viewer', () => {
 		await page.keyboard.press('Escape');
 		await expect(viewer.getByTestId('preview-find')).toHaveCount(0);
 		expect(await painted()).toBe(0);
+		// The bar and not the file: the pane's own Escape is gated on the bar
+		// being open, and this bar does not stop the key on its way up (ADR-0047).
 		await expect(viewer.getByTestId('markdown-view')).toBeVisible();
 	});
 
@@ -843,11 +845,21 @@ test.describe('file viewer', () => {
 		await page.keyboard.press('Enter');
 		await expect(find.locator('.matchesCount')).toHaveText('2 of 3');
 
-		// Escape is the widget's, and the pane keeps the file open: in a column
-		// Escape closes nothing at all (ADR-0037).
+		// Escape is the widget's, and the file stays open. The pane's own Escape
+		// (ADR-0047) is behind every meaning Monaco has for the key: the widget
+		// here, and then the selection this search left behind — Monaco stops what
+		// it handles, so the pane hears the key only once the editor is done with
+		// it.
 		await page.keyboard.press('Escape');
 		await expect(viewer.locator('.find-widget.visible')).toHaveCount(0);
 		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+
+		await page.keyboard.press('Escape');
+		await expect(viewer.getByTestId('file-view-editor')).toBeVisible();
+
+		// Third time, with nothing of Monaco's left to cancel.
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
 	});
 
 	/**
@@ -1379,6 +1391,69 @@ test.describe('file viewer', () => {
 		// And going back to the first tab scrolls the other way.
 		await tabs.first().click();
 		await expect(tabs.first()).toBeInViewport();
+	});
+
+	test('@smoke Escape closes the file the pane is showing (ADR-0047)', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		for (const name of ['Cargo.toml', 'knip.jsonc']) {
+			await panel.getByRole('button', { name, exact: true }).dblclick();
+		}
+		const tabs = page.getByTestId('file-tab');
+		await expect(tabs).toHaveCount(2);
+
+		// From inside the editor — the place a reader's focus actually is, and the
+		// one the first cut of this binding could not reach.
+		const host = page.getByTestId('file-view-editor');
+		await host.click();
+		await expect(host.locator('.monaco-editor').first()).toHaveClass(/(^|\s)focused(\s|$)/);
+		await page.keyboard.press('Escape');
+		await expect(tabs).toHaveCount(1);
+		await expect(tabs.first()).toHaveText(/Cargo\.toml/);
+
+		// And again without touching the mouse: the pane took focus back when the
+		// editor under it went away.
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
+	});
+
+	test('@smoke Escape closes a rendered markdown file too', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'README.md' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const md = viewer.getByTestId('markdown-view');
+		await expect(md).toBeVisible();
+
+		// A rendered document has nothing focusable in it, so this click is the
+		// case `tabIndex={-1}` on the pane exists for: without it focus sits on
+		// `<body>` and the pane never sees the key.
+		await md.click();
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
+	});
+
+	test('@smoke Escape on a tab that is not showing closes that tab', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		for (const name of ['Cargo.toml', 'knip.jsonc']) {
+			await panel.getByRole('button', { name, exact: true }).dblclick();
+		}
+		const tabs = page.getByTestId('file-tab');
+		await expect(tabs).toHaveCount(2);
+
+		// knip.jsonc is what the viewer shows; Escape on the other chip takes the
+		// other file, and leaves focus on the tab that took its place.
+		await tabs.filter({ hasText: 'Cargo.toml' }).focus();
+		await page.keyboard.press('Escape');
+		await expect(tabs).toHaveCount(1);
+		await expect(tabs.first()).toHaveText(/knip\.jsonc/);
+		await expect(tabs.first()).toBeFocused();
+		await expect(page.getByTestId('file-viewer')).toBeVisible();
 	});
 });
 

@@ -1161,9 +1161,21 @@ host-agnostic, which is what makes three hosts possible at all.
   baseline with a dialog's own toolbar. The pane's own strip carries two
   controls beside the tabs — expand and close — in **one** 36px row rather than
   a header under the tabs, because that column can be 400px wide.
-- **`Escape` closes nothing.** In the modal it closed the viewer and there it
-  was right; over a pane you are reading beside the agent it is not. A tab
-  closes by its `×` or by a middle-click.
+- **`Escape` closes the file the pane is showing** (2026-09-16, user ask;
+  [ADR-0047](../docs/adr/0047-escape-closes-the-file-tab-that-has-focus.md)).
+  From **anywhere in the pane** — the editor, the rendered markdown, a diff, an
+  image, the tab strip, the expand control — and from nowhere else: focus in the
+  pane is the whole scope, so the terminal keeps its `Escape` and so does every
+  surface outside the pane. This reverses the narrower rule ADR-0037 shipped
+  with, on the report that a key working only on a tab chip reads as a key that
+  does not work — what a reader has focus on is the *file*. **Find takes the
+  first press** while its widget is open, so searching and then leaving is
+  `Escape`, `Escape`. `Escape` on a tab chip that is **not** the one showing
+  closes *that* tab and moves focus to the tab taking its place, so a run of
+  them closes a run of tabs rather than dropping focus on `<body>` after the
+  first. An unsaved draft answers to F26 exactly as it does for the `×`, closing
+  the last tab closes the viewer the way its `×` does, and the other ways out
+  are unchanged: the `×`, a middle-click, and `Mod+W` (F28).
 - **Reveal is a different question from Open in default app**, which is why it
   is a second control and not a rename of the first. Open hands the file to
   whatever application owns its type; reveal answers *where does this live* —
@@ -1239,8 +1251,10 @@ before anyone pressed the key, and it is true only with the import.
   listens on the document in the capture phase and would otherwise win the
   race against Monaco's editor-level handler, taking the widget and the
   expanded view in one keystroke. Gated on the widget being open, so the first
-  `Escape` closes find and the second closes the modal. In the pane `Escape`
-  still closes nothing ([ADR-0037](../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md)).
+  `Escape` closes find and the second closes the modal. **In the pane the same
+  two presses close find and then the file** (ADR-0047): the gate is this same
+  question asked of the same handle, and what the second press reaches is the
+  pane's own handler rather than Radix's.
 - **Replace and Replace All are kept**, and Monaco hides both on a read-only
   file, which is the four cases F26 already computes. They are buffer edits:
   one `Ctrl/Cmd+Z` back, the tab marks itself dirty, and Save still asks before
@@ -6039,6 +6053,14 @@ Focus decides which strip: the viewer's `FileTabs` while the viewer has focus,
 otherwise `SessionTabs`. A session tab closes through F10's close — `needsCloseConfirm`
 included, so this is not a silent kill. A file tab with an unsaved draft answers
 to F26's draft store, exactly as the `×` does.
+
+**`Escape` closes the viewer's file while the pane has focus** (ADR-0047). It is
+not a row in this table and is not rebindable: `Escape` is the one key an
+application may not hand out, because every surface that opens something owns
+its own dismissal — the find widget here takes it before the pane does. It
+reaches the viewer's files only: never the terminal, and never the session
+strip, where a close can raise a confirmation that `Escape` would then
+dismiss.
 
 On macOS this key only exists because the menu gives it up; see below.
 

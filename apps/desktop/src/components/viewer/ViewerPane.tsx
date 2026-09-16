@@ -30,6 +30,11 @@ import { tabsFor, useViewerStore, type ViewerTab } from '@store/viewerStore';
  * lands without touching the file. Scoped to the pane and not global, exactly
  * as `Cmd/Ctrl+S` is: a global binding is item 5's problem to get right, and it
  * has a terminal to not break.
+ *
+ * **`Escape` closes the file that is showing** (ADR-0047), from anywhere in the
+ * pane and nowhere else, with the find widget taking the first press when it is
+ * open. A tab that is *not* the one showing closes by `Escape` on its own chip,
+ * which `FileTabs` handles and stops there.
  */
 export function ViewerPane() {
 	const viewer = useFileViewer();
@@ -109,6 +114,10 @@ export function ViewerPane() {
 	 *  shell's half never fires here — its registration ignores input-like
 	 *  elements, and the editor is one. */
 	function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+		if (event.key === 'Escape') {
+			onEscape(event);
+			return;
+		}
 		const findKey = keymap.findOrSearch;
 		if (!findKey || !matchesKeyboardEvent(event.nativeEvent, findKey)) return;
 		const handle = findSlot.current;
@@ -117,11 +126,46 @@ export function ViewerPane() {
 		handle.open();
 	}
 
+	/**
+	 * `Escape` closes the file the pane is showing (ADR-0047).
+	 *
+	 * **Anywhere in the pane, not only on a tab**: the editor, the rendered
+	 * markdown, a diff, an image, the expand control. Focus in the pane is the
+	 * whole scope — the terminal keeps its `Escape`, and so does everything
+	 * outside the pane, because a key that closes files from wherever you are
+	 * standing is a key that closes one while you are typing to the agent.
+	 *
+	 * **Find gets it first.** With the widget open this closes find and nothing
+	 * else, so the sequence over a search is `Escape`, `Escape`. Monaco stops
+	 * the keystroke itself when it handles one — a widget it closed, a selection
+	 * it cleared, a suggestion it dismissed — so most of that never reaches
+	 * here; the gate covers the preview's own bar, which does not.
+	 */
+	function onEscape(event: KeyboardEvent<HTMLDivElement>) {
+		if (findSlot.current?.isRevealed()) return;
+		if (!viewer.path) return;
+		event.preventDefault();
+		close(viewer.path);
+		// **The pane takes focus back.** What focus was on was inside the view
+		// this close unmounts — an editor, a preview — and the browser's answer to
+		// that is `<body>`, from where a second `Escape` reaches the shell rather
+		// than the file now showing. Focusing the pane keeps the run going, and
+		// the next view is free to take focus off it again.
+		paneRef.current?.focus();
+	}
+
 	return (
 		<div
 			ref={paneRef}
 			data-testid="file-viewer"
-			className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+			// **`tabIndex={-1}` so a click in the pane is focus in the pane.** A
+			// rendered markdown document, an image and a PDF have nothing focusable
+			// in them, so clicking one left focus on `<body>` and every key this
+			// pane owns — `Escape`, the find forward, `Mod+W`, the tab steps — went
+			// to the shell instead. Not tabbable: it is a click target for focus,
+			// not a stop on the way to the strip.
+			tabIndex={-1}
+			className="flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
 			onKeyDown={onKeyDown}
 		>
 			{/* `pr-2` against the button's own `ml-2`: 8px either side, so the one

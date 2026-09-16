@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
-import type { ViewerTab } from '@store/viewerStore';
+import { nextActivePath, type ViewerTab } from '@store/viewerStore';
 
 /** The file name, which is what a tab is labelled by. */
 function baseName(path: string): string {
@@ -30,6 +30,11 @@ interface FileTabsProps {
  * replaces. Italic rather than a second colour: colour in this app means state
  * a human has to act on (DESIGN.md, The One Amber Rule), and a preview tab is
  * not asking for anything.
+ *
+ * **`Escape` closes the tab that has focus** (ADR-0047). It is list behaviour
+ * and stays a local `onKeyDown` rather than a keymap action, the same way the
+ * arrow keys inside a focused list do (F28) — a settings row offering to
+ * rebind it would be offering something the rest of the pane must not honour.
  */
 export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps) {
 	const strip = useRef<HTMLDivElement>(null);
@@ -48,6 +53,23 @@ export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps
 	}, [active]);
 
 	if (!tabs.length) return null;
+
+	/**
+	 * Put focus on the tab that is about to take `path`'s place (ADR-0047).
+	 *
+	 * **Before the close, not after.** The close unmounts the element focus is
+	 * on, and the browser's answer to that is `<body>` — so a second `Escape`
+	 * would go nowhere and the strip would have to be reached by hand again. The
+	 * neighbour is already mounted and keeps its element across the re-render,
+	 * so moving focus first needs no effect chasing the new tree. Which tab it
+	 * is comes from `nextActivePath`, so the tab focus lands on is the tab the
+	 * viewer shows.
+	 */
+	function focusNeighbour(path: string) {
+		const next = nextActivePath(tabs, path, path);
+		if (!next) return;
+		strip.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(next)}"]`)?.focus();
+	}
 
 	return (
 		<div
@@ -77,6 +99,7 @@ export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps
 						key={tab.path}
 						role="tab"
 						aria-selected={isActive}
+						aria-keyshortcuts="Escape"
 						tabIndex={0}
 						data-testid="file-tab"
 						data-path={tab.path}
@@ -100,6 +123,19 @@ export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps
 							onClose(tab.path);
 						}}
 						onKeyDown={(e) => {
+							// **`Escape` closes this tab** (F7, ADR-0047), and only from the
+							// tab itself: over the file being read it still closes nothing,
+							// which is what ADR-0037 settled when the viewer stopped being a
+							// modal over the session. Stopped here so the keystroke stays the
+							// strip's — nothing above this row may read a close as a dismiss
+							// of its own.
+							if (e.key === 'Escape') {
+								e.preventDefault();
+								e.stopPropagation();
+								focusNeighbour(tab.path);
+								onClose(tab.path);
+								return;
+							}
 							if (e.key === 'Enter' || e.key === ' ') {
 								e.preventDefault();
 								onOpen(tab);
