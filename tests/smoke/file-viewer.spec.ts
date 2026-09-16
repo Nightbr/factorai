@@ -107,15 +107,21 @@ test.describe('file viewer', () => {
 		expect(asked).toEqual([`${ROOT}/Cargo.toml`]);
 	});
 
-	test('@smoke closing the last file clears the URL, and Esc closes nothing', async ({ page }) => {
+	test('@smoke closing the last file clears the URL, and Esc outside the pane closes nothing', async ({
+		page,
+	}) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
 		const panel = await openTree(page);
 		await panel.getByRole('button', { name: 'README.md' }).click();
 		await expect(page.getByTestId('file-viewer')).toBeVisible();
 
-		// Escape used to close the modal. Over a pane you are reading beside the
-		// agent it must do nothing at all (ADR-0037).
+		// `Escape` is the pane's and nowhere else's (ADR-0047): with focus back on
+		// a tree row it closes nothing. This used to be asserted with focus left
+		// wherever the open had put it, which was the same row — an open now lands
+		// focus in the pane (ADR-0048), so the row has to be focused on purpose
+		// for the question to still be the one this test is asking.
+		await panel.getByRole('button', { name: 'Cargo.toml', exact: true }).focus();
 		await page.keyboard.press('Escape');
 		await expect(page.getByTestId('file-viewer')).toBeVisible();
 
@@ -201,6 +207,11 @@ test.describe('file viewer', () => {
 		await expect(page).toHaveURL(/sessions\/session-uuid-002/);
 		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
 		expect(page.url()).toContain(`file=${encodeURIComponent(SWITCHER)}`);
+
+		// **And the re-seed does not take focus** (ADR-0048). Nobody opened this
+		// file — coming back to the session is what put it there — so focus stays
+		// on the link that navigated rather than jumping into the pane.
+		await expect(viewer).not.toBeFocused();
 	});
 
 	test('@smoke switching project leaves that project\u2019s own viewer, not the last one\u2019s', async ({
@@ -1454,6 +1465,41 @@ test.describe('file viewer', () => {
 		await expect(tabs.first()).toHaveText(/knip\.jsonc/);
 		await expect(tabs.first()).toBeFocused();
 		await expect(page.getByTestId('file-viewer')).toBeVisible();
+	});
+
+	test('@smoke a file opened from the tree lands with focus in the pane (ADR-0048)', async ({
+		page,
+	}) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		// One click in the tree, and **nothing touched in the viewer** — the state
+		// a reader is actually in after opening a file. The click that opened it
+		// left focus on the tree row.
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer).toBeFocused();
+
+		// Which is the whole point: the pane's keys are reachable without a second
+		// click on the thing you just asked for.
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('file-viewer')).toHaveCount(0);
+	});
+
+	test('@smoke the second file takes focus back from the tree', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'README.md' }).click();
+		const viewer = page.getByTestId('file-viewer');
+		await expect(viewer).toBeFocused();
+
+		// Back to the tree for the next file: the request is per open, not per
+		// mount, so the pane takes focus again rather than only the first time.
+		await panel.getByRole('button', { name: 'Cargo.toml', exact: true }).click();
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/Cargo\.toml/);
+		await expect(viewer).toBeFocused();
 	});
 });
 

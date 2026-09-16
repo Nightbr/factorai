@@ -141,7 +141,17 @@ export function AppShell({ children }: AppShellProps) {
 			// Restored **as it was left**, preview included: reopening it as a
 			// pinned tab would silently promote it, and the next click in the tree
 			// would then append beside it instead of replacing it.
-			viewer.open(handoff.path, { diff: tab?.diff ?? undefined, preview: tab?.preview });
+			//
+			// **And without taking focus** (ADR-0048). Nobody opened this file —
+			// bringing a session in a linked worktree to the front is what re-seeds
+			// the pane, and yanking the caret out of that session's terminal for a
+			// file the reader did not ask for is the ambush the focus rule exists
+			// inside.
+			viewer.open(handoff.path, {
+				diff: tab?.diff ?? undefined,
+				preview: tab?.preview,
+				focus: false,
+			});
 			return;
 		}
 

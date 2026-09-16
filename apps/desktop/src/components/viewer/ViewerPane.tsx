@@ -1,6 +1,6 @@
 import { IconButton } from '@factorai/ui';
 import { Maximize2 } from 'lucide-react';
-import { type KeyboardEvent, Suspense, useRef } from 'react';
+import { type KeyboardEvent, Suspense, useEffect, useRef } from 'react';
 import { FileTabs } from '@components/viewer/FileTabs';
 import { FindHandleProvider, useFindHandleSlot } from '@components/viewer/findHandle';
 import { useKeymap, useShortcuts } from '@hooks/useShortcuts';
@@ -8,7 +8,7 @@ import { stepTab } from '@lib/keymap';
 import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import { LazyDiffView, LazyFileView } from '@components/viewer/lazyViews';
 import { useFileViewer } from '@hooks/useFileViewer';
-import { tabsFor, useViewerStore, type ViewerTab } from '@store/viewerStore';
+import { tabsFor, useViewerStore, type ViewerTab, viewerFocusVerdict } from '@store/viewerStore';
 
 /**
  * The viewer where it now lives: a pane with its own strip of open files
@@ -45,6 +45,9 @@ export function ViewerPane() {
 	const pinTab = useViewerStore((s) => s.pinTab);
 	const closeTab = useViewerStore((s) => s.closeTab);
 	const setExpanded = useViewerStore((s) => s.setExpanded);
+	const expanded = useViewerStore((s) => s.expanded);
+	const focusRequest = useViewerStore((s) => s.focusRequest);
+	const clearFocusRequest = useViewerStore((s) => s.clearFocusRequest);
 
 	/**
 	 * `Mod+W` closes the **file** tab while this pane has focus (F28).
@@ -86,6 +89,36 @@ export function ViewerPane() {
 		const tab = tabs.find((t) => t.path === next);
 		if (tab) show(tab);
 	}
+
+	/**
+	 * **A file opened for a human lands with focus in the pane** (ADR-0048).
+	 *
+	 * Without it every key this pane owns is unreachable until the reader clicks
+	 * the file they just asked for: `Escape` closes nothing, `Mod+W` closes the
+	 * *session* tab, and the find forward never fires — the click that opened
+	 * the file left focus on the tree row, on a Changes row, or in the terminal.
+	 *
+	 * The request is made in `useFileViewer.open` and collected here on the
+	 * render that shows the path it was made for, because opening the first file
+	 * is what mounts this pane. `viewerFocusVerdict` is the whole rule: focus
+	 * already in the pane and the expanded modal both keep it where it is, and a
+	 * request for a path that is not showing yet waits for the render that is.
+	 */
+	useEffect(() => {
+		const pane = paneRef.current;
+		if (!pane) return;
+		const verdict = viewerFocusVerdict({
+			request: focusRequest,
+			showing: openPath,
+			expanded,
+			focusInside: pane.contains(document.activeElement),
+		});
+		if (verdict === 'wait') return;
+		// Cleared on a `drop` as well, so a request the modal or a focused strip
+		// declined cannot be collected by the next thing that re-runs this.
+		clearFocusRequest();
+		if (verdict === 'take') pane.focus();
+	}, [focusRequest, openPath, expanded, clearFocusRequest]);
 
 	if (!viewer.path) return null;
 

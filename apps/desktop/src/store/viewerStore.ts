@@ -148,6 +148,41 @@ export function viewerHandoff(args: {
 	return within(showing, next.root) ? { kind: 'keep' } : { kind: 'close' };
 }
 
+/** What the pane does about a pending focus request. Not exported: every
+ *  caller reads it off `viewerFocusVerdict`'s return. */
+type FocusVerdict = 'wait' | 'drop' | 'take';
+
+/**
+ * Whether the viewer's pane takes keyboard focus now (F7, ADR-0048).
+ *
+ * A human open asks for focus, and the ask outlives the render it was made in:
+ * opening the first file is what *mounts* the pane, so at the moment the
+ * request is made there is no element to focus. It is held as the path it was
+ * made for and answered on the render that shows it — which is also what stops
+ * a request nobody answered being collected by an unrelated mount, the way a
+ * host switch across the width threshold remounts the pane with a file already
+ * showing.
+ *
+ * - **wait** — no request, or not for what the pane is showing yet.
+ * - **drop** — answered, but focus stays where it is: the expanded modal owns
+ *   focus while it is open, and focus already inside the pane is a reader on
+ *   the tab strip or in the editor whom a `.focus()` on the pane would move
+ *   backwards.
+ * - **take** — the pane focuses itself.
+ */
+export function viewerFocusVerdict(args: {
+	request: string | null;
+	/** `?file=`, the path the pane is rendering. */
+	showing: string | null;
+	expanded: boolean;
+	focusInside: boolean;
+}): FocusVerdict {
+	const { request, showing, expanded, focusInside } = args;
+	if (!request || request !== showing) return 'wait';
+	if (expanded || focusInside) return 'drop';
+	return 'take';
+}
+
 interface ViewerState {
 	/**
 	 * The checkout the open files belong to (F21) — the store's actions read it
@@ -172,11 +207,25 @@ interface ViewerState {
 	/** The demoted modal (ADR-0037): an explicit expand, never where a file
 	 *  lands. */
 	expanded: boolean;
+	/**
+	 * The path an open asked the pane to take keyboard focus for (ADR-0048),
+	 * cleared the moment the pane answers it.
+	 *
+	 * Here rather than passed down because the two ends are not in the same
+	 * tree: `useFileViewer.open` is called from the tree, the Changes list, a
+	 * terminal link and a markdown link, and the pane is mounted by whichever
+	 * host the width rule chose. Not persisted — a one-shot signal restored on
+	 * launch would open the app with focus on a file nobody just asked for.
+	 */
+	focusRequest: string | null;
 
 	setCheckout: (checkout: string | null) => void;
 	setShellWidth: (width: number) => void;
 	setHost: (host: ViewerHost) => void;
 	setExpanded: (expanded: boolean) => void;
+	/** Ask the pane to take focus once it is showing `path`. */
+	requestFocus: (path: string) => void;
+	clearFocusRequest: () => void;
 	openTab: (path: string, opts?: OpenOptions) => void;
 	pinTab: (path: string) => void;
 	/** Drops the tab and answers what should be shown instead — null to close
@@ -195,12 +244,15 @@ export const useViewerStore = create<ViewerState>()(
 			shellWidth: 0,
 			host: 'column',
 			expanded: false,
+			focusRequest: null,
 
 			setCheckout: (checkout) => set((s) => (s.checkout === checkout ? s : { checkout })),
 			setShellWidth: (width) =>
 				set((s) => (s.shellWidth === width ? s : { shellWidth: Math.round(width) })),
 			setHost: (host) => set((s) => (s.host === host ? s : { host })),
 			setExpanded: (expanded) => set((s) => (s.expanded === expanded ? s : { expanded })),
+			requestFocus: (path) => set({ focusRequest: path }),
+			clearFocusRequest: () => set((s) => (s.focusRequest === null ? s : { focusRequest: null })),
 
 			openTab: (path, opts) =>
 				set((s) => {

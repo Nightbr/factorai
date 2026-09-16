@@ -1176,6 +1176,20 @@ host-agnostic, which is what makes three hosts possible at all.
   first. An unsaved draft answers to F26 exactly as it does for the `×`, closing
   the last tab closes the viewer the way its `×` does, and the other ways out
   are unchanged: the `×`, a middle-click, and `Mod+W` (F28).
+- **An open lands focus in the pane** (2026-09-16, user ask;
+  [ADR-0048](../docs/adr/0048-a-human-open-lands-focus-in-the-viewer.md)). The
+  gesture that opens a file is a click somewhere else — a tree row, a Changes
+  row, a commit's file list, a `Ctrl`-click on a path in the terminal — so
+  without this every key the pane owns is unreachable until the reader clicks
+  the file they just asked for: `Escape` closes nothing, `Mod+W` closes the
+  *session* tab, and the find forward never fires. Focus goes to the pane
+  itself, the same element a close gives it back to, and **not** into Monaco: a
+  file is editable in place (F26) and a caret nobody asked for turns a stray
+  keystroke into a draft. Two opens do **not** take it, because nobody made
+  them: the checkout re-seed above, and the agent's own `openFile` over the IDE
+  bridge (F20), which arrives while the human may be typing to the agent that
+  sent it. Focus already inside the pane stays where it is, so clicking a tab
+  chip leaves the strip focused and the expanded modal keeps what Radix gave it.
 - **Reveal is a different question from Open in default app**, which is why it
   is a second control and not a rename of the first. Open hands the file to
   whatever application owns its type; reveal answers *where does this live* —
@@ -3786,7 +3800,10 @@ the **push** half — the agent asks and the human decides in place, which is tw
 of the four verbs in `00-overview.md` § "The operating model". F19 makes the
 agent's *output* actionable by parsing it; this makes the agent's *intent*
 actionable by protocol. They meet at the same viewer, and `openFile` calls the
-same `useFileViewer().open(path, { line })` a terminal link does.
+same `useFileViewer().open(path, { line })` a terminal link does — with
+`focus: false`, which is the one thing that differs (F7, ADR-0048): a file the
+agent pushed lands in the pane without taking the caret out of the terminal the
+human may be typing in.
 
 ### The protocol, as of CLI 2.1.235
 

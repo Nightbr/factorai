@@ -65,6 +65,15 @@ interface OpenOptions {
 	line?: number;
 	col?: number;
 	preview?: boolean;
+	/** Whether the pane takes keyboard focus (ADR-0048). **Default true**,
+	 *  because a human opening a file is looking at it, and `Escape` and the
+	 *  pane's other keys are only reachable from inside it.
+	 *
+	 *  **A machine open passes `false`**: the checkout re-seed on a subject
+	 *  change (F21) and the agent's own `openFile` over the IDE bridge (F20) are
+	 *  the two, and neither is a gesture anybody just made — taking the caret
+	 *  out of the terminal for either is the ambush this app does not do. */
+	focus?: boolean;
 }
 
 /**
@@ -114,6 +123,12 @@ export function useFileViewer(): {
 			// checkout the tabs belong to is the store's business, not the
 			// caller's.
 			useViewerStore.getState().openTab(path, { preview: opts?.preview, diff: opts?.diff ?? null });
+			// **And the pane takes focus** (ADR-0048), asked for here for the same
+			// reason the tab is written here: every route into the viewer passes
+			// through this one call. The request is left in the store keyed by the
+			// path, because the first open is what mounts the pane — there is
+			// nothing to focus yet at this point in the frame.
+			if (opts?.focus !== false) useViewerStore.getState().requestFocus(path);
 		},
 		[navigate],
 	);

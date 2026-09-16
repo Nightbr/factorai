@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	nextActivePath,
 	type ViewerTab,
+	viewerFocusVerdict,
 	viewerHandoff,
 	withOpenTab,
 	withoutTab,
@@ -182,5 +183,40 @@ describe('viewerHandoff', () => {
 		expect(
 			handoff({ previous: panora, next: factorai, showing: null, last: undefined, within }),
 		).toEqual({ kind: 'keep' });
+	});
+});
+
+describe('viewerFocusVerdict', () => {
+	const base = {
+		request: '/dev/factorai/Cargo.toml',
+		showing: '/dev/factorai/Cargo.toml',
+		expanded: false,
+		focusInside: false,
+	};
+
+	it('takes focus for the file that was just opened', () => {
+		expect(viewerFocusVerdict(base)).toBe('take');
+	});
+
+	it('waits for the render that shows the requested path', () => {
+		// The open navigates and asks in the same call, so one render sees the
+		// request with the previous file — or with none at all, which is the
+		// first open of a run: it is what mounts the pane.
+		expect(viewerFocusVerdict({ ...base, showing: '/dev/factorai/knip.jsonc' })).toBe('wait');
+		expect(viewerFocusVerdict({ ...base, showing: null })).toBe('wait');
+	});
+
+	it('does nothing without a request — a re-mount is not an open', () => {
+		expect(viewerFocusVerdict({ ...base, request: null })).toBe('wait');
+	});
+
+	it('leaves focus alone while the expanded modal owns it', () => {
+		expect(viewerFocusVerdict({ ...base, expanded: true })).toBe('drop');
+	});
+
+	it('leaves focus where it already is inside the pane', () => {
+		// Clicking a tab chip opens through the same call: moving focus to the
+		// pane would take it off the chip the reader is stepping through.
+		expect(viewerFocusVerdict({ ...base, focusInside: true })).toBe('drop');
 	});
 });

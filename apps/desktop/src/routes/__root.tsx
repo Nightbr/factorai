@@ -30,7 +30,11 @@ function RootLayout() {
 	// reads `open` through a ref rather than capturing the first one — a
 	// listener re-subscribed on every navigation would drop events in the gap.
 	const viewerOpenRef = useRef<(path: string, line?: number) => void>(() => {});
-	viewerOpenRef.current = (path, line) => viewer.open(path, { line });
+	// **The agent's open does not take the caret** (ADR-0048). Every other route
+	// into the viewer is a gesture a human just made, and focus follows it; this
+	// one arrives over a socket while that human may be typing to the very agent
+	// that sent it. The file lands, `Escape` closes it once they click it.
+	viewerOpenRef.current = (path, line) => viewer.open(path, { line, focus: false });
 
 	// The WebView's own menu is a browser's, and this is not a browser.
 	useNativeContextMenu();
