@@ -51,6 +51,14 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   by removing the wiring and watching it fail. Unit tests cover the wiring map itself, including
   the re-register-then-stale-cleanup order a remount can produce.
 
+  **And a real-window pass on macOS, in both terminals**, which is the half the smoke lane
+  cannot reach: `path_kinds` answered by a real filesystem, off output a real shell really
+  wrote. `scripts/qa/f19-links.sh` is that pass, kept rather than thrown away — fifteen cases,
+  each labelled `SHOULD link` or `should NOT link`, with every path derived from the terminal's
+  own cwd so it is equally valid in a project that is not this repository. It is also the one
+  script in `scripts/qa/` that needs no X11: it drives nothing and only prints, so it runs on the
+  macOS machine where `launch.sh` and the rest cannot.
+
 - **SOPS in the viewer — item 53, F27, ADR-0045** — 2026-09-14, asked for 2026-09-12. A
   SOPS-encrypted file now opens in the viewer, says that is what it is, decrypts to an editable
   plaintext, and **Save encrypts and writes the encrypted file back**. The encrypted file is what

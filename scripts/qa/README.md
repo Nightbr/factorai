@@ -17,6 +17,32 @@ Linux/X11 + GNOME.
 | `kill.sh` | Descends pgrep tree from launcher pid, kills children deepest-first; sweeps stray dev factorai subtrees | ✓ exit 0, no survivors |
 | `_resolve_wid.sh` | Internal helper: picks the right factorai window from `wmctrl -lG` (skips the 10×10 phantom + outer frame) | — |
 | `osc-probe.sh` | Boots a real `claude` in a PTY and prints the OSC sequences it writes — the re-check for F10's status rule | ✓ both modes, macOS 2026-08-18 |
+| `f19-links.sh` | Prints one line per file-link case — run it *inside* a footer shell pane and the agent's terminal and click what it says should link (F19) | ✓ both surfaces, macOS 2026-09-16 |
+
+## `f19-links.sh` — the one script that needs no X11
+
+It drives nothing and only prints, so it is the same on macOS and Linux and is
+the way to verify F19 on a machine where the rest of this directory cannot run.
+Paste it into a terminal **in the app**:
+
+```bash
+bash scripts/qa/f19-links.sh
+```
+
+Fifteen cases, each labelled `SHOULD link` or `should NOT link`: the compiler
+shapes, a bare filename, an absolute path, a `~/` one, terraform's
+`on main.tf line 42` (the file links, the line does not), a directory, a long
+path for the wrap join — and the negatives that matter, a missing path, a
+version string, a directory outside the project, a path with a space in it.
+
+Every path comes off the terminal's own cwd, so it is equally valid in another
+project, and the last case is the accepted limit: a `cd` inside the pane, whose
+relative paths stop resolving because the recorded cwd is the *spawn* cwd.
+
+Run it in **both** terminals. The bases differ per surface — the session's cwd
+for the agent, the pane's own for a shell — and that is where a regression would
+land. What this catches that `pnpm e2e` cannot: `path_kinds` answered by a real
+filesystem, from output a real shell really wrote.
 
 ## `osc-probe.sh` — the one script that tests Claude, not factorai
 
