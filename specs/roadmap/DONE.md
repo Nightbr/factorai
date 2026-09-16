@@ -3,6 +3,52 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **An About section, and the build metadata it names — item 57, F29** — 2026-09-16, asked for
+  and shipped the same day, after a clarify-needs interview over an interactive mockup (the loop
+  items 47 and 49 used). A ninth settings section, last in the nav at `?settings=about`, editing
+  nothing: the 64px full-colour mark over the wordmark, the README hook over B10's tagline, then
+  version, build, licence, contributors, repository and updates. The version line is the copy
+  control — `factorai 0.3.0 (a6ac769), built 2026-09-16`, and no platform API, because the line
+  is about the build rather than the machine. The contributors row expands in place.
+
+  **The section is the small half.** Naming a build needed facts the app did not have, and
+  showing the updater twice needed an updater that could be shown twice.
+
+  **`build-info.json`, written by CI** (ADR-0049). `scripts/write-build-info.mjs` writes version,
+  `builtAt`, commit and contributors into `apps/desktop/public/` from `release.yml`, between the
+  version rewrite and the frontend build; Vite copies it into `dist/` and Tauri serves it from
+  the bundle. Gitignored. Three more Vite defines were the obvious alternative and do not
+  survive contact with the values: the contributor list is a network call, which in
+  `vite.config.ts` means a network call inside every dev server start, and a build date baked
+  into a dev build is a real-looking date for a release that never happened. **Absence is the
+  state**, not an error — every local build takes that branch, which is why it is the one that
+  gets exercised.
+
+  **The updater's state lifted into a store** (ADR-0050), and found a live bug on the way.
+  `useUpdater` held the phase, the six-hour interval and the one-install-per-run guard in
+  component state, so whoever mounted it owned an updater — and `UpdateBadge` is mounted *twice*,
+  inline in the expanded footer and inside the rail's overflow menu. The menu's copy mounts fresh
+  on every open, so on a collapsed sidebar each open started a check with a new guard and
+  re-downloaded a release already staged, having first forgotten it was ready. Nothing looked
+  wrong because the two mounts never render at once. `updaterStore` plus one `useUpdaterRuntime`
+  in `AppShell` ends both that and the question of which surface is right.
+
+  **`RestartConfirm` is now one component** for every door. Restarting is a quit that never
+  reaches the quit guard (ADR-0005, ADR-0020), and the door added last is exactly the one that
+  would have forgotten to ask.
+
+  **Two pieces of metadata nobody had set**: `bundle.copyright`, so the macOS app menu's native
+  About panel — which stays, as the other half of this rather than competition — names the same
+  author this one does, and `LICENSE` moved to the `Titouan BENOIT` spelling the app uses.
+
+  `BrandIcon` is back in `Brand.tsx` (B8 said "add it back when a second surface actually wants
+  it"): an About panel is where somebody looks for the icon their dock shows, and the one-colour
+  cut in amber is not that icon. It is the only place in the app that paints the housing.
+
+  Verified in the renderer at both states — release metadata present and absent — plus two smoke
+  tests for the same pair and `lib/buildInfo.test.ts` for the parser, which rejects a half-written
+  file whole rather than rendering a pane with blanks in it.
+
 - **File links in the footer shell's panes — item 56, F19, F23/F24** — 2026-09-16, asked for
   2026-09-16 with `terraform apply` as the case. `Ctrl`/`Cmd`-clicking a path a plain shell
   command printed now opens it in the viewer, exactly as it has over the agent's output since
