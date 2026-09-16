@@ -6,6 +6,7 @@ import { ViewerPane } from '@components/viewer/ViewerPane';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { useGlobalShortcuts } from '@hooks/useGlobalShortcuts';
+import { useUpdaterRuntime } from '@hooks/useUpdater';
 import { isWithin } from '@lib/paths';
 import { isMacOS } from '@lib/platform';
 import {
@@ -23,6 +24,7 @@ import {
 } from '@store/sidebarStore';
 import { tabsFor, type ViewerSubject, useViewerStore, viewerHandoff } from '@store/viewerStore';
 import { PanelResizer } from './PanelResizer';
+import { RestartConfirm } from './RestartConfirm';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
@@ -35,6 +37,12 @@ export function AppShell({ children }: AppShellProps) {
 	// rather than in a route, for the same reason the file panel is: a route
 	// change must not unregister a shortcut.
 	useGlobalShortcuts();
+	// **The updater itself, mounted exactly once** (F14, ADR-0050). It used to
+	// belong to whichever component showed the badge, which meant two of them —
+	// the footer's and the rail overflow menu's — and a third arriving with the
+	// About section (F29). Here it is the app's, for the app's lifetime, which
+	// is what "on launch, then every 6 hours" always described.
+	useUpdaterRuntime();
 
 	const storedSidebarWidth = useSidebarStore((s) => s.width);
 	const sidebarCollapsed = useSidebarStore((s) => s.collapsed);
@@ -266,6 +274,9 @@ export function AppShell({ children }: AppShellProps) {
 				{/* Renders nothing when collapsed; follows the route's project. */}
 				<FileTreePanel />
 			</div>
+			{/* Portalled, so it stacks over whatever asked for it — including the
+			    settings modal, when About is the door (F29). */}
+			<RestartConfirm />
 		</div>
 	);
 }

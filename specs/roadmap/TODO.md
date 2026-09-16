@@ -1619,3 +1619,38 @@ calls `loadMermaid()` in its own effect:
 
 The 2.5MB dynamic `import()` (ADR-0021) is not on this list: it is paid once, only by documents
 that have a fence, and it is the right trade.
+
+## 57. An About section, and the build metadata it needs
+
+Asked for on 2026-09-16 and specified the same day, in a clarify-needs interview over an
+interactive mockup — the same loop items 47 and 49 used. The contract is **F29**; the mockup is
+the record of the layout and the strings.
+
+The section itself is small. What makes this an item rather than a component is the two things
+underneath it, each with its own ADR:
+
+- [ ] **`build-info.json`, written by CI** ([ADR-0049](../../docs/adr/0049-build-metadata-is-a-file-ci-writes.md)).
+      `scripts/write-build-info.mjs` writes `version`, `builtAt`, `commit` and `contributors` into
+      `apps/desktop/public/`, called from `release.yml` between "Set version from tag" and the
+      frontend build. Gitignored. The renderer fetches it, validates it whole, and treats absence
+      as the dev state — which is the branch every local build takes, so it is the one that is
+      exercised.
+- [ ] **The updater's state lifts into a store** ([ADR-0050](../../docs/adr/0050-the-updaters-state-is-a-store-not-a-hook.md)).
+      About shows the same control as the sidebar footer, and `useUpdater` could not support two
+      surfaces: it holds the phase, the interval and the one-install-per-run guard in component
+      state. **It already could not support the two mounts it has** — the rail's overflow menu
+      mounts a second badge each time it opens, which starts a check with a fresh guard and
+      re-downloads a staged release. The store fixes that on the way past.
+- [ ] **The pane**: 64px full-colour mark (`BrandIcon` comes back to `Brand.tsx`, B8), wordmark,
+      the README hook over B10's tagline, then rows for version, build, licence, contributors,
+      repository and updates. The version line is the copy control; the contributors row expands
+      in place.
+- [ ] **The metadata nobody had set**: `bundle.copyright` in `tauri.conf.json`, so the macOS app
+      menu's native About panel — which stays — shows the same author this one does, and `LICENSE`
+      moves to the `Titouan BENOIT` spelling the app uses.
+
+**Not in it, deliberately.** No third-party licence list (that is a generation step and its own
+item when someone wants it), no OS/arch in the copied build line (it would cost a plugin to name
+the machine rather than the build), no runtime call to the GitHub API, and no release-notes link —
+it only resolves for a tagged build, and a row that vanishes in dev is a row nobody develops
+against.

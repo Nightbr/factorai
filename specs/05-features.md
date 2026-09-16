@@ -2014,7 +2014,8 @@ someone made is not the kind of small that is fine.
 
 ### The surface
 
-**A medium modal, driven by the URL.** `?settings=claude|editor|confirmations|sessions`,
+**A medium modal, driven by the URL.**
+`?settings=appearance|keyboard|claude|profiles|editor|confirmations|sessions|routines|about`,
 validated on the root route exactly as `?file=` already is. That is deliberately
 both things: the modal keeps the session visible behind it and dismisses on Esc,
 and the URL gives deep links, reload/HMR survival and browser-back-closes — which
@@ -2157,6 +2158,12 @@ its description says the thing that is not obvious — the rest **queue and run
 late**, they are not skipped. Both are text fields normalised on save the way the
 binary override is: a value that is not a whole number in range is treated as
 unset rather than written, because a cap of `NaN` reaches the scheduler.
+
+**About.** The ninth section, added 2026-09-16 and **last in the nav**: the mark,
+the name, the build this copy came from, the licence and the people in it. It is
+the second section that edits nothing — Profiles is the other — so it can never
+be dirty and never shows a dot, and it is last because a table of contents puts
+the thing that sets nothing at the bottom. See F29.
 
 **Appearance and Advanced are dropped until they have content.** This heading read
 "three, not four" until Sessions arrived, and the count is not the point — having
@@ -2461,8 +2468,19 @@ change set arrives as one array we can index once.
 the background, and then tells you it's ready. Nothing restarts itself. See
 ADR-0010.
 
-**UI.** One control, in the **sidebar footer** (it moved out of `TopBar` when
-the session tabs took that space, F16). At rest it is a quiet, clickable
+**UI.** Two controls now, showing one state. The **sidebar footer** is the
+original and the one you see without looking for it (it moved out of `TopBar`
+when the session tabs took that space, F16); the settings modal's About section
+carries the same control, because that is where a version is read and the next
+question after "which version am I on" is "is there a newer one" (F29). They are
+one updater — the phase, the staged version and the one-install-per-run guard
+live in `updaterStore`, owned by a single runtime hook in `AppShell`
+([ADR-0050](../docs/adr/0050-the-updaters-state-is-a-store-not-a-hook.md)) — so
+neither can be checking while the other says ready, and neither starts a check
+by being mounted. **That ADR also fixed a live bug this paragraph used to hide:**
+the badge is mounted twice already, inline in the expanded footer and inside the
+rail's overflow menu, and while it owned its own state each opening of that menu
+started a fresh check with a fresh guard, re-downloading a release already staged. At rest it is a quiet, clickable
 "Check for updates" — a label that checks now rather than waiting for the
 6-hour poll, so the updater is observable instead of merely promised; it reports
 "Checking…", then either the badge below or "Up to date" for a few seconds
@@ -2516,7 +2534,10 @@ live PTY with it — but it never fires `CloseRequested`, so the quit guard
 (ADR-0005) never sees it, and a working Claude session would die without a
 word. So the badge runs the same confirmation on the same terms — literally the
 same terms, since 2026-08-21: `needsQuitConfirm` and `quitConfirmSentence` in
-`lib/quitConfirm.ts` decide for both doors (ADR-0020).
+`lib/quitConfirm.ts` decide for both doors (ADR-0020). Since 2026-09-16 it is
+also literally the same dialog: `RestartConfirm` is one component driven by
+`updaterStore`, so the About row's restart cannot become the door that forgets
+to ask.
 
 > Restart to update? factorai 0.2.0 is ready. Claude is working in 1 of 4 live
 > sessions. Restarting terminates all 4 — work in progress is lost. This cannot
@@ -6278,3 +6299,147 @@ only place the menu change can be checked at all.
 - Two sessions of the app are not a case: single window (Q9).
 
 **Roadmap.** Item 5, in five slices.
+
+---
+
+## F29 — About, and the build it tells you about
+
+**Decided 2026-09-16** in a clarify-needs interview over an interactive mockup,
+which is where the layout and every string below were settled.
+
+A ninth settings section, **last in the nav**, at `?settings=about`. It sets
+nothing: like Profiles it holds no draft, so it never dirties Save and never
+carries a dot.
+
+**Why it is in settings rather than a panel of its own.** macOS already has an
+About door — the app menu's predefined item, which opens the Cocoa panel from
+the bundle's own metadata — and that one stays. Linux has no menu bar here at
+all, so a second standalone window would be a surface with one way in on one
+platform. The settings modal is the app's existing "things about the app"
+surface, it is deep-linkable, and it is reachable identically on both.
+
+**The native panel is not competition, it is the other half.** It shows the
+bundle's name, version and copyright, and `tauri.conf.json` had no `copyright`
+field, so it showed no author at all. That field is now set — `© 2026 Titouan
+BENOIT and contributors` — so the two panels cannot disagree about the only
+thing they both say.
+
+### The pane
+
+A centred header, then rows.
+
+> `factorai` — the 64px full-colour mark over `BrandWordmark` at `text-lg`
+> **IDE is dead. Long live the ADE.**
+> Agentic Development Environment (ADE) for the AI era
+
+- **The mark is the full-colour one** — the dark housing and amber F that the
+  dock shows — not the one-colour cut the header uses. `09-branding.md` B8 says
+  the full-colour variant was written, deleted for want of a caller, and comes
+  back when a second surface actually wants one. This is that surface: an About
+  panel showing a mark the OS never displays would be showing the wrong mark.
+- **`text-lg` is Empty Hero's step**, which `DESIGN.md` already documents as the
+  centred-block exception to the two-size rule. No third size is invented here.
+- **Both strings, in B10's order.** The README hook carries the line, because
+  this surface is read by a human; the tagline sits under it in 12px, because
+  someone opening About for the first time should also get the plain sentence.
+  B10 says not to unify them, and this is the one place both appear.
+- **The name is never spelled out.** `BrandWordmark`, per B8 — `factor` plus an
+  amber `ai`. A typed "Factorai" would be a second spelling of the product's
+  name inside the product.
+
+Then, as ordinary `SettingRow`-shaped rows:
+
+| Row | Value |
+|---|---|
+| Version | `0.3.0`, and the whole line is the copy control |
+| Build | the short SHA and the build date |
+| Licence | `MIT licence` linking to `LICENSE`, `© 2026 Titouan BENOIT` |
+| Contributors | `N contributors`, expanding in place to the logins |
+| Repository | `Open on GitHub` |
+| Updates | the same control the sidebar footer has (F14) |
+
+**Clicking the version line copies the build line** — `factorai 0.3.0 (a6ac769),
+built 2026-09-16` — and the row says `Copied` for a moment. No separate button:
+the line *is* the control, which is the same bargain the graph's SHA chip makes.
+**No platform API.** Adding `@tauri-apps/plugin-os` for an OS name and arch was
+considered and dropped: the copy exists to make a bug report reproducible about
+*this build*, and an issue template can ask which machine it ran on.
+
+**The contributors row expands in place.** Logins, commits descending, each
+opening that person's GitHub profile. It does not link out to the contributors
+graph instead — the list is baked into the build (below), so it is already here.
+
+### Where the facts come from
+
+**`build-info.json`, written by CI and fetched at runtime** — see
+[ADR-0049](../docs/adr/0049-build-metadata-is-a-file-ci-writes.md) for why it is
+a file rather than three more Vite defines.
+
+```json
+{
+  "version": "0.3.0",
+  "builtAt": "2026-09-16T11:02:37Z",
+  "commit": "a6ac769",
+  "contributors": [{ "login": "octocat", "url": "https://github.com/octocat" }]
+}
+```
+
+- `scripts/write-build-info.mjs` writes it into `apps/desktop/public/`, and
+  `release.yml` runs it after "Set version from tag" and before the frontend
+  build. Vite copies `public/` into `dist/`; Tauri serves `dist/` out of the
+  bundle. Gitignored, like `public/pdfjs/`.
+- **Contributors are fetched once, in CI**, from
+  `/repos/Nightbr/factorai/contributors` with the workflow's own token, sorted
+  by commits descending, with `type: Bot` and the repository author removed —
+  the licence line already names him, and a list repeating him is a duplicate.
+  The app itself never talks to github.com.
+- **A missing or unparseable file is the dev state**, not an error. The version
+  falls back to `__APP_VERSION__` — which already says `0.1.0 (untagged dev
+  build)` when nobody tagged the build — Build reads *Built locally — no release
+  metadata*, and **the contributors row does not render at all**. Every local
+  build takes this path, so it is the branch that gets exercised daily.
+
+**The date is rendered in the local timezone**, day-month-year, and it is a date
+rather than a timestamp: what the reader is placing is the release, not the
+minute it finished. It therefore does *not* read `clock24` — there is no clock
+in it.
+
+### Updates, and the second door
+
+The Updates row carries the same control as the sidebar footer, and the two are
+one updater — [ADR-0050](../docs/adr/0050-the-updaters-state-is-a-store-not-a-hook.md)
+lifts `useUpdater`'s state into `updaterStore` so that a phase seen in one place
+is the phase seen in the other. F14 still owns the behaviour; this section adds
+no cadence, no new check and no second install.
+
+**Restarting from here confirms in a dialog nested over the settings modal.**
+Radix stacks it, Esc unwinds the confirm first and the modal second, and
+cancelling puts the reader back in About where they were. The sentence is
+`quitConfirmSentence`, unchanged and shared with both other doors (ADR-0020) —
+restarting is a quit, and the third door must not be the one that forgets it.
+
+**A dev build says so rather than offering a button.** The updater never runs
+against an unpackaged binary (F14), so the row reads *Off in a dev build* — a
+"Check for updates" control that is structurally incapable of finding one is
+worse than no control.
+
+### Edge cases
+
+- **`build-info.json` missing, malformed, or half-written** → the dev fallback,
+  in full. The parser validates every field and rejects the file whole rather
+  than rendering a pane with three blanks in it.
+- **A release build whose file has an empty `contributors` array** → the row
+  does not render, exactly as in a dev build. A row reading "0 contributors"
+  about a repository with a git history is a bug report waiting to happen.
+- **The clipboard refuses the copy** → the row says `Copy failed` for the same
+  moment it would have said `Copied`, which is what the image and SHA copies
+  already do.
+- **Offline** → nothing here needs the network. Every value is in the bundle,
+  and the two links are opened by the OS, which can say so itself.
+- **`?settings=about` on a dev build** → opens normally. This section is never
+  empty; it always has at least a name, a mark and a licence.
+
+**Backend.** None. No command, no event, no new plugin — the section is a fetch
+of a static file plus the existing `openExternally` and `copyText` helpers.
+
+**Roadmap.** Item 57.

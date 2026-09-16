@@ -2,6 +2,9 @@ import { cn } from '@factorai/ui';
 import { Fragment, useId } from 'react';
 import {
 	MARK_CORNER_RADIUS,
+	MARK_F_FILL,
+	MARK_F_PATH,
+	MARK_HOUSING_FILL,
 	MARK_HOUSING_PATH,
 	MARK_PORT_DEPTH,
 	MARK_PORT_HEIGHT,
@@ -89,6 +92,47 @@ export function BrandWordmark({ className }: { className?: string }) {
 		<span className={cn('font-bold text-sm tracking-[-0.04em]', className)}>
 			factor<span className="text-primary">ai</span>
 		</span>
+	);
+}
+
+/**
+ * The app icon: the housing in its own dark, the F in amber, the ports cut to
+ * transparency. The one place in the app that paints the mark rather than
+ * letting it inherit `currentColor`.
+ *
+ * **It exists because About asked for it** (F29, `09-branding.md` B8). An About
+ * panel is where somebody looks to see *the icon their dock shows*, and the
+ * one-colour cut in `text-primary` is not that icon. Nothing else should use
+ * this: everywhere the mark sits in chrome it should take the colour of the text
+ * around it.
+ *
+ * The fills come from `geometry.ts`, which `geometry.test.ts` holds against the
+ * master SVG — so this cannot drift from the shipped icons without a test
+ * failing.
+ */
+export function BrandIcon({ className }: { className?: string }) {
+	const maskId = usePortsMaskId();
+	return (
+		<svg
+			viewBox={`0 0 ${MARK_SIZE} ${MARK_SIZE}`}
+			className={cn('size-16', className)}
+			aria-hidden="true"
+			focusable="false"
+		>
+			<Ports id={maskId} />
+			{/* One group under the mask: the housing and the F are painted
+			    separately here — unlike the one-colour cut, where `evenodd` makes
+			    the F a hole — and both have to be notched by the same ports. */}
+			<g mask={`url(#${maskId})`}>
+				<rect
+					width={MARK_SIZE}
+					height={MARK_SIZE}
+					rx={MARK_CORNER_RADIUS}
+					fill={MARK_HOUSING_FILL}
+				/>
+				<path fill={MARK_F_FILL} d={MARK_F_PATH} />
+			</g>
+		</svg>
 	);
 }
 

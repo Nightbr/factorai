@@ -313,6 +313,14 @@ and then deleted: nothing needed it, `deps:unused` said so, and an export kept
 alive for a future caller is the kind of thing that is still there and still
 wrong two years later. Add it back when a second surface actually wants it.
 
+**A surface wanted it on 2026-09-16**, so `BrandIcon` is back: the settings
+modal's About section (F29), at 64px, where the point is to show the reader the
+icon their dock shows. The one-colour mark in `text-primary` would have been an
+amber shape the OS never draws. It takes its two fills from `MARK_HOUSING_FILL`
+and `MARK_F_FILL` in `geometry.ts`, which the mirror test has been checking
+against the master all along, and it is the *only* place in the app that paints
+the housing — everywhere else the mark inherits `currentColor` as B5 intends.
+
 **The geometry is mirrored by hand** in `components/brand/geometry.ts`, for the
 reason the `backend-conventions` skill gives for the IPC types: the renderer gets a real
 component that inherits `currentColor` and needs no asset plumbing, and

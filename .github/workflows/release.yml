@@ -193,6 +193,20 @@ jobs:
             fs.writeFileSync(cargo, before.replace(line, `version = "${v}"`));
           ' "$VERSION"
 
+      # What the About pane reads (F29). After the rewrite above, so the version
+      # it records is the tag's, and before the frontend build, because Vite
+      # copies `public/` into `dist/` as it runs. Gitignored and never committed:
+      # a build without this file is a build that did not come from here, and the
+      # app says so rather than inventing a date (ADR-0049).
+      #
+      # `continue-on-error` deliberately: the pane degrades to its dev wording
+      # without this file, and a release is not worth failing over a credit list.
+      - name: Write build metadata
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/write-build-info.mjs
+
       # Apple code signing, macOS only. The certificate is **self-signed**, not
       # a Developer ID one (ADR-0034), so Gatekeeper is unaffected and the
       # README's right-click-Open section stands. What it buys is a *stable*

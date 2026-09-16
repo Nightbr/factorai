@@ -26,6 +26,11 @@ export const SETTINGS_SECTIONS = [
 	'confirmations',
 	'sessions',
 	'routines',
+	// **Last, and it edits nothing** (F29). Like `profiles` it holds no value in
+	// `SettingsValues`, so it is absent from `SECTION_FOR`, can never be dirty
+	// and never shows a dot — and a table of contents puts the section that sets
+	// nothing at the bottom.
+	'about',
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];

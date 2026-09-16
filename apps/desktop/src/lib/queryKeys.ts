@@ -62,6 +62,10 @@ export const queryKeys = {
 	 *  profile: there are a handful of rows, every reader wants all of them, and
 	 *  the default is a property *of the set* — promoting one changes two rows. */
 	profiles: () => ['profiles'] as const,
+	/** The release metadata shipped in the bundle (F29). No parameters: there is
+	 *  one build, and it cannot change while the app is running — so this is
+	 *  fetched once, cached forever, and read only while About is open. */
+	buildInfo: () => ['build-info'] as const,
 	/** Where `claude` is and what version it reports. Invalidated when the
 	 *  override is saved, since the answer depends on it. */
 	claudeCli: () => ['claude-cli'] as const,
