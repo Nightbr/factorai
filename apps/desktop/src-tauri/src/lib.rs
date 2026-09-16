@@ -60,7 +60,7 @@ pub fn run() {
 	// close button (ADR-0046).
 	#[cfg(target_os = "macos")]
 	let builder = builder
-		.menu(|handle| services::menu::build(handle))
+		.menu(services::menu::build)
 		.on_menu_event(|app, event| services::menu::on_menu_event(app, event.id().as_ref()));
 
 	builder
