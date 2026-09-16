@@ -1619,3 +1619,48 @@ calls `loadMermaid()` in its own effect:
 
 The 2.5MB dynamic `import()` (ADR-0021) is not on this list: it is paid once, only by documents
 that have a fence, and it is the right trade.
+
+## 56. F19's file links, in the footer shell as well as the agent terminal
+
+**Asked for 2026-09-16**, with `terraform apply` as the case: a plain shell command prints the
+file and line its error is in, and that path is dead text today. `Ctrl`/`Cmd`-clicking it should
+open the file in the viewer exactly as it does over the agent's output — same modifier gate, same
+`?file=`/`?line=` entry point, same "a path that isn't on disk was never a link" rule.
+
+**Most of the feature is already there, and the gap is one map.** The footer shell's panes are
+pooled through the same `getOrCreateTerm`, so `createFileLinkProvider` is registered on every one
+of them, ahead of `WebLinksAddon`, with the ordering contract F19 documents. What the provider
+reads through is `fileLinkWiring`, a map keyed by id and populated only by `Terminal.tsx`'s
+session component (`Terminal.tsx:747`). A shell pane's key is never in it, so the provider falls
+back to `{ bases: [], home: null }`, resolves nothing, and every path stays plain text. Nothing
+in the provider itself is session-specific.
+
+- [ ] **Wire a pane the way a session is wired.** `PaneHost` sets `fileLinkWiring` for its pane
+      key while it is mounted and clears it on unmount, with `onFileLinkActivated` and the same
+      router/panel targets the session component passes. The wiring map moves out of
+      `Terminal.tsx` into a module both can import rather than growing a second copy — it is the
+      provider's contract, not the agent terminal's.
+- [ ] **The bases are the pane's, not the session's.** A pane spawns with its own `cwd` (F23, and
+      per-split in F24), which is what a relative path in its output resolves against; the
+      project's `realPath` stays as the second base. There is no session `cwd` in this surface.
+- [ ] **Decide what a `cd` inside the pane does**, which is the one genuinely open question. The
+      pane's recorded `cwd` is its *spawn* cwd; after `cd terraform/prod` the shell's relative
+      paths resolve against somewhere the renderer does not know. Three options, cheapest first:
+      accept it (the project base still catches most of what `terraform` prints, since it prints
+      paths relative to the module root), read the child's cwd on demand through the platform
+      (`/proc/<pid>/cwd` on Linux, `proc_pidinfo` on macOS — a runtime branch, not a `#[cfg]`
+      question), or have the shell report it with OSC 7. OSC 7 is the correct answer and the most
+      invasive: it means touching the user's shell init, which this app does not otherwise do.
+      Do not start the pane-cwd tracking until the plain version is in and the failure is real.
+- [ ] **Verify against a tool that isn't Claude Code.** F19's grammar was derived from the
+      agent's prose; a compiler and `terraform` print `path:line:col`, `path:line`, and
+      `on main.tf line 42, in resource ...` — the first two are in scope and should already work,
+      the third is a different grammar and is explicitly not in this item. Add smoke coverage for
+      one `rustc`/`tsc`-shaped line and one `terraform`-shaped one in a shell pane.
+- [ ] **Focus returns to the pane on close**, the shell-side half of F19's last rule: `Esc` out of
+      the viewer and the keystrokes have to land back in the terminal you clicked from, not
+      nowhere.
+
+Spec work lands with it: F19 currently says "the agent's output" throughout and owns the rule for
+one surface. It should say which terminals carry file links and what each one resolves against,
+with F23/F24 pointing at it rather than restating it.
