@@ -104,6 +104,63 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   own cwd so it is equally valid in a project that is not this repository. It is also the one
   script in `scripts/qa/` that needs no X11: it drives nothing and only prints, so it runs on the
   macOS machine where `launch.sh` and the rest cannot.
+- **Keyboard shortcuts as a rebindable map — item 5, F28,
+  [ADR-0046](../../docs/adr/0046-a-rebindable-keymap-and-a-menu-that-gives-up-cmd-w.md), Q26** —
+  2026-09-15, with the macOS menu verified 2026-09-17. M5's second item, and the end of the
+  per-shortcut `useEffect` pattern six features had each grown their own copy of. What shipped is
+  a scheme: one action-to-binding map, defaults as a module constant, and the user's **overrides
+  only** in `prefsStore`, where a `null` override means deliberately unbound. The table in
+  `05-features.md` is amended to say what it always should have — those are *defaults*, not fixed
+  keys.
+
+  **The library is `@tanstack/react-hotkeys`**, pinned exact at `0.10.0` and used as intended:
+  `useHotkey`, `useHotkeyRecorder`, `formatForDisplay`, `conflictBehavior: 'error'`. The action
+  list, the defaults and the merge stay ours in `lib/keymap.ts` — a pure module carrying the
+  `Action` union, `mergeKeymap(defaults, overrides)`, the steal scan, the over-terminal set and
+  the display string, and vitest'd, because nothing downstream is testable any other way. One
+  correction to what the item assumed before the interview: the library has **no named-scope
+  registry**. "A key means something else inside the editor" is `enabled`, `target` (a ref) and
+  `ignoreInputs`, not a scope name.
+
+  **A focused terminal keeps every chord it binds** (`ignoreInputs`), except for the actions that
+  declare otherwise and get a matching `attachCustomKeyEventHandler` entry derived from the same
+  map. App-level bindings live at the shell (`Mod+N`, `Mod+K`, `Mod+,`, `Mod+Shift+E`, and
+  `Mod+Q` on Linux); context-dependent ones live at their owner (`Mod+F` through the viewer's
+  `findHandle`, `Mod+W` at the two tab strips). F2's sidebar navigation and F13's Changes-tab
+  diff navigation landed in the same pass as **local** handlers, not map rows — the same rule
+  arrow-key list navigation already followed in F18's graph.
+
+  **The macOS menu is the half nothing else could prove, and it is proved.** A menu module in
+  `src-tauri`, macOS only: Quit keeps `Cmd+Q` on the existing `CloseRequested` path, and Close
+  Window is re-accelerated to **`Cmd+Shift+W`** so `Cmd+W` reaches the webview. Verified on macOS
+  2026-09-17 — `Cmd+W` does reach WKWebView and closes the focused tab, which is the assumption
+  the tab-close binding rests on. On Linux `Ctrl+Q` is a real binding calling
+  `getCurrentWindow().close()`.
+
+  **The settings section** is `keyboard`, after `appearance` in `SETTINGS_SECTIONS`: one row per
+  action, `useHotkeyRecorder` behind the chord, `×` to unbind, a per-row reset while overridden
+  and Reset all at the foot — all of it draft edits under Q24's explicit Save. Tooltips on the
+  controls that have a binding read the same map.
+
+  **Two things the QA pass settled.** A focused terminal keeps `Mod+F` and gets no find bar, since
+  `SearchAddon` has no UI to open — F28 says so now. And `Mod+W` shipped suppressed over the
+  terminal, then **was reverted the same day on user feedback**: the terminal holds focus nearly
+  all the time, so the binding was unreachable exactly when it was wanted. It fires there on both
+  platforms, which costs readline's `Ctrl+W` at the default binding — affordable only because the
+  Keyboard section can move the row back.
+
+  **Tab stepping arrived after the fact**, asked for once the rest was in: `Mod+PageDown` /
+  `Mod+PageUp` move one tab along, in strip order, wrapping, and follow the same focus rule as
+  `Mod+W` — the viewer's files while the viewer has focus, the session strip otherwise. Stepping
+  onto a stopped session tab restarts it exactly as clicking it does, which is worth knowing
+  before holding the key down through a strip of stopped tabs.
+
+  **What proof looked like.** Playwright can press none of this — CDP keystrokes never reach
+  Monaco, and `Mod` chords are worse — so it is vitest on the pure module plus the `manual-qa`
+  lane on **both** engines, every binding pressed once with the terminal focused and once
+  without. Items 12–14 (`Cmd+P`, `Cmd+Shift+F`, `Cmd+G`) are now a map entry plus a call site
+  each; nothing is reserved for them, because a settings row for an action that does nothing is a
+  bug report.
 
 - **SOPS in the viewer — item 53, F27, ADR-0045** — 2026-09-14, asked for 2026-09-12. A
   SOPS-encrypted file now opens in the viewer, says that is what it is, decrypts to an editable
@@ -399,6 +456,70 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   boundary beside a bracket. The SVG preview gets nothing: it is an `<img>` of a data URI, with
   no text in it to find. PDF and image stay unsearchable and F7 says so; item 23's find bar now
   has a shape to match rather than a decision to make.
+
+- **Editing and saving a file — item 2 slice 1 (F26, amended F7 and F9,
+  [ADR-0039](../../docs/adr/0039-factorai-writes-project-files-never-an-agents-store.md),
+  [ADR-0040](../../docs/adr/0040-an-unsaved-draft-is-content-not-a-preference.md))** — 2026-09-09.
+  **The first place the app is not read-only.** `00-overview.md` § "The operating model" makes the
+  human four things — supervisor, decider, reviewer, and the one who sets the rules agents run
+  under — and three of those had surfaces already; this is the fourth. The item arrived as
+  "CLAUDE.md & plans (F9)" with a `write_claude_md` of its own and editing switched on for one
+  path; all of it generalised, and every text file in the tree is editable through one
+  `write_file`. Where it lives was settled by Q18 and is unchanged: not a side-panel tab, a file
+  the tree opens.
+
+  **The write.** `commands/files.rs::write_file(path, contents)` +
+  `services::files::write_file`: canonicalise (a symlinked `.env` writes its target), temp file in
+  the same directory, copy the original's mode, fsync, rename over. It creates a file that has
+  gone and never creates a parent directory. Rust tests cover each of symlink, mode preservation,
+  missing parent, path-is-a-directory, unwritable file, and that a failed write leaves the old
+  contents intact. **It answers with the file it wrote** — found while building: the cached read
+  is stale the instant the write lands, so the sync effect saw disk disagreeing with the new
+  baseline, decided the file had changed under the editor, and put the pre-save text back.
+
+  **`FileContents.lossy`** — Rust, `packages/types` and the TS mirror in the same commit.
+  `contents_from_bytes` already decoded with `from_utf8_lossy`; it just never said so, and saving
+  a buffer full of U+FFFD would destroy the original bytes. The four read-only cases each name
+  their reason in the footer: binary, truncated, lossy, and a plan under `.claude/plans/` (F9).
+
+  **The editor.** `FileView` with `readOnly` off, Monaco's EOL set from the file's own line
+  endings, Save in the footer, and `Cmd/Ctrl+S` via `editor.addCommand` **inside the host only** —
+  not a global binding, since `Ctrl+S` reaching a focused PTY is XOFF. Changed-on-disk suppresses
+  `useWatchedOpenFile`'s re-read while dirty, shows the banner (Reload / Show diff / dismiss) and
+  turns Save into Overwrite-with-confirm once dismissed; deleted-on-disk is the same banner with
+  different words, and Save recreates. The preview renders the live buffer, so editing `CLAUDE.md`
+  is a type-toggle-see loop.
+
+  **No Revert control** — user decision 2026-09-09, reversing the interview's answer.
+  `Ctrl/Cmd+Z` back to disk is the way out, and going clean deletes the draft. What that costs is
+  in F26: the undo stack is the editor's, so a draft restored after a tab switch cannot be undone
+  to disk.
+
+  **An in-memory draft store**, which slice 2 persists — not in the original plan and not
+  optional. The pane swaps which file one `FileView` is pointed at, so without somewhere to keep
+  the buffer, clicking another tab with unsaved changes discarded them with no dialog and no dot.
+  `store/draftStore.ts`, no `persist` middleware: ADR-0040 rejects localStorage for this, and
+  reaching for it here would be choosing the store that decision turned down.
+
+  **Monaco's keybindings have no smoke coverage, and cannot get any here.** `Cmd/Ctrl+A` and
+  `Cmd/Ctrl+Z` pressed through CDP never reach the editor — on macOS Chromium they are
+  browser-level shortcuts handled against the contenteditable before the page sees them. So
+  `Cmd/Ctrl+S` and the undo that is now the only way back from a dirty buffer are both unproven by
+  the suite; the way back is covered only through the conflict banner's Reload, which is a click.
+  Both want a pass in the real window, which `scripts/qa` cannot drive on macOS (it is
+  Linux/X11) — item 8's macOS smoke pass is where that lands.
+
+  **Two things the smoke suite taught, worth keeping.** Monaco drives input through the
+  EditContext API where the browser has it, so its only `textarea` is a readonly aria-hidden IME
+  shim and a CDP `insertText` inserts at the caret rather than replacing a `Cmd/Ctrl+A`
+  selection — the editing specs assert that the buffer reached disk, not that it equals an exact
+  document. And the editor must be seeded during render rather than in an effect: mounting with an
+  empty string for one frame was enough to break `?line=`, because the jump applied to an empty
+  model, recorded itself as applied, and the remount restored that view state instead of jumping
+  again.
+
+  **What is left of the item keeps its number** — drafts that survive a quit, the secrets list,
+  and F9's "Create CLAUDE.md" button and plan commands are item 2 in [`TODO.md`](./TODO.md).
 
 - **The sidebar collapses to a 48px rail that navigates (roadmap 53,
   [ADR-0038](../../docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md))** — 2026-09-08, user

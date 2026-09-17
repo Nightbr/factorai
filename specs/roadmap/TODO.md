@@ -19,9 +19,9 @@ is not here, it shipped, and `DONE.md`'s entry for it names the number.
 
 **Where things stand.** M0–M3 shipped — scaffold, read-only browser, embedded terminal with
 kill-on-quit, FTS5 search. M4 is one item from done: the **CLAUDE.md / plans** half, which is
-**item 2**. M5 has started: **item 4 (settings, F11) shipped 2026-08-20** and items 5–8 are the
-rest of it in the order it should be built — no keybinding scheme, no titlebar, no release
-pipeline yet.
+**item 2**. M5 is half built: **item 4 (settings, F11) shipped 2026-08-20** and **item 5 (the
+keybinding scheme, F28) shipped 2026-09-15**, its macOS menu verified 2026-09-17. Items 6–8 are
+the rest of it in the order it should be built — no titlebar and no release pipeline yet.
 
 **Item 4 was the one with dependents, and they are unblocked.** Items 31 (the channel picker), 32
 (the theme control) and 35 (the notification toggle) were waiting on the surface it creates; the
@@ -57,81 +57,21 @@ follow-ups the design named. None of it is started.
 
 ## 2. M4 — editing and saving a file (F26)
 
-The first place the app is not read-only, and the last M4 deliverable.
+**Slice 1 shipped 2026-09-09** — `write_file`, the editable `FileView`, the four read-only cases,
+the changed-on-disk banner and the in-memory draft store; the working-tree side of a diff followed
+the same day. Both have entries in [`DONE.md`](./DONE.md). What follows is the remainder: drafts
+that survive a quit, the secrets rule, and F9's last two pieces. **The last M4 deliverable.**
 
-**Re-read its importance (2026-08-15).** `00-overview.md` § "The operating model" makes the human
-four things — supervisor, decider, reviewer, and the one who sets the rules agents run under.
-Three of those have surfaces already; **this item is the whole of the fourth**. As a "browse and
-edit some markdown" feature it looked optional. As the human's only lever on how agents behave,
-it is the load-bearing one, and its position in this list understates it.
-
-**Rewritten 2026-09-09**, from a clarify-needs interview. This item was "CLAUDE.md & plans (F9)":
-`read_claude_md` / `write_claude_md`, editing switched on for one path, a diff modal for the
-changed-on-disk case. All three generalised — every text file in the tree is editable, one
-`write_file` serves them all, and F26 owns the model. F9 keeps the stub button and the rule that
-plans stay read-only. **Where it lives is unchanged and was settled by Q18**: not a side panel
-tab, a file the tree opens. The strip is hardcoded (`Files | Changes | Graph`) and a Memory tab
-would be a worse version of something the tree already does.
+**Why it outranks its position.** `00-overview.md` § "The operating model" makes the human four
+things — supervisor, decider, reviewer, and the one who sets the rules agents run under. Three of
+those have surfaces; **this item is the whole of the fourth**, and what is left of it is the half
+that decides whether an unsaved rule survives a quit.
 
 Specs: [F26](../05-features.md#f26--editing-and-saving-a-file), amended F7 and F9,
 `03-backend-rust.md` § `files`, `02-data-model.md` § `file_drafts`,
 [ADR-0039](../../docs/adr/0039-factorai-writes-project-files-never-an-agents-store.md),
-[ADR-0040](../../docs/adr/0040-an-unsaved-draft-is-content-not-a-preference.md).
-
-### Slice 1 — the editor and the write — **done 2026-09-09**
-
-No schema change, and useful on its own.
-
-- [x] `commands/files.rs::write_file(path, contents)` + `services::files::write_file`: canonicalise
-      (a symlinked `.env` writes its target), temp file in the same directory, copy the original's
-      mode, fsync, rename over. Creates a file that has gone; never creates a parent directory.
-      Rust tests for each: symlink, mode preservation, missing parent, path is a directory,
-      unwritable file, and that a failed write leaves the old contents intact.
-- [x] `FileContents.lossy` — Rust, `packages/types`, and the TS mirror in the same commit.
-      `contents_from_bytes` already decodes with `from_utf8_lossy`; it just never said so, and
-      saving a buffer full of U+FFFD would destroy the original bytes.
-- [x] `FileView`: `readOnly` off, Monaco EOL set from the file's own line endings, Save in the
-      footer, `Cmd/Ctrl+S` via `editor.addCommand` **inside the host only** — not a global
-      binding, since `Ctrl+S` reaching a focused PTY is XOFF.
-- [x] **No Revert control** — user decision 2026-09-09, reversing the interview's answer.
-      `Ctrl/Cmd+Z` back to disk is the way out, and going clean deletes the draft. See F26 for
-      what that costs: the undo stack is the editor's, so a draft restored after a tab switch
-      cannot be undone to disk.
-- [x] The four read-only cases, each with its reason in the footer: binary, truncated, lossy,
-      and a plan under `.claude/plans/` (F9).
-- [x] Changed-on-disk: suppress `useWatchedOpenFile`'s re-read while dirty, show the banner
-      (Reload / Show diff / dismiss), and turn Save into Overwrite-with-confirm once dismissed.
-      Deleted-on-disk is the same banner with different words, and Save recreates.
-- [x] Preview renders the live buffer, so editing `CLAUDE.md` is a type-toggle-see loop.
-      `MarkdownView` already takes source as a prop.
-- [x] Smoke test: open, type, Save, reopen, assert disk. Plus the truncated and lossy refusals.
-- [x] **An in-memory draft store**, which slice 2 persists. Not in the original plan, and not
-      optional: the pane swaps which file one `FileView` is pointed at, so without somewhere to
-      keep the buffer, clicking another tab with unsaved changes discarded them with no dialog
-      and no dot. `store/draftStore.ts`, no `persist` middleware — ADR-0040 rejects localStorage
-      for this, and reaching for it here would be choosing the store that decision turned down.
-- [x] **`write_file` answers with the file it wrote.** Found while building: the cached read is
-      stale the instant the write lands, so the sync effect saw disk disagreeing with the new
-      baseline, decided the file had changed under the editor, and put the pre-save text back.
-      Re-reading costs a second pass over a file we just held; recomputing the line count in
-      TypeScript is a second definition of Rust's answer.
-
-**Monaco's keybindings have no smoke coverage, and cannot get any here.**
-`Cmd/Ctrl+A` and `Cmd/Ctrl+Z` pressed through CDP never reach the editor — on
-macOS Chromium they are browser-level shortcuts handled against the
-contenteditable before the page sees them. So `Cmd/Ctrl+S` and the undo that is
-now the only way back from a dirty buffer are both unproven by the suite; the
-way back is covered only through the conflict banner's Reload, which is a click.
-Both want a pass in the real window, which `scripts/qa` cannot drive on macOS
-(it is Linux/X11) — item 8's macOS smoke pass is where that lands.
-
-**Two things the smoke suite taught, worth keeping.** Monaco drives input through the EditContext
-API where the browser has it, so its only `textarea` is a readonly aria-hidden IME shim and a CDP
-`insertText` inserts at the caret rather than replacing a `Cmd/Ctrl+A` selection — the editing
-specs assert that the buffer reached disk, not that it equals an exact document. And the editor
-must be seeded during render rather than in an effect: mounting with an empty string for one
-frame was enough to break `?line=`, because the jump applied to an empty model, recorded itself
-as applied, and the remount restored that view state instead of jumping again.
+[ADR-0040](../../docs/adr/0040-an-unsaved-draft-is-content-not-a-preference.md),
+[ADR-0041](../../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md).
 
 ### Slice 2 — drafts
 
@@ -155,6 +95,10 @@ as applied, and the remount restored that view state instead of jumping again.
       base64 blob, and cannot be stated in a sentence).
 - [ ] F20's hand-to-the-agent control is absent on a secrets file.
 - [ ] A secrets file's draft is memory-only — no row, still a tree dot, still in the quit confirm.
+
+**Not the same thing as SOPS** (F27, item 53, shipped 2026-09-14), which is about a file whose
+contents are ciphertext on disk. This is a plaintext secret with a well-known name, and the two
+rules meet only in that neither buffer may reach `file_drafts`.
 
 ### What is left of F9
 
@@ -230,89 +174,6 @@ and called `mcp__factorai__createRoutine` to do it. Re-run
 `cargo test --test agent_tools_conformance -- --ignored` after a CLI upgrade and record the version
 — we now depend on two of its behaviours read out of a shipped binary, and nothing in CI can prove
 either still holds.
-
-## 5. M5 — keyboard shortcuts, as a scheme rather than a `useEffect`
-
-**Decided 2026-09-15 — ADR-0046, spec F28, Q26.** The interview settled every
-branch this item had been carrying; what is left is five slices in order. The
-table in `05-features.md` is amended, and it now says what it always should have:
-those are *defaults*, not fixed keys.
-
-**What was decided, in one paragraph each.** Bindings are one action→binding map;
-defaults are a module constant, the user's **overrides only** live in `prefsStore`,
-and a `null` override means deliberately unbound. `@tanstack/react-hotkeys` is
-adopted, pinned exact at `0.10.0`, and used as intended — `useHotkey`,
-`useHotkeyRecorder`, `formatForDisplay`, `conflictBehavior: 'error'` — with the
-action list, defaults and merge kept ours in a pure module. A focused terminal
-keeps every chord it binds (`ignoreInputs`), except for the actions that declare
-otherwise and get a matching `attachCustomKeyEventHandler` entry. `Mod+W` closes
-the focused tab and kill-active-terminal loses its binding; `Mod+F` is
-context-dependent and `Mod+K` is not; the app-level go-to-line row is gone. On
-macOS we own the menu, Quit keeps `Cmd+Q` on the `CloseRequested` path, and
-**Close Window moves to `Cmd+Shift+W`** so `Cmd+W` reaches the webview; on Linux
-`Ctrl+Q` is a real binding calling `getCurrentWindow().close()`. Arrow-key list
-navigation is *not* in the map — it stays local, the way F18's graph already does
-it.
-
-One correction to what this item assumed before the interview: the library has
-**no named-scope registry**. "A key means something else inside the editor" is
-`enabled`, `target` (a ref) and `ignoreInputs`, not a scope name.
-
-- [x] **Spec and ADR first, no code.** F28, the amended § "Keyboard shortcuts"
-      table, the Keyboard paragraph in F11, Q26, and the Q15 / Q24 pointers.
-      ADR-0046. Landed 2026-09-15.
-- [x] **The engine.** `pnpm add` pinned exact, plus `lib/keymap.ts`: the `Action`
-      union, the defaults, `mergeKeymap(defaults, overrides)`, the steal scan,
-      the over-terminal set and the display string — pure, and vitest'd, because
-      nothing downstream is testable any other way. `useGlobalShortcuts()` exists
-      and registers nothing yet. `prefsStore` gains the overrides object.
-- [~] **The Rust menu.** A menu module in `src-tauri`, macOS only: Quit on
-      `Cmd+Q` down the existing `CloseRequested` path, Close Window
-      re-accelerated to `Cmd+Shift+W`. **Prove on macOS that `Cmd+W` then
-      actually reaches the webview** — that is the one thing nothing else can
-      tell us, and it is the assumption the tab-close binding rests on.
-- [x] **The bindings.** App-level ones at the shell (`Mod+N`, `Mod+K`, `Mod+,`,
-      `Mod+Shift+E`, and `Mod+Q` on Linux); context-dependent ones at their owner
-      (`Mod+F` through the viewer's existing `findHandle`, `Mod+W` at the two tab
-      strips). xterm's `attachCustomKeyEventHandler` derived from the same map.
-      F2's sidebar navigation and F13's Changes-tab diff navigation land in this
-      slice as **local** handlers — same pass, same focus thinking, not map rows.
-- [x] **The settings section.** `keyboard` after `appearance` in
-      `SETTINGS_SECTIONS`, one row per action, `useHotkeyRecorder` behind the
-      chord, `×` to unbind, per-row reset while overridden, Reset all at the
-      foot — all of it draft edits under Q24's explicit Save. Tooltips on the
-      controls that have a binding read the same map.
-
-**Landed 2026-09-15, except the macOS half.** The engine, the bindings and the
-settings section are in and were driven in the real window on WebKitGTK. The menu
-module compiles and is **unverified on macOS**: that `Cmd+W` reaches WKWebView
-once Close Window moves to `Cmd+Shift+W` is the assumption tab close rests on,
-and this machine cannot test it. That is the `[~]` above.
-
-**Two things the QA pass settled, and one it left open.** A focused terminal
-keeps `Mod+F` and gets no find bar, since `SearchAddon` has no UI to open — F28
-says so now. `Mod+W` shipped suppressed over the terminal and **that was
-reverted the same day, on user feedback**: the terminal holds focus nearly all
-the time, so the binding was unreachable exactly when it was wanted. It now fires
-there on both platforms, which costs readline's `Ctrl+W` at the default binding —
-affordable only because the Keyboard section can move the row back.
-
-**Tab stepping arrived after the fact, 2026-09-15**, asked for once the rest was
-in: `Mod+PageDown` / `Mod+PageUp` move one tab along, in strip order, wrapping,
-and follow the same focus rule as `Mod+W` — the viewer's files while the viewer
-has focus, the session strip otherwise. Stepping onto a stopped session tab
-restarts it exactly as clicking it does, which is worth knowing before holding
-the key down through a strip of stopped tabs.
-
-**What proof looks like.** Playwright cannot press any of this — CDP keystrokes
-never reach Monaco (item 4), and `Mod` chords are worse — so it is vitest on the
-pure module plus the `manual-qa` lane on **both** engines, with every binding
-pressed once with the terminal focused and once without. Linux dev is WebKitGTK,
-which is the engine that has already diverged here on clipboard and on zoom.
-
-**Items 12–14 depend on this landing first.** `Cmd+P`, `Cmd+Shift+F` and `Cmd+G`
-are then a map entry plus a call site each. Nothing is reserved for them now: a
-settings row for an action that does nothing is a bug report.
 
 ## 6. M5 — custom window titlebar
 
@@ -406,8 +267,8 @@ Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 
 > **Priority: HIGH for items 12–14** (user ask, 2026-08-14) — kept at the end of the file to avoid
 > renumbering items 1–11 and their cross-references. Read them as sitting **right after M4 (items
-> 1–3)**, and land item 5's binding scheme with or before them. They're a coherent trio: don't
-> build the third without the first.
+> 1–3)**. Item 5's binding scheme shipped 2026-09-15, so each of these is now a map entry plus a
+> call site. They're a coherent trio: don't build the third without the first.
 
 The first of three navigation surfaces (12–14) that the desktop Claude Code app has and factorai
 doesn't. They're specced separately because their **backends** differ wildly — a filename index, a
@@ -498,7 +359,8 @@ honestly:
   no longer needs resolving; the chord is free.
 - On macOS, `Cmd+G` is the system-wide **find-next**, and it's what Monaco's own find widget uses
   once `Cmd+F` is open. So a global `Cmd+G` must not fire while the find widget has focus — the
-  same "who owns this keystroke" rule item 5 needs for the terminal.
+  same "who owns this keystroke" rule item 5 shipped for the terminal (`enabled`, `target`,
+  `ignoreInputs` — see `lib/keymap.ts`).
 
 VS Code's own answers are `Cmd+Shift+O` (symbols in file) and `Cmd+T` (symbols in project), both
 free here. Recommendation: ship `Cmd+G` as asked, keep `Cmd+Shift+O` as an alias, and record the
@@ -1257,8 +1119,8 @@ What it holds, in the order a new user meets it:
   **routines** (F22): the schedule presets and the custom cron, the next-runs echo, catch-up and
   its window, the concurrency cap, what `Run now` answers when it declines, and the blue dot for a
   session running with no tab.
-- **Settings**, and **keyboard shortcuts** once item 5 gives it a table worth publishing —
-  including how to rebind them, if the configurable pass lands with it.
+- **Settings**, and **keyboard shortcuts** — the defaults table F28 publishes, and the Keyboard
+  section that rebinds them.
 - **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
   override, the AppImage's environment leaking into child processes, Linux specifics.
 - **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
