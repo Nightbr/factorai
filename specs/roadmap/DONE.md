@@ -1558,6 +1558,31 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   — undocumented, and against the same Shadow Vocabulary. Two drag treatments, one documented.
   Changing the shipped tab strip was out of scope here.
 
+- **`DESIGN.md` and `PRODUCT.md` become contracts beside the specs — TODO item 24** —
+  2026-08-24, user ask from 2026-08-16 (*"explicitly later"*). The visual system lived in
+  `AGENTS.md`'s Design rules section and in whatever a component's own doc comment said; product
+  truth — who this is for, what may not change — lived nowhere at all. The item's own condition
+  was boundaries before content, because a `DESIGN.md` that does not say what it *takes over*
+  becomes a fourth place to look, and it was met: **the Design rules section went from 84 lines to
+  25**, keeping only where a rule physically lives in this repo (the base cursor rule's file,
+  `IconButton` over a ghost `Button`, the menu metrics' primitives, the literal chrome heights,
+  the `animationiteration` trap). The three rules that section carried alone — the pointer base
+  rule, chevron hover colour, persistent affordances on rows you act on repeatedly — moved into
+  `DESIGN.md` first.
+
+  **It records the incumbent system rather than proposing one**: the oklch palette with its status
+  and lane scales, the two type sizes, the density metrics, the flat tonal elevation model, and the
+  component behaviour of the primitives plus the three signature components (session tabs, status
+  dot, graph rail). Eight named rules carry the doctrine. `.impeccable/design.json` is the
+  machine-readable sidecar — tonal ramps, shadow and motion tokens, chrome heights, and
+  self-contained snippets for eight components. `PRODUCT.md` records users, purpose, positioning,
+  operating context, constraints and brand commitments, with **accessibility written down as
+  explicitly undecided** rather than invented, and the keyboard-path floor stated because the code
+  already enforces it.
+
+  The dated feedback each rule came from is here in `DONE.md`, cited rather than paraphrased —
+  which is the same rule the specs follow: one copy wins, the others link to it.
+
 - **A search hit names its project — spec `05-features.md` F4** — 2026-08-24, shipped as
   **v0.24.0**, user ask. Search is workspace-wide, and a result row said only which *session* it
   came from. That is half an answer: a session title does not place a conversation, several

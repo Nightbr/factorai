@@ -5,9 +5,12 @@ on next". Consult it before re-deriving a plan from the specs and codebase. See
 [`README.md`](./README.md) for how this folder works, and [`DONE.md`](./DONE.md) for what has
 shipped.
 
-**Only live work is listed here.** Cleaned out 2026-08-18, when eleven of this file's
-thirty-four entries were announcements of their own completion: the list had become a place to
-read history rather than a place to pick work up, and `DONE.md` was already the history. An item
+**Only live work is listed here.** Cleaned out twice — 2026-08-18 and again **2026-09-17**, when
+every remaining entry was checked against the code rather than against its own checkboxes; items
+5, 15 and 24 were fully shipped and left, and seven others lost the half they had already
+delivered. The first pass found eleven of thirty-four entries were announcements of their own
+completion: the list had become a place to read history rather than a place to pick work up, and
+`DONE.md` was already the history. An item
 whose whole scope shipped is gone from here. An item with a *remainder* keeps its number and is
 rewritten to the remainder — items 1, 29 and 34 are here for that reason, each saying in one line
 which half already landed and where the entry for it is.
@@ -18,8 +21,8 @@ and a surviving item is never renumbered. Position is priority; the number is id
 is not here, it shipped, and `DONE.md`'s entry for it names the number.
 
 **Where things stand.** M0–M3 shipped — scaffold, read-only browser, embedded terminal with
-kill-on-quit, FTS5 search. M4 is one item from done: the **CLAUDE.md / plans** half, which is
-**item 2**. M5 is half built: **item 4 (settings, F11) shipped 2026-08-20** and **item 5 (the
+kill-on-quit, FTS5 search. M4 is one item from done: **item 2**, now down to drafts that survive
+a quit, the secrets rule and F9's last two pieces. M5 is half built: **item 4 (settings, F11) shipped 2026-08-20** and **item 5 (the
 keybinding scheme, F28) shipped 2026-09-15**, its macOS menu verified 2026-09-17. Items 6–8 are
 the rest of it in the order it should be built — no titlebar and no release pipeline yet.
 
@@ -112,7 +115,7 @@ Creating, renaming and deleting files from the tree — a context menu, a destru
 action needing the trash-not-unlink treatment ADR-0027 gave transcripts, and its own confirm
 story. Separate item.
 
-## 42. Routines — the two slices slice 1 left
+## 42. Routines — the skills picker, and what a lived-in scheduler still owes
 
 **Slice 1 shipped 2026-08-29** — schema, runner, commands, the tabbed project view and its editor,
 the two context-menu items, the origin icon and the tabless spawn. **Slice 3 shipped 2026-08-30** —
@@ -129,25 +132,6 @@ What is left:
 - [ ] The list beside the prompt field; clicking inserts `/name` at the cursor. The descriptions
       are the point: the question a routine's author has is *what can I call from here*.
 - [ ] Later, and deliberately not first: a `/`-triggered autocomplete inside the textarea.
-
-### Slice 3 — routines over MCP — **done 2026-08-30**
-
-- [x] Four tools: `listRoutines`, `createRoutine`, `updateRoutine`, `setRoutineEnabled`.
-      **The revisit F22 asked for happened and changed two-thirds of the recorded decision** —
-      no `deleteRoutine`, and provenance in two columns, shown on the row. The off switch stayed
-      absent; F11 / item 4 own the bridge-wide one. ADR-0028 has the reasoning, including why
-      "an agent may edit a human's routine" went the other way from the recommendation.
-- [x] **They are not on the IDE bridge, and the first version was.** The CLI registers that
-      connection under the hardcoded key `ide` and shows the model two of its tools, so the slice
-      shipped correct, fully tested and invisible to every agent. They live on factorai's own MCP
-      server now (`services/agent_tools/`), handed to each session at spawn. ADR-0029.
-- [x] An acceptance test that runs a real `claude`: `tests/agent_tools_conformance.rs`,
-      `#[ignore]`, green against CLI 2.1.251.
-- [x] Migration `0014`: `created_by_session_id`, `last_modified_by_session_id`. NULL means a human.
-- [x] `routines:changed`, emitted by a layer both callers share — the only thing that stops an open
-      Routines tab going stale under a bridge write.
-- [x] A cron must now project a next run, not merely parse; name and prompt bounded; 20 routines
-      per project.
 
 ### Still open, and not blocking either slice
 
@@ -198,24 +182,18 @@ like a window once the OS frame goes away.
 - [ ] Friendlier indexing UI on top of the `indexer:progress` events the sidebar already
       consumes.
 
-## 8. M5 — release: icons, README, tagged builds, smoke pass
+## 8. M5 — release: the smoke pass on both platforms
 
 The last mile before the app is something a teammate installs rather than runs from source.
 
-- [x] Real icon set — 2026-08-17. The mark, the full `src-tauri/icons/` tree and the README
-      header; construction and the regeneration command are in
-      [`09-branding.md`](../09-branding.md). **Item 18** keeps the two sub-items this did not
-      cover — the `.desktop` entry and the in-app brand row.
-- [x] README with install instructions — 2026-08-14.
-- [x] GitHub Action: `tauri build` on tag push, artifacts attached to the release — 2026-08-14.
-      Draft release (**not** a prerelease — `/releases/latest` skips those and the updater
-      resolves through it), universal macOS `.dmg` + Linux `.AppImage`, version taken from
-      the tag. **No signing flow** — that's what auto-updates would need (deferred #7). Two
-      constraints now documented in the README rather than discovered by a user: macOS builds
-      are unsigned so Gatekeeper blocks them until quarantine is cleared, and the Linux bundles
-      carry a **glibc 2.39 floor** because they're built on ubuntu-24.04 (22.04 begins
-      deprecation 2026-09-17). Widening that floor means an `ubuntu:22.04` container on a
-      supported runner, not pinning the dying image.
+**Three of the four landed 2026-08-14/17** — the icon set (with `09-branding.md`'s
+regeneration command; **item 18** keeps the `.desktop` entry it did not cover), the README with
+install instructions, and the tag-driven `tauri build` workflow that drafts a release with a
+universal macOS `.dmg` and a Linux `.AppImage`. Two constraints it wrote into the README rather
+than leaving a user to find: macOS builds are unsigned so Gatekeeper blocks them until quarantine
+is cleared, and the Linux bundles carry a **glibc 2.39 floor** from ubuntu-24.04. What is left is
+the pass nobody has run:
+
 - [ ] Manual smoke pass on **macOS arm64** and **Ubuntu 24**. macOS is the untested platform:
       every gotcha in `DONE.md` so far is WebKitGTK-flavoured, and the login-shell PATH fallback
       in the claude probe (Q2) exists specifically for GUI launches on macOS and has never been
@@ -247,19 +225,9 @@ two `factorai` processes running *different builds* — now distinguishable, sin
 titles itself `factorai DEV`; and `pnpm dev` doesn't rebuild Rust at all, so a new command needs
 a full restart.
 
-- [x] Cover the flows `scripts/qa` cannot reach — opening a file from the tree, the viewer's
-      markdown toggle, search-hit navigation, the quit-confirm dialog — 2026-08-15.
 - [ ] Open the `tests/regression/` lane. The smoke suite is at ~110s against a stated budget of
       "a few seconds"; one of the two has to give, and that is inconsistency **E1**.
 - [ ] Fixtures stay one-factory-per-shape in `tests/smoke/fixtures.ts`.
-- [ ] **Fix `click.sh`'s origin.** Found 2026-08-17: it resolves the *decoration* window's origin
-      from `wmctrl -lG` while its doc comment promises content-relative coordinates, and on X11 +
-      Mutter the two differ by (47, 73). So every click lands a row low, and the **top 73px of the
-      content area cannot be clicked at all** — which is the session header and the panel's tab
-      strip. `scripts/qa/README.md` documents the workaround; the fix is for `_resolve_wid.sh` to
-      report `xwininfo -id <wid>`'s absolute upper-left instead. Cheap, and it silently corrupts
-      every QA click until someone does it.
-
 Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 `gnome-screenshot` for `swaymsg` / `grim`). X11-only is fine while the dev box is X11.
 
@@ -365,15 +333,6 @@ honestly:
 VS Code's own answers are `Cmd+Shift+O` (symbols in file) and `Cmd+T` (symbols in project), both
 free here. Recommendation: ship `Cmd+G` as asked, keep `Cmd+Shift+O` as an alias, and record the
 choice in `07-open-questions.md` rather than leaving it implicit in a `useGlobalShortcuts` switch.
-
-## 15. Clickable file links in terminal output — shipped 2026-08-19 (see [`DONE.md`](./DONE.md))
-
-Shipped as **F19**. The fork this entry left open is settled and the answer was
-the cheap one: the CLI marks up URLs with OSC 8 and never paths, so the link
-provider is load-bearing and OSC 8 contributes nothing here. Every open question
-it listed is answered in [`05-features.md`](../05-features.md) F19 — the base a
-relative path resolves against, `:line:col` driving the viewer, and what a path
-that isn't there does (it never becomes a link).
 
 ## 16. App-wide scrollbar styling
 
@@ -492,24 +451,12 @@ block a release:
 
 ## 19. IDE emulation — the MCP server Claude opens files and diffs through
 
-**Designed 2026-08-19; not built.** The blocking questions below are answered in
-[ADR-0017](../../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md)
-and the behaviour is specified as [F20](../05-features.md). What is settled: the
-protocol as of CLI 2.1.235, one server per session (the port *is* the session
-id), the three-layer boundary with path scoping as the real one,
-`tokio-tungstenite` plus hand-rolled JSON-RPC, `ideName: "factorai"`, and a
-read-only first slice that leaves ADR-0009 untouched. Its relationship to item
-15 is settled too: that shipped, and this routes what the CLI drives by protocol
-while F19 covers everything it merely prints.
-
-**Built 2026-08-19, and the CLI connects** (observed against 2.1.235): lockfile
-and its reaping, the authenticated handshake and `tests/ide_ws_scope.rs`, the
-MCP layer with three tools, and the wiring that starts a bridge with each PTY.
-The conformance pass paid for itself on the first run — see F19's neighbour in
-`05-features.md` for the `Sec-WebSocket-Protocol` finding that every green unit
-test had missed.
-
-What is left:
+**The read-only bridge shipped 2026-08-19 and the CLI connects** (observed against 2.1.235):
+the lockfile and its reaping, the authenticated handshake and `tests/ide_ws_scope.rs`, the MCP
+layer with three tools, and the wiring that starts a bridge with each PTY. The design is
+[F20](../05-features.md) and
+[ADR-0017](../../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md); the write path
+is the half that is still only a decision. What is left:
 
 - **A tool call observed end to end.** `openFile` reaching the viewer has only
   been driven by unit tests; the connection and handshake have not.
@@ -539,60 +486,6 @@ What is left:
 - **`openDiff` and the write path** — its own ADR, and the thing that supersedes
   part of ADR-0009.
 
-The original entry, kept because it is the argument for doing it at all:
-
-
-**Graduated from `06-milestones.md` § Deferred (was #1) on 2026-08-15.** A WebSocket MCP server
-so the `claude` CLI treats factorai as its editor: file opens land in our viewer, and diff
-approvals happen in our UI — including the **accept / reject hunk** surface the MVP skipped.
-
-**Why it graduated.** Under `00-overview.md` § "The operating model" this stops being a nicety
-and becomes the mechanism for two of the four verbs. Everything the app does today is
-*pull* — the human goes and looks at the Changes tab, the tree, the diff. IDE emulation is the
-**push** half: the agent asks, and the human decides in place. That is the difference between an
-app you check and an app you work in, and nothing else on this list closes it.
-
-**It is the first time factorai writes code, and that needs an ADR.** Accept/reject hunk means
-writing to the working tree. Every existing decision points the other way — ADR-0004 makes
-`~/.claude/` read-only, ADR-0009 says every repository read goes through `git2` and *"everything
-is read-only. No staging, no discard, no commit"*. Applying a hunk is none of those things and
-supersedes part of ADR-0009. Write that ADR before the code, not after; it also has to say what
-happens when the working tree moved under a pending approval, which is the failure case that
-matters and the one a demo never hits.
-
-**A local WebSocket server is a security boundary, and this repo has never had one.** Any process
-on the machine can connect to a localhost port. What authenticates a client, what a connected
-client is allowed to ask for (read any path? write any path?), and whether the port is
-per-session or per-app are load-bearing questions, not configuration. Getting this wrong turns a
-developer tool into a local RCE, so it is the first thing to design and the first thing to test.
-
-**`Select for the agent` belongs here**, and is the one action of the five asked for in the file
-tree's right-click menu (shipped 2026-08-16) that deliberately did not land: the real version is
-this surface — the CLI asks its editor what is selected, and factorai answers.
-
-Worth keeping from that deferral: there is a **cheap floor** available with no MCP at all — write
-`@<relative path>` into the active session's PTY, which is the mention syntax the CLI already
-parses, and `Copy relative path` already produces exactly that string. But it inherits the
-attribution question below: *which* session, when a project can have several and may have none
-running. Don't ship the floor as if it were the feature; if it ships at all, it ships as a stopgap
-that says so.
-
-**Open questions, roughly in blocking order.**
-
-- What does the current `claude` CLI actually speak? The emulator has to match today's CLI, and
-  reading its behaviour directly is the only reliable source — older third-party emulators were
-  written against a protocol that has since moved. That is a research task before it is a build
-  task.
-- Scope of the emulation: file open only (small, immediately useful, no writes) versus the full
-  diff-approval loop (the valuable half, and the one that writes). These are separable and the
-  first is a genuine milestone on its own.
-- How does it interact with item 15? Both make the agent's output actionable — one by protocol,
-  one by parsing what it printed. If the CLI drives opens over MCP, item 15's link provider
-  becomes a fallback for everything *not* routed that way rather than the main path.
-- Does an emulated editor have to be told which session it belongs to? factorai runs many PTYs
-  at once; a server that can't attribute a request to a session can't put the diff in the right
-  tab.
-
 ## 21. Post-MVP / deferred
 
 Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
@@ -615,13 +508,9 @@ because F7 already commits to them:
 - **Per-project tab system.** `?file=` is a single path today, validated on the `__root` route
   precisely so it can grow into a list. The end state is tabs switching between the project page,
   its sessions, and open files — at which point `FileViewerModal` stops being the host.
-- ~~**Image preview.**~~ **Shipped 2026-08-15** — `read_image` returns base64 plus a mime
-  sniffed from the magic bytes, and the viewer renders it in an `<img>`. The asset protocol lost
-  because its path scope is static and ours is "whatever project you opened". SVG is still
-  source-only, deliberately.
-- ~~**PDF preview.**~~ **Shipped 2026-08-19** — pdf.js, bundled, continuous scroll with a text
-  layer (F7, ADR-0018). Four follow-ups were scoped out of it deliberately, in the order they are
-  worth doing:
+- **The PDF viewer's four follow-ups.** Preview itself shipped 2026-08-19 (pdf.js, bundled,
+  continuous scroll with a text layer — F7, ADR-0018); these were scoped out of it deliberately,
+  in the order they are worth doing:
   - **A find bar.** `Cmd+F` across the document, with match highlighting and next/prev. The text
     layer is already there, so this is a match index and a scroll-to-match rather than new
     plumbing. **The shape is settled**: F7's find widget shipped 2026-09-09 — Monaco's, restated
@@ -636,31 +525,6 @@ because F7 already commits to them:
     file" today. Two `PdfView`s scroll-synced by page is the obvious shape; the open questions are
     what "changed" means for a page (any pixel? any text?) and whether an added or deleted page
     should align against nothing on the other side. Not started, and not blocking anything.
-
-## 24. `DESIGN.md` — one home for the design rules
-
-**User ask, 2026-08-16, explicitly later.** Not now, and worth stating why it isn't free.
-
-Design rules today live in the `frontend-conventions` skill — cursor-pointer as a base rule, icon buttons paint no
-background, chevrons colour on hover, repeatedly-actioned rows keep their affordances visible —
-plus whatever a component's own doc comment says (`IconButton`'s is a small design essay), plus
-per-feature UI notes in `specs/05-features.md`. A `DESIGN.md` that doesn't say what it *takes
-over* becomes a fourth place, and this repo already knows what that costs: `08-inconsistencies.md`
-§ "What the resolved ones taught" — a rule recorded where nobody reads it is not a rule.
-
-So the first decision is boundaries, not content:
-
-- the `frontend-conventions` skill either **moves wholesale** into `DESIGN.md` and links out, or `DESIGN.md`
-  doesn't exist. Two lists of design rules is the failure.
-- `specs/` keeps per-feature behaviour; `DESIGN.md` holds what is true across every surface —
-  the control scale, colour and status semantics, density, hover and focus, empty states.
-- **It starts from concrete numbers rather than principles**, because they exist now: `Button`'s
-  desktop scale shipped 2026-08-17 (`default h-8 · sm h-7 · lg h-9 · icon 8`, base icon `size-3.5`,
-  with `Input` and `Select` moved to `h-8` so a row holding both lines up), and the `frontend-conventions` skill has
-  since grown the menu metrics, the two type sizes and the icon-button rule. One leftover to record
-  rather than re-derive: the viewer's toolbar buttons keep `h-6 text-xs` on purpose, a step below
-  `sm`, and an `xs` variant is the way to retire them **if a third call site ever wants one** —
-  don't add it for two.
 
 ## 27. The window's bottom corners on Linux are still not pixel-clean
 
@@ -743,16 +607,12 @@ The pipeline works — `release.yml` is tag-driven, rewrites the three version f
 and drafts a release with signed bundles plus `latest.json`. What it does not do is anything about
 the steps *around* it:
 
-- [x] **The matrix raced on creating the release — fixed 2026-08-17 while cutting v0.10.1.** Both
-      jobs created a draft for the same tag, so Linux's assets landed in one and macOS's in the
-      other, each with a `latest.json` listing only its own platform. Publishing either would have
-      shipped a single-platform release whose manifest told every other platform there was nothing
-      to update to. **Both jobs reported success**, and `gh release view <tag>` shows whichever
-      draft it picks — complete on its own terms — so nothing about the failure is visible without
-      counting assets. Four earlier releases won the same race by luck.
-      `create-release` now makes exactly one draft before the matrix and the builds upload into it
-      by `releaseId`. That this was found by hand, on the release where the dice went the other way,
-      is the argument for the rest of this item.
+**Two of these are closed and are in [`DONE.md`](./DONE.md)**: the matrix race that put each
+platform's assets in a different draft (one `create-release` job before the matrix, 2026-08-17),
+and automatic publication with the missing-platform guard kept
+([ADR-0014](../../docs/adr/0014-alpha-releases-publish-themselves.md), 2026-08-18). The cost of
+the second is that no person sees a release before the world does, which promotes the first
+bullet below from tidy-up to the next real gap.
 
 - [ ] **Nothing enforces "tag a commit Quality has passed".** `release.yml` says so in its own
       header and `quality.yml` says it "deliberately does NOT gate the release". So the guarantee
@@ -773,21 +633,6 @@ the steps *around* it:
       is hand-written after the fact each time — `generateReleaseNotes: true` produces notes that
       then get replaced. Either derive the notes from `DONE.md` or keep a changelog; writing them
       twice is the current state.
-- [x] **Publishing is automatic while factorai is alpha — done 2026-08-18, and the protection was
-      kept.** This item asked for exactly that ("alpha is exactly the case where you do *not* want a
-      human in the loop") while insisting the missing-platform guard survive, so the gate moved
-      rather than went: `release.yml` grew a `publish` job that `needs: build` — a failed platform
-      still skips publication — and, before un-drafting, counts the four required assets and
-      re-reads `latest.json` for both a `darwin-*` and a `linux-*` key. That last check is the
-      v0.10.1 case specifically, which a green matrix cannot catch, because on that release both
-      jobs *did* report success. See [ADR-0014](../../docs/adr/0014-alpha-releases-publish-themselves.md),
-      which amends ADR-0010's consequence 2.
-
-      **The honest cost, recorded here rather than buried in the ADR:** there is no longer any
-      moment where a person sees a release before the world does, so the item directly above —
-      nothing enforcing "tag a commit Quality has passed" — stops being tidy-up and becomes the
-      next real gap. Revisit the whole trade when alpha ends; it is priced on shipping several
-      times a day to a handful of users.
 - [ ] **`gh release edit --notes-file` reports a stale `untagged-…` URL** on a draft. Harmless, but
       it looks like it edited the wrong thing; worth a note wherever this gets written down so the
       next person doesn't chase it.
@@ -824,18 +669,10 @@ Plausible answers, to be chosen rather than assumed:
 
 Consequences to settle:
 
-- [x] **Where does the channel live? — settled 2026-08-17, and unblocked 2026-08-20 when item 4
-      shipped.** The channel is a `get_setting`/`set_setting` customer, since the updater endpoint
-      is chosen in Rust at runtime — and that pair now exists, keyed by `SettingKey`, so this
-      channel is **a second variant, a match arm and one `SettingRow`** rather than a surface.
-      It also needs F11's first new section: **Advanced**, which is deliberately absent until it
-      has content (an empty section reads as a bug).
+**Where the channel lives was settled 2026-08-17 and unblocked when item 4 shipped**: it is a
+`get_setting`/`set_setting` customer, so it is a second `SettingKey` variant, a match arm and one
+`SettingRow` in F11's first **Advanced** section. Everything else here needs no UI at all.
 
-      Everything in 31a, the alpha manifest, the automatic builds and the versioning scheme still
-      need no UI at all and can land in any order beside it.
-
-      Until the picker exists, an alpha build is one someone installed deliberately — which is a
-      fine first state.
 - [ ] **Alpha versioning.** The manifest `version` must be valid SemVer. `0.9.1-alpha.3` sorts
       correctly above `0.9.0`; a date-based scheme needs checking against the comparator, not
       assumed. Whatever is picked has to keep alpha ahead of production without ever overtaking the
@@ -1013,19 +850,6 @@ four things it cost that the design did not predict. What follows is the remaind
       the only signal that is an intent rather than an inference — but nothing rests on it, and
       if it is still unobserved in a month, say so here rather than leaving it looking
       load-bearing.
-- [x] **A fifth signal: the paths a shell command names.** Shipped 2026-08-24, hours after the
-      fourth, on the shape it cannot see — the agent did the whole hour through `Bash`, so no
-      `file_path` ever appeared. `sessions.touched_paths` (migration 0010) keeps the last eight
-      candidates instead of one, because reading command lines is loose enough that a single
-      value is noise most of the time. `DONE.md` has the numbers and the one cost worth knowing
-      (0009's column is left behind rather than dropped, so an older build sharing the data
-      directory still opens).
-- [x] **The human's worktree picker.** Shipped 2026-08-24, on a user's report of the shape no
-      inference can reach: the agent created a worktree and drove it by `git -C` and absolute
-      paths, so its cwd never moved and the bridge never heard from it. The remaining three
-      deferrals stand (telling the agent when the human moves the panel, creating worktrees from
-      factorai, and new sessions starting in the shown checkout).
-
 ## 38. More harnesses — Codex, Gemini CLI, OpenCode, Cursor, behind one seam
 
 **User ask, 2026-08-24.** factorai spawns, resumes, indexes and watches exactly one CLI. The ask
