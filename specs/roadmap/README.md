@@ -31,7 +31,7 @@ That's the whole protocol: one list to pull from, one log to append to.
 The roadmap is **sequencing**, not design. It says what to do next and in what order; it never
 becomes the place a feature is specified.
 
-- [`06-milestones.md`](../06-milestones.md) is the **arc** — M0…M5 with their exit criteria, and
+- [`06-milestones.md`](../06-milestones.md) is the **arc** — M0…M6 with their exit criteria, and
   the deferred post-MVP list. It changes rarely. `TODO.md` is the working order *within* and
   *across* whatever milestone is open, and it also holds the small in-between items no milestone
   ever named.

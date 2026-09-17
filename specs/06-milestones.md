@@ -128,9 +128,11 @@ toolchain wired up.
 
 ---
 
-## M5 — Polish & first release (1 week)
+## M5 — Polish & the first tagged release (1 week)
 
-**Goal.** Ready to use day-to-day; first tagged release.
+**Goal.** Ready to use day-to-day; first tagged release, for people who were
+told about it. The release a stranger finds is **M6**, and M5's remainder does
+not gate it.
 
 **Deliverables.**
 - ~~Settings UI~~ **shipped 2026-08-20** (F11, roadmap item 4): the claude path
@@ -160,6 +162,53 @@ toolchain wired up.
 **Exit criteria.**
 - A teammate can install the .dmg or the .AppImage and use factorai for an
   hour without hitting a bug that breaks their flow.
+
+---
+
+## M6 — Public first release
+
+**Decided 2026-09-17.** M5's exit criterion is a *teammate* installing a build.
+M6 is the release a stranger finds: a signed app, an update path that can be
+trusted by people nobody told about it, a site that explains what this is, and
+a performance pass before the first unfamiliar machine runs it.
+
+**Deliverables**, in build order. Each is an item in
+[`roadmap/TODO.md`](./roadmap/TODO.md), which holds the detail and the open
+questions; this list is the arc.
+
+- **A signed, notarized macOS app** (item 51). The Apple Developer Program is
+  paid for as of 2026-09-17, which supersedes the interim self-signed decision
+  in ADR-0034: a Developer ID Application certificate, notarization and
+  stapling, a Team ID that removes the App Management prompt rather than making
+  it stick, and TCC grants that survive an update. Enrolment is the long pole.
+- **Two channels, and a release process with nothing left to remember**
+  (item 31). Alpha beside stable, a tag that refuses to build a commit Quality
+  has not passed, and the versioning and changelog questions settled. The
+  channel mechanism is open: a moving `alpha` tag, or a manifest served from the
+  site below.
+- **A performance audit, then the fixes it names** (item 57, with items 54 and
+  55 as its first two known findings). Budgets written down first, measured in
+  the real window on both engines, and nothing paid for by disposing a pooled
+  xterm.
+- **The site** (item 39): one Docusaurus build deployed to GitHub Pages, the
+  user guide under `/docs`, a custom domain to decide before the links are
+  written.
+- **The hero one-pager** (item 56), which is that site's index — what factorai
+  is, the four verbs of the operating model, and the download.
+
+**Exit criteria.**
+- Someone who has never heard of factorai lands on the hero, installs it for
+  their platform with no Gatekeeper detour on macOS, and is running an agent
+  session without asking anyone a question.
+- An installed copy moves itself from one release to the next on its channel,
+  and switching channels is a preference rather than a reinstall.
+- Every surface has a measured number against a written budget, and the ones
+  that missed have either been fixed or recorded as accepted.
+
+**Deliberately not gating M6**: the custom titlebar (item 6), the toast
+primitive and the empty states (item 7), the manual smoke pass (item 8) and
+M4's file drafts (item 2). They are M5's remainder and post-release work; the
+cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
 
 ---
 

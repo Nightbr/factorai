@@ -10,8 +10,7 @@ every remaining entry was checked against the code rather than against its own c
 5, 15 and 24 were fully shipped and left, and seven others lost the half they had already
 delivered. The first pass found eleven of thirty-four entries were announcements of their own
 completion: the list had become a place to read history rather than a place to pick work up, and
-`DONE.md` was already the history. An item
-whose whole scope shipped is gone from here. An item with a *remainder* keeps its number and is
+`DONE.md` was already the history. An item whose whole scope shipped is gone from here. An item with a *remainder* keeps its number and is
 rewritten to the remainder — items 1, 29 and 34 are here for that reason, each saying in one line
 which half already landed and where the entry for it is.
 
@@ -21,24 +20,517 @@ and a surviving item is never renumbered. Position is priority; the number is id
 is not here, it shipped, and `DONE.md`'s entry for it names the number.
 
 **Where things stand.** M0–M3 shipped — scaffold, read-only browser, embedded terminal with
-kill-on-quit, FTS5 search. M4 is one item from done: **item 2**, now down to drafts that survive
-a quit, the secrets rule and F9's last two pieces. M5 is half built: **item 4 (settings, F11) shipped 2026-08-20** and **item 5 (the
-keybinding scheme, F28) shipped 2026-09-15**, its macOS menu verified 2026-09-17. Items 6–8 are
-the rest of it in the order it should be built — no titlebar and no release pipeline yet.
+kill-on-quit, FTS5 search. M4 is one item from done: **item 2**, now down to drafts that survive a
+quit, the secrets rule and F9's last two pieces. M5 is most of the way: **item 4 (settings, F11)
+shipped 2026-08-20**, **item 5 (the keybinding scheme, F28) shipped 2026-09-15** with its macOS
+menu verified 2026-09-17, and the release pipeline builds, signs and publishes on a tag. Items 6
+(titlebar), 7 (error UX) and 8 (the smoke pass) are what M5 still owes.
+
+**The list is now headed by M6 — the public first release.** See the block below: five
+workstreams, in build order, and **only those five gate it**. Everything under them, M5's own
+remainder included, is post-release work and is not a reason to delay the tag.
+
+### M6 — the public first release
+
+**Decided 2026-09-17.** Today's releases are for people who were told about them; M6 is the one a
+stranger finds. Five workstreams, in the order they should be built, each an item below:
+
+1. **[Item 51](#51-macos--a-developer-id-certificate-notarization-and-the-end-of-the-permission-loop) — a signed, notarized macOS app.** The decision to pay for the Apple
+   Developer Program was taken 2026-09-17. First because enrolment is the long pole: nothing else
+   here waits on a third party.
+2. **[Item 31](#31-two-channels-and-a-release-process-with-nothing-left-to-remember) — alpha and stable, and a release process with nothing left to remember.**
+   Strangers on the update path make "the pipeline is trustworthy" a release criterion rather
+   than housekeeping. The channel mechanism is open, including a manifest hosted on the site.
+3. **[Item 57](#57-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Items 54 and 55 are its
+   first two known findings and sit directly under it.
+4. **[Item 39](#39-the-site--a-docusaurus-build-carrying-the-guide-deployed-to-pages) — the site: one Docusaurus build on GitHub Pages**, the guide under `/docs`,
+   a custom domain to decide.
+5. **[Item 56](#56-the-hero--a-one-pager-that-makes-someone-want-this-at-the-sites-root) — the hero one-pager**, which is that site's index and the first thing anyone
+   sees.
+
+**Item 36 (the Homebrew cask) sits directly after them**, because it is the install path the site
+will point macOS users at and its instructions change the day item 51 lands.
+
+**What M6 deliberately does not block on.** The titlebar (6), the toast primitive (7), the manual
+smoke pass (8), file drafts (2) and everything below. That is a choice, made 2026-09-17, and it
+has a cost worth stating once: going public with no toast means a transient failure still has
+nowhere to surface, and skipping item 8 means the first Finder-launched macOS run may be a
+stranger's. Item 51's own verification list covers part of that ground on the platform where it
+matters most.
 
 **Item 4 was the one with dependents, and they are unblocked.** Items 31 (the channel picker), 32
 (the theme control) and 35 (the notification toggle) were waiting on the surface it creates; the
 switch item 33 wanted shipped with it. Each of those now needs a `SettingRow` and a section
 heading rather than a settings feature — read them for what is left.
 
-**A position is where a slot happened to be free, never a claim about priority** — with one
-exception, **item 42 (routines)**, which was asked for at high priority on 2026-08-28 and sits
-third because of it. **Item 47 (the footer shell) shipped on 2026-09-01, the day it was asked
+**Below the M6 block, a position is where a slot happened to be free, never a claim about
+priority.** The first eight entries are the exception and are ordered deliberately: the five
+workstreams, then the cask. **Item 42 (routines)** is the other one — asked for at high priority
+on 2026-08-28 and placed for it. **Item 47 (the footer shell) shipped on 2026-09-01, the day it was asked
 for, and item 49 (splits in that footer) on 2026-09-02, likewise**; their entries are in
 `DONE.md`. **Item 50 rescoped that footer from the session to the project** on 2026-09-03, also
 the day it was asked for; its entry is in `DONE.md` too. Items 12–14 —
 the `Cmd+P` / `Cmd+Shift+F` / `Cmd+G` navigation trio — are high priority despite sitting
 mid-list, and everything past 21 is simply the order things were asked for.
+
+## 51. macOS — a Developer ID certificate, notarization, and the end of the permission loop
+
+**Release-blocking. The decision this item was holding open was taken 2026-09-17: pay for the
+Apple Developer Program.** Everything below follows from that, and it supersedes the interim the
+free half shipped.
+
+**Where it comes from.** A user report, 2026-09-03, in their words: *"il y a un petit bug avec les
+droits, on me demande tout le temps le droit d'accéder aux mêmes dossiers. Je suis ramené dans les
+paramètres pour autoriser une bonne fois pour toutes mais après redémarrage, rebelote."* Plus a
+*"factorai was prevented from modifying apps on your Mac"* notification, and factorai's **App
+Management** toggle showing as off after they had switched it on. Two mechanisms, one cause,
+diagnosed in [ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md): TCC
+anchors a grant to the app's designated requirement, so an identity that changes per build orphans
+every grant, and `tauri-plugin-updater` writing inside `/Applications/factorai.app` is App
+Management, whose only two escapes both key on an Apple **Team ID**.
+
+**The free half shipped 2026-09-03** — releases are signed with a self-signed certificate held as
+`APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD`, so grants anchor to it and App Management is
+asked for once instead of once per version. That was the right interim and it is not the answer:
+Gatekeeper still blocks the `.dmg`, and the prompt still appears.
+
+**What the paid half buys, precisely.** A **Team ID**, which satisfies the same-team rule and
+removes the App Management prompt entirely rather than making it stick; and **notarization**,
+which removes the Gatekeeper step instead of relocating it — at which point item 36's cask drops
+`--no-quarantine`. A Developer ID Application certificate is the only kind that produces either,
+and Apple issues it only to paid members; that was always a policy wall, not a technical one.
+
+- [ ] **Enrol, and get the certificate.** Apple Developer Program, then a **Developer ID
+      Application** certificate exported as a `.p12`. Enrolment is not instant — it is the long
+      pole of this whole roadmap and the reason this item is first.
+- [ ] **An ADR superseding ADR-0034's decision**, not an amendment to it: the signing identity
+      changes, which orphans every grant **one last time** on the first Developer ID release.
+      Users have to be told that in the release notes, because it looks exactly like the bug this
+      fixes coming back.
+- [ ] **The workflow.** Swap the secrets to the Developer ID `.p12`, add `APPLE_SIGNING_IDENTITY`
+      / `APPLE_ID` / `APPLE_PASSWORD` (an app-specific password) / `APPLE_TEAM_ID`, and let Tauri
+      notarize and staple with `bundle.macOS` left as `{}`. The self-signed import step and its
+      `add-trusted-cert` / passwordless-`sudo` lean come back out.
+- [ ] **Verify on a real Mac, not from Linux.** `codesign -d -r- factorai.app` naming the
+      Developer ID rather than a cdhash; `spctl -a -vv` accepting the `.dmg`; the stapled ticket
+      surviving a download; and the App Management prompt gone rather than merely sticky.
+- [ ] **The app still works signed, hardened and notarized.** `hardenedRuntime` was moot while
+      nothing signed and takes effect now. Launch it, open a session, drive a PTY, open a file
+      dialog, apply an update — the `manual-qa` lane, which is the only thing that can see this.
+
+**What not to try**, kept from the free half: `NSUpdateSecurityPolicy` in our own `Info.plist`
+maps team identifiers and is redundant once we have one, and an explicit ad-hoc `codesign` step
+remains the dead end item 36 describes.
+
+**One operational consequence worth not learning the hard way.** The `.p12` joins the minisign key
+of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
+user has granted. Losing the Developer ID one also costs the Gatekeeper trust until a new
+certificate is issued and a release is notarized under it.
+
+## 31. Two channels, and a release process with nothing left to remember
+
+**Release-blocking.** A public first release means strangers on the update path, so the two things
+this item holds — a pipeline that cannot ship a half-built release, and an **alpha** channel
+beside **stable** — stop being housekeeping. The tag-driven pipeline is the incumbent and the
+answer is **open**: a moving `alpha` tag, a manifest hosted on the Pages site items 39 and 56 are
+building, or something else entirely. Decide it here and write the ADR.
+
+**User ask, 2026-08-17**, immediately after cutting v0.9.0 by hand. Two halves: make the existing
+process leave nothing to remember, and add an **alpha** channel beside **production** that builds
+often and on its own.
+
+Written from having just done it end to end, so the gaps below are observed rather than imagined.
+
+**Item 36 is the distribution half and is deliberately separate**: a Homebrew cask, plus the step
+that bumps it after `publish`. It belongs beside this item rather than inside it — this one is about
+the pipeline being trustworthy, that one is about macOS staying unsigned.
+
+### 31a. What the current process actually leaves to a human
+
+The pipeline works — `release.yml` is tag-driven, rewrites the three version fields from the tag,
+and drafts a release with signed bundles plus `latest.json`. What it does not do is anything about
+the steps *around* it:
+
+**Two of these are closed and are in [`DONE.md`](./DONE.md)**: the matrix race that put each
+platform's assets in a different draft (one `create-release` job before the matrix, 2026-08-17),
+and automatic publication with the missing-platform guard kept
+([ADR-0014](../../docs/adr/0014-alpha-releases-publish-themselves.md), 2026-08-18). The cost of
+the second is that no person sees a release before the world does, which promotes the first
+bullet below from tidy-up to the next real gap.
+
+- [ ] **Nothing enforces "tag a commit Quality has passed".** `release.yml` says so in its own
+      header and `quality.yml` says it "deliberately does NOT gate the release". So the guarantee
+      is a human remembering to look — cutting v0.9.0 meant polling `gh run list` and waiting
+      before tagging. A tag push should **verify the commit has a green Quality run and fail loudly
+      if not**, rather than building an unverified commit and finding out later.
+- [ ] **The version fields are never bumped, and something in the repo now reads them.** All three
+      sit at `0.1.0`; the tag rewrites them at build time. `release.yml` argues for that
+      deliberately — "no bump commit to forget, no chance of a tag disagreeing with a file" — and
+      that reasoning still holds. **But the cost landed the same day it was written about**: the
+      crash screen (F17) reads the version through a Vite `define`, so every dev build claimed to
+      be `0.1.0` until it was taught to say `(untagged dev build)`. Decide it properly rather than
+      per-consumer: either the tag stays the only truth and *anything* reading the version handles
+      the placeholder, or a real bump lands (with the "forgot to bump" failure automated away).
+      **The user asked for the bump**, so the burden is now on the tag-only scheme to justify
+      itself.
+- [ ] **There is no `CHANGELOG.md`.** `DONE.md` is the de facto source and the GitHub release body
+      is hand-written after the fact each time — `generateReleaseNotes: true` produces notes that
+      then get replaced. Either derive the notes from `DONE.md` or keep a changelog; writing them
+      twice is the current state.
+- [ ] **`gh release edit --notes-file` reports a stale `untagged-…` URL** on a draft. Harmless, but
+      it looks like it edited the wrong thing; worth a note wherever this gets written down so the
+      next person doesn't chase it.
+- [ ] **The macOS smoke pass has still never happened** — that is item 8, not this item, but a
+      release process that has never once been exercised on one of its two target platforms is the
+      real gap and this item should not pretend to close it.
+
+### 31b. Channels — and the constraint that decides the whole design
+
+**⛔ The obvious implementation is broken, and it is written down in `release.yml` already.** The
+action sets `prerelease: false` *deliberately*, because GitHub's `/releases/latest` — which the
+updater endpoint resolves through — **skips prereleases entirely**. So "mark alpha releases as
+prerelease" would leave every alpha user polling a 404 forever. Alpha cannot live at
+`/releases/latest/download/latest.json`. That is the first thing to solve, not a detail.
+
+Plausible answers, to be chosen rather than assumed:
+
+- a **moving `alpha` tag** with a fixed asset URL (`/releases/download/alpha/latest.json`), which
+  sidesteps `latest` entirely and lets alpha releases be marked prerelease honestly;
+- a manifest hosted outside releases, decoupling the channel from GitHub's release semantics —
+  **cheaper than it was**, because items 39 and 56 are standing up a Pages deployment anyway, so
+  `factorai.<domain>/updates/{alpha,stable}.json` costs a file in that build rather than a new
+  piece of infrastructure. Its cost is that the site's deploy becomes part of the release path,
+  which is exactly the kind of coupling to decide deliberately rather than discover.
+
+**Verified about Tauri's updater (2026-08-17, v2 docs) so nobody designs against the wrong model:**
+
+- There is **no built-in channel concept**. The endpoint's dynamic variables are exactly
+  `{{current_version}}`, `{{target}}` and `{{arch}}` — there is no `{{channel}}`.
+- Endpoints can be set **at runtime** via `updater_builder().endpoints(...)`, and the docs give
+  channel-switching as the example use. **This is the good news and it should shape the design:**
+  one build can serve both channels, with the channel a *preference* rather than a separate
+  artifact. That avoids two build matrices and two download pages.
+- Default comparison is `update.version > current`. So **leaving alpha for production is a
+  downgrade and will not happen by itself** — it needs `version_comparator` overridden, or the user
+  reinstalling. Decide what "switch back to stable" means before shipping the switch.
+
+Consequences to settle:
+
+**Where the channel lives was settled 2026-08-17 and unblocked when item 4 shipped**: it is a
+`get_setting`/`set_setting` customer, so it is a second `SettingKey` variant, a match arm and one
+`SettingRow` in F11's first **Advanced** section. Everything else here needs no UI at all.
+
+- [ ] **Alpha versioning.** The manifest `version` must be valid SemVer. `0.9.1-alpha.3` sorts
+      correctly above `0.9.0`; a date-based scheme needs checking against the comparator, not
+      assumed. Whatever is picked has to keep alpha ahead of production without ever overtaking the
+      *next* production release.
+- [ ] **"Builds more often and automatically" — how often?** Every push to `main` is the literal
+      reading and means a ~12-minute two-platform build per commit (seven commits landed today
+      alone). A nightly cron that skips when nothing changed is far cheaper and probably what is
+      actually wanted. Decide, and state it, because this is the line item that costs CI minutes.
+- [ ] **Does alpha gate on Quality?** It should — an automatic channel that ships red commits is
+      worse than no channel. Same mechanism as 31a's first bullet.
+- [ ] **The app should say which channel it is on.** An alpha build that looks identical to a
+      production one produces bug reports nobody can place. The `DEV` pill in `TopBar` is the
+      existing precedent for this kind of marker, and the crash report (F17) already carries the
+      version — it should carry the channel too.
+
+**Not in scope, deliberately:** macOS code signing / notarisation. It is a real gap (the `.dmg` is
+unsigned and Gatekeeper blocks it until quarantine is cleared) but it is an Apple-account problem,
+not a process one, and folding it in here would stall everything else.
+
+## 57. Performance — one audit, measured, then the fixes it names
+
+**Asked for 2026-09-17, release-blocking.** Two performance reports are already filed as items 54
+and 55, both from the same week, both unmeasured. A public release is the wrong moment to
+discover the third one from a stranger, so this item is the sweep: **measure every surface, write
+the numbers down, then fix what the numbers name** — in that order, because at least two of the
+candidates in item 54 are cheap enough that fixing the wrong one would be indistinguishable from
+fixing nothing.
+
+**The two findings already filed are this item's first two entries**, kept as their own items
+because each has its own analysis: **item 54** (time from clicking a session to the first thing on
+screen) and **item 55** (the markdown preview re-parsing on every host render, with mermaid
+multiplying it).
+
+**The rule that bounds the whole sweep**, and it is not negotiable: nothing here may be paid for
+by disposing, detaching or re-creating a pooled xterm. `Terminal.tsx` § "Persistent xterm pool"
+keeps one terminal per session alive for the app's life, and the reason it does not reparent is a
+macOS wheel bug its comment records. That is the change that looks like a win in a profile and is
+a regression in the window.
+
+- [ ] **Write the budgets down first**, so "slow" stops being a matter of opinion: cold launch to
+      a usable window, session switch to first paint, keystroke-to-glyph in a PTY under load,
+      search latency on a real workspace, tree expand on a large repository, and the memory a
+      session-heavy app holds after an hour. A budget nobody agreed to is not a budget.
+- [ ] **Measure in the real window, on both engines.** The `manual-qa` lane with the React
+      profiler; a Playwright run sees none of this, and WebKitGTK and WKWebView have already
+      diverged on zoom, clipboard and scrolling.
+- [ ] **The surfaces worth measuring, in the order they are likely to hurt**: startup and first
+      paint; the indexer and FTS5 against a workspace with hundreds of sessions; the sidebar's
+      `refetchInterval` (every ~2s, and it reorders rows); ten live sessions with output arriving
+      in all of them; the graph walk on a large repository; the file tree on a directory with
+      thousands of entries; and the renderer bundle, where the heavy chunks (Monaco, pdf.js,
+      mermaid) are lazy and should be proved still lazy.
+- [ ] **Rust side too.** Lock hold times across the command boundary — the terminal freeze in
+      `DONE.md` was a `child.lock` held across `wait()` and it deadlocked the GTK main thread, so
+      this is a class of bug this repo has already shipped once.
+- [ ] **Fix, then re-measure against the budget**, and record both numbers in the `DONE.md` entry.
+      A performance fix with no before and after is a story.
+
+**What this item is not.** A rewrite, a virtualization project, or a dependency swap done on a
+hunch. If the numbers say the app is inside its budgets on a surface, the entry for that surface
+is one line saying so — which is worth as much as a fix, because it stops the next person
+re-deriving it.
+
+## 54. Switching session — time to the first thing on screen
+
+**Asked for 2026-09-15**, unmeasured: the report is that changing session takes visibly longer to
+show anything than it should. So the first task is a number, not a patch — the candidates below
+are what reading the code suggests, and at least two of them are cheap enough that fixing the
+wrong one would be indistinguishable from fixing nothing.
+
+**What is already right, and must stay right.** The xterm pool (`Terminal.tsx` § "Persistent xterm
+pool") keeps one terminal per session alive for the app's life: a switch toggles `visibility` in
+`showOnly`, it does not rebuild a buffer or reparent a host, and the reason it does not reparent is
+a macOS wheel bug the comment there records. `FileTreePanel` and the shell footer hang off
+`AppShell`, not off the route, so neither unmounts on a switch (ADR-0032). Nothing in this item may
+be paid for by disposing, detaching or re-creating a pooled terminal — that is the change that
+looks like a win in a profile and is a regression in the window.
+
+- [ ] **Measure first, in the real window.** Click-to-first-paint for three cases, which are not
+      the same case: a session whose terminal is already pooled, one being opened for the first
+      time this run (a `terminal_spawn` plus `claude --resume` redrawing the transcript), and a
+      switch that also crosses projects. The `manual-qa` lane, with the React profiler on;
+      a Playwright smoke run cannot see any of this.
+
+**The candidates, in the order they are worth checking.**
+
+- **The route's three queries gate the header.** `SessionView` reads `list_projects`,
+  `list_sessions` and `list_profiles`, and `App.tsx`'s app-wide default is `staleTime: 1000` — so
+  any switch more than a second after the last read refetches. Cached data still renders, so
+  this should not be visible; what *is* visible is that `projectCwd` is `null` until
+  `list_projects` answers, and `projectCwd` is in the dependency list of `Terminal`'s mount effect.
+  A cold switch therefore runs that effect twice, and the first run reaches `attachPty` with a null
+  cwd. Worth fixing on its own merits whatever the profile says.
+- **The first frame is deliberately the old grid.** The mount effect defers `fitToHost`,
+  `scrollToBottom` and `focus` into a `setTimeout(…, 0)`, and an adopted host gets a second
+  `fitToHost` plus a full `refresh` in a `requestAnimationFrame`. Both are correct — the layout is
+  not real any earlier — but they are also the two places a switch can be seen to settle rather
+  than appear.
+- **Every hidden terminal still has layout.** `showOnly`'s own note says it: a background session's
+  rows are laid out, though never painted, as its output arrives, and `content-visibility: hidden`
+  is not used because it zeroes descendant geometry and brings back the measurement bug the pool
+  exists to avoid. That comment asks for exactly this — a profile at a session count that hurts.
+  Ten live sessions is the case to measure; if it is flat, say so in the comment and close the
+  question.
+- **The panel re-roots on the switch.** `useActiveCheckout` recomputes `root`, `FileTreePanel`
+  draws `Loading…` while `isLoading`, and the tree relists. For two sessions in the same checkout
+  the root does not change, so this should be free; confirm that it actually is, rather than the
+  panel blanking and redrawing the same tree.
+
+**What good looks like.** Switching between two pooled sessions in one checkout paints the header
+and the terminal in the frame after the click, with no `Loading…` anywhere in the panel. A session
+being opened for the first time cannot do that — the transcript comes back through the PTY — but
+it can paint its chrome immediately and wait for the body, which is not what "nothing for a
+moment, then everything" does today.
+
+## 55. The markdown preview re-parses far more often than it changes, and mermaid pays for it
+
+**Asked for 2026-09-15**, with a large document and a document full of diagrams as the two cases
+that hurt. Two separate causes with one symptom, and the first one is the one to fix.
+
+**The document is re-parsed on every render of its host.** `MarkdownView` is not memoized, and
+react-markdown 10 has no incremental parse — it runs remark and rebuilds the whole hast tree every
+time it renders. Its host is `FileView`, which holds the edit buffer's state machine
+(`useEditBuffer`: dirty, saving, save error, conflict, banner), the SOPS plaintext and its four
+states, a `sops` status query, the selection the footer's mention button reads, and the preview
+toggle itself. Every one of those state changes re-parses the entire document. Even a host that
+re-rendered for a good reason would not be able to skip it: `remarkPlugins={[remarkGfm]}` and the
+`components` object are fresh literals on each render, so no `memo` would ever bail out.
+
+- [ ] **Hoist what does not change and memoize what does.** `remarkPlugins` becomes a module
+      constant; `components` becomes a `useMemo` on `[path, onOpenPath]`, which is all the three
+      overrides actually capture; `MarkdownView` gets `memo`. Confirm with the profiler that a
+      keystroke in the footer's search, a save, and a `sops` query settling each stop re-parsing
+      the document.
+- [ ] **`previewSource` reads a ref during render** (`FileView.tsx:304`:
+      `dirty ? bufferRef.current : file.contents`). It works because the editor is unmounted while
+      the preview is up, so the buffer cannot move underneath it — but it is a render-time read of
+      mutable state, and it is what makes the preview's input look like it changes on every render
+      when it does not. Whatever shape the memo takes has to make that explicit rather than inherit
+      it.
+- [ ] **Measure a genuinely large document before deciding anything else is needed.** There is no
+      virtualization: a long README becomes one DOM tree under the `prose` classes in one pass. If
+      re-parse-on-every-render is the whole story, stop there — chunked rendering is a much
+      larger change and should not be started on a guess.
+
+**Mermaid is the second cause, and it multiplies the first.** Each fence is a `MermaidDiagram` that
+calls `loadMermaid()` in its own effect:
+
+- **`loadMermaid` reads the palette off the document on every call** — nine `getComputedStyle`
+  reads through `diagramPalette` and `currentFontFamily`, one forced style recalculation per
+  diagram, to compute a key that is almost always identical to the last one. The module already
+  caches the *configuration* behind `configuredFor`; it does not cache the reads that produce the
+  key. A palette moves on a theme switch (item 32), which is an event, not a per-render condition.
+- **Every diagram renders independently and concurrently** against the one global mermaid
+  instance — no queue, no batching — and each `render` builds a temporary node, runs DOMPurify
+  and hands back an SVG *string*, which `MermaidDiagram` then parses a second time with
+  `DOMParser` and adopts with `importNode`. A document with twenty diagrams does that twenty
+  times, unthrottled, on the first frame the preview is up.
+- **A `code` change empties the host before the new SVG lands** — state goes back to `pending` and
+  the effect `replaceChildren()`s the node — so each diagram collapses to zero height and the page
+  reflows through it. Keeping the old SVG until the new one is ready is the obvious fix and costs
+  nothing, since the failure path already keeps the source.
+
+The 2.5MB dynamic `import()` (ADR-0021) is not on this list: it is paid once, only by documents
+that have a fence, and it is the right trade.
+
+## 39. The site — a Docusaurus build carrying the guide, deployed to Pages
+
+**Release-blocking, and settled 2026-09-17: one site, one deployment, one workflow.** A Docusaurus
+app whose **index is the hero one-pager (item 56)** and whose `/docs` is the guide. Two
+deployments were considered and dropped — two domains, two sets of links to keep honest, and a
+hero that cannot link straight into a guide page without leaving its own origin.
+
+**User ask, 2026-08-24, restated 2026-08-30**: *"we will write a full docs later for all factorai
+features"*. Everything written for a *user* today is `README.md` and the five screenshots in
+`docs/images/`. Everything else in the repository is written for whoever is building it: `specs/`
+is the design source of truth, `docs/adr/` is the decision trail, and this file is sequencing. All
+three read as internal because they are.
+
+**The README is a pitch, not a manual, and it stays that way** — settled 2026-08-30 when the
+routines section arrived and its second half, which explained how to *configure* one, was cut the
+same day. A section there says what a surface is for and shows it; how to set it up belongs on the
+site, and every feature that ships between now and then adds to what the site owes rather than to
+the README.
+
+**The rule that keeps this from rotting: the site does not fork the specs.** It is a different
+document for a different reader — how to install it, what the surfaces do, what to do when
+something does not work — and where it needs a fact the specs own, it links rather than restates.
+A second copy of a behaviour is a second thing to update in the commit that changes it.
+
+What the guide holds, in the order a new user meets it:
+
+- **Install**, currently the most under-served thing: the AppImage, the `.dmg` and — once item 51
+  lands — a notarized one that needs no Gatekeeper step at all, plus the Homebrew cask (item 36).
+- **First run** — adding a project, what discovery does, why sessions appear on their own.
+- **The surfaces** — sessions and the terminal, Files, Changes, the graph, search, worktrees, and
+  **routines** (F22): the schedule presets and the custom cron, the next-runs echo, catch-up and
+  its window, the concurrency cap, what `Run now` answers when it declines, and the blue dot for a
+  session running with no tab.
+- **Settings**, and **keyboard shortcuts** — the defaults table F28 publishes, and the Keyboard
+  section that rebinds them.
+- **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
+  override, the AppImage's environment leaking into child processes, Linux specifics, and the
+  macOS permission prompt (item 51) until it is gone.
+- **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
+
+Mechanics, now that the shape is decided:
+
+- [ ] **Docusaurus, in this repository**, so a behaviour change and its documentation can land in
+      one commit — the same argument the specs already win. Where it lives inside the repo is the
+      one open question: a `site/` (or `website/`) directory is the obvious answer, and it must
+      not be `docs/`, which already holds `adr/`, `brand/` and `images/`.
+- [ ] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
+      Pointing Pages at a folder would publish the decision trail as a website by accident.
+- [ ] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
+      It has to be cheap enough to run on every push, or it will be skipped and go stale.
+- [ ] **Whether the site reuses `docs/images/`** or keeps its own copies. Screenshots go stale on
+      their own schedule; one copy is one re-shoot. The `app-screenshot` skill owns how they are
+      taken, including the DEV badge and the blurring of private project names.
+- [ ] **A custom domain, or the default `nightbr.github.io/factorai`.** Wanted eventually; decide
+      before publishing so the links in the README and in every release note are written once. A
+      domain also decides whether item 31's manifest can live here.
+- [ ] **Versioning is deliberately off at first.** Docusaurus can version the docs per release;
+      switching it on before there is a second release to compare against buys a directory of
+      duplicates. Revisit when the stable channel has shipped twice.
+
+## 56. The hero — a one-pager that makes someone want this, at the site's root
+
+**Asked for 2026-09-17, release-blocking.** The index of item 39's site: one page, stylish and
+inspiring, that says what factorai is and gets a stranger to the download. It is the first thing
+anyone sees and today it does not exist — the README is a pitch written for someone already
+looking at the repository, which is a different reader entirely.
+
+**What it has to say**, and `PRODUCT.md` is the contract for all of it: an ADE, not an editor with
+an agent in a pane; the unit of work is a session; the human supervises, decides, reviews and sets
+the rules. The four verbs are the page's spine, not decoration. What it must **not** do is invent
+evidence — no user counts, no benchmarks, no logos, no testimonials, because there are none and a
+fabricated one is the fastest way to lose the reader this page is for.
+
+- [ ] **The page.** Hero statement, the four verbs as the argument, three or four surfaces shown
+      rather than described, install for macOS and Linux, and a link into the guide. One column,
+      readable on a phone, and fast — a landing page that loads slowly is an argument against the
+      product it sells.
+- [ ] **It looks like the app.** `DESIGN.md` is the palette, the type scale and the named rules;
+      the site inheriting them is what makes the download feel like the same thing as the page.
+      `.impeccable/design.json` is the machine-readable sidecar if the theme wants generating.
+- [ ] **Screenshots, and the privacy problem item 41 already hit.** A dev build against the
+      author's own workspace is full of client and employer names, and four blurred rows plus one
+      legible one reads as a redacted document. Use `VITE_FACTORAI_SCREENSHOT=1`, the
+      `app-screenshot` skill and a **fabricated** workspace, which is the same fixture item 41
+      needs for its GIF — build it once.
+- [ ] **Motion, if any, is honest.** The sidebar gesture is the one thing a still cannot show
+      (item 41). A WebM of the real gesture from fake data belongs here as much as in the README;
+      a generic animated mockup of a product that does not behave that way does not.
+- [ ] **Download links resolve to the real artifacts** — the `/releases/latest` asset for each
+      platform, or whatever item 31 settles for channels, so the page cannot go stale between
+      releases. A hero with a dead download is worse than no hero.
+
+**Not in scope:** a blog, a changelog page (item 31 owes the changelog question), pricing, or a
+newsletter. One page, one job.
+
+## 36. A Homebrew cask, because the macOS build will stay unsigned
+
+**Filed 2026-08-20**, out of the question "how complex is signing for macOS, and I don't want an
+Apple developer account". The answer to the first half is *not very* — it is about
+thirty lines of workflow YAML: import a `.p12` into a temporary keychain, then hand Tauri
+`APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` and let it notarize and
+staple, with `bundle.macOS` left as `{}`. The answer to the second half is that the
+certificate has to be a **Developer ID Application** one, which Apple issues only to paid
+Developer Program members — a policy wall, not a technical one. A free Apple ID's Personal Team
+signs for local development and cannot produce one.
+
+**It stopped being what we do instead of paying, on 2026-09-17**, when item 51 took the decision
+to buy a Developer ID certificate and notarize. A cask is still worth having — `brew install
+--cask factorai` is how a developer installs a Mac app, and it composes with the updater we
+already ship — but it is now a *convenience* rather than the only free way around Gatekeeper, and
+**it drops `--no-quarantine` the day a notarized build ships**. Build it after item 51, not
+before, or the instructions have to change twice.
+
+Two dead ends, closed here so nobody re-explores them: a **self-signed** certificate is free and
+Gatekeeper treats it exactly as unsigned, and an explicit **ad-hoc** `codesign` step changes
+nothing because the linker already ad-hoc signs on Apple Silicon.
+
+> **Amended 2026-09-03 by [ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md).**
+> The self-signed dead end is a dead end *for Gatekeeper only*, and that sentence reads as
+> closing the whole question. Gatekeeper trust and TCC persistence are different mechanisms:
+> macOS anchors every privacy grant to the app's designated requirement, an ad-hoc signature has
+> no identity to anchor to, and so every release orphaned every permission the user had granted.
+> A self-signed certificate fixes that and changes nothing about Gatekeeper — so **releases are
+> now signed with one**, and everything this item says about the cask, `--no-quarantine` and the
+> Developer ID wall stands untouched. **Item 51** holds what is left. The ad-hoc dead end is
+> unchanged and still a dead end.
+
+- [ ] A tap repo — `Nightbr/homebrew-factorai` — holding `Casks/factorai.rb`: version, the
+      universal `.dmg`'s URL, its sha256.
+- [ ] A job in `release.yml` **after `publish`**, bumping the cask from the published asset. It has
+      to be after, because the sha256 is of the artifact that was actually uploaded, and it has to
+      be idempotent, because re-running a release job is normal here (see item 31 and the `v0.10.1`
+      post-mortem in `release.yml`'s header).
+- [ ] **`auto_updates true` in the cask.** Not cosmetic: factorai replaces its own bundle in place
+      (F14), so without it Homebrew and the app disagree about what is installed and `brew upgrade`
+      fights the updater. This is the flag casks for self-updating apps carry.
+
+**Be honest about what it buys, now that notarization is coming.** Before item 51 lands,
+`--no-quarantine` is a flag the *user* passes and a cask cannot force — so it **moves** the bypass
+into a command they were going to paste anyway rather than deleting it. After item 51, the flag
+goes and what is left is the plain win: one command to install, one to upgrade, and a version
+Homebrew and the app agree about.
+
+**Linux is unaffected.** The AppImage carries no equivalent problem and stays as it is; there is
+deliberately no `.deb` (F14 — the updater cannot replace one in place).
 
 ## 1. Git graph — the wide surface, and the joins F18 deferred
 
@@ -589,109 +1081,6 @@ unit-tested, but nothing throws inside a mounted tree. A `@smoke` case needs a d
 make the mock app throw; worth adding when the per-surface work lands, since that is when the
 boundary logic stops being trivial.
 
-## 31. Rework the release process — smooth, gapless, and two channels
-
-**User ask, 2026-08-17**, immediately after cutting v0.9.0 by hand. Two halves: make the existing
-process leave nothing to remember, and add an **alpha** channel beside **production** that builds
-often and on its own.
-
-Written from having just done it end to end, so the gaps below are observed rather than imagined.
-
-**Item 36 is the distribution half and is deliberately separate**: a Homebrew cask, plus the step
-that bumps it after `publish`. It belongs beside this item rather than inside it — this one is about
-the pipeline being trustworthy, that one is about macOS staying unsigned.
-
-### 31a. What the current process actually leaves to a human
-
-The pipeline works — `release.yml` is tag-driven, rewrites the three version fields from the tag,
-and drafts a release with signed bundles plus `latest.json`. What it does not do is anything about
-the steps *around* it:
-
-**Two of these are closed and are in [`DONE.md`](./DONE.md)**: the matrix race that put each
-platform's assets in a different draft (one `create-release` job before the matrix, 2026-08-17),
-and automatic publication with the missing-platform guard kept
-([ADR-0014](../../docs/adr/0014-alpha-releases-publish-themselves.md), 2026-08-18). The cost of
-the second is that no person sees a release before the world does, which promotes the first
-bullet below from tidy-up to the next real gap.
-
-- [ ] **Nothing enforces "tag a commit Quality has passed".** `release.yml` says so in its own
-      header and `quality.yml` says it "deliberately does NOT gate the release". So the guarantee
-      is a human remembering to look — cutting v0.9.0 meant polling `gh run list` and waiting
-      before tagging. A tag push should **verify the commit has a green Quality run and fail loudly
-      if not**, rather than building an unverified commit and finding out later.
-- [ ] **The version fields are never bumped, and something in the repo now reads them.** All three
-      sit at `0.1.0`; the tag rewrites them at build time. `release.yml` argues for that
-      deliberately — "no bump commit to forget, no chance of a tag disagreeing with a file" — and
-      that reasoning still holds. **But the cost landed the same day it was written about**: the
-      crash screen (F17) reads the version through a Vite `define`, so every dev build claimed to
-      be `0.1.0` until it was taught to say `(untagged dev build)`. Decide it properly rather than
-      per-consumer: either the tag stays the only truth and *anything* reading the version handles
-      the placeholder, or a real bump lands (with the "forgot to bump" failure automated away).
-      **The user asked for the bump**, so the burden is now on the tag-only scheme to justify
-      itself.
-- [ ] **There is no `CHANGELOG.md`.** `DONE.md` is the de facto source and the GitHub release body
-      is hand-written after the fact each time — `generateReleaseNotes: true` produces notes that
-      then get replaced. Either derive the notes from `DONE.md` or keep a changelog; writing them
-      twice is the current state.
-- [ ] **`gh release edit --notes-file` reports a stale `untagged-…` URL** on a draft. Harmless, but
-      it looks like it edited the wrong thing; worth a note wherever this gets written down so the
-      next person doesn't chase it.
-- [ ] **The macOS smoke pass has still never happened** — that is item 8, not this item, but a
-      release process that has never once been exercised on one of its two target platforms is the
-      real gap and this item should not pretend to close it.
-
-### 31b. Channels — and the constraint that decides the whole design
-
-**⛔ The obvious implementation is broken, and it is written down in `release.yml` already.** The
-action sets `prerelease: false` *deliberately*, because GitHub's `/releases/latest` — which the
-updater endpoint resolves through — **skips prereleases entirely**. So "mark alpha releases as
-prerelease" would leave every alpha user polling a 404 forever. Alpha cannot live at
-`/releases/latest/download/latest.json`. That is the first thing to solve, not a detail.
-
-Plausible answers, to be chosen rather than assumed:
-
-- a **moving `alpha` tag** with a fixed asset URL (`/releases/download/alpha/latest.json`), which
-  sidesteps `latest` entirely and lets alpha releases be marked prerelease honestly;
-- a manifest hosted outside releases (GitHub Pages / a branch), decoupling the channel from
-  GitHub's release semantics.
-
-**Verified about Tauri's updater (2026-08-17, v2 docs) so nobody designs against the wrong model:**
-
-- There is **no built-in channel concept**. The endpoint's dynamic variables are exactly
-  `{{current_version}}`, `{{target}}` and `{{arch}}` — there is no `{{channel}}`.
-- Endpoints can be set **at runtime** via `updater_builder().endpoints(...)`, and the docs give
-  channel-switching as the example use. **This is the good news and it should shape the design:**
-  one build can serve both channels, with the channel a *preference* rather than a separate
-  artifact. That avoids two build matrices and two download pages.
-- Default comparison is `update.version > current`. So **leaving alpha for production is a
-  downgrade and will not happen by itself** — it needs `version_comparator` overridden, or the user
-  reinstalling. Decide what "switch back to stable" means before shipping the switch.
-
-Consequences to settle:
-
-**Where the channel lives was settled 2026-08-17 and unblocked when item 4 shipped**: it is a
-`get_setting`/`set_setting` customer, so it is a second `SettingKey` variant, a match arm and one
-`SettingRow` in F11's first **Advanced** section. Everything else here needs no UI at all.
-
-- [ ] **Alpha versioning.** The manifest `version` must be valid SemVer. `0.9.1-alpha.3` sorts
-      correctly above `0.9.0`; a date-based scheme needs checking against the comparator, not
-      assumed. Whatever is picked has to keep alpha ahead of production without ever overtaking the
-      *next* production release.
-- [ ] **"Builds more often and automatically" — how often?** Every push to `main` is the literal
-      reading and means a ~12-minute two-platform build per commit (seven commits landed today
-      alone). A nightly cron that skips when nothing changed is far cheaper and probably what is
-      actually wanted. Decide, and state it, because this is the line item that costs CI minutes.
-- [ ] **Does alpha gate on Quality?** It should — an automatic channel that ships red commits is
-      worse than no channel. Same mechanism as 31a's first bullet.
-- [ ] **The app should say which channel it is on.** An alpha build that looks identical to a
-      production one produces bug reports nobody can place. The `DEV` pill in `TopBar` is the
-      existing precedent for this kind of marker, and the crash report (F17) already carries the
-      version — it should carry the channel too.
-
-**Not in scope, deliberately:** macOS code signing / notarisation. It is a real gap (the `.dmg` is
-unsigned and Gatekeeper blocks it until quarantine is cleared) but it is an Apple-account problem,
-not a process one, and folding it in here would stall everything else.
-
 ## 32. Light theme — make the palette that already exists actually render
 
 **Split out of item 4 on 2026-08-17**, during F11's interview, because it is a feature and not a
@@ -783,58 +1172,6 @@ whatever notices "this session wants you" cannot be driven off the tab strip or 
 assumes a session is open. That is the case this feature is most useful for — an agent that started
 while you were elsewhere — and the easiest one to miss when the trigger is written.
 
-## 36. A Homebrew cask, because the macOS build will stay unsigned
-
-**Filed 2026-08-20**, out of the question "how complex is signing for macOS, and I don't want an
-Apple developer account". The answer to the first half is *not very* — it is about
-thirty lines of workflow YAML: import a `.p12` into a temporary keychain, then hand Tauri
-`APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` and let it notarize and
-staple, with `bundle.macOS` left as `{}`. The answer to the second half is that the
-certificate has to be a **Developer ID Application** one, which Apple issues only to paid
-Developer Program members — a policy wall, not a technical one. A free Apple ID's Personal Team
-signs for local development and cannot produce one.
-
-**So this item is what we do instead of paying.** `brew install --cask --no-quarantine factorai`
-is the only free way to *remove* the Gatekeeper step rather than explain it, and it composes with
-the updater we already ship.
-
-Two dead ends, closed here so nobody re-explores them: a **self-signed** certificate is free and
-Gatekeeper treats it exactly as unsigned, and an explicit **ad-hoc** `codesign` step changes
-nothing because the linker already ad-hoc signs on Apple Silicon.
-
-> **Amended 2026-09-03 by [ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md).**
-> The self-signed dead end is a dead end *for Gatekeeper only*, and that sentence reads as
-> closing the whole question. Gatekeeper trust and TCC persistence are different mechanisms:
-> macOS anchors every privacy grant to the app's designated requirement, an ad-hoc signature has
-> no identity to anchor to, and so every release orphaned every permission the user had granted.
-> A self-signed certificate fixes that and changes nothing about Gatekeeper — so **releases are
-> now signed with one**, and everything this item says about the cask, `--no-quarantine` and the
-> Developer ID wall stands untouched. **Item 51** holds what is left. The ad-hoc dead end is
-> unchanged and still a dead end.
-
-- [ ] A tap repo — `Nightbr/homebrew-factorai` — holding `Casks/factorai.rb`: version, the
-      universal `.dmg`'s URL, its sha256.
-- [ ] A job in `release.yml` **after `publish`**, bumping the cask from the published asset. It has
-      to be after, because the sha256 is of the artifact that was actually uploaded, and it has to
-      be idempotent, because re-running a release job is normal here (see item 31 and the `v0.10.1`
-      post-mortem in `release.yml`'s header).
-- [ ] **`auto_updates true` in the cask.** Not cosmetic: factorai replaces its own bundle in place
-      (F14), so without it Homebrew and the app disagree about what is installed and `brew upgrade`
-      fights the updater. This is the flag casks for self-updating apps carry.
-
-**Be honest about what it buys.** `--no-quarantine` is a flag the *user* passes; a cask cannot
-force it. So this **moves** the bypass rather than deleting it — but it moves it into a command
-they were going to paste anyway, instead of a dialog they meet after the download. That is the
-whole of the win, and it is worth having.
-
-**What it does not decide.** Whether to eventually pay. Notarization is the only thing that removes
-the step instead of relocating it, and a notarized build makes this cask *nicer* (drop the flag)
-rather than redundant — so this item is not an argument against that one. Revisit when factorai has
-users who aren't its author.
-
-**Linux is unaffected.** The AppImage carries no equivalent problem and stays as it is; there is
-deliberately no `.deb` (F14 — the updater cannot replace one in place).
-
 ## 37. Worktrees — the two pieces F21 v0 left
 
 **F21 v0 shipped 2026-08-21 as v0.19.0** — see [`DONE.md`](./DONE.md) for what landed and the
@@ -850,6 +1187,7 @@ four things it cost that the design did not predict. What follows is the remaind
       the only signal that is an intent rather than an inference — but nothing rests on it, and
       if it is still unobserved in a month, say so here rather than leaving it looking
       load-bearing.
+
 ## 38. More harnesses — Codex, Gemini CLI, OpenCode, Cursor, behind one seam
 
 **User ask, 2026-08-24.** factorai spawns, resumes, indexes and watches exactly one CLI. The ask
@@ -911,55 +1249,6 @@ blocking the whole item on the hardest parser.
 - [ ] Codex end to end, or as far as its capabilities go, with the trait falling out of it.
 - [ ] `SettingKey` growth plus F11's Agents section: default harness, per-harness binary override.
 - [ ] Then Gemini CLI, OpenCode and Cursor, each as its own slice against the settled seam.
-
-## 39. User documentation, hosted on GitHub Pages
-
-**User ask, 2026-08-24, restated 2026-08-30**: *"we will write a full docs later for all factorai
-features"*. Everything written for a *user* today is `README.md` and the four screenshots in
-`docs/images/`. Everything else in the repository is written for whoever is
-building it: `specs/` is the design source of truth (§ 6), `docs/adr/` is the decision trail, and
-this file is sequencing. All three read as internal because they are.
-
-**The README is a pitch, not a manual, and it stays that way** — settled 2026-08-30 when the
-routines section arrived and its second half, which explained how to *configure* one, was cut the
-same day. A section there says what a surface is for and shows it; how to set it up belongs on the
-site, and every feature that ships between now and then adds to what the site owes rather than to
-the README. F22's own configuration — the preset picker and the custom cron, the next-runs echo,
-the catch-up window, the concurrency cap and what `Run now` answers — is the first entry on that
-list.
-
-**The rule that keeps this from rotting: the site does not fork the specs.** It is a different
-document for a different reader — how to install it, what the surfaces do, what to do when
-something does not work — and where it needs a fact the specs own, it links rather than restates.
-A second copy of a behaviour is a second thing to update in the commit that changes it, and § 6
-already says which copy wins.
-
-What it holds, in the order a new user meets it:
-
-- **Install**, which is currently the most under-served thing: the AppImage, the unsigned `.dmg`
-  and the Gatekeeper step it costs, and the Homebrew cask once item 36 lands.
-- **First run** — adding a project, what discovery does, why sessions appear on their own.
-- **The surfaces** — sessions and the terminal, Files, Changes, the graph, search, worktrees, and
-  **routines** (F22): the schedule presets and the custom cron, the next-runs echo, catch-up and
-  its window, the concurrency cap, what `Run now` answers when it declines, and the blue dot for a
-  session running with no tab.
-- **Settings**, and **keyboard shortcuts** — the defaults table F28 publishes, and the Keyboard
-  section that rebinds them.
-- **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
-  override, the AppImage's environment leaking into child processes, Linux specifics.
-- **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
-
-Mechanics worth deciding up front:
-
-- [ ] A generator, and an ADR for it if it becomes load-bearing on the release path (§ 5).
-- [ ] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
-      `docs/` in this repository already holds `adr/`, `brand/` and `images/`; pointing Pages at
-      that folder would publish the decision trail as a website by accident.
-- [ ] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
-- [ ] Whether the site reuses `docs/images/` or keeps its own copies. Screenshots go stale on
-      their own schedule; one copy is one re-shoot.
-- [ ] A custom domain, or the default `nightbr.github.io/factorai`. Decide before publishing, so
-      the links in the README are only written once.
 
 ## 40. Pull requests and merge requests — GitHub and GitLab, from inside factorai
 
@@ -1047,7 +1336,6 @@ recording to redo.
 Sequencing note: the mock-bridge fixture and the pointer choreography would also
 give the smoke suite a way to demonstrate the drag at human speed for debugging,
 which is the second reason to build it once rather than hand-roll a capture.
-
 
 ## 43. A simpler way to hand a file to the agent — a drop target and a visible control
 
@@ -1148,160 +1436,3 @@ it, the same measured rule as item 48 decides tree-beside-viewer or tree-above-v
 
 None of it is started until item 48 has shipped and been lived with.
 
-## 51. The macOS permission loop — the free half shipped, the paid half is a decision
-
-**User report, 2026-09-03**, in the reporter's words: *"il y a un petit bug avec les droits, on me
-demande tout le temps le droit d'accéder aux mêmes dossiers. Je suis ramené dans les paramètres
-pour autoriser une bonne fois pour toutes mais après redémarrage, rebelote."* Plus a *"factorai was
-prevented from modifying apps on your Mac"* notification, and factorai's **App Management** toggle
-showing as off after they had switched it on.
-
-**Two mechanisms, one cause, and they do not have the same fix** — the diagnosis is in
-[ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md) and is not repeated
-here. In short: TCC anchors a grant to the app's designated requirement, an ad-hoc signature has
-none so it falls back to the cdhash, and every release and every F14 self-update orphans every
-grant. That is the recurring folder ask. The notification is a second thing —
-`tauri-plugin-updater` writing inside `/Applications/factorai.app` is App Management, whose only
-two escapes both key on an Apple **Team ID**.
-
-**Shipped 2026-09-03: the free half.** Releases are signed with a self-signed certificate held as
-`APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD`. Grants now anchor to the certificate, so they
-survive a release; App Management is still asked for, but asked *once* instead of once per version.
-Gatekeeper is untouched and item 36 stands as written.
-
-**Two things that must be verified on a real Mac before the first signed tag is pushed.** Neither
-was testable from the Linux machine this was written on, and the first one is the whole premise:
-
-- [ ] **The designated requirement is certificate-anchored, and TCC accepts it on a machine that
-      does not trust the certificate.** Two consecutive builds, `codesign -d -r- factorai.app` on
-      each: identical output, naming the certificate rather than a cdhash, is the pass. If TCC
-      turns out to want an anchor it trusts, this whole item collapses into the paid half and the
-      workflow step should come back out.
-- [ ] **The import step runs on a GitHub macOS runner.** It leans on passwordless `sudo` for
-      `add-trusted-cert`, and none of it is testable from Linux — it runs for the first time on
-      the first signed tag. Re-running the macOS matrix job on its own is normal here, so a
-      failure costs a re-run rather than a release, but read the job log before assuming the
-      `.dmg` in the release is signed.
-- [ ] **The app still works signed and hardened.** `hardenedRuntime` was Tauri's default and moot
-      while nothing signed; it now takes effect. Launch it, open a session, drive a PTY, open a
-      file dialog, apply an update — the `manual-qa` lane, not the test suite, which cannot see
-      this.
-
-**Then a decision, which is the open half: pay the $99/yr or not.** What it buys, precisely, so the
-question is not re-derived: a Team ID, which satisfies the same-team rule and **removes the App
-Management prompt entirely** rather than making it stick; and notarization, which removes the
-Gatekeeper step and lets item 36's cask drop `--no-quarantine`. Notarization alone grants nothing
-here — the Team ID is the part that matters for this bug. Revisit when the prompt-once behaviour has
-been lived with for a while; it may be enough.
-
-**What not to try.** `NSUpdateSecurityPolicy` in our own `Info.plist` maps team identifiers, and we
-have none to name — it is available only once the paid half is, and redundant then. An explicit
-ad-hoc `codesign` step remains what item 36 says it is.
-
-**One operational consequence worth not learning the hard way.** The `.p12` joins the minisign key
-of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
-user has granted. It does not break the update path the way losing the minisign key would, so it is
-one notch less fatal — but it is not a secret to regenerate casually.
-
-## 54. Switching session — time to the first thing on screen
-
-**Asked for 2026-09-15**, unmeasured: the report is that changing session takes visibly longer to
-show anything than it should. So the first task is a number, not a patch — the candidates below
-are what reading the code suggests, and at least two of them are cheap enough that fixing the
-wrong one would be indistinguishable from fixing nothing.
-
-**What is already right, and must stay right.** The xterm pool (`Terminal.tsx` § "Persistent xterm
-pool") keeps one terminal per session alive for the app's life: a switch toggles `visibility` in
-`showOnly`, it does not rebuild a buffer or reparent a host, and the reason it does not reparent is
-a macOS wheel bug the comment there records. `FileTreePanel` and the shell footer hang off
-`AppShell`, not off the route, so neither unmounts on a switch (ADR-0032). Nothing in this item may
-be paid for by disposing, detaching or re-creating a pooled terminal — that is the change that
-looks like a win in a profile and is a regression in the window.
-
-- [ ] **Measure first, in the real window.** Click-to-first-paint for three cases, which are not
-      the same case: a session whose terminal is already pooled, one being opened for the first
-      time this run (a `terminal_spawn` plus `claude --resume` redrawing the transcript), and a
-      switch that also crosses projects. The `manual-qa` lane, with the React profiler on;
-      a Playwright smoke run cannot see any of this.
-
-**The candidates, in the order they are worth checking.**
-
-- **The route's three queries gate the header.** `SessionView` reads `list_projects`,
-  `list_sessions` and `list_profiles`, and `App.tsx`'s app-wide default is `staleTime: 1000` — so
-  any switch more than a second after the last read refetches. Cached data still renders, so
-  this should not be visible; what *is* visible is that `projectCwd` is `null` until
-  `list_projects` answers, and `projectCwd` is in the dependency list of `Terminal`'s mount effect.
-  A cold switch therefore runs that effect twice, and the first run reaches `attachPty` with a null
-  cwd. Worth fixing on its own merits whatever the profile says.
-- **The first frame is deliberately the old grid.** The mount effect defers `fitToHost`,
-  `scrollToBottom` and `focus` into a `setTimeout(…, 0)`, and an adopted host gets a second
-  `fitToHost` plus a full `refresh` in a `requestAnimationFrame`. Both are correct — the layout is
-  not real any earlier — but they are also the two places a switch can be seen to settle rather
-  than appear.
-- **Every hidden terminal still has layout.** `showOnly`'s own note says it: a background session's
-  rows are laid out, though never painted, as its output arrives, and `content-visibility: hidden`
-  is not used because it zeroes descendant geometry and brings back the measurement bug the pool
-  exists to avoid. That comment asks for exactly this — a profile at a session count that hurts.
-  Ten live sessions is the case to measure; if it is flat, say so in the comment and close the
-  question.
-- **The panel re-roots on the switch.** `useActiveCheckout` recomputes `root`, `FileTreePanel`
-  draws `Loading…` while `isLoading`, and the tree relists. For two sessions in the same checkout
-  the root does not change, so this should be free; confirm that it actually is, rather than the
-  panel blanking and redrawing the same tree.
-
-**What good looks like.** Switching between two pooled sessions in one checkout paints the header
-and the terminal in the frame after the click, with no `Loading…` anywhere in the panel. A session
-being opened for the first time cannot do that — the transcript comes back through the PTY — but
-it can paint its chrome immediately and wait for the body, which is not what "nothing for a
-moment, then everything" does today.
-
-## 55. The markdown preview re-parses far more often than it changes, and mermaid pays for it
-
-**Asked for 2026-09-15**, with a large document and a document full of diagrams as the two cases
-that hurt. Two separate causes with one symptom, and the first one is the one to fix.
-
-**The document is re-parsed on every render of its host.** `MarkdownView` is not memoized, and
-react-markdown 10 has no incremental parse — it runs remark and rebuilds the whole hast tree every
-time it renders. Its host is `FileView`, which holds the edit buffer's state machine
-(`useEditBuffer`: dirty, saving, save error, conflict, banner), the SOPS plaintext and its four
-states, a `sops` status query, the selection the footer's mention button reads, and the preview
-toggle itself. Every one of those state changes re-parses the entire document. Even a host that
-re-rendered for a good reason would not be able to skip it: `remarkPlugins={[remarkGfm]}` and the
-`components` object are fresh literals on each render, so no `memo` would ever bail out.
-
-- [ ] **Hoist what does not change and memoize what does.** `remarkPlugins` becomes a module
-      constant; `components` becomes a `useMemo` on `[path, onOpenPath]`, which is all the three
-      overrides actually capture; `MarkdownView` gets `memo`. Confirm with the profiler that a
-      keystroke in the footer's search, a save, and a `sops` query settling each stop re-parsing
-      the document.
-- [ ] **`previewSource` reads a ref during render** (`FileView.tsx:304`:
-      `dirty ? bufferRef.current : file.contents`). It works because the editor is unmounted while
-      the preview is up, so the buffer cannot move underneath it — but it is a render-time read of
-      mutable state, and it is what makes the preview's input look like it changes on every render
-      when it does not. Whatever shape the memo takes has to make that explicit rather than inherit
-      it.
-- [ ] **Measure a genuinely large document before deciding anything else is needed.** There is no
-      virtualization: a long README becomes one DOM tree under the `prose` classes in one pass. If
-      re-parse-on-every-render is the whole story, stop there — chunked rendering is a much
-      larger change and should not be started on a guess.
-
-**Mermaid is the second cause, and it multiplies the first.** Each fence is a `MermaidDiagram` that
-calls `loadMermaid()` in its own effect:
-
-- **`loadMermaid` reads the palette off the document on every call** — nine `getComputedStyle`
-  reads through `diagramPalette` and `currentFontFamily`, one forced style recalculation per
-  diagram, to compute a key that is almost always identical to the last one. The module already
-  caches the *configuration* behind `configuredFor`; it does not cache the reads that produce the
-  key. A palette moves on a theme switch (item 32), which is an event, not a per-render condition.
-- **Every diagram renders independently and concurrently** against the one global mermaid
-  instance — no queue, no batching — and each `render` builds a temporary node, runs DOMPurify
-  and hands back an SVG *string*, which `MermaidDiagram` then parses a second time with
-  `DOMParser` and adopts with `importNode`. A document with twenty diagrams does that twenty
-  times, unthrottled, on the first frame the preview is up.
-- **A `code` change empties the host before the new SVG lands** — state goes back to `pending` and
-  the effect `replaceChildren()`s the node — so each diagram collapses to zero height and the page
-  reflows through it. Keeping the old SVG until the new one is ready is the obvious fix and costs
-  nothing, since the failure path already keeps the source.
-
-The 2.5MB dynamic `import()` (ADR-0021) is not on this list: it is paid once, only by documents
-that have a fence, and it is the right trade.
