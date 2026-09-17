@@ -41,11 +41,11 @@ stranger finds. Five workstreams, in the order they should be built, each an ite
 2. **[Item 31](#31-two-channels-and-a-release-process-with-nothing-left-to-remember) — alpha and stable, and a release process with nothing left to remember.**
    Strangers on the update path make "the pipeline is trustworthy" a release criterion rather
    than housekeeping. The channel mechanism is open, including a manifest hosted on the site.
-3. **[Item 57](#57-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Items 54 and 55 are its
+3. **[Item 59](#59-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Items 54 and 55 are its
    first two known findings and sit directly under it.
 4. **[Item 39](#39-the-site--a-docusaurus-build-carrying-the-guide-deployed-to-pages) — the site: one Docusaurus build on GitHub Pages**, the guide under `/docs`,
    a custom domain to decide.
-5. **[Item 56](#56-the-hero--a-one-pager-that-makes-someone-want-this-at-the-sites-root) — the hero one-pager**, which is that site's index and the first thing anyone
+5. **[Item 58](#58-the-hero--a-one-pager-that-makes-someone-want-this-at-the-sites-root) — the hero one-pager**, which is that site's index and the first thing anyone
    sees.
 
 **Item 36 (the Homebrew cask) sits directly after them**, because it is the install path the site
@@ -197,7 +197,7 @@ Plausible answers, to be chosen rather than assumed:
 - a **moving `alpha` tag** with a fixed asset URL (`/releases/download/alpha/latest.json`), which
   sidesteps `latest` entirely and lets alpha releases be marked prerelease honestly;
 - a manifest hosted outside releases, decoupling the channel from GitHub's release semantics —
-  **cheaper than it was**, because items 39 and 56 are standing up a Pages deployment anyway, so
+  **cheaper than it was**, because items 39 and 58 are standing up a Pages deployment anyway, so
   `factorai.<domain>/updates/{alpha,stable}.json` costs a file in that build rather than a new
   piece of infrastructure. Its cost is that the site's deploy becomes part of the release path,
   which is exactly the kind of coupling to decide deliberately rather than discover.
@@ -231,15 +231,17 @@ Consequences to settle:
 - [ ] **Does alpha gate on Quality?** It should — an automatic channel that ships red commits is
       worse than no channel. Same mechanism as 31a's first bullet.
 - [ ] **The app should say which channel it is on.** An alpha build that looks identical to a
-      production one produces bug reports nobody can place. The `DEV` pill in `TopBar` is the
-      existing precedent for this kind of marker, and the crash report (F17) already carries the
-      version — it should carry the channel too.
+      production one produces bug reports nobody can place. There are three homes for it now and
+      they are not alternatives: the `DEV` pill in `TopBar` is the precedent for the marker, the
+      crash report (F17) already carries the version and should carry the channel, and the
+      **About section (F29, item 57, shipped 2026-09-16)** is where a user looks when asked which
+      build they are on — its version line is the copy control.
 
 **Not in scope, deliberately:** macOS code signing / notarisation. It is a real gap (the `.dmg` is
 unsigned and Gatekeeper blocks it until quarantine is cleared) but it is an Apple-account problem,
 not a process one, and folding it in here would stall everything else.
 
-## 57. Performance — one audit, measured, then the fixes it names
+## 59. Performance — one audit, measured, then the fixes it names
 
 **Asked for 2026-09-17, release-blocking.** Two performance reports are already filed as items 54
 and 55, both from the same week, both unmeasured. A public release is the wrong moment to
@@ -389,7 +391,7 @@ that have a fence, and it is the right trade.
 ## 39. The site — a Docusaurus build carrying the guide, deployed to Pages
 
 **Release-blocking, and settled 2026-09-17: one site, one deployment, one workflow.** A Docusaurus
-app whose **index is the hero one-pager (item 56)** and whose `/docs` is the guide. Two
+app whose **index is the hero one-pager (item 58)** and whose `/docs` is the guide. Two
 deployments were considered and dropped — two domains, two sets of links to keep honest, and a
 hero that cannot link straight into a guide page without leaving its own origin.
 
@@ -446,7 +448,7 @@ Mechanics, now that the shape is decided:
       switching it on before there is a second release to compare against buys a directory of
       duplicates. Revisit when the stable channel has shipped twice.
 
-## 56. The hero — a one-pager that makes someone want this, at the site's root
+## 58. The hero — a one-pager that makes someone want this, at the site's root
 
 **Asked for 2026-09-17, release-blocking.** The index of item 39's site: one page, stylish and
 inspiring, that says what factorai is and gets a stranger to the download. It is the first thing
@@ -1399,10 +1401,14 @@ what driving the dev app caught, and
 [ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md) for why this
 host and not the other five. What is left is small and independent:
 
-- [ ] **`Escape` returns focus to the session.** It closes nothing today, which is the important
-      half — over a pane you are reading beside the agent, the modal's reflex is wrong. Moving
-      focus into the terminal needs a focus path nothing else has wanted yet, which is why it is
-      not in the first cut.
+**`Escape` landed 2026-09-16, and it went the other way**: ADR-0047 scoped it to "focus is in
+this pane", and there it **closes the file** rather than handing focus back — the ambush this
+item worried about is answered by the scope instead. `useFileViewer.open` now asks for focus so
+the keystroke reaches the pane at all (`viewerFocusVerdict`). What that leaves is the original
+half, and it is smaller: **where focus goes once the last file is closed**, which is the terminal
+and needs a focus path nothing else has wanted yet.
+
+- [ ] **Focus returns to the session when the pane empties.**
 - [ ] **Reordering tabs by drag.** `SessionTabs` has the dnd-kit worked example (ADR-0016) and the
       4px activation constraint that keeps a click a click; a keyboard path ships beside it or it
       is half a feature. Nobody has asked to order files yet.

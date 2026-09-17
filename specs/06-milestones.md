@@ -186,14 +186,14 @@ questions; this list is the arc.
   has not passed, and the versioning and changelog questions settled. The
   channel mechanism is open: a moving `alpha` tag, or a manifest served from the
   site below.
-- **A performance audit, then the fixes it names** (item 57, with items 54 and
+- **A performance audit, then the fixes it names** (item 59, with items 54 and
   55 as its first two known findings). Budgets written down first, measured in
   the real window on both engines, and nothing paid for by disposing a pooled
   xterm.
 - **The site** (item 39): one Docusaurus build deployed to GitHub Pages, the
   user guide under `/docs`, a custom domain to decide before the links are
   written.
-- **The hero one-pager** (item 56), which is that site's index — what factorai
+- **The hero one-pager** (item 58), which is that site's index — what factorai
   is, the four verbs of the operating model, and the download.
 
 **Exit criteria.**
