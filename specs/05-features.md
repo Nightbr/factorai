@@ -7,7 +7,7 @@ For each feature: behavior, UI, backend touchpoints, edge cases.
 ## F1 — Project list
 
 **A project is a folder you added.** Not a directory Claude happens to have
-worked in — see [ADR-0011](../docs/adr/0011-a-project-is-a-folder-in-the-workspace.md),
+worked in — see [ADR-0011](adr/0011-a-project-is-a-folder-in-the-workspace.md),
 which is the contract this section implements. `~/.claude/projects/` is a
 **discovery source**: we read it to find out which folders Claude has been used
 in, and it takes an explicit act of yours to turn one of those into a project.
@@ -40,7 +40,7 @@ scan a sidebar for.
 
 ### Collapsed — the rail
 
-**It collapses to a 48px rail rather than to nothing** ([ADR-0038](../docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md)),
+**It collapses to a 48px rail rather than to nothing** ([ADR-0038](adr/0038-the-sidebar-collapses-to-a-flat-rail.md)),
 because it is the app's navigation and a navigation column you dismissed is an
 app with no way to change what you are looking at. The toggle sits in the
 sidebar's own search row, left of the field — this column's state, not window
@@ -112,7 +112,7 @@ change a mode nobody asked to change. The menu rows are **absent rather than
 disabled**, because the thing blocking them is a sort mode in a different menu
 and a greyed row invites a hunt for it.
 
-**The gesture is dnd-kit, pointer-based** ([ADR-0016](../docs/adr/0016-dnd-kit-for-pointer-based-reordering.md)),
+**The gesture is dnd-kit, pointer-based** ([ADR-0016](adr/0016-dnd-kit-for-pointer-based-reordering.md)),
 with the 4px activation distance that keeps a click a click. Listeners sit on the
 **whole row** rather than a grip, and the sortable node is the whole `<li>`, so an
 expanded project lifts with its session list instead of leaving it behind under
@@ -1129,7 +1129,7 @@ host-agnostic, which is what makes three hosts possible at all.
   `?file=` remains the active file and keeps every property it had: deep link,
   reload and HMR survival, browser-back closes the viewer, and F19's terminal
   links and F20's IDE bridge arrive through it.
-- **The viewer survives a navigation** ([ADR-0042](../docs/adr/0042-the-open-file-rides-across-a-navigation.md)).
+- **The viewer survives a navigation** ([ADR-0042](adr/0042-the-open-file-rides-across-a-navigation.md)).
   Switching session, starting a new one, or moving between a project and its
   sessions leaves the pane showing what it was showing: `file` and `diff` are
   carried by a middleware on the root route, rather than by a `search` prop on
@@ -1142,7 +1142,7 @@ host-agnostic, which is what makes three hosts possible at all.
   so when a session in a linked worktree comes to the front the pane shows
   *that* checkout's last file, as it was left, preview included.
 - **A change of project closes what it cannot show**
-  ([ADR-0043](../docs/adr/0043-a-project-switch-does-not-carry-the-open-file.md)).
+  ([ADR-0043](adr/0043-a-project-switch-does-not-carry-the-open-file.md)).
   The viewer is isolated per project: switching to a project with no file of its
   own on record leaves the pane empty rather than showing the file the last
   project was reading, and that path is never adopted into the new project's
@@ -1162,7 +1162,7 @@ host-agnostic, which is what makes three hosts possible at all.
   controls beside the tabs — expand and close — in **one** 36px row rather than
   a header under the tabs, because that column can be 400px wide.
 - **`Escape` closes the file the pane is showing** (2026-09-16, user ask;
-  [ADR-0047](../docs/adr/0047-escape-closes-the-file-tab-that-has-focus.md)).
+  [ADR-0047](adr/0047-escape-closes-the-file-tab-that-has-focus.md)).
   From **anywhere in the pane** — the editor, the rendered markdown, a diff, an
   image, the tab strip, the expand control — and from nowhere else: focus in the
   pane is the whole scope, so the terminal keeps its `Escape` and so does every
@@ -1177,7 +1177,7 @@ host-agnostic, which is what makes three hosts possible at all.
   the last tab closes the viewer the way its `×` does, and the other ways out
   are unchanged: the `×`, a middle-click, and `Mod+W` (F28).
 - **An open lands focus in the pane** (2026-09-16, user ask;
-  [ADR-0048](../docs/adr/0048-a-human-open-lands-focus-in-the-viewer.md)). The
+  [ADR-0048](adr/0048-a-human-open-lands-focus-in-the-viewer.md)). The
   gesture that opens a file is a click somewhere else — a tree row, a Changes
   row, a commit's file list, a `Ctrl`-click on a path in the terminal — so
   without this every key the pane owns is unreachable until the reader clicks
@@ -1245,7 +1245,7 @@ and find is a contribution. `monaco.ts` now imports
 contribution *and* carries an upstream patch that takes the widget's controls
 out of the tab order while it is hidden. Every service the controller asks for
 is already registered by `standaloneServices`, so this one costs nothing but
-its own weight. [ADR-0007](../docs/adr/0007-monaco-for-the-file-viewer.md)
+its own weight. [ADR-0007](adr/0007-monaco-for-the-file-viewer.md)
 lists the find widget among the affordances Monaco gives free; that was written
 before anyone pressed the key, and it is true only with the import.
 
@@ -1461,7 +1461,7 @@ document, and it becomes a panel above the prose.
 documents this viewer is pointed at are the ones an agent writes and the ones a
 repository already has, and a diagram left as its own source is the one kind of
 content where the rendered view is *worse* than the source view — `specs/`
-and `docs/adr/` in this repo are the worked example.
+and `specs/adr/` in this repo are the worked example.
 
 - **Only a `mermaid` fence counts.** A fence labelled `mmd`, or one with no label, is
   a code block and stays one. Guessing at unlabelled fences would turn any file
@@ -1715,7 +1715,7 @@ inline (unified) or side-by-side mode.
 section said "Read-only", and that is true of the sides that are git objects and
 false of the one that is a file: `unstaged` and `head` both put the **working
 tree** on the right, and it is editable there exactly as it is in the file view.
-F26 § "Editing a diff" owns the rule and [ADR-0041](../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md)
+F26 § "Editing a diff" owns the rule and [ADR-0041](adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md)
 the reasoning; everything below about *what is diffed and how it is rendered* is
 unchanged.
 
@@ -1800,7 +1800,7 @@ previous version of this section described four states derived from "output flow
 + prompt detection" on a 200ms tick. All of that is changed: two of its four
 states were never emitted by any code, and the mechanism it named is not the one
 that works. The reasoning is here rather than in a commit message; the decision
-is [ADR-0015](../docs/adr/0015-session-status-from-the-terminal-title.md).
+is [ADR-0015](adr/0015-session-status-from-the-terminal-title.md).
 
 **What it solves.** A live PTY is not one state. Claude is either doing
 something, or it has handed back and is waiting for you, and the whole point of
@@ -1860,7 +1860,7 @@ mid-spin. This rule reads the title and nothing else.
 **Nothing has to be configured, and nothing is written anywhere.** No hooks, no
 settings file, no environment changes, no cooperation from the CLI beyond what it
 already does — which is what makes this safe under
-[ADR-0004](../docs/adr/0004-claude-dir-is-read-only.md).
+[ADR-0004](adr/0004-claude-dir-is-read-only.md).
 
 ### UI
 
@@ -1997,7 +1997,7 @@ it. That is what makes this worth a surface rather than three one-off toggles.
 | User preferences the renderer alone reads | **`prefsStore`** (`factorai.prefs`), localStorage | Synchronous, so no hydration flash |
 | Anything **Rust** must read | the SQLite `settings` table | Rust already has the pool, and it is ACID |
 
-See [ADR-0013](../docs/adr/0013-preferences-storage-split.md), which also records
+See [ADR-0013](adr/0013-preferences-storage-split.md), which also records
 why **`tauri-plugin-store` is removed** rather than finally used.
 
 **`prefsStore` is a fourth store, not a merger of the other three.** The line is
@@ -2475,7 +2475,7 @@ carries the same control, because that is where a version is read and the next
 question after "which version am I on" is "is there a newer one" (F29). They are
 one updater — the phase, the staged version and the one-install-per-run guard
 live in `updaterStore`, owned by a single runtime hook in `AppShell`
-([ADR-0050](../docs/adr/0050-the-updaters-state-is-a-store-not-a-hook.md)) — so
+([ADR-0050](adr/0050-the-updaters-state-is-a-store-not-a-hook.md)) — so
 neither can be checking while the other says ready, and neither starts a check
 by being mounted. **That ADR also fixed a live bug this paragraph used to hide:**
 the badge is mounted twice already, inline in the expanded footer and inside the
@@ -3020,7 +3020,7 @@ tractable.** GitKraken was open beside factorai for exactly one purpose:
 they diverged. Everything a git GUI is usually for — committing, rebasing,
 merging, resolving — the agent in the terminal below already does better. This
 ships the half that justifies the weight and none of the half that doesn't.
-[ADR-0009](../docs/adr/0009-git2-for-repository-state.md)'s read-only clause is
+[ADR-0009](adr/0009-git2-for-repository-state.md)'s read-only clause is
 untouched: nothing here commits, stages, checks out, pushes or fetches, and
 `git2` is compiled `default-features = false`, so network transport isn't merely
 unimplemented — it isn't linked in.
@@ -3253,7 +3253,7 @@ trustworthy cannot draw a shape that isn't the repository's.
 Colour is what makes an edge traceable across a merge in a narrow column, and
 tracing is the job. This feature **establishes the repo's categorical colour
 tokens** — see
-[ADR-0012](../docs/adr/0012-categorical-colour-tokens.md).
+[ADR-0012](adr/0012-categorical-colour-tokens.md).
 
 ### Interaction
 
@@ -3793,7 +3793,7 @@ since there is nothing to hover and nobody is looking.
 
 **Status: built, and the CLI connects — observed 2026-08-19 against 2.1.235.**
 Roadmap item 19 and
-[ADR-0017](../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
+[ADR-0017](adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
 which hold the decisions and the reasoning behind each. This section is the
 behaviour they add up to.
 
@@ -3854,7 +3854,7 @@ registers this connection under the hardcoded key `ide` and hands the model only
 `executeCode` and `getDiagnostics` from it, so every tool above works for one
 reason: **the CLI calls them, not the model.** A tool meant for an agent goes on
 factorai's own MCP server instead — F22 § "Routines over MCP" and
-[ADR-0029](../docs/adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
+[ADR-0029](adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
 `ideName: "factorai"` in our lockfile names a row in the `/ide` picker and
 nothing more.
 
@@ -4059,7 +4059,7 @@ item 37's last box. Two things work with zero uptake of the tool — the `openFi
 inference and the `sessions.cwd` default — so the floor is "correct but passive"
 rather than "broken". The graph's per-checkout `HEAD` chips are the other
 remainder, and they are cosmetic.
-[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) holds the
+[ADR-0019](adr/0019-a-worktree-is-a-checkout-not-a-project.md) holds the
 two decisions that constrain everything below — what a worktree *is*, and what
 the bridge is allowed to reach.
 
@@ -4250,7 +4250,7 @@ control".
 
 ### The scope the bridge resolves against
 
-[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 2 holds
+[ADR-0019](adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 2 holds
 the decision; three things about the implementation are worth stating here.
 
 **The set is the session's cwd plus every checkout of its repository**, and the
@@ -4605,9 +4605,9 @@ editor, the two context-menu items, the origin icon and the tabless spawn.
 **Slice 3 — the MCP tool group — landed 2026-08-30**; see § "Routines over MCP"
 below. The skills picker (slice 2) is still outstanding. The two decisions
 everything below rests on are in
-[ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md) — what a fire
+[ADR-0026](adr/0026-a-routine-runs-without-a-tab.md) — what a fire
 starts, and who decides it is time — with
-[ADR-0028](../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md)
+[ADR-0028](adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md)
 holding what an agent may do to a schedule. Sequencing and the slices are roadmap
 item 42.
 
@@ -4655,7 +4655,7 @@ and a row claiming success. Two of three fires of one daily routine were lost th
 way before anyone could see it.
 
 So the fire is claimed first and recorded last, which is what
-[ADR-0030](../docs/adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md)
+[ADR-0030](adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md)
 holds, and what ADR-0026 § 7 always said out loud. Between the two, the
 occurrence is **unconsumed**: the claim is what stops the next tick deciding it
 again, the tick re-emits any claim older than one tick, and the renderer asks for
@@ -4827,9 +4827,9 @@ renderer store because Rust reads it (ADR-0013).
 follow-up work in the project it is working in — `listRoutines`,
 `createRoutine`, `updateRoutine`, `setRoutineEnabled`, reaching the agent as
 `mcp__factorai__*`. What an agent may do to a schedule is
-[ADR-0028](../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md);
+[ADR-0028](adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md);
 where the tools live is
-[ADR-0029](../docs/adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
+[ADR-0029](adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
 
 **They are not on the IDE bridge, and the first version of this slice was.** It
 shipped, answered every call correctly over the bridge's socket, and was invisible
@@ -5372,7 +5372,7 @@ non-persisted map keyed by chip.
 isolation boundary — credentials, `settings.json`, `projects/`, `ide/`, hooks
 and MCP config all resolve under it — so a profile is a complete separate
 identity that factorai never holds a token for.
-[ADR-0036](../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md)
+[ADR-0036](adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md)
 is the contract this section implements, including why holding credentials was
 rejected rather than deferred.
 
@@ -5657,7 +5657,7 @@ this happened; it just never said so. Now it does, and a lossy read is read-only
 
 ### Editing a diff
 
-**Added 2026-09-09, user ask** ([ADR-0041](../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md)).
+**Added 2026-09-09, user ask** ([ADR-0041](adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md)).
 The table above used to refuse the whole diff surface. It was right about three
 of the four modes and wrong about the two that matter most.
 
@@ -6372,7 +6372,7 @@ graph instead — the list is baked into the build (below), so it is already her
 ### Where the facts come from
 
 **`build-info.json`, written by CI and fetched at runtime** — see
-[ADR-0049](../docs/adr/0049-build-metadata-is-a-file-ci-writes.md) for why it is
+[ADR-0049](adr/0049-build-metadata-is-a-file-ci-writes.md) for why it is
 a file rather than three more Vite defines.
 
 ```json
@@ -6407,7 +6407,7 @@ in it.
 ### Updates, and the second door
 
 The Updates row carries the same control as the sidebar footer, and the two are
-one updater — [ADR-0050](../docs/adr/0050-the-updaters-state-is-a-store-not-a-hook.md)
+one updater — [ADR-0050](adr/0050-the-updaters-state-is-a-store-not-a-hook.md)
 lifts `useUpdater`'s state into `updaterStore` so that a phase seen in one place
 is the phase seen in the other. F14 still owns the behaviour; this section adds
 no cadence, no new check and no second install.

@@ -82,7 +82,7 @@ a stale window origin once put a synthetic click into an unrelated app.
 | [`.claude/skills/`](.claude/skills/) | the long form, one file per task — the gate, the spec/ADR workflow, conventions, the test lanes, QA |
 | [`specs/`](specs/) | the design source of truth: architecture, the command surface, feature-by-feature behaviour |
 | [`specs/roadmap/`](specs/roadmap/) | what is next in priority order, and a dated log of what shipped |
-| [`docs/adr/`](docs/adr/) | decisions and why, including superseded ones |
+| [`specs/adr/`](specs/adr/) | decisions and why, including superseded ones |
 | [`specs/09-branding.md`](specs/09-branding.md) | the mark, the palette, and how the icons are regenerated |
 
 Specs lead and code follows: if the two disagree, fix whichever is wrong before

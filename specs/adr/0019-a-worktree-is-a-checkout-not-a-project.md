@@ -6,7 +6,7 @@ implementation** — written ahead of the code, as
 the same reason: § 2 below moves a security boundary, and a boundary is easier
 to argue about before there is code sitting on it. Extends
 [ADR-0011](./0011-a-project-is-a-folder-in-the-workspace.md) (§ 1) and ADR-0017
-§ 3 (§ 2). Arises from [F21](../../specs/05-features.md) and roadmap item 37.
+§ 3 (§ 2). Arises from [F21](../05-features.md) and roadmap item 37.
 
 ## Context
 

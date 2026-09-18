@@ -4,7 +4,7 @@ The mark, how it is built, and how the shipped assets are produced. This is a
 contract like every other spec: if the code and this file disagree, one of them
 is wrong and gets fixed.
 
-Assets live in [`docs/brand/`](../docs/brand/). Everything the app ships is
+Assets live in [`assets/brand/`](../assets/brand/). Everything the app ships is
 generated from **one** of them — `factorai-icon.svg`.
 
 ---
@@ -267,7 +267,7 @@ icons derive from `factorai-icon.svg`.
 (Windows, which we do not ship but the bundler still wants):
 
 ```bash
-cd apps/desktop && pnpm tauri icon ../../docs/brand/factorai-icon.svg
+cd apps/desktop && pnpm tauri icon ../../assets/brand/factorai-icon.svg
 ```
 
 **Feed it the SVG, not a raster master.** `06-milestones.md` and roadmap item 18

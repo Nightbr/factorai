@@ -125,7 +125,7 @@ Binding, and recorded in `specs/09-branding.md`:
 - **The mark and the amber.** The notched dark housing with the amber `F`, built
   on a 16 × 16 cell grid, with the six ports cutting to transparency. `#FFB020`
   is the brand amber and the app's accent; the app was moved to match the mark,
-  not the reverse. `docs/brand/factorai-icon.svg` is the master every shipped
+  not the reverse. `assets/brand/factorai-icon.svg` is the master every shipped
   icon derives from.
 - **Dark-first, and two type sizes.** The dark theme is the product's identity,
   not a mode. Type has exactly two steps — `text-sm` for anything you read to
@@ -139,9 +139,9 @@ Binding, and recorded in `specs/09-branding.md`:
 
 - `specs/` — nine numbered specs plus two annexes; the design source of truth for
   behaviour, including `09-branding.md` for the mark.
-- `docs/adr/` — twenty ADRs recording decisions that constrain the approach.
+- `specs/adr/` — twenty ADRs recording decisions that constrain the approach.
   ADRs are immutable and superseded, never edited.
-- `docs/brand/` — the icon master, the one-colour mark, raster masters and the
+- `assets/brand/` — the icon master, the one-colour mark, raster masters and the
   lockup.
 - `specs/roadmap/TODO.md` and `DONE.md` — sequencing and a dated log of what
   landed, with the gotchas found on the way.

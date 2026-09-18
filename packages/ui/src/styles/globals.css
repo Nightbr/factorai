@@ -168,7 +168,7 @@
 	--popover-foreground: oklch(96% 0.004 250);
 
 	/* The amber is the brand's, exactly: oklch(81.3% 0.165 75) round-trips to
-	   #FFB020, which is what `docs/brand/factorai-icon.svg` fills the F with.
+	   #FFB020, which is what `assets/brand/factorai-icon.svg` fills the F with.
 	   It used to be oklch(78% 0.17 75) — #F5A400 — while `specs/09-branding.md`
 	   B4 claimed the brand "adopted the colour that was there". It hadn't; the
 	   two were a visible 3% apart in lightness, and the icon beside the header
@@ -199,7 +199,7 @@
 	   mixed from this hue — so nothing is ever set *on* solid violet. */
 	--dev: oklch(68% 0.19 300);
 
-	/* Categorical scale — see docs/adr/0012-categorical-colour-tokens.md.
+	/* Categorical scale — see specs/adr/0012-categorical-colour-tokens.md.
 	   Everything above is *semantic*: there is one right answer for any given
 	   element. These carry no meaning beyond "not the same as my neighbour",
 	   which the semantic palette cannot express, and their first consumer is

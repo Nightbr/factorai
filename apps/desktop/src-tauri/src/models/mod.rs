@@ -739,7 +739,7 @@ pub struct GitCommitDetail {
 /// A profile is a directory plus a name. It holds no credential — the directory
 /// does, and the CLI put it there when the user logged in.
 ///
-/// [ADR-0036]: ../../../../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md
+/// [ADR-0036]: ../../../../specs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {

@@ -35,7 +35,7 @@ Tauri bridge; `pnpm tauri build` produces `.app` / `.dmg` / `.AppImage`.
 
 1. Read the relevant spec under `specs/` end-to-end. Specs are the contract for
    behaviour; `DESIGN.md` is the contract for the visual system.
-2. Check `docs/adr/` for decisions that constrain the approach. Don't relitigate
+2. Check `specs/adr/` for decisions that constrain the approach. Don't relitigate
    a decided ADR — supersede it with a new one.
 3. If a spec is wrong or stale, fix the spec first, then write the code.
 4. Start from an up-to-date `main`: `git fetch origin && git status`, and pull if
@@ -128,7 +128,8 @@ into the renderer.
 | [`specs/`](specs/) | behaviour, the command surface, feature by feature |
 | [`DESIGN.md`](DESIGN.md) | palette, type scale, density, elevation, named rules |
 | [`PRODUCT.md`](PRODUCT.md) | who this is for and what may not change |
-| [`docs/adr/`](docs/adr/) | decisions and why, including superseded ones |
+| [`specs/adr/`](specs/adr/) | decisions and why, including superseded ones |
+| [`assets/`](assets/) | the brand masters (`brand/`) and the README screenshots (`images/`) |
 | [`specs/roadmap/`](specs/roadmap/) | what is next, and a dated log of what shipped |
 | `.claude/rules/` | the traps in a given area, loaded when you edit it |
 | `.claude/skills/` | the long form: the gate, the test lanes, QA, screenshots |

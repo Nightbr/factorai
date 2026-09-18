@@ -84,7 +84,7 @@ droits, on me demande tout le temps le droit d'accéder aux mêmes dossiers. Je 
 paramètres pour autoriser une bonne fois pour toutes mais après redémarrage, rebelote."* Plus a
 *"factorai was prevented from modifying apps on your Mac"* notification, and factorai's **App
 Management** toggle showing as off after they had switched it on. Two mechanisms, one cause,
-diagnosed in [ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md): TCC
+diagnosed in [ADR-0034](../adr/0034-macos-bundles-carry-a-self-signed-signature.md): TCC
 anchors a grant to the app's designated requirement, so an identity that changes per build orphans
 every grant, and `tauri-plugin-updater` writing inside `/Applications/factorai.app` is App
 Management, whose only two escapes both key on an Apple **Team ID**.
@@ -154,7 +154,7 @@ the steps *around* it:
 **Two of these are closed and are in [`DONE.md`](./DONE.md)**: the matrix race that put each
 platform's assets in a different draft (one `create-release` job before the matrix, 2026-08-17),
 and automatic publication with the missing-platform guard kept
-([ADR-0014](../../docs/adr/0014-alpha-releases-publish-themselves.md), 2026-08-18). The cost of
+([ADR-0014](../adr/0014-alpha-releases-publish-themselves.md), 2026-08-18). The cost of
 the second is that no person sees a release before the world does, which promotes the first
 bullet below from tidy-up to the next real gap.
 
@@ -397,8 +397,8 @@ hero that cannot link straight into a guide page without leaving its own origin.
 
 **User ask, 2026-08-24, restated 2026-08-30**: *"we will write a full docs later for all factorai
 features"*. Everything written for a *user* today is `README.md` and the five screenshots in
-`docs/images/`. Everything else in the repository is written for whoever is building it: `specs/`
-is the design source of truth, `docs/adr/` is the decision trail, and this file is sequencing. All
+`assets/images/`. Everything else in the repository is written for whoever is building it: `specs/`
+is the design source of truth, `specs/adr/` is the decision trail, and this file is sequencing. All
 three read as internal because they are.
 
 **The README is a pitch, not a manual, and it stays that way** — settled 2026-08-30 when the
@@ -438,7 +438,7 @@ Mechanics, now that the shape is decided:
       Pointing Pages at a folder would publish the decision trail as a website by accident.
 - [ ] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
       It has to be cheap enough to run on every push, or it will be skipped and go stale.
-- [ ] **Whether the site reuses `docs/images/`** or keeps its own copies. Screenshots go stale on
+- [ ] **Whether the site reuses `assets/images/`** or keeps its own copies. Screenshots go stale on
       their own schedule; one copy is one re-shoot. The `app-screenshot` skill owns how they are
       taken, including the DEV badge and the blurring of private project names.
 - [ ] **A custom domain, or the default `nightbr.github.io/factorai`.** Wanted eventually; decide
@@ -505,7 +505,7 @@ Two dead ends, closed here so nobody re-explores them: a **self-signed** certifi
 Gatekeeper treats it exactly as unsigned, and an explicit **ad-hoc** `codesign` step changes
 nothing because the linker already ad-hoc signs on Apple Silicon.
 
-> **Amended 2026-09-03 by [ADR-0034](../../docs/adr/0034-macos-bundles-carry-a-self-signed-signature.md).**
+> **Amended 2026-09-03 by [ADR-0034](../adr/0034-macos-bundles-carry-a-self-signed-signature.md).**
 > The self-signed dead end is a dead end *for Gatekeeper only*, and that sentence reads as
 > closing the whole question. Gatekeeper trust and TCC persistence are different mechanisms:
 > macOS anchors every privacy grant to the app's designated requirement, an ad-hoc signature has
@@ -566,9 +566,9 @@ that decides whether an unsaved rule survives a quit.
 
 Specs: [F26](../05-features.md#f26--editing-and-saving-a-file), amended F7 and F9,
 `03-backend-rust.md` § `files`, `02-data-model.md` § `file_drafts`,
-[ADR-0039](../../docs/adr/0039-factorai-writes-project-files-never-an-agents-store.md),
-[ADR-0040](../../docs/adr/0040-an-unsaved-draft-is-content-not-a-preference.md),
-[ADR-0041](../../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md).
+[ADR-0039](../adr/0039-factorai-writes-project-files-never-an-agents-store.md),
+[ADR-0040](../adr/0040-an-unsaved-draft-is-content-not-a-preference.md),
+[ADR-0041](../adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md).
 
 ### Slice 2 — drafts
 
@@ -614,8 +614,8 @@ story. Separate item.
 **Slice 1 shipped 2026-08-29** — schema, runner, commands, the tabbed project view and its editor,
 the two context-menu items, the origin icon and the tabless spawn. **Slice 3 shipped 2026-08-30** —
 the MCP tool group, provenance and the cap. See [`DONE.md`](./DONE.md), [F22](../05-features.md),
-[ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md) and
-[ADR-0028](../../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md).
+[ADR-0026](../adr/0026-a-routine-runs-without-a-tab.md) and
+[ADR-0028](../adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md).
 What is left:
 
 ### Slice 2 — the skills picker
@@ -949,7 +949,7 @@ block a release:
 the lockfile and its reaping, the authenticated handshake and `tests/ide_ws_scope.rs`, the MCP
 layer with three tools, and the wiring that starts a bridge with each PTY. The design is
 [F20](../05-features.md) and
-[ADR-0017](../../docs/adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md); the write path
+[ADR-0017](../adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md); the write path
 is the half that is still only a decision. What is left:
 
 - **A tool call observed end to end.** `openFile` reaching the viewer has only
@@ -1113,7 +1113,7 @@ section constant, a `Select` and a `prefsStore` key; everything else in this ite
 ## 34. Session status — the unread axis, and two upgrades worth waiting for
 
 **The dot shipped 2026-08-18** — F10 is the design,
-[ADR-0015](../../docs/adr/0015-session-status-from-the-terminal-title.md) the mechanism, `DONE.md`
+[ADR-0015](../adr/0015-session-status-from-the-terminal-title.md) the mechanism, `DONE.md`
 the entry. Four things it left, in the order they are worth doing.
 
 **The unread / never-opened axis** is the third thing the original feedback asked for and the only
@@ -1398,7 +1398,7 @@ rather than sequenced behind them.
 **Shipped 2026-09-07** — the column, the measured fallback to a split under the tree, the strip of
 open files with preview tabs, and the demoted modal. See [`DONE.md`](DONE.md) for what landed and
 what driving the dev app caught, and
-[ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md) for why this
+[ADR-0037](../adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md) for why this
 host and not the other five. What is left is small and independent:
 
 **`Escape` landed 2026-09-16, and it went the other way**: ADR-0047 scoped it to "focus is in

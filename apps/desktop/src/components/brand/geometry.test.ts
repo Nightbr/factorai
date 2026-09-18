@@ -12,7 +12,7 @@ import {
 } from './geometry';
 
 /**
- * `geometry.ts` mirrors `docs/brand/factorai-icon.svg` by hand, and the favicon
+ * `geometry.ts` mirrors `assets/brand/factorai-icon.svg` by hand, and the favicon
  * is a copy of that same master. Both are duplication we accepted on purpose;
  * this is the check that makes the duplication safe rather than a slow leak.
  *
@@ -22,7 +22,7 @@ import {
 const repoFile = (path: string) =>
 	readFileSync(new URL(`../../../../../${path}`, import.meta.url), 'utf8');
 
-const MASTER = 'docs/brand/factorai-icon.svg';
+const MASTER = 'assets/brand/factorai-icon.svg';
 
 describe('brand geometry', () => {
 	const master = repoFile(MASTER);

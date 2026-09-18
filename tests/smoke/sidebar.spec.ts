@@ -1047,7 +1047,7 @@ test.describe('session subtree guide', () => {
 
 /**
  * The rail — the sidebar collapsed to 48px (specs/05-features.md F1,
- * docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md).
+ * specs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md).
  */
 test.describe('sidebar rail', () => {
 	test('@smoke the toggle takes the sidebar to 48px and back to the dragged width', async ({

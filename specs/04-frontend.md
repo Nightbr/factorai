@@ -385,7 +385,7 @@ who writes it and what Monaco's `setPosition` expects.
 
 **`file` and `diff` are carried across a navigation that never mentioned them**,
 by a middleware in the root route's `search.middlewares`
-([ADR-0042](../docs/adr/0042-the-open-file-rides-across-a-navigation.md)).
+([ADR-0042](adr/0042-the-open-file-rides-across-a-navigation.md)).
 Without it every `<Link>` to a session drops them and the viewer goes blank when
 you switch session or start a new one. A middleware rather than a `search` prop
 on each of the fifteen call sites that navigate: one of them is

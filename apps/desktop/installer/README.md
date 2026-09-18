@@ -1,7 +1,7 @@
 # The Windows installer
 
 factorai on Windows is **the Linux build, running inside a WSL 2 distribution
-under WSLg** — see [ADR-0044](../../../docs/adr/0044-windows-is-wsl2-not-a-second-port.md).
+under WSLg** — see [ADR-0044](../../../specs/adr/0044-windows-is-wsl2-not-a-second-port.md).
 There is no `windows-msvc` target and no Windows bundle. What lives here is the
 bootstrapper that gets the Linux build into the user's own distribution.
 

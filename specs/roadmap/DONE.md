@@ -105,7 +105,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   script in `scripts/qa/` that needs no X11: it drives nothing and only prints, so it runs on the
   macOS machine where `launch.sh` and the rest cannot.
 - **Keyboard shortcuts as a rebindable map — item 5, F28,
-  [ADR-0046](../../docs/adr/0046-a-rebindable-keymap-and-a-menu-that-gives-up-cmd-w.md), Q26** —
+  [ADR-0046](../adr/0046-a-rebindable-keymap-and-a-menu-that-gives-up-cmd-w.md), Q26** —
   2026-09-15, with the macOS menu verified 2026-09-17. M5's second item, and the end of the
   per-shortcut `useEffect` pattern six features had each grown their own copy of. What shipped is
   a scheme: one action-to-binding map, defaults as a module constant, and the user's **overrides
@@ -366,7 +366,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   already applied to truncated, lossy and plan files. Editing the *index* is where this stops
   short of VS Code, deliberately: it needs a Rust command that mutates the index and a second
   write boundary beside `write_file`, which ADR-0039 drew narrowly.
-  [ADR-0041](../../docs/adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md).
+  [ADR-0041](../adr/0041-the-worktree-side-of-a-diff-is-the-editable-one.md).
 
   **The machinery is shared, not copied** — `hooks/useEditBuffer.ts`, lifted out of `FileView`
   unchanged, plus `ConflictBanner` / `SaveButton` / `OverwriteConfirm` moved to
@@ -390,7 +390,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   the exact message so a worker failure that is not this one still reaches the screen (F17).
 
 - **Find in the file the viewer is showing (F7)** — 2026-09-09, user ask. `Cmd/Ctrl+F` did
-  nothing, and **F7 and [ADR-0007](../../docs/adr/0007-monaco-for-the-file-viewer.md) had both
+  nothing, and **F7 and [ADR-0007](../adr/0007-monaco-for-the-file-viewer.md) had both
   said it worked since the viewer shipped.** The cause is the JSON bug one level up:
   `editor/editor.api` registers the editor and its API and *no* editor contributions, and find is
   a contribution. `startFindAction` appeared zero times in the built chunk. Fixed by importing
@@ -458,8 +458,8 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   has a shape to match rather than a decision to make.
 
 - **Editing and saving a file — item 2 slice 1 (F26, amended F7 and F9,
-  [ADR-0039](../../docs/adr/0039-factorai-writes-project-files-never-an-agents-store.md),
-  [ADR-0040](../../docs/adr/0040-an-unsaved-draft-is-content-not-a-preference.md))** — 2026-09-09.
+  [ADR-0039](../adr/0039-factorai-writes-project-files-never-an-agents-store.md),
+  [ADR-0040](../adr/0040-an-unsaved-draft-is-content-not-a-preference.md))** — 2026-09-09.
   **The first place the app is not read-only.** `00-overview.md` § "The operating model" makes the
   human four things — supervisor, decider, reviewer, and the one who sets the rules agents run
   under — and three of those had surfaces already; this is the fourth. The item arrived as
@@ -522,7 +522,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   and F9's "Create CLAUDE.md" button and plan commands are item 2 in [`TODO.md`](./TODO.md).
 
 - **The sidebar collapses to a 48px rail that navigates (roadmap 53,
-  [ADR-0038](../../docs/adr/0038-the-sidebar-collapses-to-a-flat-rail.md))** — 2026-09-08, user
+  [ADR-0038](../adr/0038-the-sidebar-collapses-to-a-flat-rail.md))** — 2026-09-08, user
   ask. The one always-on column with no way to get its pixels back, on a laptop, while reading a
   diff. It collapses to a rail rather than to nothing because it is the app's navigation, and the
   three things that shape settled against what item 53 first wrote down.
@@ -561,7 +561,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   deep link or a reload does not steal a caret nobody asked it to.
 
 - **The file viewer leaves the modal: a column beside the session, a split under the tree, and a
-  strip of open files (roadmap 48, [ADR-0037](../../docs/adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md))**
+  strip of open files (roadmap 48, [ADR-0037](../adr/0037-the-viewer-is-a-column-with-a-measured-fallback.md))**
   — 2026-09-07, user ask. Reading a file covered the terminal it was opened from, in an app whose
   claim is that you watch an agent while it works. Six hosts were prototyped side by side before
   any was built; three lost on the same ground, and it is the one worth keeping: a tab beside the
@@ -1104,7 +1104,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
 
   **Twenty-five files cited `AGENTS.md § N`** — code comments, both CI workflows,
   `scripts/qa/launch.sh`, four specs and `TODO.md` — and all of them now name a section title, a
-  rule file or a skill. `docs/adr/` and this log were left alone because ADRs are immutable and a
+  rule file or a skill. `specs/adr/` and this log were left alone because ADRs are immutable and a
   log is a record of what happened; the five-line map at the bottom of `AGENTS.md` is what keeps
   their old section numbers resolvable.
 
@@ -1175,7 +1175,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   put a stale path in someone's bug report.
 
 - **Routines over MCP — F22 slice 3 (spec `05-features.md` F22 § "Routines over MCP",
-  [ADR-0028](../../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md))** —
+  [ADR-0028](../adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md))** —
   2026-08-30. Four tools on the IDE bridge — `listRoutines`, `createRoutine`, `updateRoutine`,
   `setRoutineEnabled` — so an agent can schedule follow-up work in the project it is working in.
 
@@ -1230,7 +1230,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   them**; none of them was ever model-facing, and `ideName: "factorai"` in our lockfile names a row
   in the `/ide` picker rather than the server. So the tools moved to factorai's own MCP server —
   plain name, plain HTTP, handed to each session through `--mcp-config` at spawn — and reach the
-  agent as `mcp__factorai__*`. [ADR-0029](../../docs/adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
+  agent as `mcp__factorai__*`. [ADR-0029](../adr/0029-model-facing-tools-need-a-server-that-is-not-the-ide.md).
 
   **Found by the model, not by us: the tools were invisible.** With the transport
   fixed, a session asked to "create a routine that checks for the day's reminders" went to Claude
@@ -1254,7 +1254,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   any future pass.
 
 - **Delete a session from the sidebar (spec `05-features.md` F2,
-  [ADR-0027](../../docs/adr/0027-deleting-a-session-trashes-its-transcript.md))** — 2026-08-30,
+  [ADR-0027](../adr/0027-deleting-a-session-trashes-its-transcript.md))** — 2026-08-30,
   asked for the same day. Right-click a session row under an expanded project, `Delete session`,
   confirm.
 
@@ -1285,7 +1285,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   out to match the project row's would be three decoys around the only thing here with no undo.
 
 - **Routines — a project's cron-scheduled agent sessions, slice 1 (TODO item 42, spec
-  `05-features.md` F22, [ADR-0026](../../docs/adr/0026-a-routine-runs-without-a-tab.md))** —
+  `05-features.md` F22, [ADR-0026](../adr/0026-a-routine-runs-without-a-tab.md))** —
   2026-08-29, asked for the same day and designed in a clarify-needs interview before any code.
   A **Routine** is a first-class object under a project — name, schedule, prompt, enable switch,
   catch-up window — that starts an agent session with that prompt when it comes due, **without
@@ -1649,7 +1649,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   shipped as **v0.22.0**, user ask. A `mermaid` fence in a rendered `.md` used to be a code block of
   `graph TD` lines.
   It now draws. This is the one kind of content where the rendered view was strictly *worse* than
-  the source view, and the documents this viewer is pointed at — `specs/`, `docs/adr/`, whatever
+  the source view, and the documents this viewer is pointed at — `specs/`, `specs/adr/`, whatever
   an agent just wrote — are exactly the ones with diagrams in them.
 
   **Four decisions worth keeping, three of which are not the obvious one:**
@@ -2082,7 +2082,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   that routes to `AGENTS.md` rather than restating it. `LICENSE` is MIT — a public repo without
   one is all rights reserved, which is not what a Releases page means to say.
 
-  **`docs/brand/factorai-lockup.svg` is the new asset** and B5a specifies it. It is the header
+  **`assets/brand/factorai-lockup.svg` is the new asset** and B5a specifies it. It is the header
   lockup from B8 drawn to a file, at the app's own proportions so the two cannot drift, in the
   amber-dominant colourway B5 had drawn and rejected — rejected *as the icon default*, on the
   grounds that it fights the UI beside it, which an asset that never appears in the UI does not
@@ -2924,7 +2924,7 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   `PROJECT_SELECT` aggregate.
 
 - **A project is a folder you added, not a directory Claude has** — 2026-08-16, TODO item 25.
-  Recorded as [ADR-0011](../../docs/adr/0011-a-project-is-a-folder-in-the-workspace.md); F1 was
+  Recorded as [ADR-0011](../adr/0011-a-project-is-a-folder-in-the-workspace.md); F1 was
   rewritten rather than patched, since it was written from the premise this deletes.
 
   The workspace was a **mirror of `~/.claude/projects/`** — `full_scan()` upserted a row per

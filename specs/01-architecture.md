@@ -154,7 +154,7 @@ inside the distribution, so every path it sees is already a Linux path.
   zoom) and **user preferences** in `prefsStore`. Synchronous, so nothing paints
   a default first and corrects itself. `tauri-plugin-store` was the documented
   answer here and is **removed** — see
-  [ADR-0013](../docs/adr/0013-preferences-storage-split.md).
+  [ADR-0013](adr/0013-preferences-storage-split.md).
 - **SQLite** (`~/.local/share/dev.factorai/factorai.db` on Linux,
   equivalent on mac/win via `app_data_dir`): session index, FTS, derived
   metadata — and the `settings` table, which holds **the settings Rust reads**
@@ -166,6 +166,6 @@ inside the distribution, so every path it sees is already a Linux path.
   included. It is one field rather than a code path because a migration run in
   dev is otherwise free to leave the installed release unable to open its own
   database: 0011 dropping `projects.pinned` did exactly that. See
-  [ADR-0024](../docs/adr/0024-a-dev-build-runs-under-its-own-identifier.md).
+  [ADR-0024](adr/0024-a-dev-build-runs-under-its-own-identifier.md).
 - **Read-only mirrors of `~/.claude/`**: never written to. CLAUDE.md edits
   are an explicit exception (see `05-features.md`).

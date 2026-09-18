@@ -12,7 +12,7 @@ file tree you can re-open when you next want one; a navigation column you
 dismissed is an app with no way to change what you are looking at.
 
 So it collapses to a 48px rail rather than to nothing. That much was settled
-when the item was written ([`specs/roadmap/TODO.md`](../../specs/roadmap/TODO.md)
+when the item was written ([`specs/roadmap/TODO.md`](../roadmap/TODO.md)
 item 53). What was not settled is what a rail *does*, and the three answers
 below are where this landed after working through it — each of them a departure
 from what that item first wrote down.

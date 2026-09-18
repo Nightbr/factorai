@@ -7,7 +7,7 @@ description: How work starts and lands here — read the spec first, start from 
 
 1. Read the relevant spec under `specs/` end-to-end. They are the contract for
    what the code should do.
-2. Check `docs/adr/` for architectural decisions that constrain the approach.
+2. Check `specs/adr/` for architectural decisions that constrain the approach.
    Don't relitigate a decided ADR — supersede it with a new ADR if you disagree.
 3. If the spec is wrong or stale, **fix the spec first**, then write the code.
    Specs lead, code follows.
@@ -35,7 +35,7 @@ description: How work starts and lands here — read the spec first, start from 
 Before declaring the task done, run the full gate — see the `quality-gate`
 skill.
 
-# ADRs (`docs/adr/`)
+# ADRs (`specs/adr/`)
 
 Create an ADR **in the same commit** as the code that implements the decision.
 ADR file naming: `NNNN-kebab-case-title.md`. Format: context, decision,

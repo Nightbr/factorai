@@ -102,7 +102,7 @@ would reuse the library — a description of a surface, not a decision about one
 
 A supersede link means *this decision was revised*. Spending it on two decisions
 that both stand would make the chain less trustworthy rather than more: someone
-reading `docs/adr/` later would see ADR-0011 marked superseded and reasonably
+reading `specs/adr/` later would see ADR-0011 marked superseded and reasonably
 conclude that a project is no longer a folder in the workspace. So both are
 linked, both are left standing, and this file is where the ordering model is
 written down.

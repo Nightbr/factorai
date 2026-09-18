@@ -86,7 +86,7 @@ implementation sketch lives in `03-backend-rust.md`.
 later is trivial — the path is read in one place (`claude_dir()`).
 
 **Superseded 2026-09-04 by F25 and
-[ADR-0036](../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md).**
+[ADR-0036](adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md).**
 The override arrived, and it arrived as more than a path: a `profiles` table,
 where a row is one Claude identity and `CLAUDE_CONFIG_DIR` per spawned session
 is what isolates it.

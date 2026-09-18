@@ -296,7 +296,7 @@ intra-group ordinals that collide with whatever is there.
 | is_default | INTEGER   | exactly one per agent                                             |
 | created_at | INTEGER   | unix ms                                                           |
 
-F25 and [ADR-0036](../docs/adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md).
+F25 and [ADR-0036](adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md).
 A profile is a directory plus a name; `CLAUDE_CONFIG_DIR` per spawned session is
 what isolates it, so nothing here is a secret.
 
@@ -483,7 +483,7 @@ dependency in both manifests and a registered plugin with no callers on either
 side, and its async API would have hydrated a tick after first paint, flashing
 default widths and zoom on every launch. UI preferences live in `prefsStore` on
 localStorage, which is synchronous. See
-[ADR-0013](../docs/adr/0013-preferences-storage-split.md) for the full reasoning
+[ADR-0013](adr/0013-preferences-storage-split.md) for the full reasoning
 and for what "who reads this?" now decides.
 
 ### `session_worktrees` — which checkout a session is working in
@@ -495,7 +495,7 @@ and for what "who reads this?" now decides.
 | updated_at | INTEGER | epoch ms of the last signal                               |
 
 **Migrations `0006` and `0007`. Added by F21**; see
-[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 3.
+[ADR-0019](adr/0019-a-worktree-is-a-checkout-not-a-project.md) § 3.
 
 **0006 shipped with `session_id REFERENCES sessions(id) ON DELETE CASCADE`, and
 0007 removed it.** A brand-new session has no `sessions` row — that table is
@@ -561,7 +561,7 @@ and conflating the two is how a resume becomes a new conversation — see F21 §
 | last_modified_by_session_id | TEXT | the session whose hand was on it last, same terms |
 
 **Added by [F22](./05-features.md); see
-[ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md).** Written by the
+[ADR-0026](adr/0026-a-routine-runs-without-a-tab.md).** Written by the
 routines commands and by `RoutineRunner`; the scan never touches it.
 
 **In SQLite rather than a renderer store because Rust reads it** — ADR-0013's
@@ -573,7 +573,7 @@ the MCP tool all write this column, so nothing has to translate between two
 dialects and a routine created by an agent is editable by a human.
 
 **The two provenance columns are migration `0014`
-([ADR-0028](../docs/adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md)),
+([ADR-0028](adr/0028-an-agent-schedules-work-but-does-not-unschedule-it.md)),
 and `NULL` in them means a human** — not "unknown". Every row that predates the
 column came from the editor, so the absence is meaningful and the list reads it
 directly. **No foreign key**, for `session_routines`'s reason below: the bridge
@@ -593,7 +593,7 @@ tick for the rest of the day. `last_run_at` is when a session actually started.
 `last_skipped_at` is when one was dropped for an overlap, and is what lets the
 list say *skipped 10:00, still running*. Folding them together loses an answer.
 
-**Deciding a fire writes none of them** ([ADR-0030](../docs/adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md)).
+**Deciding a fire writes none of them** ([ADR-0030](adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md)).
 An occurrence is consumed when its session **starts**, is skipped, or is given up
 on — never when the runner merely decides on it, because the thing that starts it
 is in the other process and the emit asking it to could reach nobody. Until one
@@ -643,7 +643,7 @@ actually deleted and which already exempts live ones.
 | claimed_at | INTEGER | epoch ms — what the grace period is measured against   |
 
 **Added by migration `0016`; see
-[ADR-0030](../docs/adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md).**
+[ADR-0030](adr/0030-a-routine-fire-is-claimed-before-it-is-recorded.md).**
 The runner decides when a routine is due and the *renderer* spawns the PTY
 (ADR-0026 § 2), with a `routine:fire` event the only thing joining the two.
 Tauri does not buffer an emit, and the tick that catches up what was missed while

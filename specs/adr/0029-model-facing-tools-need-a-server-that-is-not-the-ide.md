@@ -11,8 +11,8 @@ Related:
 [ADR-0017 — the IDE bridge writes one lockfile into `~/.claude/ide/`](0017-ide-bridge-writes-one-lockfile-into-claude-ide.md) ·
 [ADR-0004 — the `.claude` directory is read-only](0004-claude-dir-is-read-only.md)
 
-Behaviour in [F22](../../specs/05-features.md) § "Routines over MCP" and
-[F20](../../specs/05-features.md).
+Behaviour in [F22](../05-features.md) § "Routines over MCP" and
+[F20](../05-features.md).
 
 ## Context
 

@@ -4,7 +4,7 @@
 [ADR-0008](0008-factorai-assigns-new-session-ids.md) and
 [ADR-0020](0020-the-quit-confirm-asks-about-work-not-processes.md) — the scope
 of each, not their decisions. Arises from
-[F23](../../specs/05-features.md).
+[F23](../05-features.md).
 
 ## Context
 

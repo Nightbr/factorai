@@ -472,7 +472,7 @@ reap that kills a pane whose own cwd has gone.
 5. **Status is parsed out of that same byte stream, not polled.** The reader
    scans each chunk for `OSC 0` titles and derives `working` / `waiting_input`
    from the title's first character — see [`05-features.md` § F10](./05-features.md)
-   for the rule and [ADR-0015](../docs/adr/0015-session-status-from-the-terminal-title.md)
+   for the rule and [ADR-0015](adr/0015-session-status-from-the-terminal-title.md)
    for why the title. This step used to say "status heuristics run on a separate
    tokio task (200ms tick)"; there was never such a task, and a tick is the wrong
    shape for a signal that arrives as an event.
@@ -815,7 +815,7 @@ one-line change once the path is read in one place.
 
 ### `RoutineRunner`
 
-**Planned — F22, [ADR-0026](../docs/adr/0026-a-routine-runs-without-a-tab.md).**
+**Planned — F22, [ADR-0026](adr/0026-a-routine-runs-without-a-tab.md).**
 The only service that starts agent work nobody asked for at that moment, which
 is why its rules are here rather than left to the caller.
 
@@ -1273,7 +1273,7 @@ follows `git_blob`'s rule — a file absent at that commit is an answer.
 `git_worktrees(project_path) -> Vec<GitWorktree>` returns **every checkout the
 repository knows**, main and linked, each with `path`, `branch`, `head`,
 `isMain`, `locked`, `prunable` and `exists`. Shipped 2026-08-21;
-[ADR-0019](../docs/adr/0019-a-worktree-is-a-checkout-not-a-project.md) is what it
+[ADR-0019](adr/0019-a-worktree-is-a-checkout-not-a-project.md) is what it
 is allowed to do.
 
 - **Keyed by the repository, not by the project.** Discovery is

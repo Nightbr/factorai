@@ -1,7 +1,7 @@
 # ADR-0012 — Categorical colour lives in tokens, not in the component that needed it first
 
 **Status.** Accepted (2026-08-17). Arises from
-[F18](../../specs/05-features.md) (git graph).
+[F18](../05-features.md) (git graph).
 
 ## Context
 

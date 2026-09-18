@@ -1,6 +1,6 @@
 ---
 name: app-screenshot
-description: Capture a factorai screenshot for README.md, docs/ or a release note — correct size, no DEV badge, private project names blurred. Use when asked to add, retake or update a screenshot of the app in documentation.
+description: Capture a factorai screenshot for README.md, assets/images/ or a release note — correct size, no DEV badge, private project names blurred. Use when asked to add, retake or update a screenshot of the app in documentation.
 ---
 
 # Taking a screenshot of factorai for documentation
@@ -15,7 +15,7 @@ else opens the README:
    employer project names in the sidebar, `~/` paths, session titles naming both.
    Committing those publishes them permanently; a later edit does not remove them
    from the git history.
-3. **The size.** Every image in `docs/images/` is 1440×900 of the client area. One
+3. **The size.** Every image in `assets/images/` is 1440×900 of the client area. One
    that is a different size, or that carries the window frame and the
    compositor's drop shadow, reads as a mistake.
 4. **Resampling.** The app is 12px and 14px type throughout. Scaling a capture
@@ -42,7 +42,7 @@ what the image is *for* and show only that.
 **Capture.**
 
 ```bash
-scripts/qa/doc-shot.sh docs/images/factorai-<subject>.png
+scripts/qa/doc-shot.sh assets/images/factorai-<subject>.png
 ```
 
 It resizes the window so the client area is exactly 1440×900, crops the frame and
@@ -53,7 +53,7 @@ declined the resize.
 instead of guessing:
 
 ```bash
-scripts/qa/redact.py docs/images/factorai-<subject>.png --probe   # grid overlay
+scripts/qa/redact.py assets/images/factorai-<subject>.png --probe   # grid overlay
 scripts/qa/redact.py in.png out.png 60,170,130,26 60,208,130,26
 ```
 
@@ -72,7 +72,7 @@ Match the existing style in `README.md` — one image per section, alt text that
 says what the picture shows rather than repeating the heading:
 
 ```markdown
-![The sidebar with projects grouped into Pro, Side projects and Perso](docs/images/factorai-sidebar.png)
+![The sidebar with projects grouped into Pro, Side projects and Perso](assets/images/factorai-sidebar.png)
 ```
 
 ## If the resize is refused

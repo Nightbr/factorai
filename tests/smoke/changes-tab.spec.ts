@@ -91,7 +91,7 @@ test.describe('changes tab', () => {
 		if (!status?.repoRoot) throw new Error('fixtureWithChanges must declare a repository');
 		// A filename longer than the 288px panel on its own — the directory beside
 		// it is what the row has to give up first.
-		const relPath = 'docs/adr/0011-a-project-is-a-folder-in-the-workspace.md';
+		const relPath = 'specs/adr/0011-a-project-is-a-folder-in-the-workspace.md';
 		// And a deep path under a short name, which is the case the row is ordered
 		// for: the path truncates, the name stays whole (F13).
 		const deepPath = 'apps/desktop/src/components/files/FileChangeRow.tsx';

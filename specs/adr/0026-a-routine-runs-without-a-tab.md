@@ -9,8 +9,8 @@ Related:
 [ADR-0011 — a project is a folder in the workspace](0011-a-project-is-a-folder-in-the-workspace.md) ·
 [ADR-0013 — preferences storage split](0013-preferences-storage-split.md)
 
-Specified as [F22](../../specs/05-features.md); sequencing in
-[roadmap item 42](../../specs/roadmap/TODO.md).
+Specified as [F22](../05-features.md); sequencing in
+[roadmap item 42](../roadmap/TODO.md).
 
 ## Context
 

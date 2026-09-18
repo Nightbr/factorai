@@ -1,7 +1,7 @@
 # ADR-0035 — Git reads leave the main thread, and graph pages are cached on their refs digest
 
 **Status.** Accepted (2026-09-04). Arises from
-[F13](../../specs/05-features.md) and [F18](../../specs/05-features.md); refines
+[F13](../05-features.md) and [F18](../05-features.md); refines
 [ADR-0009](0009-git2-for-repository-state.md)'s read-only libgit2 layer without
 changing what it reads.
 

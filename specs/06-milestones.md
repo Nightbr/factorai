@@ -150,7 +150,7 @@ not gate it.
   terminal), so this needs a real binding scheme, not one `useEffect`.
 - Empty states, error toasts, friendly indexing UI.
 - Icons — **done**, see [`09-branding.md`](./09-branding.md). Generated from
-  `docs/brand/factorai-icon.svg`, which `tauri icon` takes directly; the
+  `assets/brand/factorai-icon.svg`, which `tauri icon` takes directly; the
   "feed it a 1024px master" note this file used to carry was wrong, since
   rasterising each size from vector beats downsampling one bitmap.
 - README with install instructions.

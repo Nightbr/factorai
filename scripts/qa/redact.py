@@ -5,7 +5,7 @@ Usage:
     scripts/qa/redact.py IN.png OUT.png X,Y,W,H [X,Y,W,H ...]
     scripts/qa/redact.py IN.png --probe          # print a coordinate grid
 
-Every image in `docs/` and `README.md` is a photograph of the author's real
+Every image in `assets/images/` and `README.md` is a photograph of the author's real
 machine: client and employer project names in the sidebar, `~/` paths, session
 titles naming both. Those become permanent and public the moment they are
 committed, and rewriting the file later does not remove them from the history.

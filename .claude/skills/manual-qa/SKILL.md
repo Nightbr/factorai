@@ -45,7 +45,7 @@ Wayland is not supported by these scripts (swap `wmctrl`/`gnome-screenshot` for
 # Screenshots that ship
 
 A screenshot in a commit is cheap. **A screenshot that ships — `README.md`,
-`docs/`, a release note — is not the same act.** It is permanent and public, and
+`assets/images/`, a release note — is not the same act.** It is permanent and public, and
 the window is full of the author's real work: client and employer project names,
 personal repositories, `~/` paths, session titles naming both. Use the
 `app-screenshot` skill, which owns that checklist along with

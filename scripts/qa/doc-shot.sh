@@ -4,7 +4,7 @@
 #
 # Usage:  scripts/qa/doc-shot.sh OUT.png
 #
-# 1440x900 because that is what every image already in `docs/images/` is, and a
+# 1440x900 because that is what every image already in `assets/images/` is, and a
 # README where one screenshot is a different size reads as a mistake.
 #
 # **The window is resized rather than the capture resampled.** Scaling a

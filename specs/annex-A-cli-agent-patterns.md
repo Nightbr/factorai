@@ -196,12 +196,12 @@ documents what each command is supposed to return.
 
 ## A.8 — ADR-driven docs
 
-Numbered ADRs under `docs/adr/`, one per architectural decision
+Numbered ADRs under `specs/adr/`, one per architectural decision
 (storage strategy, dependency choice, platform-level pattern), created
 in the **same commit** as the code that implements it. Existing ADRs are
 never edited — superseding ones are created.
 
-**In factorai.** `docs/adr/` from day one. Seed:
+**In factorai.** `specs/adr/` from day one. Seed:
 
 | #     | Title                                                       |
 | ----- | ----------------------------------------------------------- |
@@ -242,4 +242,4 @@ loads is a rule that does not exist; the rules files carry its reasoning.
    the highest-leverage of them (A.3).
 4. **`tauriCall` + `isTauri()` mock shim** on the renderer — enables
    browser-only dev loop (A.7).
-5. **`docs/adr/` discipline** — start it from M0 (A.8).
+5. **`specs/adr/` discipline** — start it from M0 (A.8).

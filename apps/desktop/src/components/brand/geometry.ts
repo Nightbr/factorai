@@ -1,5 +1,5 @@
 /**
- * The mark's geometry, mirrored by hand from `docs/brand/factorai-icon.svg`.
+ * The mark's geometry, mirrored by hand from `assets/brand/factorai-icon.svg`.
  *
  * Hand-mirrored rather than imported, for the same reason the IPC types are:
  * the renderer gets a real component that inherits

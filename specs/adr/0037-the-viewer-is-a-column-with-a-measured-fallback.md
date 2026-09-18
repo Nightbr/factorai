@@ -1,7 +1,7 @@
 # ADR-0037 — The file viewer is a column with a measured fallback, not a modal
 
 **Status.** Accepted (2026-09-07). Supersedes the V0 host decision inside
-[F7](../../specs/05-features.md) — Monaco stays, the modal stops being where it
+[F7](../05-features.md) — Monaco stays, the modal stops being where it
 renders. Narrows [ADR-0007](0007-monaco-for-the-file-viewer.md) not at all: that
 ADR chose the editor, this one chooses the room it sits in.
 

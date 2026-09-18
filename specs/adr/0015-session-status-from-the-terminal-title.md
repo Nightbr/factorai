@@ -1,7 +1,7 @@
 # ADR-0015 — Session status comes from Claude's terminal title
 
 **Status.** Accepted (2026-08-18). Arises from
-[`05-features.md` § F10](../../specs/05-features.md) (status indicators),
+[`05-features.md` § F10](../05-features.md) (status indicators),
 which this decision is the mechanism for.
 
 ## Context
@@ -129,7 +129,7 @@ rather than an inference.
 
 ## Related
 
-- [`05-features.md` § F10](../../specs/05-features.md) — the feature, the
+- [`05-features.md` § F10](../05-features.md) — the feature, the
   colours, and the full list of what was considered and not built.
 - [ADR-0004](./0004-claude-dir-is-read-only.md) — why a mechanism that writes
   nothing was preferred to hooks.

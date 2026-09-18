@@ -8,8 +8,8 @@ Related:
 [ADR-0008 — factorai assigns new session ids](0008-factorai-assigns-new-session-ids.md) ·
 [ADR-0005 — kill on quit is non-optional](0005-kill-on-quit-non-optional.md)
 
-Specified as [F22](../../specs/05-features.md) § "The fire"; storage in
-[`02-data-model.md`](../../specs/02-data-model.md) § `routine_claims`, migration
+Specified as [F22](../05-features.md) § "The fire"; storage in
+[`02-data-model.md`](../02-data-model.md) § `routine_claims`, migration
 `0016`.
 
 ## Context

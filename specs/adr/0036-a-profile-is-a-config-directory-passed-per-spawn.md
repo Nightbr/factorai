@@ -1,8 +1,8 @@
 # ADR-0036 — A profile is a config directory passed per spawn
 
 **Status.** Accepted (2026-09-04). Arises from
-[F25](../../specs/05-features.md). Supersedes the mechanism half of
-[Q3](../../specs/07-open-questions.md) — `CLAUDE_HOME` becomes a seed rather
+[F25](../05-features.md). Supersedes the mechanism half of
+[Q3](../07-open-questions.md) — `CLAUDE_HOME` becomes a seed rather
 than the way the config directory is chosen — and leaves that question's
 conclusion intact: we still hold no credential.
 

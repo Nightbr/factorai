@@ -4,7 +4,7 @@
 
 ## Context
 
-Nothing in `docs/adr/` ever recorded what a project *is*. `specs/05-features.md`
+Nothing in `specs/adr/` ever recorded what a project *is*. `specs/05-features.md`
 F1 asserted it in prose — the row's id is "Claude Code's own directory encoding
 of the path", and that was "the whole design" — and the schema agreed:
 `projects.id` was the directory name under `~/.claude/projects/`, and

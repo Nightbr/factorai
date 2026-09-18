@@ -4,7 +4,7 @@
 [ADR-0031](0031-a-footer-shell-is-a-pty-without-a-session.md) — which id a
 footer shell carries, not its decision that `kind` is what keeps a shell from
 being read as a session. Arises from
-[F23](../../specs/05-features.md) and [F24](../../specs/05-features.md).
+[F23](../05-features.md) and [F24](../05-features.md).
 
 ## Context
 

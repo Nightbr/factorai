@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/brand/factorai-lockup.png" alt="factorai" width="200">
+<img src="assets/brand/factorai-lockup.png" alt="factorai" width="200">
 
 ### IDE is dead. Long live the ADE
 
@@ -43,7 +43,7 @@ you*, or *stopped* — read from Claude's own terminal title rather than guessed
 at, so "is it blocked on a permission prompt?" is answerable from the sidebar.
 Open sessions become tabs, and the tabs come back when you relaunch.
 
-![factorai running a live session, with the sidebar showing session status](docs/images/factorai-sessions.png)
+![factorai running a live session, with the sidebar showing session status](assets/images/factorai-sessions.png)
 
 ### Put an agent on a schedule
 
@@ -57,7 +57,7 @@ opening it makes it an ordinary session with an ordinary tab.
 Routines run while factorai is open, and a run missed while it was closed is
 caught up at launch.
 
-![A project's Routines tab: three routines with their schedules, next runs and enable switches](docs/images/factorai-routines.png)
+![A project's Routines tab: three routines with their schedules, next runs and enable switches](assets/images/factorai-routines.png)
 
 ### Arrange the sidebar the way you think
 
@@ -77,7 +77,7 @@ On top of it sits SQLite FTS5 across **every message in every session**, so
 "which conversation was that?" takes a second rather than an afternoon of `grep`
 through JSONL.
 
-![Full-text search across every message in every session](docs/images/factorai-search.png)
+![Full-text search across every message in every session](assets/images/factorai-search.png)
 
 ### Inspect what it did to your repo
 
@@ -90,9 +90,9 @@ wrote each commit. And a **file tree** with git decorations — changed files
 coloured, dirty folders dotted, ignored ones dimmed — in front of a Monaco
 viewer with syntax highlighting and rendered markdown.
 
-![A side-by-side diff of a changed file, index against the working tree](docs/images/factorai-changes.png)
+![A side-by-side diff of a changed file, index against the working tree](assets/images/factorai-changes.png)
 
-![The Graph tab, showing refs, tags and a commit's changed files](docs/images/factorai-graph.png)
+![The Graph tab, showing refs, tags and a commit's changed files](assets/images/factorai-graph.png)
 
 ---
 

@@ -1,8 +1,8 @@
 # ADR-0013 — Preferences split across localStorage and SQLite; `tauri-plugin-store` removed
 
 **Status.** Accepted (2026-08-17). Supersedes the storage note in
-[`02-data-model.md`](../../specs/02-data-model.md) § `settings`. Arises from
-[F11](../../specs/05-features.md) (settings).
+[`02-data-model.md`](../02-data-model.md) § `settings`. Arises from
+[F11](../05-features.md) (settings).
 
 ## Context
 

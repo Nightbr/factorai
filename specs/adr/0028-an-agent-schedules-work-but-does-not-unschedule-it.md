@@ -16,8 +16,8 @@ Related:
 [ADR-0013 — preferences storage split](0013-preferences-storage-split.md) ·
 [ADR-0004 — the `.claude` directory is read-only](0004-claude-dir-is-read-only.md)
 
-Specified as [F22](../../specs/05-features.md) § "Routines over MCP"; sequencing
-in [roadmap item 42](../../specs/roadmap/TODO.md) slice 3.
+Specified as [F22](../05-features.md) § "Routines over MCP"; sequencing
+in [roadmap item 42](../roadmap/TODO.md) slice 3.
 
 ## Context
 

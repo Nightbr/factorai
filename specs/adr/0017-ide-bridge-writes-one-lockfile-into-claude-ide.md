@@ -4,7 +4,7 @@
 — written ahead of the code deliberately, because the decisions below are what
 the code is allowed to do and two of them constrain a security boundary. Amends
 [ADR-0004](./0004-claude-dir-is-read-only.md): see § "What this does to
-ADR-0004". Arises from [F20](../../specs/05-features.md) and roadmap item 19.
+ADR-0004". Arises from [F20](../05-features.md) and roadmap item 19.
 
 ## Context
 

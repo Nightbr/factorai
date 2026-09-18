@@ -105,8 +105,8 @@ ADR rather than a footnote. ADR-0004 is **not** superseded.
 
 ## Related
 
-- `docs/adr/0004-claude-dir-is-read-only.md`
-- `docs/adr/0002-embedded-pty-for-claude.md`
+- `specs/adr/0004-claude-dir-is-read-only.md`
+- `specs/adr/0002-embedded-pty-for-claude.md`
 - `specs/03-backend-rust.md` § "Terminal"
 - `specs/05-features.md` F6 (Resume & new session)
 - `specs/06-milestones.md` M2

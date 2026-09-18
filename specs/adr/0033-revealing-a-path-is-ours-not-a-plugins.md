@@ -1,7 +1,7 @@
 # ADR-0033 — Revealing a path in the file manager is ours, not a plugin's
 
 **Status.** Accepted (2026-09-03). Arises from
-[F7](../../specs/05-features.md). Does not change
+[F7](../05-features.md). Does not change
 [ADR-0004](0004-claude-dir-is-read-only.md)'s read-only stance — nothing here
 writes; it asks another program to show something.
 
