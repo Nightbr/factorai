@@ -464,10 +464,23 @@ the rules. The four verbs are the page's spine, not decoration. What it must **n
 evidence — no user counts, no benchmarks, no logos, no testimonials, because there are none and a
 fabricated one is the fastest way to lose the reader this page is for.
 
-- [ ] **The page.** Hero statement, the four verbs as the argument, three or four surfaces shown
+- [x] **The page.** Hero statement, the four verbs as the argument, three or four surfaces shown
       rather than described, install for macOS and Linux, and a link into the guide. One column,
       readable on a phone, and fast — a landing page that loads slowly is an argument against the
-      product it sells.
+      product it sells. **The bento landed 2026-09-19**: under the heading *"You supervise,
+      decide, review, and set the rules. Agents do the rest."*, eight cells on the board the hero
+      left powered — a trunk down the left gutter, a bus per row, a lead and a pad per cell, each
+      cell wiring in once as it scrolls into view. Sessions and Review are the large ones;
+      Routines, Search, Workspace, Files, Parallel and Local the rest. What each cell shows is a
+      **coded miniature** of the real surface in the app's own tokens, running a short loop of
+      the one behaviour the cell claims (a dot turning amber with the prompt, a routine firing
+      without a tab, a query typed and hit, a diff and a lane, a project dropped into a group, a
+      SOPS file decrypting), rather than a screenshot — no privacy problem, nothing the app does
+      not do. Then a download band: the platform the browser reports gets the primary button,
+      the others sit in a dialog with the detected one on top, and the exact asset links, sizes,
+      tag and date come from one call to the GitHub releases API (asset names carry the version,
+      so `/releases/latest/download/…` cannot be written statically), falling back to the
+      releases page. Then three lines of About. The guide link waits for the guide.
 - [ ] **It looks like the app.** `DESIGN.md` is the palette, the type scale and the named rules;
       the site inheriting them is what makes the download feel like the same thing as the page.
       `.impeccable/design.json` is the machine-readable sidecar if the theme wants generating.

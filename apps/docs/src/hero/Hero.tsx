@@ -4,7 +4,9 @@ import { Observer } from 'gsap/Observer';
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BentoPlaceholder } from './BentoPlaceholder';
+import { About } from '../bento/About';
+import { Bento } from '../bento/Bento';
+import { Download } from '../bento/Download';
 import { Fog, type FogHandle } from './Fog';
 import { Forge } from './Forge';
 import { Hud } from './Hud';
@@ -355,7 +357,9 @@ export function Hero({ copy }: Props) {
 				Skip
 			</button>
 
-			<BentoPlaceholder />
+			<Bento />
+			<Download />
+			<About />
 		</div>
 	);
 }
