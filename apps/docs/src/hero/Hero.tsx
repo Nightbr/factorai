@@ -170,6 +170,22 @@ export function Hero({ copy }: Props) {
 				onLeave: () => setReleased(true),
 				onEnterBack: () => setReleased(false),
 			});
+
+			// A link into a section — `/#download`, `/?section=about` — has to land
+			// past the pinned stage, whose spacer only exists once the trigger
+			// above does. Docusaurus' own hash scroll runs before that and lands
+			// short, so the section is scrolled to here, after a layout pass.
+			const params = new URLSearchParams(window.location.search);
+			const wanted = window.location.hash.replace(/^#/, '') || params.get('section') || '';
+			if (/^(features|download|about)$/.test(wanted)) {
+				requestAnimationFrame(() => {
+					ScrollTrigger.refresh();
+					const target = document.getElementById(wanted);
+					if (target) {
+						window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 60 });
+					}
+				});
+			}
 		},
 		{ scope: stage },
 	);

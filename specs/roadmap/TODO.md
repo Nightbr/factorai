@@ -435,8 +435,12 @@ Mechanics, now that the shape is decided:
       2026-09-19 ([ADR-0051](../adr/0051-the-site-is-apps-docs-and-the-mark-may-move-there.md)):
       a third workspace beside `apps/desktop`, so it rides the same install, Biome, turbo and
       knip as the app. The root `docs/` folder that would have made the name ambiguous was
-      dissolved the same day — `adr/` into `specs/`, `brand/` and `images/` into `assets/`. The
-      guide itself is still unwritten: the docs plugin is off until there is a first page.
+      dissolved the same day — `adr/` into `specs/`, `brand/` and `images/` into `assets/`.
+      **The guide is scaffolded** (2026-09-19, `apps/docs/docs/`): Installation and updates,
+      Projects, Sessions, Routines, Files (with Changes and Graph), Terminal, and Advanced
+      (Profiles, Worktrees, Keyboard shortcuts) — short pages written from the specs, in the
+      site's own style, with the navbar and footer linking in. Each page is a first pass to be
+      checked against the running app before release.
 - [ ] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
       Pointing Pages at a folder would publish the decision trail as a website by accident.
 - [ ] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.

@@ -27,8 +27,13 @@ const config: Config = {
 		[
 			'classic',
 			{
-				// The guide (item 39) is not written yet; pages only until it is.
-				docs: false,
+				// The guide (item 39), under /docs. One site, one deployment.
+				docs: {
+					routeBasePath: 'docs',
+					sidebarPath: './sidebars.ts',
+					editUrl: 'https://github.com/Nightbr/factorai/edit/main/apps/docs/',
+					showLastUpdateTime: false,
+				},
 				blog: false,
 				theme: {
 					customCss: './src/css/custom.css',
@@ -57,7 +62,10 @@ const config: Config = {
 					label: 'Download',
 					position: 'right',
 					className: 'open-download',
+					// A route of `/` would otherwise read as active on every page.
+					activeBaseRegex: '^$',
 				},
+				{ to: '/docs/installation', label: 'Docs', position: 'right' },
 				{
 					href: 'https://github.com/Nightbr/factorai',
 					label: 'Star on GitHub',
@@ -74,6 +82,7 @@ const config: Config = {
 						// Opens the platform dialog on the index (Download.tsx listens for
 						// the class); the hash is where it lands on any other page.
 						{ label: 'Download', to: '/#download', className: 'open-download' },
+						{ label: 'Docs', to: '/docs/installation' },
 						{ label: 'All releases', href: 'https://github.com/Nightbr/factorai/releases' },
 					],
 				},

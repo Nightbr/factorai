@@ -156,3 +156,127 @@ body[data-fa-hero] .navbar {
 	text-transform: uppercase;
 	color: var(--fa-muted-foreground);
 }
+
+/* ── The guide ──────────────────────────────────────────────────────────── */
+.theme-doc-sidebar-container {
+	border-right: 1px solid var(--fa-border) !important;
+}
+
+.menu {
+	padding: 24px 12px !important;
+	font-size: 0.86rem;
+}
+
+.menu__link {
+	border-radius: 4px;
+	color: var(--fa-muted-foreground);
+	line-height: 1.4;
+}
+
+.menu__link:hover {
+	background: var(--fa-secondary);
+	color: var(--fa-foreground);
+}
+
+.menu__link--active,
+.menu__link--active:hover {
+	color: var(--fa-primary);
+	background: color-mix(in oklch, var(--fa-primary) 10%, transparent);
+}
+
+.menu__list-item-collapsible .menu__link {
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 0.66rem;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--hud, oklch(70% 0.06 240 / 0.7));
+}
+
+.menu__list .menu__list {
+	border-left: 1px solid var(--fa-border);
+	margin-left: 12px;
+	padding-left: 4px;
+}
+
+.theme-doc-markdown h1 {
+	font-size: clamp(2rem, 3.6vw, 2.8rem);
+	font-weight: 200;
+	letter-spacing: 0.005em;
+	margin-bottom: 1.6rem;
+}
+
+.theme-doc-markdown h2 {
+	font-size: 1.25rem;
+	font-weight: 500;
+	margin-top: 2.4rem;
+	padding-top: 1.2rem;
+	border-top: 1px solid var(--fa-border);
+}
+
+.theme-doc-markdown h3 {
+	font-size: 1rem;
+	font-weight: 500;
+}
+
+.theme-doc-markdown p,
+.theme-doc-markdown li {
+	color: oklch(82% 0.006 250);
+	line-height: 1.65;
+}
+
+.theme-doc-markdown table {
+	display: table;
+	width: 100%;
+	font-size: 0.9rem;
+}
+
+.theme-doc-markdown th {
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 0.66rem;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	color: var(--hud, oklch(70% 0.06 240 / 0.7));
+	background: transparent;
+	border-color: var(--fa-border);
+}
+
+.theme-doc-markdown td {
+	border-color: var(--fa-border);
+	background: transparent;
+}
+
+.theme-doc-markdown code {
+	background: var(--fa-secondary);
+	border: 0;
+	padding: 1px 5px;
+}
+
+.theme-doc-markdown pre code {
+	padding: 0;
+}
+
+.pagination-nav__link {
+	border-color: var(--fa-border);
+	border-radius: 4px;
+}
+
+.pagination-nav__link:hover {
+	border-color: var(--fa-primary);
+}
+
+.pagination-nav__sublabel {
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 0.62rem;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--hud, oklch(70% 0.06 240 / 0.7));
+}
+
+.theme-doc-footer,
+.theme-doc-toc-desktop {
+	font-size: 0.8rem;
+}
+
+.table-of-contents__link--active {
+	color: var(--fa-primary);
+}

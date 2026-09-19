@@ -121,6 +121,14 @@ export function Download() {
 			dialog.current?.showModal();
 		};
 		document.addEventListener('click', onClick);
+		// Arriving at #download from another page opens it too.
+		if (window.location.hash === '#download') {
+			const t = window.setTimeout(() => dialog.current?.showModal(), 400);
+			return () => {
+				window.clearTimeout(t);
+				document.removeEventListener('click', onClick);
+			};
+		}
 		return () => document.removeEventListener('click', onClick);
 	}, []);
 
