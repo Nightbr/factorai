@@ -11,6 +11,9 @@ target/
 # Turbo
 .turbo/
 
+# Docusaurus generated routes and build (apps/docs)
+.docusaurus/
+
 # Tauri
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/schemas/

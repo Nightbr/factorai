@@ -1,0 +1,22 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "preserve",
+		"esModuleInterop": true,
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"types": ["@docusaurus/module-type-aliases"],
+		"paths": {
+			"@site/*": ["./*"]
+		}
+	},
+	"include": ["src", "docusaurus.config.ts"],
+	"exclude": [".docusaurus", "build"]
+}

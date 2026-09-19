@@ -430,10 +430,13 @@ What the guide holds, in the order a new user meets it:
 
 Mechanics, now that the shape is decided:
 
-- [ ] **Docusaurus, in this repository**, so a behaviour change and its documentation can land in
-      one commit — the same argument the specs already win. Where it lives inside the repo is the
-      one open question: a `site/` (or `website/`) directory is the obvious answer, and it must
-      not be `docs/`, which already holds `adr/`, `brand/` and `images/`.
+- [x] **Docusaurus, in this repository**, so a behaviour change and its documentation can land in
+      one commit — the same argument the specs already win. **It lives in `apps/docs`**, decided
+      2026-09-19 ([ADR-0051](../adr/0051-the-site-is-apps-docs-and-the-mark-may-move-there.md)):
+      a third workspace beside `apps/desktop`, so it rides the same install, Biome, turbo and
+      knip as the app. The root `docs/` folder that would have made the name ambiguous was
+      dissolved the same day — `adr/` into `specs/`, `brand/` and `images/` into `assets/`. The
+      guide itself is still unwritten: the docs plugin is off until there is a first page.
 - [ ] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
       Pointing Pages at a folder would publish the decision trail as a website by accident.
 - [ ] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
@@ -479,6 +482,44 @@ fabricated one is the fastest way to lose the reader this page is for.
 - [ ] **Download links resolve to the real artifacts** — the `/releases/latest` asset for each
       platform, or whatever item 31 settles for channels, so the page cannot go stale between
       releases. A hero with a dead download is worse than no hero.
+
+**The intro, decided 2026-09-19.** Above the bento the page opens on five full-viewport steps,
+one pinned stage scrubbed by scroll and snapped to five labels (GSAP + ScrollTrigger), with a
+round down-arrow button, the arrow keys and Escape as the other ways through, and a muted skip
+link after two idle seconds. **One gesture is one step** (decided 2026-09-19): while the stage
+is pinned, wheel and touch are intercepted (GSAP Observer) and each gesture walks one label with
+the button's tween, so a fast flick cannot skip a step and lose what plays on arrival. A gesture
+is a rising edge in the raw wheel delta, or a steady delta after a quiet spell; an inertia tail
+decays and is ignored. The scrollbar stays native and still snaps, nearest-label rather than
+directional, because a programmatic step landing a pixel short would otherwise be carried on. No progress dots: the reader is meant to discover the length. The
+steps, in order — digital fog (a WebGL noise shader quantised on the mark's grid) under a line
+about the pace AI set; the fog sweeping across to erase it and reveal a line about needing new
+tools; the fog dying to black under **"IDE is dead"**, the README hook verbatim, which then
+flickers and decays; **"Long live the ADE"** — the phrase in white, the acronym in amber and
+bolder — with only the expansion beneath it; and the forge: a socket waits on a board, the forged
+mark comes in from above the page and seats into it with a flash, a shake and sparks at the rim,
+the pads take power, traces etch out of the six ports and an amber pulse runs each one. Then the
+wordmark and **"Forged for the agentic era."**. The hammer that used to do the striking was
+dropped on 2026-09-19 — the mark seating itself is the better idea, and it took three.js with it. Transitions between steps are scrubbed;
+what happens *on* a step plays once on arrival, because a strike driven by a mouse wheel feels
+like mud. Phones get the full animation and `prefers-reduced-motion` is not honoured — both are
+choices to revisit with a device in hand, not oversights. The header is hidden until the stage
+releases into the bento.
+
+**Prototyped, then chosen, 2026-09-19.** Four throwaway pages were built under `proto/` — copy
+A (the brief, corrected) against copy C (shortest), a flat SVG hammer against a three.js one,
+and a fourth, futuristic treatment: Inter at weight 200 with open tracking, mono labels, a HUD
+layer of corner brackets and a step readout, a finer grid through the fog with a slow scanline,
+and environment-lit steel on the hammer. **The fourth won** and is now `index.tsx`; the others
+and the theme switch are deleted. Copy A is the copy. The wordmark under the forge is the
+brand's bold cut (B8), not the thin one — the thin wordmark was the one thing the treatment got
+wrong.
+
+- [ ] **The e2e hero test** — button through the five steps, each headline asserted — and the
+      byte-identity check for `apps/docs/static/img/factorai-icon.svg` against the brand master,
+      the same way `geometry.test.ts` guards the favicon copy (B5). Owed since the promotion.
+      **Plus a geometry test for `MetalMark.tsx`** (ADR-0052), the second hand-mirror of the
+      master, which needs the same guard `geometry.ts` has.
 
 **Not in scope:** a blog, a changelog page (item 31 owes the changelog question), pricing, or a
 newsletter. One page, one job.

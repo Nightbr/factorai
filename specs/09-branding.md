@@ -253,6 +253,20 @@ icons derive from `factorai-icon.svg`.
 - **Never paint behind the ports.** They are transparent by design; filling them
   destroys the silhouette, which is the whole argument for this mark.
 - **No effects.** No gradient, shadow, glow, stroke, bevel or rotation.
+  **One exception, for marketing surfaces only** (the site's hero, a launch
+  video), decided 2026-09-19 in
+  [ADR-0051](adr/0051-the-site-is-apps-docs-and-the-mark-may-move-there.md): a
+  *transient* effect during a scene — heat, a glow, a flash, a shake — is
+  allowed while the scene plays, provided the mark is the exact master at rest
+  before and after. The fills, the ports cutting to the ground and the 45° cut
+  never change; what the world does around the mark is the scene's business.
+  Nothing inside the app, a dock, a README or a release page gets this.
+  **Widened the same day by
+  [ADR-0052](adr/0052-the-mark-may-wear-a-material-on-marketing-surfaces.md):**
+  on those surfaces the mark may also carry a *material* at rest — gradients,
+  a bevel, a brushed texture, a specular sweep — on the B2 geometry, with the
+  ports still cut to the ground. The site's forge scene is the one place that
+  does; its navbar and favicon stay flat.
 - **Do not recolour the F** to anything but the amber or `currentColor`.
   Cutting it to transparency is not a recolour — that is what the one-colour
   mark and the lockup both do, and what lets the ground show through.

@@ -12,6 +12,7 @@
 			"**/build/**",
 			"**/coverage/**",
 			"**/src-tauri/target/**",
+			"**/.docusaurus/**",
 			"**/*.gen.ts",
 			"**/routeTree.gen.ts",
 			"**/pnpm-lock.yaml",

@@ -18,6 +18,7 @@ agent already did it" is never a reason to skip asking.
 
 Tauri 2 (Rust) + React 19 + TypeScript, pnpm monorepo, Biome, Turborepo. macOS
 and Linux only for v1. Layout: `apps/desktop` (renderer + `src-tauri`),
+`apps/docs` (the site: Docusaurus, the hero and later the guide, ADR-0051),
 `packages/ui` (shadcn-style primitives), `packages/types` (cross-boundary types),
 `tests/smoke` (Playwright).
 
@@ -30,6 +31,8 @@ pnpm dev                  # tauri dev — the full app
 
 Inside `apps/desktop`: `pnpm vite:dev` runs the renderer alone with a mocked
 Tauri bridge; `pnpm tauri build` produces `.app` / `.dmg` / `.AppImage`.
+The site is `pnpm --filter @factorai/docs start` (port 3210); it is deliberately
+not part of `pnpm dev`.
 
 ## Before you start
 

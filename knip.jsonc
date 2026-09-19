@@ -39,6 +39,22 @@
 				"@tailwindcss/typography"
 			]
 		},
+		"apps/docs": {
+			// Docusaurus loads the config and every file under src/pages by
+			// convention; knip 5.38 has no Docusaurus plugin to tell it so.
+			"entry": ["docusaurus.config.ts", "src/pages/**/*.tsx"],
+			"project": ["src/**/*.ts", "src/**/*.tsx"],
+			"ignoreDependencies": [
+				// Imported from CSS — `@import "@fontsource-variable/inter"` in
+				// src/css/custom.css. Knip does not parse CSS.
+				"@fontsource-variable/inter",
+				"@fontsource/jetbrains-mono",
+				// Virtual modules Docusaurus resolves at build time — `@theme/Layout`
+				// and the `@docusaurus/*` helpers — which exist in the bundler and in
+				// no package.json. Typed by module-type-aliases.
+				"^@theme/"
+			]
+		},
 		"packages/ui": {
 			"entry": ["src/index.ts"],
 			"project": ["src/**/*.ts", "src/**/*.tsx"],

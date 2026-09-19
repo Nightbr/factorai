@@ -1,0 +1,78 @@
+/*
+ * Infima remapped to DESIGN.md. The site inheriting the app's palette is what
+ * makes the download feel like the same thing as the page (roadmap item 58).
+ */
+@import "@fontsource-variable/inter";
+@import "@fontsource/jetbrains-mono";
+
+:root,
+[data-theme="dark"] {
+	--ifm-font-family-base: "Inter Variable", Inter, system-ui, sans-serif;
+	--ifm-font-family-monospace: "JetBrains Mono", "Fira Code", monospace;
+
+	--fa-background: oklch(16% 0.008 250);
+	--fa-foreground: oklch(96% 0.004 250);
+	--fa-card: oklch(18% 0.008 250);
+	--fa-secondary: oklch(22% 0.008 250);
+	--fa-muted: oklch(20% 0.008 250);
+	--fa-muted-foreground: oklch(56% 0.006 250);
+	--fa-border: oklch(25% 0.008 250);
+	--fa-primary: oklch(81.3% 0.165 75);
+	--fa-primary-foreground: oklch(16% 0.008 250);
+	--fa-housing: #272b31;
+
+	--ifm-background-color: var(--fa-background);
+	--ifm-background-surface-color: var(--fa-card);
+	--ifm-font-color-base: var(--fa-foreground);
+	--ifm-color-primary: var(--fa-primary);
+	--ifm-color-primary-dark: oklch(76% 0.165 75);
+	--ifm-color-primary-darker: oklch(72% 0.165 75);
+	--ifm-color-primary-darkest: oklch(64% 0.165 75);
+	--ifm-color-primary-light: oklch(85% 0.14 75);
+	--ifm-color-primary-lighter: oklch(88% 0.12 75);
+	--ifm-color-primary-lightest: oklch(92% 0.09 75);
+	--ifm-color-emphasis-300: var(--fa-border);
+	--ifm-navbar-background-color: color-mix(in oklch, var(--fa-background) 88%, transparent);
+	--ifm-navbar-shadow: none;
+	--ifm-footer-background-color: var(--fa-card);
+	--ifm-toc-border-color: var(--fa-border);
+	--ifm-code-font-size: 92%;
+	--ifm-heading-font-weight: 700;
+	--ifm-h1-font-size: 2.5rem;
+}
+
+html {
+	background: var(--fa-background);
+	scroll-behavior: auto;
+}
+
+.navbar {
+	border-bottom: 1px solid var(--fa-border);
+	backdrop-filter: blur(12px);
+	transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease;
+}
+
+/* Hidden while the hero's pinned stage is on screen; slides in at the bento. */
+body[data-fa-intro] .navbar {
+	transform: translateY(-100%);
+	opacity: 0;
+	pointer-events: none;
+}
+
+.navbar__title {
+	font-weight: 700;
+	letter-spacing: -0.04em;
+}
+
+.navbar__logo {
+	height: 1.25rem;
+}
+
+/* Hero pages: the navbar floats so the pinned stage starts at the very top. */
+body[data-fa-hero] .navbar {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 20;
+}

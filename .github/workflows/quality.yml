@@ -71,6 +71,11 @@ jobs:
       - name: Build the renderer
         run: pnpm --filter @factorai/desktop run vite:build
 
+      # The site (ADR-0051). Same argument: a dead `@theme/*` import or a broken
+      # internal link typechecks fine and fails only here.
+      - name: Build the site
+        run: pnpm --filter @factorai/docs run build
+
       # This repo pins exact versions; a caret slipping in is drift that costs a
       # day to notice by hand, and did once (`plugin-updater`, F14).
       - run: pnpm deps:check
