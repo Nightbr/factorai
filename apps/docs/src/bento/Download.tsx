@@ -110,27 +110,63 @@ export function Download() {
 		load();
 	}, [load]);
 
-	// The navbar's and the footer's Download open the dialog rather than
-	// leaving the page. They carry the class from docusaurus.config.ts; the
-	// hash they also carry is the fallback on a page without this section.
+	// The dialog and the URL agree: opening it, from any button or from the
+	// navbar's and footer's Download, puts #download in the address bar (a link
+	// to the dialog is a link worth sharing); closing it takes the hash away
+	// again. Arriving on #download, by link or by hash change, opens it.
+	const open = useCallback(() => {
+		const d = dialog.current;
+		if (!d || d.open) return;
+		if (window.location.hash !== '#download') {
+			window.history.replaceState(
+				null,
+				'',
+				`${window.location.pathname}${window.location.search}#download`,
+			);
+		}
+		d.showModal();
+	}, []);
+	const close = useCallback(() => dialog.current?.close(), []);
+
 	useEffect(() => {
+		const d = dialog.current;
+		if (!d) return;
 		const onClick = (e: MouseEvent) => {
 			const target = e.target as Element | null;
 			if (!target?.closest('.open-download')) return;
 			e.preventDefault();
-			dialog.current?.showModal();
+			open();
+		};
+		const onClose = () => {
+			if (window.location.hash === '#download') {
+				window.history.replaceState(
+					null,
+					'',
+					`${window.location.pathname}${window.location.search}`,
+				);
+			}
+		};
+		// A click on the backdrop is a click on the dialog element itself.
+		const onBackdrop = (e: MouseEvent) => {
+			if (e.target === d) d.close();
+		};
+		const onHash = () => {
+			const params = new URLSearchParams(window.location.search);
+			if (window.location.hash === '#download' || params.get('section') === 'download') open();
 		};
 		document.addEventListener('click', onClick);
-		// Arriving at #download from another page opens it too.
-		if (window.location.hash === '#download') {
-			const t = window.setTimeout(() => dialog.current?.showModal(), 400);
-			return () => {
-				window.clearTimeout(t);
-				document.removeEventListener('click', onClick);
-			};
-		}
-		return () => document.removeEventListener('click', onClick);
-	}, []);
+		d.addEventListener('close', onClose);
+		d.addEventListener('click', onBackdrop);
+		window.addEventListener('hashchange', onHash);
+		const t = window.setTimeout(onHash, 400);
+		return () => {
+			window.clearTimeout(t);
+			document.removeEventListener('click', onClick);
+			d.removeEventListener('close', onClose);
+			d.removeEventListener('click', onBackdrop);
+			window.removeEventListener('hashchange', onHash);
+		};
+	}, [open]);
 
 	const assetFor = (p: Platform) =>
 		release && release !== 'failed' ? release.assets.find((a) => PLATFORMS[p].match(a.name)) : null;
@@ -149,11 +185,7 @@ export function Download() {
 				<a className={styles.cta} href={primary?.url ?? RELEASES}>
 					{PLATFORMS[platform].button}
 				</a>
-				<button
-					type="button"
-					className={styles.ctaSecondary}
-					onClick={() => dialog.current?.showModal()}
-				>
+				<button type="button" className={styles.ctaSecondary} onClick={open}>
 					Other platforms
 				</button>
 			</div>
@@ -172,12 +204,7 @@ export function Download() {
 							? `${release.tag} · ${ago(release.date)}`
 							: 'latest release'}
 					</span>
-					<button
-						type="button"
-						className={styles.close}
-						onClick={() => dialog.current?.close()}
-						aria-label="Close"
-					>
+					<button type="button" className={styles.close} onClick={close} aria-label="Close">
 						×
 					</button>
 				</div>

@@ -174,18 +174,34 @@ export function Hero({ copy }: Props) {
 			// A link into a section — `/#download`, `/?section=about` — has to land
 			// past the pinned stage, whose spacer only exists once the trigger
 			// above does. Docusaurus' own hash scroll runs before that and lands
-			// short, so the section is scrolled to here, after a layout pass.
-			const params = new URLSearchParams(window.location.search);
-			const wanted = window.location.hash.replace(/^#/, '') || params.get('section') || '';
-			if (/^(features|download|about)$/.test(wanted)) {
-				requestAnimationFrame(() => {
-					ScrollTrigger.refresh();
-					const target = document.getElementById(wanted);
-					if (target) {
-						window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 60 });
-					}
-				});
-			}
+			// short, so the section is scrolled to here: after a layout pass, again
+			// once fonts and the board have settled, and on every later hash change.
+			const sectionFromUrl = () => {
+				const params = new URLSearchParams(window.location.search);
+				const wanted = window.location.hash.replace(/^#/, '') || params.get('section') || '';
+				return /^(features|download|about)$/.test(wanted) ? wanted : null;
+			};
+			const landOn = (id: string) => {
+				ScrollTrigger.refresh();
+				const target = document.getElementById(id);
+				if (!target) return;
+				const top = target.getBoundingClientRect().top + window.scrollY - 60;
+				window.scrollTo({ top, behavior: 'auto' });
+			};
+			const timers: number[] = [];
+			const land = () => {
+				const id = sectionFromUrl();
+				if (!id) return;
+				for (const delay of [0, 250, 800]) {
+					timers.push(window.setTimeout(() => landOn(id), delay));
+				}
+			};
+			land();
+			window.addEventListener('hashchange', land);
+			return () => {
+				window.removeEventListener('hashchange', land);
+				for (const t of timers) window.clearTimeout(t);
+			};
 		},
 		{ scope: stage },
 	);
