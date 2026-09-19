@@ -51,13 +51,16 @@ const config: Config = {
 			},
 			items: [
 				{
-					href: 'https://github.com/Nightbr/factorai/releases/latest',
+					// Opens the platform dialog on the index (Download.tsx listens for
+					// the class); the hash is where it lands on any other page.
+					to: '/#download',
 					label: 'Download',
 					position: 'right',
+					className: 'open-download',
 				},
 				{
 					href: 'https://github.com/Nightbr/factorai',
-					label: 'GitHub',
+					label: 'Star on GitHub',
 					position: 'right',
 				},
 			],
@@ -68,14 +71,16 @@ const config: Config = {
 				{
 					title: 'factorai',
 					items: [
-						{ label: 'Download', href: 'https://github.com/Nightbr/factorai/releases/latest' },
+						// Opens the platform dialog on the index (Download.tsx listens for
+						// the class); the hash is where it lands on any other page.
+						{ label: 'Download', to: '/#download', className: 'open-download' },
 						{ label: 'All releases', href: 'https://github.com/Nightbr/factorai/releases' },
 					],
 				},
 				{
 					title: 'source',
 					items: [
-						{ label: 'GitHub', href: 'https://github.com/Nightbr/factorai' },
+						{ label: 'Star on GitHub', href: 'https://github.com/Nightbr/factorai' },
 						{ label: 'Issues', href: 'https://github.com/Nightbr/factorai/issues' },
 						{
 							label: 'Roadmap',
@@ -83,12 +88,8 @@ const config: Config = {
 						},
 					],
 				},
-				{
-					title: 'needs',
-					items: [{ label: 'Claude Code CLI', href: 'https://claude.com/claude-code' }],
-				},
 			],
-			copyright: 'MIT licence · alpha · built with agents, supervised by a human',
+			copyright: 'MIT licence · open source · built with agents, supervised by a human',
 		},
 	} satisfies Preset.ThemeConfig,
 };

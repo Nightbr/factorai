@@ -110,6 +110,20 @@ export function Download() {
 		load();
 	}, [load]);
 
+	// The navbar's and the footer's Download open the dialog rather than
+	// leaving the page. They carry the class from docusaurus.config.ts; the
+	// hash they also carry is the fallback on a page without this section.
+	useEffect(() => {
+		const onClick = (e: MouseEvent) => {
+			const target = e.target as Element | null;
+			if (!target?.closest('.open-download')) return;
+			e.preventDefault();
+			dialog.current?.showModal();
+		};
+		document.addEventListener('click', onClick);
+		return () => document.removeEventListener('click', onClick);
+	}, []);
+
 	const assetFor = (p: Platform) =>
 		release && release !== 'failed' ? release.assets.find((a) => PLATFORMS[p].match(a.name)) : null;
 
