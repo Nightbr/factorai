@@ -76,3 +76,83 @@ body[data-fa-hero] .navbar {
 	right: 0;
 	z-index: 20;
 }
+
+/* ── Footer: the same instrument layer as the hero ─────────────────────── */
+.footer {
+	position: relative;
+	--hud: oklch(70% 0.06 240 / 0.7);
+	background: linear-gradient(oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 100% 96px,
+		linear-gradient(90deg, oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 96px 100%,
+		var(--fa-background);
+	border-top: 1px solid var(--fa-border);
+	padding: 56px 16px 40px;
+	font-family: var(--ifm-font-family-monospace);
+}
+
+.footer::before,
+.footer::after {
+	content: "";
+	position: absolute;
+	width: 18px;
+	height: 18px;
+	border: 1px solid var(--hud);
+	opacity: 0.7;
+}
+
+.footer::before {
+	top: 18px;
+	left: 18px;
+	border-right: 0;
+	border-bottom: 0;
+}
+
+.footer::after {
+	bottom: 18px;
+	right: 18px;
+	border-left: 0;
+	border-top: 0;
+}
+
+.footer .container {
+	max-width: 1152px;
+}
+
+.footer__title {
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 0.66rem;
+	font-weight: 400;
+	letter-spacing: 0.28em;
+	text-transform: uppercase;
+	color: var(--hud);
+	margin-bottom: 12px;
+}
+
+.footer__link-item {
+	font-size: 0.8rem;
+	letter-spacing: 0.06em;
+	color: var(--fa-foreground);
+	line-height: 1.9;
+}
+
+.footer__link-item:hover {
+	color: var(--fa-primary);
+	text-decoration: none;
+}
+
+.footer__link-item svg {
+	display: none;
+}
+
+.footer__bottom {
+	margin-top: 40px;
+	padding-top: 20px;
+	border-top: 1px solid var(--fa-border);
+	text-align: left;
+}
+
+.footer__copyright {
+	font-size: 0.66rem;
+	letter-spacing: 0.24em;
+	text-transform: uppercase;
+	color: var(--fa-muted-foreground);
+}

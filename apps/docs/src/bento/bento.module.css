@@ -31,31 +31,6 @@
 		var(--fa-background);
 }
 
-.wires {
-	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
-	pointer-events: none;
-	overflow: visible;
-	fill: none;
-	stroke: var(--trace);
-	stroke-width: 1.5;
-	stroke-linecap: round;
-}
-
-.wires [data-wire="pad"] {
-	fill: var(--fa-background);
-	stroke: var(--trace);
-	transition: fill 0.4s ease 0.35s;
-}
-
-.bento[data-powered] .wires [data-wire="trunk"],
-.bento[data-powered] .wires [data-wire="bus"] {
-	stroke: var(--trace-on);
-	transition: stroke 1.2s ease;
-}
-
 .head {
 	max-width: 1120px;
 	margin: 0 auto 2.4rem;
@@ -96,6 +71,31 @@
 	box-shadow: 0 0 0 1px oklch(81.3% 0.165 75 / 0.06);
 }
 
+/* Hover: the frame takes the full amber, lifts, and the brackets open out. */
+.cell[data-powered]:hover {
+	border-color: var(--fa-primary);
+	transform: translateY(-4px);
+	box-shadow: 0 0 0 1px oklch(81.3% 0.165 75 / 0.25), 0 18px 40px oklch(0% 0 0 / 0.45), 0 0 32px
+		oklch(81.3% 0.165 75 / 0.12);
+	transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease, box-shadow
+		0.35s ease;
+}
+
+.cell:hover .corner {
+	border-color: var(--fa-primary);
+	opacity: 1;
+	width: 18px;
+	height: 18px;
+}
+
+.cell:hover .mini {
+	opacity: 1;
+}
+
+.cell:hover .title {
+	color: var(--fa-primary);
+}
+
 .corner {
 	position: absolute;
 	width: 12px;
@@ -103,6 +103,7 @@
 	border: 1px solid var(--hud);
 	opacity: 0.6;
 	z-index: 2;
+	transition: width 0.3s ease, height 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
 }
 
 .tl {
@@ -154,6 +155,7 @@
 	font-size: 1.05rem;
 	font-weight: 500;
 	letter-spacing: -0.005em;
+	transition: color 0.3s ease;
 }
 
 .line {
@@ -984,14 +986,46 @@
 /* ── About ──────────────────────────────────────────────────────────────── */
 .about {
 	--hud: oklch(70% 0.06 240 / 0.7);
-	max-width: 720px;
+	max-width: 1120px;
 	margin: 0 auto;
 	padding: clamp(40px, 6vh, 72px) 16px clamp(56px, 8vh, 96px);
+	border-top: 1px solid var(--fa-border);
+}
+
+.aboutBody {
+	display: grid;
+	grid-template-columns: 220px minmax(0, 640px);
+	gap: 32px;
+	align-items: start;
+}
+
+.lockup {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.lockup img {
+	display: block;
+	width: 40px;
+	height: 40px;
 }
 
 .about p {
 	color: var(--fa-muted-foreground);
 	line-height: 1.6;
+	margin: 0 0 1rem;
+}
+
+.about p:first-child {
+	margin-top: 0.4rem;
+}
+
+@media (max-width: 760px) {
+	.aboutBody {
+		grid-template-columns: 1fr;
+		gap: 16px;
+	}
 }
 
 @media (max-width: 900px) {

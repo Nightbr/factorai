@@ -64,7 +64,31 @@ const config: Config = {
 		},
 		footer: {
 			style: 'dark',
-			copyright: 'MIT licence. Built with agents, supervised by a human.',
+			links: [
+				{
+					title: 'factorai',
+					items: [
+						{ label: 'Download', href: 'https://github.com/Nightbr/factorai/releases/latest' },
+						{ label: 'All releases', href: 'https://github.com/Nightbr/factorai/releases' },
+					],
+				},
+				{
+					title: 'source',
+					items: [
+						{ label: 'GitHub', href: 'https://github.com/Nightbr/factorai' },
+						{ label: 'Issues', href: 'https://github.com/Nightbr/factorai/issues' },
+						{
+							label: 'Roadmap',
+							href: 'https://github.com/Nightbr/factorai/blob/main/specs/roadmap/',
+						},
+					],
+				},
+				{
+					title: 'needs',
+					items: [{ label: 'Claude Code CLI', href: 'https://claude.com/claude-code' }],
+				},
+			],
+			copyright: 'MIT licence · alpha · built with agents, supervised by a human',
 		},
 	} satisfies Preset.ThemeConfig,
 };

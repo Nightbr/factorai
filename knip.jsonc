@@ -52,7 +52,8 @@
 				// Virtual modules Docusaurus resolves at build time — `@theme/Layout`
 				// and the `@docusaurus/*` helpers — which exist in the bundler and in
 				// no package.json. Typed by module-type-aliases.
-				"^@theme/"
+				"^@theme/",
+				"^@docusaurus/(Link|useBaseUrl|router)$"
 			]
 		},
 		"packages/ui": {
