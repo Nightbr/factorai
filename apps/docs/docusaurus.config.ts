@@ -57,8 +57,8 @@ const config: Config = {
 			items: [
 				{
 					// Opens the platform dialog on the index (Download.tsx listens for
-					// the class); the hash is where it lands on any other page.
-					to: '/#download',
+					// the class); the query opens it on arrival from any other page.
+					to: '/?modal=download',
 					label: 'Download',
 					position: 'right',
 					className: 'open-download',
@@ -79,9 +79,7 @@ const config: Config = {
 				{
 					title: 'factorai',
 					items: [
-						// Opens the platform dialog on the index (Download.tsx listens for
-						// the class); the hash is where it lands on any other page.
-						{ label: 'Download', to: '/#download', className: 'open-download' },
+						{ label: 'Download', to: '/?modal=download', className: 'open-download' },
 						{ label: 'Docs', to: '/docs/installation' },
 						{ label: 'All releases', href: 'https://github.com/Nightbr/factorai/releases' },
 					],

@@ -521,7 +521,12 @@ dropped on 2026-09-19 — the mark seating itself is the better idea, and it too
 what happens *on* a step plays once on arrival, because a strike driven by a mouse wheel feels
 like mud. Phones get the full animation and `prefers-reduced-motion` is not honoured — both are
 choices to revisit with a device in hand, not oversights. The header is hidden until the stage
-releases into the bento.
+releases into the bento. **The URL follows the scroll** (2026-09-19): `#seq-1` … `#seq-5`
+through the intro, `#features`, `#download` and `#about` below it, written with `replaceState`
+so the history does not fill; landing on any of them scrolls there, past the pinned stage, and
+`?section=<id>` is accepted too. The platform dialog's state is `?modal=download`, a query kept
+distinct from the section hash: every button and the navbar's and footer's Download write it,
+closing removes it, arriving with it opens the dialog.
 
 **Prototyped, then chosen, 2026-09-19.** Four throwaway pages were built under `proto/` — copy
 A (the brief, corrected) against copy C (shortest), a flat SVG hammer against a three.js one,

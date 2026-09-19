@@ -17,6 +17,23 @@ interface Props {
 	copy: HeroCopy;
 }
 
+/**
+ * The URL follows the scroll (roadmap item 58): `#seq-1` … `#seq-5` through
+ * the intro, `#features`, `#download` and `#about` below it, written with
+ * replaceState so the history does not fill with every step. Landing on any
+ * of them scrolls there. The download dialog's own state is `?modal=download`,
+ * a query, so a link to the dialog and a link to the section stay distinct.
+ */
+const SECTIONS = ['features', 'download', 'about'] as const;
+
+function setHash(hash: string) {
+	const { pathname, search } = window.location;
+	const next = `${pathname}${search}${hash ? `#${hash}` : ''}`;
+	if (`${pathname}${search}${window.location.hash}` !== next) {
+		window.history.replaceState(null, '', next);
+	}
+}
+
 /** Five labels, four segments of one unit each, then a short hold. */
 const STEPS = 5;
 const SEGMENTS = STEPS - 1;
@@ -165,35 +182,63 @@ export function Hero({ copy }: Props) {
 					directional: false,
 				},
 				onUpdate: (self) => {
-					setStep(Math.min(SEGMENTS, Math.round(self.progress * TOTAL)));
+					const next = Math.min(SEGMENTS, Math.round(self.progress * TOTAL));
+					setStep(next);
+					if (self.isActive) setHash(next === 0 ? '' : `seq-${next + 1}`);
 				},
 				onLeave: () => setReleased(true),
 				onEnterBack: () => setReleased(false),
 			});
+
+			// Below the stage, the section under the middle of the viewport owns
+			// the hash.
+			for (const id of SECTIONS) {
+				const el = document.getElementById(id);
+				if (!el) continue;
+				ScrollTrigger.create({
+					trigger: el,
+					start: 'top center',
+					end: 'bottom center',
+					onToggle: (self) => {
+						if (self.isActive) setHash(id);
+					},
+				});
+			}
 
 			// A link into a section — `/#download`, `/?section=about` — has to land
 			// past the pinned stage, whose spacer only exists once the trigger
 			// above does. Docusaurus' own hash scroll runs before that and lands
 			// short, so the section is scrolled to here: after a layout pass, again
 			// once fonts and the board have settled, and on every later hash change.
-			const sectionFromUrl = () => {
+			const targetFromUrl = () => {
 				const params = new URLSearchParams(window.location.search);
-				const wanted = window.location.hash.replace(/^#/, '') || params.get('section') || '';
-				return /^(features|download|about)$/.test(wanted) ? wanted : null;
+				const wanted =
+					window.location.hash.replace(/^#/, '') ||
+					params.get('section') ||
+					(params.get('modal') === 'download' ? 'download' : '');
+				if (/^(features|download|about)$/.test(wanted)) return wanted;
+				const seq = /^seq-([1-5])$/.exec(wanted);
+				return seq ? Number(seq[1]) - 1 : null;
 			};
-			const landOn = (id: string) => {
+			const landOn = (where: string | number) => {
 				ScrollTrigger.refresh();
-				const target = document.getElementById(id);
+				const st = trigger.current;
+				if (typeof where === 'number') {
+					if (!st) return;
+					window.scrollTo({ top: Math.round(st.start + (where / TOTAL) * (st.end - st.start)) });
+					return;
+				}
+				const target = document.getElementById(where);
 				if (!target) return;
 				const top = target.getBoundingClientRect().top + window.scrollY - 60;
 				window.scrollTo({ top, behavior: 'auto' });
 			};
 			const timers: number[] = [];
 			const land = () => {
-				const id = sectionFromUrl();
-				if (!id) return;
+				const where = targetFromUrl();
+				if (where === null) return;
 				for (const delay of [0, 250, 800]) {
-					timers.push(window.setTimeout(() => landOn(id), delay));
+					timers.push(window.setTimeout(() => landOn(where), delay));
 				}
 			};
 			land();

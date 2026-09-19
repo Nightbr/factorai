@@ -53,6 +53,13 @@ function detect(): Platform {
 	return 'mac';
 }
 
+function setModalParam(on: boolean) {
+	const url = new URL(window.location.href);
+	if (on) url.searchParams.set('modal', 'download');
+	else url.searchParams.delete('modal');
+	if (url.href !== window.location.href) window.history.replaceState(null, '', url.href);
+}
+
 function mb(bytes: number): string {
 	if (bytes < 1048576) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 	return `${(bytes / 1048576).toFixed(0)} MB`;
@@ -110,20 +117,14 @@ export function Download() {
 		load();
 	}, [load]);
 
-	// The dialog and the URL agree: opening it, from any button or from the
-	// navbar's and footer's Download, puts #download in the address bar (a link
-	// to the dialog is a link worth sharing); closing it takes the hash away
-	// again. Arriving on #download, by link or by hash change, opens it.
+	// The dialog's state is `?modal=download`, distinct from `#download`, which
+	// is the section. Opening it, from any button or from the navbar's and
+	// footer's Download, writes the query (a link to the dialog is a link worth
+	// sharing); closing it removes the query. Arriving with it opens it.
 	const open = useCallback(() => {
 		const d = dialog.current;
 		if (!d || d.open) return;
-		if (window.location.hash !== '#download') {
-			window.history.replaceState(
-				null,
-				'',
-				`${window.location.pathname}${window.location.search}#download`,
-			);
-		}
+		setModalParam(true);
 		d.showModal();
 	}, []);
 	const close = useCallback(() => dialog.current?.close(), []);
@@ -137,34 +138,27 @@ export function Download() {
 			e.preventDefault();
 			open();
 		};
-		const onClose = () => {
-			if (window.location.hash === '#download') {
-				window.history.replaceState(
-					null,
-					'',
-					`${window.location.pathname}${window.location.search}`,
-				);
-			}
-		};
+		const onClose = () => setModalParam(false);
 		// A click on the backdrop is a click on the dialog element itself.
 		const onBackdrop = (e: MouseEvent) => {
 			if (e.target === d) d.close();
 		};
-		const onHash = () => {
-			const params = new URLSearchParams(window.location.search);
-			if (window.location.hash === '#download' || params.get('section') === 'download') open();
+		const onUrl = () => {
+			if (new URLSearchParams(window.location.search).get('modal') === 'download') open();
 		};
-		document.addEventListener('click', onClick);
+		// Capture phase: the navbar's Download is a router Link, and the router
+		// must not navigate (and drop the section hash) before this runs.
+		document.addEventListener('click', onClick, true);
 		d.addEventListener('close', onClose);
 		d.addEventListener('click', onBackdrop);
-		window.addEventListener('hashchange', onHash);
-		const t = window.setTimeout(onHash, 400);
+		window.addEventListener('popstate', onUrl);
+		const t = window.setTimeout(onUrl, 400);
 		return () => {
 			window.clearTimeout(t);
-			document.removeEventListener('click', onClick);
+			document.removeEventListener('click', onClick, true);
 			d.removeEventListener('close', onClose);
 			d.removeEventListener('click', onBackdrop);
-			window.removeEventListener('hashchange', onHash);
+			window.removeEventListener('popstate', onUrl);
 		};
 	}, [open]);
 
