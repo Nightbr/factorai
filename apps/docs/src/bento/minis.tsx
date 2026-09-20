@@ -168,21 +168,43 @@ export function ChangesMini() {
 	);
 }
 
+/** The sidebar as the app draws it: group headers, initials tiles, a status badge, a row on the move. */
+function Project({ name, status }: { name: string; status?: string }) {
+	const parts = name.split(/[\s\-_]+/);
+	const initials = (parts.length >= 2 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase();
+	return (
+		<div className={styles.sbProject}>
+			<span className={styles.sbAvatar} data-name={name}>
+				<b>{initials}</b>
+				{status && <i className={styles.dot} data-status={status} />}
+			</span>
+			<span>{name}</span>
+			<em>+</em>
+		</div>
+	);
+}
+
 export function SidebarMini() {
 	return (
 		<div className={styles.mini} data-mini="sidebar">
-			<div className={styles.group}>
-				<small>Pro</small>
-				<span>billing-api</span>
-				<span>docs-site</span>
+			<div className={styles.sbGroup}>
+				<small>
+					<i>▾</i>Pro
+				</small>
+				<Project name="billing-api" status="working" />
+				<Project name="docs-site" status="waiting" />
 				<span className={styles.slot} />
 			</div>
-			<div className={styles.group} data-target>
-				<small>Side projects</small>
-				<span>factorai</span>
+			<div className={styles.sbGroup} data-target>
+				<small>
+					<i>▾</i>Side projects
+				</small>
+				<Project name="factorai" status="working" />
 				<span className={styles.slot} />
 			</div>
-			<span className={styles.dragged}>homelab</span>
+			<div className={styles.dragged}>
+				<Project name="homelab" />
+			</div>
 		</div>
 	);
 }
@@ -190,15 +212,30 @@ export function SidebarMini() {
 export function ViewerMini() {
 	return (
 		<div className={styles.mini} data-mini="viewer">
-			<div className={styles.viewerHead}>
-				<span className={styles.mono}>secrets.enc.yaml</span>
-				<i className={styles.lock} />
-			</div>
-			<div className={styles.code}>
-				{[58, 34, 71, 46, 62].map((w, i) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: static rows
-					<span key={i} style={{ width: `${w}%` }} data-i={i} />
-				))}
+			<ul className={styles.tree}>
+				<li data-dirty>
+					<i>▾</i>src
+				</li>
+				<li data-changed data-depth="1">
+					session.rs
+				</li>
+				<li data-depth="1">graph.ts</li>
+				<li data-ignored data-depth="1">
+					generated.ts
+				</li>
+				<li data-selected>secrets.enc.yaml</li>
+			</ul>
+			<div className={styles.viewer}>
+				<div className={styles.viewerTab}>
+					<span className={styles.mono}>secrets.enc.yaml</span>
+					<i className={styles.lock} />
+				</div>
+				<div className={styles.code}>
+					{[58, 34, 71, 46].map((w, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: static rows
+						<span key={i} style={{ width: `${w}%` }} data-i={i} />
+					))}
+				</div>
 			</div>
 		</div>
 	);

@@ -271,7 +271,7 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	max-width: 40%;
-	animation: tabActive 9s steps(1, end) infinite;
+	animation: tabActive 6s steps(1, end) infinite;
 }
 
 .tab[data-i="1"] {
@@ -326,7 +326,7 @@
 	flex-direction: column;
 	gap: 6px;
 	opacity: 0;
-	animation: screenOn 9s steps(1, end) infinite;
+	animation: screenOn 6s steps(1, end) infinite;
 }
 
 .screen[data-i="1"] {
@@ -499,7 +499,7 @@
 	padding: 0 8px;
 	margin-top: 6px;
 	border-top: 1px solid var(--fa-border);
-	animation: appear 7s ease-in-out infinite;
+	animation: appear 4.5s ease-in-out infinite;
 }
 
 .fire small {
@@ -526,7 +526,7 @@
 	overflow: hidden;
 	white-space: nowrap;
 	vertical-align: bottom;
-	animation: type 7s steps(17, end) infinite;
+	animation: type 4.5s steps(17, end) infinite;
 }
 
 @keyframes type {
@@ -551,7 +551,7 @@
 	flex-direction: column;
 	padding: 4px 8px;
 	border-radius: 4px;
-	animation: appear 7s ease-in-out infinite;
+	animation: appear 4.5s ease-in-out infinite;
 }
 
 .hits li[data-i="1"] {
@@ -603,7 +603,7 @@
 	gap: 6px;
 	padding: 0 10px;
 	border-bottom: 2px solid transparent;
-	animation: paneTab 8s steps(1, end) infinite;
+	animation: paneTab 5s steps(1, end) infinite;
 }
 
 .panelTabs span[data-tab="graph"] {
@@ -637,7 +637,7 @@
 
 .auditPane {
 	opacity: 0;
-	animation: paneOn 8s steps(1, end) infinite;
+	animation: paneOn 5s steps(1, end) infinite;
 }
 
 .auditPane[data-pane="graph"] {
@@ -645,7 +645,7 @@
 	left: 0;
 	right: 0;
 	top: calc(var(--row) + 8px);
-	animation-delay: -4s;
+	animation-delay: -2.5s;
 }
 
 .cell:not(:hover) .auditPane[data-pane="changes"] {
@@ -729,8 +729,8 @@
 
 /* The newest commit drops in at the top once the graph pane is showing. */
 .commitRow[data-i="0"] {
-	animation: commitDrop 8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-	animation-delay: -4s;
+	animation: commitDrop 5s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+	animation-delay: -2.5s;
 }
 
 @keyframes commitDrop {
@@ -795,36 +795,41 @@
 	color: oklch(82% 0.006 250);
 }
 
-/* Sidebar: a project row drops into a group. */
+/* Sidebar, as the app draws it: a group header with its chevron, project rows
+   with an initials tile and a corner badge, and one row on the move into a
+   group that lights its drop ring. */
 [data-mini="sidebar"] {
 	position: relative;
+	min-height: 196px;
+	font-size: 13px;
 }
 
-.group {
+.sbGroup {
 	display: flex;
 	flex-direction: column;
-	margin-bottom: 8px;
+	margin-bottom: 4px;
+	border-radius: 4px;
 }
 
-.group small {
+.sbGroup small {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 	font-size: 11px;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	color: var(--muted);
-	height: 20px;
-	line-height: 20px;
+	height: 24px;
 	padding: 0 8px;
 }
 
-.group span {
-	height: var(--row);
-	line-height: var(--row);
-	padding: 0 8px 0 20px;
+.sbGroup small i {
+	font-style: normal;
+	font-size: 9px;
 }
 
-.group[data-target] {
-	border-radius: 4px;
-	animation: target 6s ease-in-out infinite;
+.sbGroup[data-target] {
+	animation: target 4s ease-in-out infinite;
 }
 
 @keyframes target {
@@ -840,18 +845,87 @@
 	}
 }
 
+.sbProject {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: var(--row);
+	padding: 0 8px;
+	border-radius: 4px;
+	color: var(--fg);
+}
+
+.sbProject > span:nth-child(2) {
+	flex: 1 1 auto;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sbProject em {
+	font-style: normal;
+	color: var(--muted);
+	opacity: 0;
+}
+
+.sbAvatar {
+	position: relative;
+	width: 18px;
+	height: 18px;
+	border-radius: 4px;
+	background: hsl(214, 60%, 35%);
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.sbAvatar b {
+	font-size: 8px;
+	font-weight: 600;
+	line-height: 1;
+	color: #fff;
+}
+
+.sbAvatar[data-name="docs-site"] {
+	background: hsl(150, 60%, 35%);
+}
+
+.sbAvatar[data-name="factorai"] {
+	background: hsl(38, 70%, 40%);
+}
+
+.sbAvatar[data-name="homelab"] {
+	background: hsl(285, 60%, 35%);
+}
+
+.sbAvatar .dot {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 6px;
+	height: 6px;
+	transform: translate(50%, -45%);
+	box-shadow: 0 0 0 2px var(--fa-card);
+}
+
+/* An empty row in each group: where the dragged project sits before and after. */
+.slot {
+	height: var(--row);
+}
+
 .dragged {
 	position: absolute;
 	left: 0;
-	top: 76px;
-	height: var(--row);
-	line-height: var(--row);
-	padding: 0 8px 0 20px;
+	top: 80px;
 	width: 100%;
 	border-radius: 4px;
-	background: var(--fa-secondary);
-	box-shadow: 0 6px 16px oklch(0% 0 0 / 0.4);
-	animation: drag 6s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+	animation: drag 4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.cell:not(:hover) .dragged {
+	background: transparent;
+	box-shadow: none;
 }
 
 @keyframes drag {
@@ -867,27 +941,89 @@
 		box-shadow: 0 6px 16px oklch(0% 0 0 / 0.4);
 	}
 	60% {
-		transform: translateY(84px);
+		transform: translateY(88px);
 		background: var(--fa-secondary);
 		box-shadow: 0 6px 16px oklch(0% 0 0 / 0.4);
 	}
 	70%,
 	100% {
-		transform: translateY(84px);
+		transform: translateY(88px);
 		box-shadow: none;
 		background: transparent;
 	}
 }
 
-/* Viewer: an encrypted file opens. */
-.viewerHead {
+/* Files, as the app draws them: a tree with git decorations — a changed file
+   coloured, a dirty folder dotted, an ignored file dimmed — and the viewer
+   under it, opening an encrypted file. */
+[data-mini="viewer"] {
+	font-size: 12px;
+}
+
+.tree {
+	list-style: none;
+	margin: 0 0 8px;
+	padding: 0;
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 11px;
+}
+
+.tree li {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 22px;
+	padding: 0 8px;
+	border-radius: 4px;
+	color: var(--fg);
+}
+
+.tree li[data-depth="1"] {
+	padding-left: 26px;
+}
+
+.tree li i {
+	font-style: normal;
+	font-size: 9px;
+	color: var(--muted);
+}
+
+.tree li[data-dirty]::after {
+	content: "";
+	width: 5px;
+	height: 5px;
+	border-radius: 9999px;
+	background: var(--fa-primary);
+	margin-left: 2px;
+}
+
+.tree li[data-changed] {
+	color: var(--fa-primary);
+}
+
+.tree li[data-ignored] {
+	color: var(--muted);
+	opacity: 0.6;
+}
+
+.tree li[data-selected] {
+	background: var(--fa-secondary);
+}
+
+.viewer {
+	border: 1px solid var(--fa-border);
+	border-radius: 4px;
+	background: var(--fa-background);
+	overflow: hidden;
+}
+
+.viewerTab {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	height: var(--row);
+	height: 26px;
 	padding: 0 8px;
 	border-bottom: 1px solid var(--fa-border);
-	margin-bottom: 10px;
 }
 
 .lock {
@@ -909,7 +1045,7 @@
 	border-bottom: 0;
 	border-radius: 4px 4px 0 0;
 	transform-origin: bottom left;
-	animation: unlock 6s ease-in-out infinite;
+	animation: unlock 4s ease-in-out infinite;
 }
 
 @keyframes unlock {
@@ -926,16 +1062,16 @@
 .code {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
-	padding: 0 8px;
+	gap: 7px;
+	padding: 10px 8px;
 }
 
 .code span {
 	display: block;
-	height: 8px;
+	height: 7px;
 	border-radius: 2px;
 	background: oklch(28% 0.008 250);
-	animation: decrypt 6s ease-in-out infinite;
+	animation: decrypt 4s ease-in-out infinite;
 }
 
 .code span[data-i="1"],
@@ -982,12 +1118,12 @@
 
 .lane[data-i="1"] {
 	border-color: oklch(72% 0.16 145);
-	animation: appear 6s ease-in-out infinite;
+	animation: appear 4s ease-in-out infinite;
 }
 
 .lane[data-i="2"] {
 	border-color: oklch(70% 0.17 300);
-	animation: appear 6s ease-in-out 0.6s infinite;
+	animation: appear 4s ease-in-out 0.4s infinite;
 }
 
 .lane .mono {
