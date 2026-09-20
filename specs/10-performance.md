@@ -228,7 +228,8 @@ synchronous, so they still run on the thread that paints — they simply no
 longer wait there. The `spawn_blocking` half is tracked as part of PERF-07.
 
 **PERF-03 — A changed transcript is re-read, re-parsed and re-tokenised in full.**
-Impact H, cost M, confirmed by reading; per-megabyte cost needs a profile.
+Impact H, cost M. **Landed 2026-09-20** (migration 0021); the numbers are at the
+end of this entry.
 `index_session_if_changed` (`rs/services/indexer.rs:459-648`) compares
 `(mtime, size)` and then parses every line of the file
 (`:529-583`, `serde_json` per line with a `Value` body and a flattened
@@ -238,12 +239,41 @@ transcript pays a 30 MB parse per one-second debounce window, then PERF-01
 under PERF-02's lock. The whole text is also held in memory for the parse
 (`:522`, `:580`), which the spec's "streams" claim at
 `03-backend-rust.md:408-411` does not describe.
-*Fix.* Treat the stored `file_size` as the parsed offset: when the file grew,
-seek and parse only the tail, append the FTS rows, update `updated_at`,
-`turn_count`, `last_cwd` and the titles; full reparse only when it shrank or
-`PARSE_VERSION` moved. With it, PERF-16: carry the changed path into
-`index_dir` instead of re-checking every transcript in the directory.
-*Measure.* Time per debounced event on the 30 MB transcript, before and after.
+*Fixed by* a resume offset of its own rather than by reusing `file_size`, which
+turned out to be the one thing it must not be. A read lands inside the line
+Claude is writing often enough to matter, that line is skipped as malformed, and
+resuming from the file's size would skip the rest of it forever — one event
+lost, silently, on exactly the sessions someone is watching. `indexed_bytes`
+instead records what the parser finished with: every line whose event it took,
+and every whole line it permanently skipped. A line that parsed without its
+newline counts; a truncated one does not.
+
+The second thing the tail could not do on its own is the title. A full parse
+settled `/rename` over Claude's own title over the derived one by reading the
+whole file; a tail parse sees only what was appended, so `title_kind` records
+which of the three the stored title is and the tail is ranked against it.
+
+Four conditions send it back to a full parse, each a way the prefix could have
+stopped being what was read: `parse_version` behind, no `title_kind` (a row
+from before the migration, which costs one full parse and is resumable after),
+a file smaller than `indexed_bytes`, and — the one a cheap check misses — a
+transcript rewritten to the same size or larger, caught by reading one line at
+the offset and seeing whether it is a line at all.
+
+*Measured* on synthetic transcripts of the shape the budget names, timing one
+appended turn:
+
+| Transcript | Re-index before | after |
+| --- | --- | --- |
+| 5 MB, 3 989 events | 288 ms | 14.5 ms |
+| 31 MB, 23 903 events | 4.71 s | 32.2 ms |
+
+The 31 MB figure is inside the P3 budget of 50 ms per debounced event, which it
+missed by about ninety times before. First indexing a transcript is unchanged
+and still proportional to its size: 1.0 s for the 31 MB file, once.
+
+*Still open.* PERF-16, the other half — one watcher event still re-checks every
+transcript in the directory rather than the one that changed.
 
 **PERF-04 — Hidden pooled terminals are still rendered, not only laid out.**
 Impact H at ten live sessions, L at two; cost L to M; mechanism confirmed by

@@ -84,6 +84,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// Not standalone: it drops and recreates the *virtual* table, and nothing
 	// references it, so there is no foreign key to break.
 	("0020_messages_table", include_str!("migrations/0020_messages_table.sql")),
+	// What an incremental re-index needs to resume from: the whole-line offset it
+	// reached, and which source the title came from (PERF-03). Two `ADD COLUMN`s,
+	// so not standalone.
+	("0021_incremental_index", include_str!("migrations/0021_incremental_index.sql")),
 ];
 
 /// Migrations that need the connection to themselves, with foreign keys off.

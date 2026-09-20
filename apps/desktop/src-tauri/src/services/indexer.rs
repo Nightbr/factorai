@@ -37,6 +37,63 @@ const PARSE_VERSION: i64 = 3;
 /// all, and why the number is not doing any selecting.
 const TOUCHED_PATHS_KEPT: usize = 8;
 
+/// Where a session's stored title came from, so a tail parse knows what it is
+/// beating (PERF-03, migration 0021).
+///
+/// The full parse settles precedence by reading the whole file. The tail parse
+/// sees only what was appended, so `custom` beating `ai` — a `/rename` is not
+/// undone by Claude retitling the session afterwards — has to survive in the
+/// row rather than in the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TitleKind {
+	Custom,
+	Ai,
+	Derived,
+}
+
+impl TitleKind {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Custom => "custom",
+			Self::Ai => "ai",
+			Self::Derived => "derived",
+		}
+	}
+}
+
+/// What the `sessions` row already knows, read once per candidate file.
+///
+/// Two jobs: the `(mtime, size, parse_version)` triple decides whether there is
+/// anything to do at all, and the rest is what an incremental re-index resumes
+/// from.
+struct CachedSession {
+	mtime: i64,
+	size: i64,
+	parse_version: i64,
+	indexed_bytes: i64,
+	title_kind: Option<String>,
+	title: String,
+	turn_count: i64,
+	created_at: i64,
+	cwd: Option<String>,
+	last_cwd: Option<String>,
+	touched_paths: Option<String>,
+}
+
+impl CachedSession {
+	/// An unrecognised value is treated as `Derived`, the weakest of the three,
+	/// so a row written by something that did not know the vocabulary cannot
+	/// outrank a real title. `None` never reaches here: it is one of the
+	/// conditions that refuses the tail path outright.
+	fn kind(&self) -> TitleKind {
+		match self.title_kind.as_deref() {
+			Some("custom") => TitleKind::Custom,
+			Some("ai") => TitleKind::Ai,
+			_ => TitleKind::Derived,
+		}
+	}
+}
+
 pub type ProgressCb = Arc<dyn Fn(IndexerProgress) + Send + Sync>;
 pub type ChangedCb = Arc<dyn Fn(SessionsChanged) + Send + Sync>;
 /// The session ids that currently have a live PTY. Injected rather than read
@@ -475,14 +532,31 @@ impl Indexer {
 			.unwrap_or(0);
 		let size = meta.len() as i64;
 
-		let cached: Option<(i64, i64, i64)> = self.db.with(|conn| {
+		let cached: Option<CachedSession> = self.db.with(|conn| {
 			Ok(conn
 				.query_row(
-					// The third column is not a fact about the file: it is "which
-					// version of this function wrote the row".
-					"SELECT file_mtime, file_size, parse_version FROM sessions WHERE id = ?1",
+					// `parse_version` is not a fact about the file: it is "which
+					// version of this function wrote the row". The rest is what an
+					// incremental re-index resumes from (PERF-03).
+					"SELECT file_mtime, file_size, parse_version, indexed_bytes, title_kind, \
+					        title, turn_count, created_at, cwd, last_cwd, touched_paths \
+					   FROM sessions WHERE id = ?1",
 					params![session_id],
-					|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)),
+					|row| {
+						Ok(CachedSession {
+							mtime: row.get(0)?,
+							size: row.get(1)?,
+							parse_version: row.get(2)?,
+							indexed_bytes: row.get(3)?,
+							title_kind: row.get(4)?,
+							title: row.get(5)?,
+							turn_count: row.get(6)?,
+							created_at: row.get(7)?,
+							cwd: row.get(8)?,
+							last_cwd: row.get(9)?,
+							touched_paths: row.get(10)?,
+						})
+					},
 				)
 				.ok())
 		})?;
@@ -497,13 +571,34 @@ impl Indexer {
 		// turned out to contain. That is what the version stamp buys over 0008's
 		// `last_cwd IS NULL` test, which would never converge for a session that
 		// legitimately has nothing to find.
-		if let Some((cached_mtime, cached_size, parsed_with)) = cached {
-			if (cached_mtime, cached_size) == (mtime_ms, size) && parsed_with >= PARSE_VERSION {
+		if let Some(c) = &cached {
+			if (c.mtime, c.size) == (mtime_ms, size) && c.parse_version >= PARSE_VERSION {
 				return Ok(None);
 			}
 		}
 
-		debug!(%session_id, "indexing session");
+		// **Only the appended tail, when the file only grew** (PERF-03). Every
+		// condition here is a way the prefix could have stopped being what we
+		// already indexed: an older parser wrote the row, the row predates
+		// `title_kind` and so cannot say what a tail title would be beating, the
+		// file shrank, or nothing has been indexed yet.
+		let mut resume = cached.as_ref().filter(|c| {
+			c.parse_version >= PARSE_VERSION
+				&& c.title_kind.is_some()
+				&& c.indexed_bytes > 0
+				&& size >= c.indexed_bytes
+		});
+		// The offset is only worth anything if the bytes before it are still the
+		// bytes we read. A transcript that was rewritten to the same size or
+		// larger passes every test above and would resume mid-line.
+		if let Some(c) = resume {
+			if !crate::services::jsonl::is_line_boundary(session_path, c.indexed_bytes as u64)? {
+				debug!(%session_id, "resume offset is not a line boundary — parsing in full");
+				resume = None;
+			}
+		}
+
+		debug!(%session_id, tail = resume.is_some(), "indexing session");
 		let mut title_source: Option<String> = None;
 		let mut first_ts: Option<i64> = None;
 		let mut last_ts: Option<i64> = None;
@@ -526,7 +621,27 @@ impl Indexer {
 		let mut custom_title: Option<String> = None;
 		let mut ai_title: Option<String> = None;
 
-		for ev in EventIter::open(session_path)? {
+		// On the tail path the accumulators start from what the row already knows,
+		// so a value the tail never mentions keeps its answer: the count adds up,
+		// the first cwd and the first timestamp are already decided, and the
+		// touched-path window slides rather than restarting.
+		if let Some(c) = resume {
+			turn_count = c.turn_count;
+			cwd = c.cwd.clone();
+			last_cwd = c.last_cwd.clone();
+			first_ts = Some(c.created_at);
+			if let Some(json) = &c.touched_paths {
+				touched_paths = serde_json::from_str(json).unwrap_or_default();
+			}
+		}
+
+		let mut events = match resume {
+			Some(c) => EventIter::open_at(session_path, c.indexed_bytes as u64)?,
+			None => EventIter::open(session_path)?,
+		};
+		// `by_ref` so the iterator survives the loop: its byte offset is the whole
+		// point.
+		for ev in events.by_ref() {
 			turn_count += 1;
 			if let Some(ts_str) = &ev.timestamp {
 				if let Some(ts) = parse_iso(ts_str) {
@@ -581,6 +696,10 @@ impl Indexer {
 				}
 			}
 		}
+		// Whole lines only — see `EventIter::complete_bytes`. A transcript being
+		// written into right now ends in a partial line, and this is the offset
+		// that re-reads it when it is finished rather than skipping it.
+		let indexed_bytes = events.complete_bytes() as i64;
 
 		// Stored as JSON rather than as a delimited string: a path can contain
 		// anything except NUL, so any separator worth reading back is one a path
@@ -594,16 +713,38 @@ impl Indexer {
 		// A name you set yourself, else Claude's, else the first thing you said,
 		// else the id. An empty `/rename` is treated as no name rather than as a
 		// blank one.
-		let title = custom_title
-			.filter(|t| !t.trim().is_empty())
-			.or(ai_title.filter(|t| !t.trim().is_empty()))
-			.unwrap_or_else(|| derive_title(title_source.as_deref(), &session_id));
+		//
+		// **On the tail path the same precedence has to hold against a title the
+		// row already carries**, which is what `title_kind` is for: a `/rename`
+		// found in the tail wins outright, but an `ai-title` in the tail must not
+		// overwrite a `/rename` that happened earlier in the file, and neither
+		// must lose to the derived fallback. Without the stored kind a tail parse
+		// cannot tell which of those it is looking at.
+		let tail_custom = custom_title.filter(|t| !t.trim().is_empty());
+		let tail_ai = ai_title.filter(|t| !t.trim().is_empty());
+		let (title, title_kind) = match (&resume, tail_custom, tail_ai) {
+			(_, Some(t), _) => (t, TitleKind::Custom),
+			(None, None, Some(t)) => (t, TitleKind::Ai),
+			(None, None, None) => {
+				(derive_title(title_source.as_deref(), &session_id), TitleKind::Derived)
+			}
+			(Some(c), None, tail_ai) => {
+				let kind = c.kind();
+				match (kind, tail_ai) {
+					// A rename earlier in the file outranks anything the tail can
+					// offer short of another rename.
+					(TitleKind::Custom, _) => (c.title.clone(), TitleKind::Custom),
+					(_, Some(t)) => (t, TitleKind::Ai),
+					(k, None) => (c.title.clone(), k),
+				}
+			}
+		};
 
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			tx.execute(
-				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, touched_paths, parse_version)
-				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, touched_paths, parse_version, indexed_bytes, title_kind)
+				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
 				 ON CONFLICT(id) DO UPDATE SET
 				   title = excluded.title,
 				   updated_at = excluded.updated_at,
@@ -614,7 +755,9 @@ impl Indexer {
 				   subagent_of = excluded.subagent_of,
 				   last_cwd = COALESCE(excluded.last_cwd, sessions.last_cwd),
 				   touched_paths = COALESCE(excluded.touched_paths, sessions.touched_paths),
-				   parse_version = excluded.parse_version",
+				   parse_version = excluded.parse_version,
+				   indexed_bytes = excluded.indexed_bytes,
+				   title_kind = excluded.title_kind",
 				params![
 					session_id,
 					discovered_id,
@@ -629,12 +772,21 @@ impl Indexer {
 					last_cwd,
 					touched_json,
 					PARSE_VERSION,
+					indexed_bytes,
+					title_kind.as_str(),
 				],
 			)?;
+			// **Only when the whole file was parsed.** On the tail path the rows
+			// already in the table are the prefix we deliberately did not re-read,
+			// and deleting them would be how an incremental index quietly empties
+			// the search results for every live session.
+			//
 			// `messages`, never `messages_fts`: the index is external content over
 			// this table and its triggers keep it in step (ADR-0053). The delete is
 			// an index lookup rather than a scan of every session's rows.
-			tx.execute("DELETE FROM messages WHERE session_id = ?1", params![session_id])?;
+			if resume.is_none() {
+				tx.execute("DELETE FROM messages WHERE session_id = ?1", params![session_id])?;
+			}
 			{
 				let mut stmt = tx.prepare(
 					"INSERT INTO messages(session_id, role, body) VALUES(?1, ?2, ?3)",

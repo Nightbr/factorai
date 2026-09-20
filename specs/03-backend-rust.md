@@ -399,16 +399,37 @@ into a Uint8Array and writes straight to xterm.
 Single struct, owns a tokio task and a handle for the watcher. Public API:
 
 ```rust
-impl IndexerService {
-  pub fn spawn(db: DbHandle, claude_dir: PathBuf, app: AppHandle) -> Self;
-  pub async fn full_scan(&self) -> Result<()>;
-  pub fn shutdown(self);
+impl Indexer {
+  pub fn for_app(db: Db, app: AppHandle) -> Self;
+  pub fn with_callbacks(db: Db, on_progress: ProgressCb, on_changed: ChangedCb) -> Self;
+  pub fn full_scan(&self) -> AppResult<()>;
+  pub fn scan_dir_path(&self, profile_id: &str, dir: &Path) -> AppResult<()>;
 }
 ```
 
-Scan algorithm: walk projects dir, for each `.jsonl` compare `(mtime, size)`
-to row, parse only if changed. Parser uses `tokio::io::BufReader::lines()`
-so a multi-MB session doesn't blow memory.
+**Corrected 2026-09-20.** It is `Indexer`, not `IndexerService`; the scan is
+synchronous on a named `std::thread` rather than a tokio task; and the parser is
+`services::jsonl::EventIter` over a `std::io::BufReader`, not
+`tokio::io::BufReader::lines()`.
+
+Scan algorithm: walk the projects directory, and for each `.jsonl` compare
+`(mtime, size)` against the row and parse only if they differ or
+`parse_version` is behind.
+
+**When it does parse, it parses the appended tail, not the file** (PERF-03,
+`10-performance.md`). Transcripts are append-only, so the row carries
+`indexed_bytes` — where the last pass finished — and the next pass seeks there
+and reads on, appending to `messages` rather than deleting and rebuilding the
+session's rows. On a 31MB transcript one appended turn costs 32ms instead of
+4.7s.
+
+Four things send it back to a full parse, and each of them is a way the prefix
+could have stopped being what was already read: `parse_version` is behind, the
+row predates migration 0021 and so has no `title_kind` to settle a tail title
+against, the file is smaller than `indexed_bytes`, or the byte at
+`indexed_bytes` is not a line boundary (a transcript rewritten to the same size
+or larger). The parser streams a line at a time either way, so memory is bounded
+by the longest line rather than by the file.
 
 ### `WatcherService`
 

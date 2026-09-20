@@ -266,7 +266,11 @@ if the number is inside the budget. In the spec's order:
       the two polls, the project list and search now use it. With a writer holding a 400ms
       transaction, a read went from 400.1ms to 0.33ms. `with`/`with_mut` are unchanged, so
       nothing that was serialised stopped being. The `off_main` half is PERF-07's.
-- [ ] **PERF-03** — full transcript re-parse on every change; index the appended tail.
+- [x] **PERF-03** — full transcript re-parse on every change. **Landed 2026-09-20**: the
+      indexer resumes from `indexed_bytes` and appends (migration 0021). One appended turn on
+      a 31MB transcript went from 4.71s to 32.2ms, and on a 5MB one from 288ms to 14.5ms.
+      `title_kind` keeps a `/rename` outranking a tail title, and four conditions still force
+      a full parse. PERF-16 is the remaining half.
 - [ ] **PERF-04** — hidden pooled terminals are still rendered by xterm; make them
       non-intersecting without removing layout. **Verify on macOS before it lands.**
 - [ ] **PERF-05** — `list_sessions` canonicalises under the database lock on the main thread.

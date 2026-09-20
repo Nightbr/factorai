@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::Path;
 
 use tracing::warn;
@@ -10,19 +10,79 @@ use crate::models::SessionEvent;
 /// Streaming line-by-line parser. Malformed lines are logged and skipped —
 /// the schema is undocumented and we'd rather keep going than fail a whole
 /// session because of one bad line.
+///
+/// It also counts the bytes it has consumed **as whole lines**, which is what
+/// makes indexing a transcript's tail possible (PERF-03,
+/// `specs/10-performance.md`). See [`EventIter::complete_bytes`] for why a
+/// trailing partial line is deliberately not counted.
 pub struct EventIter {
 	reader: BufReader<File>,
 	line_buf: String,
+	complete: u64,
 }
 
 impl EventIter {
 	pub fn open(path: &Path) -> AppResult<Self> {
-		let file = File::open(path)?;
+		Self::open_at(path, 0)
+	}
+
+	/// Read from `offset`, which must be a whole-line boundary — the value a
+	/// previous run got from [`EventIter::complete_bytes`].
+	pub fn open_at(path: &Path, offset: u64) -> AppResult<Self> {
+		let mut file = File::open(path)?;
+		if offset > 0 {
+			file.seek(SeekFrom::Start(offset))?;
+		}
 		Ok(Self {
 			reader: BufReader::with_capacity(64 * 1024, file),
 			line_buf: String::with_capacity(4096),
+			complete: offset,
 		})
 	}
+
+	/// The offset just past everything this iterator has finished with — every
+	/// line whose event it yielded, and every whole line it permanently skipped.
+	///
+	/// **The one thing it never includes is a trailing line that failed to
+	/// parse**, and that is the whole point. Claude Code appends to a transcript
+	/// while the watcher is firing, so a read can land mid-line; a truncated line
+	/// fails to parse and is skipped, and a next run that resumed from the file's
+	/// *size* would skip the rest of it forever — one event lost, silently, on
+	/// the only sessions anyone is watching. Resuming from here re-reads it once
+	/// it is whole.
+	///
+	/// A line that parsed without a trailing newline **is** included: the JSON
+	/// object was complete, the event has been taken, and re-reading it would
+	/// double-count it. The newline that arrives later reads back as an empty
+	/// line and is skipped.
+	pub fn complete_bytes(&self) -> u64 {
+		self.complete
+	}
+}
+
+/// Does `offset` sit on a line boundary in `path`?
+///
+/// The resume point for an incremental index is a byte count, and a byte count
+/// only means anything if the bytes before it are still the bytes we read
+/// (PERF-03). A transcript that was rewritten rather than appended to — same
+/// size or larger, different content — would otherwise resume in the middle of
+/// a line and quietly index nothing at all.
+///
+/// One line is enough to tell: at a real boundary the next line parses, or is
+/// blank, or there is nothing there yet. Anything else and the caller should
+/// read the file from the start. A genuinely corrupt line in the middle of a
+/// good transcript lands here too and costs one full parse, which is the right
+/// price for not being sure.
+pub fn is_line_boundary(path: &Path, offset: u64) -> AppResult<bool> {
+	let mut file = File::open(path)?;
+	file.seek(SeekFrom::Start(offset))?;
+	let mut reader = BufReader::with_capacity(8 * 1024, file);
+	let mut line = String::new();
+	if reader.read_line(&mut line)? == 0 {
+		return Ok(true);
+	}
+	let trimmed = line.trim();
+	Ok(trimmed.is_empty() || serde_json::from_str::<SessionEvent>(trimmed).is_ok())
 }
 
 impl Iterator for EventIter {
@@ -33,15 +93,29 @@ impl Iterator for EventIter {
 			self.line_buf.clear();
 			match self.reader.read_line(&mut self.line_buf) {
 				Ok(0) => return None,
-				Ok(_) => {
+				Ok(n) => {
+					let whole = self.line_buf.ends_with('\n');
 					let trimmed = self.line_buf.trim();
 					if trimmed.is_empty() {
+						if whole {
+							self.complete += n as u64;
+						}
 						continue;
 					}
 					match serde_json::from_str::<SessionEvent>(trimmed) {
-						Ok(ev) => return Some(ev),
+						Ok(ev) => {
+							// Taken, so consumed — with or without its newline.
+							self.complete += n as u64;
+							return Some(ev);
+						}
 						Err(e) => {
-							warn!(error = %e, "skipping malformed jsonl line");
+							// A whole line that will not parse is skipped for good, so
+							// it counts. A trailing one is most likely half-written, so
+							// it does not: it is re-read when the rest of it lands.
+							if whole {
+								self.complete += n as u64;
+							}
+							warn!(error = %e, whole, "skipping malformed jsonl line");
 							continue;
 						}
 					}
