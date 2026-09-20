@@ -48,15 +48,64 @@ html {
 
 .navbar {
 	border-bottom: 1px solid var(--fa-border);
+	transition: background 0.5s ease, border-color 0.5s ease;
+}
+
+/* The blur lives on a pseudo-element: `backdrop-filter` on the nav itself
+   would make it the containing block of the fixed mobile sidebar, which then
+   could not leave the header's box. */
+.navbar::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
 	backdrop-filter: blur(12px);
+	transition: opacity 0.5s ease;
+}
+
+body[data-fa-intro] .navbar::before {
+	opacity: 0;
+}
+
+/* Hidden while the hero's pinned stage is on screen; slides in at the bento.
+   The nav element itself is never transformed: a transform would make it the
+   containing block of the fixed mobile sidebar and pin the menu to the header.
+   Only its inner bar moves. */
+body[data-fa-intro] .navbar {
+	background: transparent;
+	border-color: transparent;
+	pointer-events: none;
+}
+
+body[data-fa-intro] .navbar__inner {
+	transform: translateY(-100%);
+	opacity: 0;
 	transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease;
 }
 
-/* Hidden while the hero's pinned stage is on screen; slides in at the bento. */
-body[data-fa-intro] .navbar {
-	transform: translateY(-100%);
-	opacity: 0;
-	pointer-events: none;
+.navbar__inner {
+	transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease;
+}
+
+/* The burger on the right, the lockup first. */
+.navbar__items > .navbar__toggle {
+	order: 99;
+	margin-left: auto;
+	margin-right: 0;
+}
+
+/* The lockup's wordmark is a navbar item: Docusaurus hides left items on a
+   phone and lists them in the menu instead. The wordmark stays in the header
+   and leaves the menu, where the brand row already carries the mark. */
+@media (max-width: 996px) {
+	.navbar__items > .navbar__item:has(.navbar-wordmark) {
+		display: block;
+	}
+}
+
+.navbar-sidebar .menu__list-item:has(.navbar-wordmark),
+.navbar-sidebar .navbar-wordmark {
+	display: none;
 }
 
 .navbar__logo {

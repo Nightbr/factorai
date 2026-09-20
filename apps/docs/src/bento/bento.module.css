@@ -1433,7 +1433,7 @@
 	stroke: var(--fa-border);
 }
 
-.machine [data-mitText] {
+.machine [data-mit-text] {
 	fill: var(--fa-primary);
 	font-family: var(--ifm-font-family-monospace);
 	font-size: 7.5px;

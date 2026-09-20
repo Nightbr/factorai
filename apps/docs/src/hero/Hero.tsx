@@ -46,16 +46,23 @@ const SEGMENTS = STEPS - 1;
 const HOLD = 0.35;
 const TOTAL = SEGMENTS + HOLD;
 
+/**
+ * One span per character for the stagger, grouped per word so a line can
+ * only break between words: "ADE" is never "AD" over "E".
+ */
 function splitChars(text: string, className: string) {
-	return Array.from(text).map((ch, i) =>
-		ch === ' ' ? (
-			// biome-ignore lint/suspicious/noArrayIndexKey: static string, never reordered
-			<span key={i} className={className} aria-hidden="true" />
-		) : (
-			// biome-ignore lint/suspicious/noArrayIndexKey: static string, never reordered
-			<span key={i}>{ch}</span>
-		),
-	);
+	return text.split(' ').map((word, w) => (
+		// biome-ignore lint/suspicious/noArrayIndexKey: static string, never reordered
+		<span key={w} className={styles.word}>
+			{w > 0 && <span className={className} aria-hidden="true" />}
+			{Array.from(word).map((ch, i) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: static string, never reordered
+				<span key={i} data-char="">
+					{ch}
+				</span>
+			))}
+		</span>
+	));
 }
 
 /**
@@ -147,7 +154,7 @@ export function Hero({ copy }: Props) {
 				.addLabel('s2', 2);
 
 			// Segment 2→3: the dead word leaves, the answer rises letter by letter.
-			const chars = longLive.current.querySelectorAll('span');
+			const chars = longLive.current.querySelectorAll('span[data-char]');
 			tl.to(dead.current, { opacity: 0, y: -60, filter: 'blur(10px)', duration: 0.4 }, 2.05)
 				.fromTo(
 					chars,
@@ -429,7 +436,6 @@ export function Hero({ copy }: Props) {
 					>
 						{splitChars(copy.longLive, styles.space)}
 						<span className={styles.space} aria-hidden="true" />
-						{/* A <b>, not a <span>: the stagger below selects spans and must not pick up the wrapper. */}
 						<b className={styles.acronym}>{splitChars(copy.acronym, styles.space)}</b>
 					</h1>
 					<p ref={expansion} className={styles.expansion}>

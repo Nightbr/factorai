@@ -67,6 +67,41 @@
 	}
 }
 
+/* No WebGL: two blurred blobs drifting behind the scenes stand in for the fog. */
+.stage[data-nogl]::before,
+.stage[data-nogl]::after {
+	content: "";
+	position: absolute;
+	width: 70vmax;
+	height: 70vmax;
+	border-radius: 9999px;
+	background: radial-gradient(circle, oklch(60% 0.03 250 / 0.28), transparent 65%);
+	filter: blur(30px);
+	pointer-events: none;
+	animation: drift 14s ease-in-out infinite alternate;
+}
+
+.stage[data-nogl]::after {
+	left: 30%;
+	top: 40%;
+	animation-duration: 18s;
+	animation-direction: alternate-reverse;
+}
+
+.stage[data-nogl]::before {
+	left: -20%;
+	top: -10%;
+}
+
+@keyframes drift {
+	from {
+		transform: translate(0, 0);
+	}
+	to {
+		transform: translate(18vw, 12vh);
+	}
+}
+
 /* Scenes stay out of sight until the timeline has set their first frame. */
 .stage:not([data-ready]) .scene,
 .stage:not([data-ready]) .forge,
@@ -245,6 +280,12 @@
 	font-weight: 600;
 }
 
+/* Word wrappers: inline so the letters still stagger, but never broken inside. */
+.word {
+	display: inline-block;
+	white-space: nowrap;
+}
+
 .longLive .space {
 	width: 0.36em;
 }
@@ -371,15 +412,15 @@
 .forgedText {
 	position: absolute;
 	z-index: 1;
-	left: 50%;
+	left: 16px;
+	right: 16px;
 	top: calc(50% + clamp(96px, 16vmin, 160px) * 0.5 + 2.4rem);
-	transform: translateX(-50%);
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	gap: 0.6rem;
 	opacity: 0;
-	white-space: nowrap;
+	text-align: center;
 }
 
 .wordmark {
@@ -500,6 +541,14 @@
 	.dead,
 	.longLive {
 		white-space: normal;
+	}
+	.fogText,
+	.fogText2 {
+		font-size: clamp(1.9rem, 6.4vw, 3.1rem);
+		max-width: 16ch;
+	}
+	.longLive {
+		font-size: clamp(2.2rem, 11vw, 7.2rem);
 	}
 }
 

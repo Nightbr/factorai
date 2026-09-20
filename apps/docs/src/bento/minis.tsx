@@ -325,7 +325,7 @@ export function LocalMini() {
 					</text>
 				))}
 				<rect x="188" y="142" width="34" height="16" rx="3" data-mit />
-				<text x="205" y="150" data-mitText>
+				<text x="205" y="150" data-mit-text>
 					MIT
 				</text>
 			</svg>

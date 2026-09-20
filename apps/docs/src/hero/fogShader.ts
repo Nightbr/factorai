@@ -70,7 +70,10 @@ float smoke(vec2 p, float t) {
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
   float aspect = u_res.x / u_res.y;
-  vec2 p = vec2(uv.x * aspect, uv.y);
+  // Feature size follows the short side, so a portrait phone gets the same
+  // curls as a landscape screen rather than a strip of them.
+  vec2 p = vec2(uv.x * aspect, uv.y) / min(aspect, 1.0);
+  float portrait = 1.0 + 0.45 * (1.0 - min(aspect, 1.0));
   float t = u_time * 0.09;
 
   // Two layers at different scales, the near one drifting faster.
@@ -86,7 +89,7 @@ void main() {
 
   // Density: heaviest low and at the edges; the band adds its wall and clears
   // what it has passed.
-  float base = n * (0.5 + 0.5 * (1.0 - uv.y)) * u_density;
+  float base = n * (0.5 + 0.5 * (1.0 - uv.y)) * u_density * portrait;
   float d = base * (1.0 - 0.85 * behind) + wall * 0.9 * u_density * (0.35 + 0.65 * n);
   d = clamp(d, 0.0, 1.0);
 
