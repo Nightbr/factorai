@@ -316,7 +316,12 @@ if the number is inside the budget. In the spec's order:
       2026-09-20**: `lib/persistStorage` defers the write by 150ms and flushes on the way
       out, for all seven persisted stores. A 60-step drag went from 60 writes and 4 980
       bytes to 13 and 1 002.
-- [ ] **PERF-13** — item 55, the markdown preview and mermaid.
+- [x] **PERF-13** — item 55, the markdown preview and mermaid. **Landed 2026-09-20**: the
+      plugins and component map are hoisted, `MarkdownView` is memoised, the palette is
+      read once behind a `MutationObserver`, diagrams render through one queue and a
+      re-render keeps the old SVG. On a twenty-fence document, `getComputedStyle` calls
+      went from 720 to 9 and the time to every diagram drawn from 3 379ms to 2 574ms.
+      Chunked rendering is not needed and stays unbuilt.
 - [x] **PERF-14** — background PTYs flushed at the active session's cadence. **Landed
       2026-09-20**: 100ms for a session another one is in front of, 16ms for the one you
       are looking at. The condition is `is_backgrounded`, not `!is_active` — before the

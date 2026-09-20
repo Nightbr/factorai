@@ -9,8 +9,16 @@ import type { FileContents, ImageContents } from '@factorai/types';
 import { usePrefsStore } from '@store/prefsStore';
 import { useQuery } from '@tanstack/react-query';
 import { ImageOff } from 'lucide-react';
-import Markdown from 'react-markdown';
+import { memo, useMemo } from 'react';
+import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+/**
+ * Hoisted out of the render (PERF-13, `specs/10-performance.md`). A fresh
+ * `[remarkGfm]` each time is a new prop each time, which is enough on its own
+ * to stop any `memo` below here ever bailing out.
+ */
+const REMARK_PLUGINS = [remarkGfm];
 
 /**
  * Rendered markdown for the file viewer (F7).
@@ -139,14 +147,74 @@ interface MarkdownViewProps {
 	onOpenPath: (path: string) => void;
 }
 
-export function MarkdownView({ source, path, onOpenPath }: MarkdownViewProps) {
+/**
+ * **`memo`, because re-rendering this re-parses the document** (PERF-13).
+ * react-markdown 10 has no incremental parse: it runs remark and rebuilds the
+ * whole hast tree on every render. Its host is `FileView`, which holds the edit
+ * buffer's state machine, the SOPS plaintext and its four states, a `sops`
+ * status query, the footer's selection and the preview toggle — so without this
+ * a keystroke in the footer's search re-parsed the README.
+ *
+ * The three props are what make it work: two strings and a callback the host
+ * keeps stable. `remarkPlugins` and `components` used to be fresh literals on
+ * every render, which would have defeated it whatever the props did.
+ */
+export const MarkdownView = memo(function MarkdownView({
+	source,
+	path,
+	onOpenPath,
+}: MarkdownViewProps) {
 	// **The frontmatter is taken off before remark sees it.** react-markdown has
 	// no frontmatter plugin, so the fences parsed as markdown and every field ran
 	// together into one paragraph. Split here rather than in a remark plugin
 	// because the block is not being rendered as markdown at all — it becomes a
 	// panel of its own above the document.
-	const { frontmatter, body } = splitFrontmatter(source);
+	const { frontmatter, body } = useMemo(() => splitFrontmatter(source), [source]);
 	const frontmatterOpen = usePrefsStore((s) => s.frontmatterOpen);
+
+	// The three overrides capture `path` and `onOpenPath` and nothing else, so
+	// this is stable for as long as the document is — which is what lets
+	// react-markdown reuse its own work rather than seeing a new component map.
+	const components = useMemo<Components>(
+		() => ({
+			a: ({ href, children }) => (
+				<a
+					href={href}
+					onClick={(e) => {
+						e.preventDefault();
+						if (!href) return;
+						if (/^https?:|^mailto:/.test(href)) {
+							// External link: hand it to the browser, never navigate the
+							// webview itself out of the app.
+							void openExternally(href);
+						} else if (href.startsWith('#')) {
+							// In-document anchor: nothing to open.
+						} else {
+							// A relative path — open that file in the viewer. If it doesn't
+							// exist, read_file's NotFound card explains why.
+							onOpenPath(resolveRelative(path, href));
+						}
+					}}
+				>
+					{children}
+				</a>
+			),
+			img: ({ src, alt, title }) => (
+				<MarkdownImage src={src ?? ''} alt={alt ?? ''} title={title} from={path} />
+			),
+			// A ```mermaid fence is a diagram; every other fence is a code block and
+			// renders as one. Overriding `pre` rather than `code` because the diagram
+			// replaces the whole block — returning it from `code` would leave it
+			// wrapped in a `<pre>`, which is styled as a code block and may not
+			// contain flow content.
+			pre: ({ node, children, ...props }) => {
+				const diagram = mermaidSource(node);
+				if (diagram !== null) return <MermaidDiagram code={diagram} />;
+				return <pre {...props}>{children}</pre>;
+			},
+		}),
+		[path, onOpenPath],
+	);
 
 	return (
 		<div className="h-full overflow-auto px-8 py-6" data-testid="markdown-view">
@@ -169,52 +237,13 @@ export function MarkdownView({ source, path, onOpenPath }: MarkdownViewProps) {
 					// one before it.
 					<FrontmatterPanel key={path} frontmatter={frontmatter} defaultOpen={frontmatterOpen} />
 				)}
-				<Markdown
-					remarkPlugins={[remarkGfm]}
-					components={{
-						a: ({ href, children }) => (
-							<a
-								href={href}
-								onClick={(e) => {
-									e.preventDefault();
-									if (!href) return;
-									if (/^https?:|^mailto:/.test(href)) {
-										// External link: hand it to the browser, never navigate
-										// the webview itself out of the app.
-										void openExternally(href);
-									} else if (href.startsWith('#')) {
-										// In-document anchor: nothing to open.
-									} else {
-										// A relative path — open that file in the viewer. If it
-										// doesn't exist, read_file's NotFound card explains why.
-										onOpenPath(resolveRelative(path, href));
-									}
-								}}
-							>
-								{children}
-							</a>
-						),
-						img: ({ src, alt, title }) => (
-							<MarkdownImage src={src ?? ''} alt={alt ?? ''} title={title} from={path} />
-						),
-						// A ```mermaid fence is a diagram; every other fence is a code
-						// block and renders as one. Overriding `pre` rather than `code`
-						// because the diagram replaces the whole block — returning it
-						// from `code` would leave it wrapped in a `<pre>`, which is
-						// styled as a code block and may not contain flow content.
-						pre: ({ node, children, ...props }) => {
-							const diagram = mermaidSource(node);
-							if (diagram !== null) return <MermaidDiagram code={diagram} />;
-							return <pre {...props}>{children}</pre>;
-						},
-					}}
-				>
+				<Markdown remarkPlugins={REMARK_PLUGINS} components={components}>
 					{body}
 				</Markdown>
 			</div>
 		</div>
 	);
-}
+});
 
 /**
  * An image in a markdown document.

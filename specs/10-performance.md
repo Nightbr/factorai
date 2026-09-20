@@ -653,8 +653,9 @@ pending value, the flush on the way out, the removal of a queued write, corrupt
 JSON and a storage that refuses.
 
 **PERF-13 — The markdown preview re-parses on every host render, and mermaid multiplies it (item 55).**
-Impact M, cost L, confirmed by reading. The analysis moved here from the
-roadmap; nothing in this audit contradicts it.
+Impact M, cost L. **Landed 2026-09-20**; what was done and what it measured are
+at the end. The analysis moved here from the roadmap; nothing in this audit
+contradicted it.
 - `MarkdownView` is not memoised and react-markdown 10 has no incremental
   parse; its host `FileView` holds the edit buffer's state machine, the SOPS
   plaintext and its four states, a `sops` status query, the footer's
@@ -678,12 +679,41 @@ roadmap; nothing in this audit contradicts it.
   costs nothing.
 - The 2.5 MB dynamic `import()` (ADR-0021) is paid once, only by documents
   with a fence, and stays.
-*Fix.* `remarkPlugins` a module constant; `components` a `useMemo` on
-`[path, onOpenPath]`; `memo(MarkdownView)`; cache the palette reads behind
-the theme event; queue diagram renders; keep the old SVG during a re-render.
-*Measure.* With the profiler: a keystroke in the footer's search, a save and
-a `sops` query settling each stop re-parsing; then a genuinely large document
-before deciding chunked rendering is needed at all.
+*Fixed*, all six:
+
+- `remarkPlugins` is a module constant and `components` a `useMemo` on
+  `[path, onOpenPath]` — both were fresh literals, which would have defeated
+  any `memo` whatever else changed.
+- `MarkdownView` is `memo`, and `FileView` passes it a `useCallback`'d
+  `onOpenPath` so the memo has something to hold.
+- The render-time ref read is now stated rather than inherited: the editor is
+  unmounted whenever the preview is up, so `bufferRef` is frozen for as long as
+  the value is on screen, and a comment says so beside it. A memo over
+  something that could change without a render would be a preview that silently
+  stopped updating.
+- The palette is read once and held until a `MutationObserver` on `<html>`'s
+  class, style or `data-theme` says the theme moved. A theme switch (item 32)
+  invalidates it without having to know the module exists.
+- Diagrams render through one queue. Twenty fences used to run twenty layouts
+  concurrently against the single global mermaid instance, on the first frame
+  the preview was up.
+- A re-render keeps the previous SVG until the new one lands, instead of
+  emptying the host and collapsing every diagram to zero height.
+
+*Measured* on a document with twenty fences:
+
+| | before | after |
+|---|---|---|
+| `getComputedStyle` calls | 720 | 9 |
+| Click to every diagram drawn | 3 379 ms | 2 574 ms |
+
+720 to 9 is the palette: nine reads per diagram per render became nine, once.
+Each is a forced style recalculation.
+
+*Not virtualized, and not needed.* The finding said to measure a large document
+before deciding chunked rendering was warranted. A twenty-diagram document
+draws in 2.6 s, almost all of it mermaid's own layout, and the parse is no
+longer repeated — so that larger change stays unbuilt.
 
 **PERF-14 — Background PTYs are flushed at the active session's cadence.**
 Impact M at ten live sessions, cost L. **Landed 2026-09-20**; what it does and

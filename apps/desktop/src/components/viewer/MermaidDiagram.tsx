@@ -1,4 +1,4 @@
-import { loadMermaid } from '@components/viewer/mermaid';
+import { renderDiagram } from '@components/viewer/mermaid';
 import { Waypoints } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 
@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react';
  * One ```mermaid fence in a rendered markdown document, drawn as a diagram
  * (F7, ADR-0021).
  *
- * Mermaid arrives through `loadMermaid`, so a document with no fence never
+ * Mermaid arrives through `renderDiagram`, so a document with no fence never
  * pays for it. Until it has, the fence renders as nothing rather than as a
  * spinner: these are local reads with no network behind them, and a
  * placeholder that reflows the page a frame later is worse than a beat of
@@ -29,9 +29,12 @@ export function MermaidDiagram({ code }: { code: string }) {
 
 	useEffect(() => {
 		let live = true;
-		setState({ kind: 'pending' });
-		loadMermaid()
-			.then((mermaid) => mermaid.render(id, code))
+		// **The previous SVG stays up while the next one is laid out** (PERF-13).
+		// This used to go back to `pending`, and the effect below then emptied the
+		// host — so every diagram in the document collapsed to zero height and the
+		// page reflowed through all of them on each re-render. The failure path
+		// already kept the source for the same reason.
+		renderDiagram(id, code)
 			.then(({ svg }) => {
 				if (live) setState({ kind: 'ready', svg });
 			})
@@ -53,10 +56,10 @@ export function MermaidDiagram({ code }: { code: string }) {
 	useEffect(() => {
 		const node = host.current;
 		if (!node) return;
-		if (state.kind !== 'ready') {
-			node.replaceChildren();
-			return;
-		}
+		// Only a real diagram replaces what is there. `pending` is "nothing yet"
+		// on the first render and "the one before is still good" on a later one,
+		// and emptying the host in the second case is the reflow this avoids.
+		if (state.kind !== 'ready') return;
 		const parsed = new DOMParser().parseFromString(state.svg, 'text/html');
 		const svg = parsed.body.firstElementChild;
 		if (svg) node.replaceChildren(document.importNode(svg, true));

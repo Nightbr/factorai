@@ -20,6 +20,32 @@ let loading: Promise<MermaidApi> | null = null;
 /** The palette the loaded instance was configured with, so a theme change is
  *  noticed without re-importing the module. */
 let configuredFor: string | null = null;
+/** The last key read off the document, and whether it is still trusted.
+ *
+ *  **The reads are the cost, not the comparison** (PERF-13,
+ *  `specs/10-performance.md`). `diagramPalette` and `currentFontFamily` are
+ *  nine `getComputedStyle` calls, each a forced style recalculation, and they
+ *  ran once per diagram per render to produce a key that is almost always the
+ *  one before. A palette moves when the theme does, which is an event — so the
+ *  key is read once and held until something says otherwise. */
+let cachedKey: { key: string; palette: DiagramPalette; fontFamily: string } | null = null;
+
+/**
+ * Forget the cached palette when the document's own theme attributes move.
+ *
+ * A theme switch (roadmap item 32) is an event, and this is where it arrives:
+ * whatever flips a class or a custom property on `<html>` invalidates the key
+ * without having to know this module exists. Registered once, for the life of
+ * the renderer.
+ */
+if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+	new MutationObserver(() => {
+		cachedKey = null;
+	}).observe(document.documentElement, {
+		attributes: true,
+		attributeFilter: ['class', 'style', 'data-theme'],
+	});
+}
 
 function paletteKey(palette: DiagramPalette, fontFamily: string): string {
 	return `${JSON.stringify(palette)}|${fontFamily}`;
@@ -37,20 +63,26 @@ function currentFontFamily(): string {
 /**
  * Load mermaid, configured against the current palette.
  *
+ * Not exported: [`renderDiagram`] is the only way in, so every diagram goes
+ * through the same queue (PERF-13).
+ *
  * Configuration is re-applied whenever the palette has moved rather than only
  * once: `mermaid.initialize` is idempotent and cheap, and the alternative is a
  * theme switch (roadmap item 32) leaving the next diagram drawn for the old
  * one.
  */
-export async function loadMermaid(): Promise<MermaidApi> {
+async function loadMermaid(): Promise<MermaidApi> {
 	if (!loading) {
 		loading = import('mermaid').then((m) => m.default);
 	}
 	const mermaid = await loading;
 
-	const palette = diagramPalette(rootToken);
-	const fontFamily = currentFontFamily();
-	const key = paletteKey(palette, fontFamily);
+	if (!cachedKey) {
+		const palette = diagramPalette(rootToken);
+		const fontFamily = currentFontFamily();
+		cachedKey = { key: paletteKey(palette, fontFamily), palette, fontFamily };
+	}
+	const { key, palette, fontFamily } = cachedKey;
 	if (key !== configuredFor) {
 		mermaid.initialize({
 			// Nothing on the page is a `<div class="mermaid">` for mermaid to find
@@ -78,4 +110,29 @@ export async function loadMermaid(): Promise<MermaidApi> {
 		configuredFor = key;
 	}
 	return mermaid;
+}
+
+/**
+ * Render one diagram, one at a time.
+ *
+ * **There is a single global mermaid instance and `render` is not reentrant in
+ * any useful sense** (PERF-13): every fence in a document called it at once, so
+ * a page with twenty diagrams ran twenty layouts concurrently against one
+ * engine, on the first frame the preview was up. Serialising them does not make
+ * the total slower — the work is the same work — and it stops the main thread
+ * being held for the whole of it.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+export function renderDiagram(id: string, code: string): Promise<{ svg: string }> {
+	// The `catch` is what keeps a diagram that would not parse from poisoning
+	// every one behind it in the document.
+	const next = queue
+		.catch(() => undefined)
+		.then(async () => {
+			const mermaid = await loadMermaid();
+			return mermaid.render(id, code);
+		});
+	queue = next.catch(() => undefined);
+	return next;
 }

@@ -38,7 +38,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Code2, Eye, Lock, LockOpen, Sparkles } from 'lucide-react';
 import type { MutableRefObject, ReactNode } from 'react';
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * One file, editable (specs/05-features.md F7, F26).
@@ -113,6 +113,9 @@ export function FileView({ path, position, onOpenPath }: FileViewProps) {
 }
 
 function TextFileView({ path, position, onOpenPath }: FileViewProps) {
+	// Stable for the life of this view, so the preview's memo has something to
+	// hold on to (PERF-13).
+	const openPath = useCallback((next: string) => onOpenPath?.(next), [onOpenPath]);
 	// The user asked to see an oversized file anyway → read with no cap.
 	const [uncapped, setUncapped] = useState(false);
 	// What is selected in the editor, for the footer's hand-to-Claude control
@@ -301,6 +304,14 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 	// **Preview renders the buffer, not disk** (F26). Editing `CLAUDE.md` is
 	// meant to be a type-toggle-see loop, and a preview of the file as it was
 	// before you typed is a preview of the wrong document.
+	//
+	// **This reads a ref during render, and the reason it is sound is narrow**
+	// (PERF-13): the editor is unmounted while the preview is up — `showEditor`
+	// below is false whenever `showPreview` is true — so nothing can write to
+	// `bufferRef` for as long as this value is on screen. It is frozen, not
+	// merely current. Said out loud here because the value feeds a memoised
+	// `MarkdownView`, and a memo over something that could change without a
+	// render would be a preview that silently stopped updating.
 	const previewSource = dirty ? bufferRef.current : (file?.contents ?? '');
 	const reason = file && !file.isBinary ? readOnlyReason(file, path) : null;
 	// A dirty buffer keeps the editor on screen even when the read now fails:
@@ -402,11 +413,10 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 				)}
 				{!showConflictDiff && !decrypted && file && !file.isBinary && showPreview && isMarkdown && (
 					<SearchablePreview source={previewSource}>
-						<MarkdownView
-							source={previewSource}
-							path={path}
-							onOpenPath={onOpenPath ?? (() => undefined)}
-						/>
+						{/* `openPath` rather than an inline fallback: a fresh arrow here
+						    is a new prop on every render, which is the one thing that
+						    would stop `MarkdownView`'s memo doing anything (PERF-13). */}
+						<MarkdownView source={previewSource} path={path} onOpenPath={openPath} />
 					</SearchablePreview>
 				)}
 				{!showConflictDiff && !decrypted && file && !file.isBinary && showPreview && isSvg && (
