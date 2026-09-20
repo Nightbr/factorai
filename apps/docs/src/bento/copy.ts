@@ -18,8 +18,8 @@ export const CELLS: CellCopy[] = [
 	{
 		id: 'sessions',
 		label: 'sessions',
-		title: 'Run agents, not chats',
-		line: 'Every session is the real claude CLI in a real terminal. Launch it, resume it, kill it. The dot says which one needs you.',
+		title: 'Run several agents at once',
+		line: 'One tab per agent, each a real claude CLI in a real terminal. Give every one a task, switch between them as they work in parallel, and get more done in a day than one pair of hands could.',
 		span: 8,
 	},
 	{
@@ -38,9 +38,9 @@ export const CELLS: CellCopy[] = [
 	},
 	{
 		id: 'changes',
-		label: 'review',
-		title: 'Check the work, not the chat',
-		line: 'Staged, unstaged, a diff on click, and the graph of what just landed. Git stays read-only: the agent writes, you check.',
+		label: 'audit',
+		title: 'Audit whenever you choose',
+		line: 'Agents commit as they go; nothing waits on you. Changes shows what was touched, the graph shows what landed, and every line is traced, ready for you on your own schedule.',
 		span: 8,
 	},
 	{

@@ -8,39 +8,38 @@ import styles from './bento.module.css';
 
 export function SessionsMini() {
 	const rows = [
-		['fix flaky e2e on CI', 'working'],
-		['migrate settings to SQLite', 'waiting'],
-		['write release notes', 'working'],
-		['triage inbox', 'stopped'],
+		['fix flaky e2e on CI', 'working', 'Bash  pnpm e2e --grep login', '✓ 5 passed'],
+		[
+			'migrate settings to SQLite',
+			'waiting',
+			'Edit  src/store/prefsStore.ts',
+			'? Keep a backup of settings.json?  (y/n)',
+		],
+		['write release notes', 'working', 'Read  specs/roadmap/DONE.md', 'Edit  CHANGELOG.md'],
 	] as const;
 	return (
 		<div className={styles.mini} data-mini="sessions">
 			<div className={styles.tabs}>
-				{rows.slice(0, 3).map(([name, status], i) => (
+				{rows.map(([name, status], i) => (
 					<span key={name} className={styles.tab} data-status={status} data-i={i}>
 						<i className={styles.dot} />
 						{name}
 					</span>
 				))}
 			</div>
-			<div className={styles.term}>
-				<span className={styles.termLine} style={{ width: '62%' }} />
-				<span className={styles.termLine} style={{ width: '38%' }} />
-				<span className={styles.termLine} style={{ width: '74%' }} />
-				<span className={styles.termPrompt}>
-					Allow <b>Edit</b> on src/app.ts? <em>(y/n)</em>
-					<i className={styles.caret} />
-				</span>
-			</div>
-			<ul className={styles.list}>
-				{rows.map(([name, status], i) => (
-					<li key={name} data-status={status} data-i={i}>
-						<i className={styles.dot} />
-						<span>{name}</span>
-						<small>{['2m', '14s', '1h', '3d'][i]}</small>
-					</li>
+			<div className={styles.screens}>
+				{rows.map(([name, , a, b], i) => (
+					<div key={name} className={styles.screen} data-i={i}>
+						<span className={styles.termLine} style={{ width: '58%' }} />
+						<span className={styles.termLine} style={{ width: '36%' }} />
+						<span className={styles.termPrompt}>{a}</span>
+						<span className={styles.termPrompt}>
+							{b}
+							<i className={styles.caret} />
+						</span>
+					</div>
 				))}
-			</ul>
+			</div>
 		</div>
 	);
 }
@@ -48,16 +47,27 @@ export function SessionsMini() {
 export function RoutinesMini() {
 	return (
 		<div className={styles.mini} data-mini="routines">
+			<div className={styles.routineHead}>
+				<span className={styles.routineName}>nightly triage</span>
+				<span className={styles.presets}>
+					<b>Nightly</b>
+					<i>Hourly</i>
+					<i>Custom</i>
+				</span>
+			</div>
 			<div className={styles.routine}>
 				<span className={styles.mono}>0 2 * * *</span>
-				<span>nightly triage</span>
+				<span>Triage new issues, label them, draft replies</span>
 				<i className={styles.switch} />
 			</div>
-			<div className={styles.routine}>
-				<span className={styles.mono}>0 * * * *</span>
-				<span>lint gate</span>
-				<i className={styles.switch} />
-			</div>
+			<ul className={styles.nextRuns}>
+				<li>
+					<small>next</small>Tomorrow 02:00
+				</li>
+				<li>
+					<small>then</small>Sat 02:00 · Sun 02:00 · Mon 02:00
+				</li>
+			</ul>
 			<div className={styles.fire}>
 				<i className={`${styles.dot} ${styles.dotBackground}`} />
 				<span>
@@ -101,39 +111,59 @@ export function ChangesMini() {
 		['src/graph.ts', 41, 8],
 		['specs/05-features.md', 6, 0],
 	] as const;
+	const commits = [
+		['fix: wait for the session cookie before asserting', 'CL', true],
+		['feat: session tabs come back on launch', 'CL', false],
+		['fix: graph lanes keep their colour', 'CL', false],
+		['chore: bump tauri to 2.11', 'YO', false],
+	] as const;
 	return (
 		<div className={styles.mini} data-mini="changes">
-			<ul className={styles.files}>
-				{files.map(([f, add, del]) => (
-					<li key={f}>
-						<span>{f}</span>
-						<small>
-							<b>+{add}</b> <s>-{del}</s>
-						</small>
-					</li>
-				))}
-			</ul>
-			<div className={styles.diff}>
-				{[
-					['ctx', 70],
-					['del', 55],
-					['add', 62],
-					['add', 44],
-					['ctx', 80],
-					['add', 36],
-				].map(([k, w], i) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: static rows
-					<span key={i} data-k={k} style={{ width: `${w}%` }} />
+			<div className={styles.panelTabs}>
+				<span data-tab="changes">
+					Changes<em>3</em>
+				</span>
+				<span data-tab="graph">Graph</span>
+			</div>
+			<div className={styles.auditPane} data-pane="changes">
+				<ul className={styles.files}>
+					{files.map(([f, add, del]) => (
+						<li key={f}>
+							<span>{f}</span>
+							<small>
+								<b>+{add}</b> <s>-{del}</s>
+							</small>
+						</li>
+					))}
+				</ul>
+				<div className={styles.diff}>
+					{[
+						['ctx', 70],
+						['del', 55],
+						['add', 62],
+						['add', 44],
+						['ctx', 80],
+					].map(([k, w], i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: static rows
+						<span key={i} data-k={k} style={{ width: `${w}%` }} />
+					))}
+				</div>
+			</div>
+			<div className={styles.auditPane} data-pane="graph">
+				{commits.map(([msg, who, head], i) => (
+					<div key={msg} className={styles.commitRow} data-i={i}>
+						<svg viewBox="0 0 28 26" aria-hidden="true">
+							<path d="M12 0V26" />
+							<circle cx="12" cy="13" r="7" data-who={who} />
+							<text x="12" y="13">
+								{who}
+							</text>
+						</svg>
+						{head && <em>✓ main</em>}
+						<span>{msg}</span>
+					</div>
 				))}
 			</div>
-			<svg className={styles.rail} viewBox="0 0 60 120" aria-hidden="true">
-				<path d="M12 0V120" />
-				<path d="M36 40V120" />
-				<path d="M12 40C12 20 36 60 36 40" />
-				{[10, 40, 70, 100].map((y, i) => (
-					<circle key={y} cx={i === 1 ? 36 : 12} cy={y} r="4" data-i={i} />
-				))}
-			</svg>
 		</div>
 	);
 }

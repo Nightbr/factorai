@@ -166,6 +166,14 @@
 }
 
 /* ── Miniatures: the app's own tokens ───────────────────────────────────── */
+/* Animations run on hover only, and restart on every hover: at rest a cell is
+   a still of its surface. The status pulse is the one exception, since a still
+   with a dead dot reads as a stopped app. */
+.cell:not(:hover) .mini *:not(.dot),
+.cell:not(:hover) .mini *:not(.dot)::before {
+	animation: none !important;
+}
+
 .mini {
 	--row: 28px;
 	--fg: var(--fa-foreground);
@@ -241,8 +249,8 @@
 	}
 }
 
-/* Sessions: tabs, a terminal asking, the list with its dots. The second
-   session's dot goes amber when the prompt appears: "your move". */
+/* Sessions: three tabs, the active one cycling every three seconds, each with
+   its own screen. Switching is the point: several agents, one pair of eyes. */
 .tabs {
 	display: flex;
 	gap: 4px;
@@ -262,25 +270,86 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	max-width: 42%;
+	max-width: 40%;
+	animation: tabActive 9s steps(1, end) infinite;
 }
 
 .tab[data-i="1"] {
+	animation-delay: -6s;
+}
+
+.tab[data-i="2"] {
+	animation-delay: -3s;
+}
+
+/* At rest the first tab is the active one. */
+.cell:not(:hover) .tab[data-i="0"] {
 	color: var(--fg);
 	border-color: var(--fa-border);
 	background: var(--fa-background);
 }
 
-.term {
+@keyframes tabActive {
+	0%,
+	33.3% {
+		color: var(--fg);
+		border-color: var(--fa-border);
+		background: var(--fa-background);
+	}
+	33.4%,
+	100% {
+		color: var(--muted);
+		border-color: transparent;
+		background: transparent;
+	}
+}
+
+[data-status="waiting"] > .dot {
+	background: var(--waiting);
+}
+
+.screens {
+	position: relative;
+	height: 112px;
 	font-family: var(--ifm-font-family-monospace);
 	background: var(--fa-background);
 	border: 1px solid var(--fa-border);
 	border-radius: 4px;
+	overflow: hidden;
+}
+
+.screen {
+	position: absolute;
+	inset: 0;
 	padding: 10px 12px;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	margin-bottom: 8px;
+	opacity: 0;
+	animation: screenOn 9s steps(1, end) infinite;
+}
+
+.screen[data-i="1"] {
+	animation-delay: -6s;
+}
+
+.screen[data-i="2"] {
+	animation-delay: -3s;
+}
+
+.cell:not(:hover) .screen[data-i="0"] {
+	opacity: 1;
+}
+
+@keyframes screenOn {
+	0%,
+	33.3% {
+		opacity: 1;
+	}
+	33.4%,
+	100% {
+		opacity: 0;
+	}
 }
 
 .termLine {
@@ -292,7 +361,6 @@
 
 .termPrompt {
 	color: var(--fg);
-	animation: appear 6s ease-in-out infinite;
 }
 
 .termPrompt b {
@@ -316,66 +384,67 @@
 	}
 }
 
-.list {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-}
-
-.list li {
+/* Routines: the editor — name, presets, the cron, the next runs — and a fire. */
+.routineHead {
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: 8px;
 	height: var(--row);
 	padding: 0 8px;
-	border-radius: 4px;
+	margin-bottom: 4px;
 }
 
-.list li span {
-	flex: 1 1 auto;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+.routineName {
+	font-weight: 500;
 }
 
-.list li small {
-	color: var(--muted);
+.presets {
+	display: inline-flex;
+	gap: 4px;
+}
+
+.presets b,
+.presets i {
+	font-style: normal;
+	font-weight: 500;
 	font-size: 11px;
+	line-height: 18px;
+	padding: 0 7px;
+	border-radius: 4px;
+	border: 1px solid var(--fa-border);
+	color: var(--muted);
 }
 
-.list li[data-i="1"] {
-	background: var(--fa-secondary);
+.presets b {
+	color: var(--fa-primary-foreground);
+	background: var(--fa-primary);
+	border-color: var(--fa-primary);
 }
 
-/* The waiting dot arrives with the prompt. */
-.list li[data-status="waiting"] > .dot,
-.tab[data-status="waiting"] > .dot {
-	background: var(--working);
-	animation: turnAmber 6s ease-in-out infinite;
-}
-
-@keyframes turnAmber {
-	0%,
-	30% {
-		background: var(--working);
-	}
-	38%,
-	100% {
-		background: var(--waiting);
-	}
-}
-
-/* Routines: two rows and a fire. */
 .routine {
 	display: flex;
 	align-items: center;
 	gap: 10px;
 	height: var(--row);
 	padding: 0 8px;
+	border: 1px solid var(--fa-border);
+	border-radius: 4px;
+	background: var(--fa-background);
+}
+
+.routine > .mono {
+	flex: none;
+	white-space: nowrap;
 }
 
 .routine > span:nth-child(2) {
 	flex: 1 1 auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--muted);
 }
 
 .switch {
@@ -384,6 +453,7 @@
 	border-radius: 9999px;
 	background: var(--fa-primary);
 	position: relative;
+	flex: none;
 }
 
 .switch::after {
@@ -395,6 +465,30 @@
 	height: 8px;
 	border-radius: 9999px;
 	background: var(--fa-primary-foreground);
+}
+
+.nextRuns {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0 8px;
+	font-size: 11px;
+	color: var(--muted);
+}
+
+.nextRuns li {
+	display: flex;
+	gap: 10px;
+	height: 20px;
+	align-items: center;
+}
+
+.nextRuns small {
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 9px;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	width: 36px;
+	color: var(--hud);
 }
 
 .fire {
@@ -486,12 +580,87 @@
 	border-radius: 2px;
 }
 
-/* Changes: files, a diff, the lane rail. */
+/* Audit: the Changes pane, then the Graph pane with a commit stacking on top,
+   on an eight-second cycle. */
 [data-mini="changes"] {
-	display: grid;
-	grid-template-columns: 1fr 1fr 60px;
-	gap: 12px;
-	align-items: start;
+	position: relative;
+}
+
+.panelTabs {
+	display: flex;
+	height: var(--row);
+	border-bottom: 1px solid var(--fa-border);
+	margin-bottom: 8px;
+	font-size: 11px;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.panelTabs span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 10px;
+	border-bottom: 2px solid transparent;
+	animation: paneTab 8s steps(1, end) infinite;
+}
+
+.panelTabs span[data-tab="graph"] {
+	animation-delay: -4s;
+}
+
+.cell:not(:hover) .panelTabs span[data-tab="changes"] {
+	color: var(--fg);
+	border-color: var(--fa-primary);
+}
+
+.panelTabs em {
+	font-style: normal;
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 10px;
+	color: var(--fa-primary);
+}
+
+@keyframes paneTab {
+	0%,
+	49.9% {
+		color: var(--fg);
+		border-color: var(--fa-primary);
+	}
+	50%,
+	100% {
+		color: var(--muted);
+		border-color: transparent;
+	}
+}
+
+.auditPane {
+	opacity: 0;
+	animation: paneOn 8s steps(1, end) infinite;
+}
+
+.auditPane[data-pane="graph"] {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(var(--row) + 8px);
+	animation-delay: -4s;
+}
+
+.cell:not(:hover) .auditPane[data-pane="changes"] {
+	opacity: 1;
+}
+
+@keyframes paneOn {
+	0%,
+	49.9% {
+		opacity: 1;
+	}
+	50%,
+	100% {
+		opacity: 0;
+	}
 }
 
 .files {
@@ -531,45 +700,99 @@
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	padding-top: 6px;
+	padding: 6px 6px 0;
 }
 
 .diff span {
 	display: block;
-	height: 8px;
+	height: 6px;
 	border-radius: 2px;
 	background: oklch(28% 0.008 250);
 }
 
 .diff span[data-k="add"] {
 	background: oklch(68% 0.17 150 / 0.55);
-	animation: appear 7s ease-in-out infinite;
 }
 
 .diff span[data-k="del"] {
 	background: oklch(68% 0.19 25 / 0.55);
 }
 
-.rail {
-	width: 60px;
-	height: 120px;
-	stroke: var(--fa-border);
-	stroke-width: 2;
-	fill: none;
+.commitRow {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 6px 0 0;
+	font-size: 12px;
 }
 
-.rail circle {
+/* The newest commit drops in at the top once the graph pane is showing. */
+.commitRow[data-i="0"] {
+	animation: commitDrop 8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+	animation-delay: -4s;
+}
+
+@keyframes commitDrop {
+	0%,
+	8% {
+		opacity: 0;
+		transform: translateY(-12px);
+	}
+	14%,
+	100% {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+.commitRow svg {
+	width: 28px;
+	height: 26px;
+	flex: none;
+	fill: none;
+	stroke: oklch(70% 0.15 255);
+	stroke-width: 1.5;
+}
+
+.commitRow circle {
 	fill: oklch(70% 0.15 255);
 	stroke: none;
 }
 
-.rail circle[data-i="1"] {
+.commitRow circle[data-who="YO"] {
 	fill: oklch(72% 0.16 145);
 }
 
-.rail circle[data-i="0"] {
-	fill: var(--fa-primary);
-	animation: appear 7s ease-in-out infinite;
+.commitRow text {
+	fill: #fff;
+	stroke: none;
+	font-size: 6.5px;
+	font-weight: 600;
+	text-anchor: middle;
+	dominant-baseline: central;
+}
+
+.commitRow em {
+	flex: none;
+	font-style: normal;
+	font-size: 10px;
+	font-weight: 500;
+	line-height: 14px;
+	padding: 0 4px;
+	border: 1px solid oklch(81.3% 0.165 75 / 0.3);
+	background: oklch(81.3% 0.165 75 / 0.12);
+	border-radius: 4px;
+	color: var(--fa-primary);
+}
+
+.commitRow span {
+	flex: 1 1 auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: oklch(82% 0.006 250);
 }
 
 /* Sidebar: a project row drops into a group. */
