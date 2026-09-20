@@ -13,6 +13,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use tauri::State;
 
 use crate::agents::{self, claude};
+use crate::commands::off_main;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{ImportCandidate, Project};
@@ -217,17 +218,26 @@ pub fn remove_project_in(db: &Db, id: &str) -> AppResult<()> {
 /// Read straight from the store rather than from the index, because the index
 /// only covers the workspace — the whole point of the dialog is to show you
 /// what *isn't* in it yet.
+///
+/// Off the main thread (PERF-07): this reads every directory in the agent's
+/// store twice — once to discover each one's folder, which parses transcripts
+/// until one yields a `cwd`, and again for the per-directory counts.
 #[tauri::command]
-pub fn list_import_candidates(state: State<'_, AppState>) -> AppResult<Vec<ImportCandidate>> {
+pub async fn list_import_candidates(state: State<'_, AppState>) -> AppResult<Vec<ImportCandidate>> {
 	let claude_dir = state.claude_dir.clone();
-	let open_paths: Vec<String> = state.db.with(|conn| {
+	let open_paths: Vec<String> = state.db.read(|conn| {
 		let mut stmt = conn.prepare("SELECT real_path FROM projects")?;
 		let rows =
 			stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
 		Ok(rows)
 	})?;
 
-	let mut out: Vec<ImportCandidate> = claude::discover(&claude_dir)
+	off_main(move || import_candidates(&claude_dir, &open_paths)).await
+}
+
+/// The walk itself, so the command above is only the part that needs `State`.
+fn import_candidates(claude_dir: &Path, open_paths: &[String]) -> AppResult<Vec<ImportCandidate>> {
+	let mut out: Vec<ImportCandidate> = claude::discover(claude_dir)
 		.into_iter()
 		.filter_map(|d| {
 			// A directory whose folder we could not identify has nothing to

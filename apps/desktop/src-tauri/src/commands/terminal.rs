@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Manager, State};
 
+use crate::commands::off_main;
 use crate::commands::projects::project_path;
 use crate::error::AppResult;
 use crate::services::terminal::{ShellSpawnOpts, SpawnOpts, TerminalStatusDto};
@@ -28,12 +29,24 @@ pub fn start_session(state: State<'_, AppState>, project_id: String) -> AppResul
 /// answer to *did the session start* — and ADR-0026 § 7 asks for the fire to be
 /// recorded exactly then. `mark_started` finds no claim for every session a
 /// human started, which is all of them but a routine's.
+///
+/// **Off the main thread** (PERF-07). A spawn is not one syscall: unless the
+/// F11 override is set it runs `which claude` and may ask a login shell for a
+/// `PATH`, it binds two loopback sockets and writes a lockfile, and then it
+/// forks. The first spawn of a run can also wait on the login shell's `PATH`
+/// resolution, which has a five-second timeout — five seconds of a window that
+/// does not repaint.
 #[tauri::command]
-pub fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<String> {
-	let session_id = opts.session_id.clone();
-	let terminal_id = state.terminals.spawn(opts)?;
-	state.routines.mark_started(&session_id, crate::epoch_ms());
-	Ok(terminal_id)
+pub async fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<String> {
+	let terminals = state.terminals.clone();
+	let routines = state.routines.clone();
+	off_main(move || {
+		let session_id = opts.session_id.clone();
+		let terminal_id = terminals.spawn(opts)?;
+		routines.mark_started(&session_id, crate::epoch_ms());
+		Ok(terminal_id)
+	})
+	.await
 }
 
 /// Open a shell in the project's footer (F23).
@@ -42,9 +55,13 @@ pub fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<
 /// share only the PTY: this one runs no transcript probe, stands up no IDE
 /// bridge and no agent tool server, never marks a routine started, and has no
 /// session at all. See `TerminalManager::spawn_shell`, ADR-0031 and ADR-0032.
+///
+/// Off the main thread for the same reasons as `terminal_spawn`, minus the
+/// binary lookup and the two servers.
 #[tauri::command]
-pub fn shell_spawn(state: State<'_, AppState>, opts: ShellSpawnOpts) -> AppResult<String> {
-	state.terminals.spawn_shell(opts)
+pub async fn shell_spawn(state: State<'_, AppState>, opts: ShellSpawnOpts) -> AppResult<String> {
+	let terminals = state.terminals.clone();
+	off_main(move || terminals.spawn_shell(opts)).await
 }
 
 /// Kill every shell in one project's footer (ADR-0032).

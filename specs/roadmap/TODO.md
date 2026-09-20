@@ -284,8 +284,12 @@ if the number is inside the budget. In the spec's order:
       1.9ms to 1.3ms on the busiest project here — inside its budget before and after, so
       the index-time columns the entry also proposed are not being built.
 - [ ] **PERF-06** — `[profile.release]` (lto, codegen-units, strip, panic).
-- [ ] **PERF-07** — the synchronous commands that spawn a process, walk the store or wait on I/O
-      go `async` + `spawn_blocking`, one per commit.
+- [x] **PERF-07** — the synchronous commands that spawn a process, walk the store or wait on
+      I/O. **Landed 2026-09-20**: `off_main` moved out of `commands/git.rs` and thirteen
+      commands went behind it, from `terminal_spawn` to `read_pdf`. `get_session_tail` also
+      stopped deserialising the events it skips, 37-58ms to 30-32ms on a 33MB transcript.
+      The binary cache the entry proposed was dropped — `03-backend-rust.md` had already
+      decided against it, and the reason holds.
 - [ ] **PERF-08** — libgit2 out of the database write transaction.
 - [ ] **PERF-09** — item 54, session switch: the `projectCwd` double-mount first, then the profile.
 - [ ] **PERF-10** — the file tree's per-row query observers and per-row decoration index.

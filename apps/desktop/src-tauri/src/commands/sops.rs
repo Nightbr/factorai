@@ -1,3 +1,4 @@
+use crate::commands::off_main;
 use crate::error::AppResult;
 use crate::models::{FileContents, SopsStatus};
 use crate::services::sops;
@@ -26,9 +27,12 @@ pub fn sops_status() -> SopsStatus {
 /// Errors arrive classified — "none of your keys open this", "no key material
 /// on this machine", "the MAC does not match" — with `sops`'s own words kept
 /// on the end rather than swallowed. See `services::sops::failure`.
+///
+/// `async` and off the main thread (PERF-07): `sops` is a child process this
+/// waits for, and with a KMS or a hardware key behind it that wait is seconds.
 #[tauri::command]
-pub fn sops_decrypt(path: String) -> AppResult<String> {
-	sops::decrypt(&path)
+pub async fn sops_decrypt(path: String) -> AppResult<String> {
+	off_main(move || sops::decrypt(&path)).await
 }
 
 /// Encrypt the viewer's plaintext buffer and write it over the file (F27).
@@ -41,7 +45,10 @@ pub fn sops_decrypt(path: String) -> AppResult<String> {
 /// Answers with the encrypted file as written, the way `write_file` does and
 /// for the same reason: the renderer's cached read is stale the instant this
 /// returns, and re-reading would cost a second pass over bytes we just held.
+///
+/// Off the main thread for the same reason as `sops_decrypt`, and this one
+/// spawns `sops` twice.
 #[tauri::command]
-pub fn sops_encrypt(path: String, plaintext: String) -> AppResult<FileContents> {
-	sops::encrypt(&path, &plaintext)
+pub async fn sops_encrypt(path: String, plaintext: String) -> AppResult<FileContents> {
+	off_main(move || sops::encrypt(&path, &plaintext)).await
 }

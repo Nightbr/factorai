@@ -373,7 +373,8 @@ as `AppError::Process` at `rs/commands/git.rs:630`; record that in the
 job's wall time.
 
 **PERF-07 — Synchronous commands that spawn a process, walk the store or wait on I/O run on the thread that paints.**
-Impact M, cost L each, confirmed by reading.
+Impact M, cost L each. **Landed 2026-09-20**; what was done, what was measured
+and what was deliberately not done are at the end of this entry.
 Thirty-nine commands are synchronous and six are async; a synchronous Tauri
 command runs on the GTK or AppKit main thread, which is the class of bug
 `DONE.md`'s terminal freeze was. Most are microseconds. These are not:
@@ -400,11 +401,37 @@ command runs on the GTK or AppKit main thread, which is the class of bug
   a JSON response on the same thread (`rs/services/files.rs:198-206`,
   `:262-287`); a large PDF is a visible freeze. This one is PERF-18's shape
   and its fix is different.
-*Fix.* `async fn` plus `tauri::async_runtime::spawn_blocking`, the
-`commands/git.rs` template verbatim, one command per commit; cache the
-discovered binary and invalidate it on `set_setting(claude.binary)`; count
-lines without parsing in `get_session_tail`. *Measure.* The longest
-main-thread task during a spawn, a decrypt and an import, before and after.
+*Fixed by* promoting `commands/git.rs`'s `off_main` to `commands::off_main`
+and putting all thirteen behind it: `terminal_spawn`, `shell_spawn`,
+`sops_decrypt`, `sops_encrypt`, `check_claude_cli`, `validate_claude_binary`,
+`reveal_in_file_manager`, `list_import_candidates`, `get_session_tail`,
+`read_image`, `read_pdf`, `delete_session` and `ide_mention`. Each clones what
+it needs out of `State` first, because `State` cannot cross the boundary.
+
+`get_session_tail` also stopped deserialising the events it skips.
+`Iterator::skip` built a `SessionEvent` for every event before the hundred it
+wanted, only to drop it; `EventIter::skip_events` counts lines instead. The
+bytes are still read — a JSONL file has no index — so this is the part that
+was avoidable, not all of it:
+
+| Reading the last 100 events of a 33 MB transcript | |
+|---|---|
+| `Iterator::skip` | 37–58 ms |
+| `skip_events` | 30–32 ms |
+
+**Caching the discovered `claude` binary was dropped, and not for cost.**
+`03-backend-rust.md` § "`find_claude_binary()`" already decided against a
+resolution cache, and the reason still holds: `claude.binary` is the *user's
+override* since F11, a cache sharing that key could not tell a probe's guess
+from somebody's choice, and a cache is what goes stale the day `claude` moves.
+Moving the spawn off the main thread removes the harm the cache was being
+proposed against.
+
+*What is not measured.* The rest of this is structural: a synchronous command
+runs on the main thread and an `async` one does not, which is a fact about
+where the code runs rather than a number. What a number would show — the window
+still painting during a decrypt, a reveal, an import — is a real-window
+observation, and it is owed on both engines with the rest of P8.
 
 **PERF-08 — `link_worktrees` opens libgit2 inside the database write transaction.**
 Impact M, cost L, confirmed by reading.

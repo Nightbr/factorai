@@ -1,28 +1,7 @@
-use crate::error::{AppError, AppResult};
+use crate::commands::off_main;
+use crate::error::AppResult;
 use crate::models::{FileContents, GitCommitDetail, GitGraph, GitRev, GitStatus, GitWorktree};
 use crate::services::git;
-
-/// Runs one libgit2 read on the blocking pool and waits for it.
-///
-/// **Every command in this module is `async` for this one reason** (ADR-0035): a
-/// synchronous Tauri command runs on the main thread, and that thread is also
-/// the one painting the window and pumping every other event. A status walk is
-/// tens of milliseconds every three seconds; a graph walk of a large history is
-/// seconds — and for that long nothing in the app moved, not even the terminal.
-/// `spawn_blocking` rather than plain `async`, because libgit2 is synchronous C
-/// and would otherwise block a runtime worker the same way.
-///
-/// A task that panics surfaces as `Process`, which the renderer already knows
-/// how to toast; it never takes the window down with it.
-async fn off_main<T, F>(work: F) -> AppResult<T>
-where
-	F: FnOnce() -> AppResult<T> + Send + 'static,
-	T: Send + 'static,
-{
-	tauri::async_runtime::spawn_blocking(work)
-		.await
-		.map_err(|e| AppError::Process(format!("git task failed: {e}")))?
-}
 
 /// Repository state for the Changes tab and the tree's decorations (F13).
 ///

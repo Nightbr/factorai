@@ -94,6 +94,27 @@ stale one sends the work to the wrong file.
 All commands return `Result<T, AppError>`. `AppError` is a `thiserror` enum
 with `serde::Serialize` so it crosses the bridge cleanly.
 
+**A command that can take more than a moment is `async` and does its work in
+`commands::off_main`**, which is `spawn_blocking`. A synchronous Tauri command
+runs on the main thread, and that thread is also the one painting the window
+and pumping every event — ADR-0035 made the libgit2 reads async after a graph
+walk froze the whole application for ten seconds, and PERF-07
+(`10-performance.md`) did the same for the rest. The signatures below do not
+mark it, because which side of the line a command is on is a property of what
+it does rather than of its contract; the ones that are, as of 2026-09-20:
+
+- **Spawns a process, or waits on one**: `terminal_spawn`, `shell_spawn`,
+  `sops_decrypt`, `sops_encrypt`, `check_claude_cli`, `validate_claude_binary`,
+  `reveal_in_file_manager`.
+- **Walks the filesystem, or reads something large**: `list_import_candidates`,
+  `get_session_tail`, `read_image`, `read_pdf`, `delete_session` (the trash).
+- **Opens a repository**: the six `git_*` commands, `set_session_worktree`,
+  `ide_mention`.
+
+A command that takes `State` cannot send it across the boundary, so each of
+these clones what the work needs out of the state first. `AppState`'s handles
+are cheap to clone for that reason.
+
 ```rust
 // projects
 // The workspace: folders you added (F1, ADR-0011). Never anything the scan

@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
+use crate::commands::off_main;
 use crate::error::AppResult;
 use crate::models::{DirListing, FileContents, ImageContents, PathKind, PdfContents};
 use crate::services::{files, reveal};
@@ -44,17 +45,24 @@ pub fn write_file(path: String, contents: String) -> AppResult<FileContents> {
 /// Read one image as base64 for the viewer (F7). Rejects anything whose magic
 /// bytes aren't a displayable format, so the caller falls back to the binary
 /// card instead of rendering a broken image.
+///
+/// Off the main thread (PERF-07): up to 16MB is read and base64-encoded, and
+/// doing that on the thread that paints is a visible freeze. The encoding
+/// itself is PERF-18's, and is still there.
 #[tauri::command]
-pub fn read_image(path: String, max_bytes: Option<usize>) -> AppResult<ImageContents> {
-	files::read_image(&path, max_bytes)
+pub async fn read_image(path: String, max_bytes: Option<usize>) -> AppResult<ImageContents> {
+	off_main(move || files::read_image(&path, max_bytes)).await
 }
 
 /// Read one PDF as base64 for the viewer (F7). Rejects anything that doesn't
 /// start `%PDF-`, so the caller falls back to the binary card instead of handing
 /// pdf.js bytes it will only fail to parse.
+///
+/// Off the main thread for the same reason as `read_image`, and this one reads
+/// up to 32MB.
 #[tauri::command]
-pub fn read_pdf(path: String, max_bytes: Option<usize>) -> AppResult<PdfContents> {
-	files::read_pdf(&path, max_bytes)
+pub async fn read_pdf(path: String, max_bytes: Option<usize>) -> AppResult<PdfContents> {
+	off_main(move || files::read_pdf(&path, max_bytes)).await
 }
 
 /// Classify a batch of paths for the terminal's link provider (F19): file,
@@ -75,9 +83,13 @@ pub fn path_kinds(paths: Vec<String>) -> Vec<PathKind> {
 /// and the answer is only useful if the file itself is highlighted. See
 /// `services::reveal` for the per-platform calls and ADR-0033 for why they are
 /// ours rather than a plugin's.
+///
+/// Off the main thread (PERF-07): the Linux path is a `dbus-send` with a
+/// three-second reply timeout, and a desktop that does not answer would
+/// otherwise freeze the window for all three of them.
 #[tauri::command]
-pub fn reveal_in_file_manager(path: String) -> AppResult<()> {
-	reveal::reveal(&path)
+pub async fn reveal_in_file_manager(path: String) -> AppResult<()> {
+	off_main(move || reveal::reveal(&path)).await
 }
 
 /// `file:changed` — the file the viewer has open is no longer what the renderer

@@ -1,6 +1,7 @@
 use tauri::State;
 use tracing::debug;
 
+use crate::commands::off_main;
 use crate::error::AppResult;
 use crate::services::ide::protocol::Mention;
 use crate::services::ide::ui_state::UiSnapshot;
@@ -59,10 +60,14 @@ pub fn ide_resync(state: State<'_, AppState>) -> AppResult<()> {
 /// just made and is watching for, so a mention that goes nowhere has to say so
 /// rather than be swallowed.
 #[tauri::command]
-pub fn ide_mention(
+pub async fn ide_mention(
 	state: State<'_, AppState>,
 	session_id: String,
 	mentions: Vec<Mention>,
 ) -> AppResult<()> {
-	state.terminals.mention(&session_id, &mentions)
+	// Off the main thread (PERF-07): resolving a mention against the session's
+	// checkout opens the repository, and it did so while holding the manager's
+	// read guard over that session.
+	let terminals = state.terminals.clone();
+	off_main(move || terminals.mention(&session_id, &mentions)).await
 }

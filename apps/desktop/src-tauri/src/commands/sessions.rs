@@ -4,6 +4,7 @@ use rusqlite::params;
 use tauri::{Emitter, State};
 
 use crate::agents::claude;
+use crate::commands::off_main;
 use crate::error::{AppError, AppResult};
 use crate::models::{SearchHit, SessionEvent, SessionPage, SessionSummary};
 use crate::services::jsonl::EventIter;
@@ -193,8 +194,11 @@ fn resolve(memo: &mut HashMap<String, String>, path: String) -> String {
 /// Read the **last** `limit` events from a session. Default 100. The
 /// returned page's `offset` is the position of the first returned event
 /// in the full sequence — handy for the frontend's "show earlier" paging.
+///
+/// Off the main thread (PERF-07): reaching the last hundred events means
+/// walking everything before them, and a long transcript is megabytes.
 #[tauri::command]
-pub fn get_session_tail(
+pub async fn get_session_tail(
 	state: State<'_, AppState>,
 	session_id: String,
 	limit: Option<usize>,
@@ -203,11 +207,18 @@ pub fn get_session_tail(
 
 	let (key, parent_id, total) = lookup_store_key_and_total(&state, &session_id)?;
 	let offset = total.saturating_sub(limit);
-
 	let path = transcript_path(&state.claude_dir, &key, parent_id.as_deref(), &session_id);
-	let events: Vec<SessionEvent> = EventIter::open(&path)?.skip(offset).take(limit).collect();
 
-	Ok(SessionPage { id: session_id, events, offset, limit, total })
+	off_main(move || {
+		// `skip` on the iterator would deserialise every event it passes over.
+		// The bytes still have to be read either way — a JSONL file has no index
+		// — but turning them into `SessionEvent`s only to drop them is the part
+		// that costs, and it is the part that grows with the transcript.
+		let events: Vec<SessionEvent> =
+			EventIter::open(&path)?.skip_events(offset).take(limit).collect();
+		Ok(SessionPage { id: session_id, events, offset, limit, total })
+	})
+	.await
 }
 
 /// Where a session's transcript file is, as an absolute path.
@@ -312,18 +323,28 @@ pub fn clear_session_worktree(state: State<'_, AppState>, session_id: String) ->
 /// has since gone — is `InvalidInput`, which is the same line
 /// `services/ide/protocol.rs` draws for `setWorktree`.
 #[tauri::command]
-pub fn set_session_worktree(
+pub async fn set_session_worktree(
 	state: State<'_, AppState>,
 	session_id: String,
 	project_path: String,
 	path: String,
 ) -> AppResult<()> {
-	let wanted = std::fs::canonicalize(&path).unwrap_or_else(|_| std::path::PathBuf::from(&path));
-	if !crate::services::git::worktree_paths(&project_path).contains(&wanted) {
-		return Err(AppError::InvalidInput(format!(
-			"{path} is not a checkout of the repository at {project_path}"
-		)));
-	}
+	// libgit2 and a `realpath`, off the main thread (PERF-07).
+	let wanted = {
+		let path = path.clone();
+		let project_path = project_path.clone();
+		off_main(move || {
+			let wanted =
+				std::fs::canonicalize(&path).unwrap_or_else(|_| std::path::PathBuf::from(&path));
+			if !crate::services::git::worktree_paths(&project_path).contains(&wanted) {
+				return Err(AppError::InvalidInput(format!(
+					"{path} is not a checkout of the repository at {project_path}"
+				)));
+			}
+			Ok(wanted)
+		})
+		.await?
+	};
 	crate::services::sessions::set_worktree(
 		&state.db,
 		&session_id,
@@ -390,14 +411,21 @@ pub fn set_session_pinned(
 /// list on screen is a `list_sessions` too, and the one you clicked in is not
 /// the only one that is now wrong.
 #[tauri::command]
-pub fn delete_session(
+pub async fn delete_session(
 	app: tauri::AppHandle,
 	state: State<'_, AppState>,
 	session_id: String,
 ) -> AppResult<()> {
 	let is_live = state.terminals.live_session_ids().contains(&session_id);
-	let project_id =
-		crate::services::sessions::delete(&state.db, &state.claude_dir, &session_id, is_live)?;
+	// Off the main thread (PERF-07): moving a transcript to the OS trash is a
+	// filesystem operation on a directory we do not own the speed of.
+	let project_id = {
+		let db = state.db.clone();
+		let claude_dir = state.claude_dir.clone();
+		let session_id = session_id.clone();
+		off_main(move || crate::services::sessions::delete(&db, &claude_dir, &session_id, is_live))
+			.await?
+	};
 
 	// Same shape the indexer emits, so `useSessionsSync` needs nothing new: the
 	// project whose list changed, and the ids that changed in it. `None` means

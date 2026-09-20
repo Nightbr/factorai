@@ -40,6 +40,49 @@ impl EventIter {
 		})
 	}
 
+	/// Skip `n` events without turning any of them into a `SessionEvent`.
+	///
+	/// `Iterator::skip` would deserialise each one only to drop it, and that is
+	/// the part of reading a transcript's tail that grows with the transcript
+	/// (PERF-07). The bytes still have to be read — a JSONL file has no index —
+	/// but a line is only counted here, not parsed.
+	///
+	/// Counting matches what `next` yields: a blank line is not an event, and a
+	/// line that will not parse is not one either. That second case means a
+	/// malformed line is skipped by both and the count stays aligned.
+	pub fn skip_events(mut self, n: usize) -> Self {
+		let mut seen = 0;
+		while seen < n {
+			self.line_buf.clear();
+			match self.reader.read_line(&mut self.line_buf) {
+				Ok(0) => break,
+				Ok(bytes) => {
+					let whole = self.line_buf.ends_with('\n');
+					let trimmed = self.line_buf.trim();
+					if trimmed.is_empty() {
+						if whole {
+							self.complete += bytes as u64;
+						}
+						continue;
+					}
+					// The cheapest question that distinguishes an event from a line
+					// `next` would have skipped, without building one.
+					if serde_json::from_str::<serde::de::IgnoredAny>(trimmed).is_ok() {
+						seen += 1;
+						self.complete += bytes as u64;
+					} else if whole {
+						self.complete += bytes as u64;
+					}
+				}
+				Err(e) => {
+					warn!(error = %e, "jsonl read error");
+					break;
+				}
+			}
+		}
+		self
+	}
+
 	/// The offset just past everything this iterator has finished with — every
 	/// line whose event it yielded, and every whole line it permanently skipped.
 	///
