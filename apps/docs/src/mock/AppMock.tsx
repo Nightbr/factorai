@@ -1,7 +1,7 @@
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import { useEffect, useRef, useState } from 'react';
 import styles from './mock.module.css';
-import { INITIAL, LOOP_MS, type MockState, SCRIPT, type Status } from './script';
+import { INITIAL, LOOP_MS, type MockState, SCRIPT, SPEED, type Status } from './script';
 
 /**
  * A working mock of the app, drawn in its own tokens (DESIGN.md: the dark
@@ -23,6 +23,17 @@ const PROJECTS: { group: string | null; name: string }[] = [
 function Dot({ status }: { status?: Status }) {
 	return <i className={styles.dot} data-status={status ?? 'stopped'} />;
 }
+
+/** The app's rule: two initials from a two-part name, else the first two letters. */
+function initials(name: string): string {
+	const parts = name.split(/[\s\-_]+/).filter(Boolean);
+	return (parts.length >= 2 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase();
+}
+
+const AUTHORS: Record<string, { initials: string; colour: string }> = {
+	claude: { initials: 'CL', colour: 'oklch(70% 0.15 255)' },
+	you: { initials: 'YO', colour: 'oklch(72% 0.16 145)' },
+};
 
 export function AppMock() {
 	const [state, setState] = useState<MockState>(INITIAL);
@@ -54,7 +65,7 @@ export function AppMock() {
 			stop();
 			setState(INITIAL);
 			for (const [at, step] of SCRIPT) {
-				timers.push(window.setTimeout(() => setState((s) => step(s)), at));
+				timers.push(window.setTimeout(() => setState((s) => step(s)), at * SPEED));
 			}
 			timers.push(window.setTimeout(run, LOOP_MS));
 		};
@@ -109,6 +120,7 @@ export function AppMock() {
 										data-open={p.name === 'billing-api' ? '' : undefined}
 									>
 										<span className={styles.avatar} data-name={p.name}>
+											<b>{initials(p.name)}</b>
 											{state.sidebarStatus[p.name] && <Dot status={state.sidebarStatus[p.name]} />}
 										</span>
 										{p.name}
@@ -184,31 +196,39 @@ export function AppMock() {
 						)}
 						{state.panel === 'graph' && (
 							<div className={styles.graph}>
-								<div className={styles.working}>
-									<i className={styles.wt} />
-									<span>Working tree</span>
-									<small>clean</small>
+								<div className={styles.row} data-working>
+									<svg viewBox="0 0 40 26" className={styles.rail} aria-hidden="true">
+										<path d="M12 13V26" data-lane="0" />
+										<circle cx="12" cy="13" r="3.5" data-dirty />
+									</svg>
+									<span className={styles.subject}>Working tree</span>
+									<small>
+										{state.changes.length > 0 ? `${state.changes.length} changed` : 'clean'}
+									</small>
 								</div>
-								{state.commits.map((c) => (
-									<div
-										key={c.id}
-										className={styles.commit}
-										data-lane={c.lane}
-										data-merge={c.merge ? '' : undefined}
-									>
-										<svg viewBox="0 0 40 28" className={styles.rail} aria-hidden="true">
-											<path d="M12 0V28" data-lane="0" />
-											{c.lane === 1 && <path d="M28 0V28" data-lane="1" />}
-											{c.merge && <path d="M28 14C28 22 12 20 12 28" data-lane="1" />}
-											<circle cx={c.lane === 1 ? 28 : 12} cy="14" r="4" />
-										</svg>
-										<span className={styles.msg}>{c.message}</span>
-										{c.head && <em className={styles.ref}>main</em>}
-										<small>
-											{c.author} · {c.when}
-										</small>
-									</div>
-								))}
+								{state.commits.map((c) => {
+									const a = AUTHORS[c.author] ?? AUTHORS.claude;
+									const x = c.lane === 1 ? 26 : 12;
+									return (
+										<div key={c.id} className={styles.row} data-lane={c.lane}>
+											<svg viewBox="0 0 40 26" className={styles.rail} aria-hidden="true">
+												<path d="M12 0V26" data-lane="0" />
+												{c.lane === 1 && !c.merge && <path d="M26 0V26" data-lane="1" />}
+												{c.merge && <path d="M26 0V13C26 22 12 20 12 26" data-lane="1" />}
+												<circle cx={x} cy="13" r="7" style={{ fill: a.colour }} />
+												<text x={x} y="13">
+													{a.initials}
+												</text>
+											</svg>
+											{c.head && (
+												<em className={styles.chip}>
+													<i>✓</i>main
+												</em>
+											)}
+											<span className={styles.subject}>{c.message}</span>
+										</div>
+									);
+								})}
 							</div>
 						)}
 						{state.panel === 'files' && <div className={styles.empty}>src/</div>}

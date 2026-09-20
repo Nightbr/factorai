@@ -61,7 +61,7 @@ export const INITIAL: MockState = {
 		{
 			id: 'c1',
 			message: 'feat: session tabs come back on launch',
-			author: 'agent',
+			author: 'claude',
 			when: '2h',
 			lane: 0,
 			head: true,
@@ -69,7 +69,7 @@ export const INITIAL: MockState = {
 		{
 			id: 'c2',
 			message: 'fix: graph lanes keep their colour across pages',
-			author: 'agent',
+			author: 'claude',
 			when: '3h',
 			lane: 0,
 		},
@@ -77,7 +77,7 @@ export const INITIAL: MockState = {
 		{
 			id: 'c4',
 			message: 'feat: routines fire without a tab',
-			author: 'agent',
+			author: 'claude',
 			when: '1d',
 			lane: 0,
 		},
@@ -146,7 +146,7 @@ export const SCRIPT: Step[] = [
 				{
 					id: `n${seq}`,
 					message: 'fix: wait for the session cookie before asserting',
-					author: 'agent',
+					author: 'claude',
 					when: 'now',
 					lane: 0 as const,
 					head: true,
@@ -216,7 +216,7 @@ export const SCRIPT: Step[] = [
 				{
 					id: `n${seq}b`,
 					message: 'feat: settings live in SQLite, migration 0016',
-					author: 'agent',
+					author: 'claude',
 					when: 'now',
 					lane: 1 as const,
 					merge: true,
@@ -243,4 +243,6 @@ export const SCRIPT: Step[] = [
 	[23800, (s) => tab(s, 'c', 'waiting')],
 ];
 
-export const LOOP_MS = 26000;
+/** The screenplay's offsets are written at 1×; the mock plays them at this rate. */
+export const SPEED = 0.72;
+export const LOOP_MS = 26000 * SPEED;
