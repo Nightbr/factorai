@@ -276,8 +276,9 @@ and still proportional to its size: 1.0 s for the 31 MB file, once.
 transcript in the directory rather than the one that changed.
 
 **PERF-04 — Hidden pooled terminals are still rendered, not only laid out.**
-Impact H at ten live sessions, L at two; cost L to M; mechanism confirmed by
-reading, magnitude needs a profile.
+Impact H at ten live sessions, L at two; cost L to M. **Landed 2026-09-20**,
+with a measured gain and one open question, both at the end of this entry.
+**Still owed: the macOS run.**
 Item 54 said a background session's rows are "laid out, never painted". xterm
 pauses its renderer through an `IntersectionObserver`; `showOnly` hides with
 `visibility: hidden` (`ts/components/terminal/Terminal.tsx:258`) on hosts
@@ -286,15 +287,42 @@ still intersects, so every hidden terminal's DOM rows are rewritten on every
 write for as many sessions as have ever been opened this run. The routine
 pane at `left: -10000px` (`:535-536`) is non-intersecting and so is paused,
 which is the proof the mechanism works.
-*Fix, inside the P1 rule.* Keep the host connected and sized and make hidden
-ones non-intersecting without removing layout: a `transform` that moves the
-box off-screen keeps `clientWidth` and `clientHeight` so `fitToHost` still
-measures, never leaves the document so the macOS wheel bug cannot return, and
-lets xterm pause and do one refresh on show. Keep `visibility: hidden` too so
-nothing in it is focusable. **Verify on macOS in the real window before it
-lands**; it is the one P1 fix this spec cannot prove from Linux.
-*Measure.* Renderer main-thread time per second with ten sessions streaming
-and one visible, before and after; and the switch-to-paint budget.
+*Fixed by* `translateX(-200vw)` on every pooled host that is not the visible
+one, alongside the `visibility: hidden` that was already there. The transform
+does not affect layout, so `clientWidth` and `clientHeight` are unchanged and
+`fitToHost` still measures the pane; the host never leaves the document, so the
+wheel-region bug the pool exists to avoid cannot return. Leftwards on purpose:
+overflow past the left edge is clipped, past the right it is scrollable and
+would give the pane a horizontal scrollbar for a terminal nobody can see.
+
+The mechanism is confirmed in xterm's own source: `RenderService` registers an
+`IntersectionObserver` at `threshold: 0` on the screen element and sets
+`_isPaused` from it, `refreshRows` becomes a flag while paused, and becoming
+visible flushes a full refresh. A `@smoke` test in `tests/smoke/terminal-pool.spec.ts`
+holds the contract.
+
+*Measured* in the browser lane (ten pooled sessions, one visible, the same
+output emitted to all of them), counting DOM writes under each background
+terminal's `.xterm-rows`:
+
+| Output burst | Writes per background terminal, before | after |
+| --- | --- | --- |
+| 40 chunks | 41 | 0 |
+| 400 chunks | 180 | 90 |
+
+All nine hidden screens report `isIntersecting: false` after the change, so
+xterm's pause flag is set on every one of them.
+
+*Open, and it is why this entry does not claim more than it measured.* At the
+larger burst half the writes survive the pause, and the hidden rows still end
+up holding the latest output. Something writes rows on a path `_isPaused` does
+not gate; at moderate volume nothing does. Worth one real-window profile before
+anything further is built on it.
+
+*Still owed: macOS.* This is the one P1 fix Linux cannot prove. The wheel
+region that the pool's design is built around exists only on WKWebView, and a
+transform on the host is exactly the kind of change it would notice. Verify in
+the real window before the tag.
 
 **PERF-05 — `list_sessions` runs up to ten `realpath()` per row, every 5 s, on the main thread, under the database lock.**
 Impact M to H on session-heavy workspaces, cost L to M, confirmed by reading.

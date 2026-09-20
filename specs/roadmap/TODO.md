@@ -271,8 +271,13 @@ if the number is inside the budget. In the spec's order:
       a 31MB transcript went from 4.71s to 32.2ms, and on a 5MB one from 288ms to 14.5ms.
       `title_kind` keeps a `/rename` outranking a tail title, and four conditions still force
       a full parse. PERF-16 is the remaining half.
-- [ ] **PERF-04** — hidden pooled terminals are still rendered by xterm; make them
-      non-intersecting without removing layout. **Verify on macOS before it lands.**
+- [x] **PERF-04** — hidden pooled terminals are still rendered by xterm. **Landed
+      2026-09-20**: a hidden pooled host is translated out of the viewport as well as
+      hidden, so xterm's own `IntersectionObserver` pauses it, and its layout box is
+      untouched. Background DOM row writes went from 41 to 0 per terminal at a moderate
+      burst and 180 to 90 at a large one; half surviving the pause at volume is an open
+      question recorded in the spec. **The macOS run is still owed** — the wheel region
+      this pool is designed around is WKWebView's alone.
 - [ ] **PERF-05** — `list_sessions` canonicalises under the database lock on the main thread.
 - [ ] **PERF-06** — `[profile.release]` (lto, codegen-units, strip, panic).
 - [ ] **PERF-07** — the synchronous commands that spawn a process, walk the store or wait on I/O

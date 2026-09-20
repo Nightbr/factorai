@@ -245,17 +245,41 @@ function agentTerminalId(sessionId: string): string | undefined {
  * focusable, so the hidden terminals underneath cannot take a click or a
  * keystroke meant for this one.
  *
- * That costs something a detached host did not: a background session's rows are
- * laid out (never painted) as its output arrives, where before they were only
- * built. `content-visibility: hidden` would skip that work, and is deliberately
- * not used — it also zeroes descendant geometry, which is the measurement bug
- * above coming back. Worth revisiting only with a profile of a session count
- * that actually hurts.
+ * **And the hidden host is moved off screen as well as hidden**, which is what
+ * stops a background session rendering at all (PERF-04,
+ * `specs/10-performance.md`). This block used to say a hidden terminal's rows
+ * were "laid out, never painted" — they were also *written*. xterm pauses its
+ * renderer from an `IntersectionObserver` on the screen element, and
+ * `visibility: hidden` changes nothing about where an element is, so every
+ * background terminal kept rewriting its rows on every chunk of output, for as
+ * many sessions as had ever been opened. A translation takes it out of the
+ * viewport — so the observer reports it as not intersecting and xterm's
+ * `refreshRows` becomes a flag — while leaving the layout box exactly where it
+ * was, because a transform does not affect layout. `clientWidth` and
+ * `clientHeight` are unchanged, so `fitToHost` still measures the pane, and the
+ * host never leaves the document, so the wheel-region bug above cannot come
+ * back. xterm does one full refresh of its own when the observer reports it
+ * visible again.
+ *
+ * **Leftwards, not rightwards.** Overflow past the left edge is clipped;
+ * overflow past the right would be scrollable, and would give an ancestor a
+ * horizontal scrollbar for a terminal nobody can see.
+ *
+ * `content-visibility: hidden` would also stop the work and is still not used —
+ * it zeroes descendant geometry, which is the measurement bug above coming
+ * back.
  */
+const OFFSCREEN = 'translateX(-200vw)';
+
 export function showOnly(container: HTMLElement, active: PooledTerm): void {
 	for (const entry of pool.values()) {
 		if (entry.host.parentElement !== container) continue;
-		entry.host.style.visibility = entry === active ? '' : 'hidden';
+		const hidden = entry !== active;
+		// Both, and each for its own reason: `visibility` keeps a hidden terminal
+		// out of hit-testing and out of the focus order, the transform stops it
+		// rendering.
+		entry.host.style.visibility = hidden ? 'hidden' : '';
+		entry.host.style.transform = hidden ? OFFSCREEN : '';
 	}
 }
 
@@ -692,7 +716,10 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 			// Hide, never detach, and never dispose: the pooled terminal keeps its
 			// scrollback and its listeners, and keeping its box in the document is
 			// what keeps the wheel working when you come back (see `showOnly`).
+			// Off screen for the same reason `showOnly` moves it: a terminal nobody
+			// is looking at should not be rendering.
 			entry.host.style.visibility = 'hidden';
+			entry.host.style.transform = OFFSCREEN;
 		};
 	}, [sessionId, projectId, projectCwd]);
 
