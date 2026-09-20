@@ -440,8 +440,9 @@ export function Hero({ copy }: Props) {
 					<span className={styles.eyebrow}>the app</span>
 					<h2 className={styles.appHeading}>Three agents, one afternoon.</h2>
 					<p className={styles.appLead}>
-						A session per agent, the dot that says who needs you, the changes as they land, the
-						graph as it stacks. Invented names; the app's own behaviour.
+						Hand each task to an agent and keep every one in view. A dot turns amber the moment one
+						needs you; switch to it, answer, and move on. The Changes panel shows what it touched,
+						the graph shows what it landed, and nothing is committed that you have not seen.
 					</p>
 				</div>
 				<AppMock />
