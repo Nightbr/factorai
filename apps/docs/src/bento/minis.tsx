@@ -243,43 +243,81 @@ export function ViewerMini() {
 	);
 }
 
-export function WorktreesMini() {
+export function ShellMini() {
 	return (
-		<div className={styles.mini} data-mini="worktrees">
-			{[
-				['main', 'work'],
-				['feat/graph-lanes', 'work'],
-				['fix/pty-resize', 'perso'],
-			].map(([branch, profile], i) => (
-				<div key={branch} className={styles.lane} data-i={i}>
-					<i className={styles.dot} data-status="working" />
-					<span className={styles.mono}>{branch}</span>
-					<small>{profile}</small>
+		<div className={styles.mini} data-mini="shell">
+			<div className={styles.shellAbove}>
+				<i className={styles.dot} data-status="working" />
+				<span>fix flaky e2e on CI</span>
+				<span className={styles.shellLine} style={{ width: '46%' }} />
+				<span className={styles.shellLine} style={{ width: '28%' }} />
+			</div>
+			<div className={styles.shell}>
+				<div className={styles.shellHead}>
+					<span className={styles.mono}>~/dev/billing-api</span>
+					<em>split</em>
 				</div>
-			))}
+				<div className={styles.panes}>
+					<div className={styles.pane}>
+						<span>$ cargo test --workspace</span>
+						<span data-i="0">running 128 tests</span>
+						<span data-i="1">test session::spawn … ok</span>
+						<span data-i="2">test graph::lanes … ok</span>
+						<span data-i="3" data-ok>
+							test result: ok. 128 passed
+						</span>
+					</div>
+					<div className={styles.pane}>
+						<span>$ pnpm dev</span>
+						<span data-i="1">VITE ready in 312 ms</span>
+						<span data-i="2" data-ok>
+							➜ http://localhost:1420/
+						</span>
+					</div>
+				</div>
+			</div>
 		</div>
 	);
 }
 
+/** The machine as a box that fills the card; on hover, packets travel the traces and none leaves. */
 export function LocalMini() {
+	const F = 'M153.6 136H377.6V198.4H233.6V232H332.8L273.6 291.2H233.6V379.2H153.6Z';
 	return (
 		<div className={styles.mini} data-mini="local">
-			<svg viewBox="0 0 120 64" className={styles.ports} aria-hidden="true">
-				<rect x="34" y="4" width="52" height="56" rx="10" />
-				{[14, 28, 42].map((y) => (
+			<svg viewBox="0 0 240 176" className={styles.machine} aria-hidden="true">
+				<rect x="6" y="6" width="228" height="164" rx="10" data-box />
+				<text x="18" y="24" data-label>
+					your machine
+				</text>
+				<g transform="translate(92 40) scale(0.109)">
+					<rect width="512" height="512" rx="112" data-chip />
+					<path d={F} data-f />
+				</g>
+				{[52, 68, 84].map((y) => (
 					<g key={y}>
-						<rect x="30" y={y} width="8" height="8" />
-						<rect x="82" y={y} width="8" height="8" />
-						<path d={`M30 ${y + 4}H4`} />
-						<path d={`M90 ${y + 4}H116`} />
+						<path d={`M18 ${y}H92`} data-trace />
+						<path d={`M148 ${y}H222`} data-trace />
+						<circle cx="18" cy={y} r="3" data-pad />
+						<circle cx="222" cy={y} r="3" data-pad />
+						<circle r="2.5" data-packet>
+							<animateMotion dur="2.4s" repeatCount="indefinite" path={`M18 ${y}H92`} />
+						</circle>
+						<circle r="2.5" data-packet>
+							<animateMotion dur="2.4s" repeatCount="indefinite" path={`M148 ${y}H222`} />
+						</circle>
 					</g>
 				))}
+				{['no telemetry', 'no account', 'no server'].map((fact, i) => (
+					<text key={fact} x="18" y={122 + i * 16} data-fact>
+						✓ {fact}
+					</text>
+				))}
+				<rect x="188" y="142" width="34" height="16" rx="3" data-mit />
+				<text x="205" y="150" data-mitText>
+					MIT
+				</text>
 			</svg>
-			<ul className={styles.plain}>
-				<li>no telemetry</li>
-				<li>no account</li>
-				<li>no server</li>
-			</ul>
 		</div>
 	);
 }

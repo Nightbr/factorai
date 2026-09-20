@@ -1146,89 +1146,204 @@
 	}
 }
 
-/* Worktrees: lanes, each with a session. */
-.lane {
+/* Shell: the session above, dimmed, and the footer shell under it, split in
+   two panes whose output streams on hover. */
+[data-mini="shell"] {
+	align-self: stretch;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.shellAbove {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 	height: var(--row);
 	padding: 0 8px;
-	border-left: 2px solid oklch(70% 0.15 255);
-	margin-bottom: 6px;
+	color: var(--muted);
+	font-size: 12px;
+	opacity: 0.7;
 }
 
-.lane[data-i="1"] {
-	border-color: oklch(72% 0.16 145);
-	animation: appear 4s ease-in-out infinite;
+.shellAbove > span:first-of-type {
+	flex: none;
 }
 
-.lane[data-i="2"] {
-	border-color: oklch(70% 0.17 300);
-	animation: appear 4s ease-in-out 0.4s infinite;
+.shellLine {
+	display: inline-block;
+	height: 5px;
+	border-radius: 2px;
+	background: oklch(28% 0.008 250);
 }
 
-.lane .mono {
-	flex: 1 1 auto;
-	color: var(--fg);
+.shell {
+	border: 1px solid var(--fa-border);
+	border-radius: 4px;
+	background: var(--fa-background);
+	overflow: hidden;
+}
+
+.shellHead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 24px;
+	padding: 0 8px;
+	border-bottom: 1px solid var(--fa-border);
+}
+
+.shellHead em {
+	font-style: normal;
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 9px;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	color: var(--hud);
+}
+
+.panes {
+	display: grid;
+	grid-template-columns: 1fr;
+}
+
+.pane {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px;
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 10.5px;
+	line-height: 14px;
+	color: var(--muted);
+	min-width: 0;
+}
+
+.pane + .pane {
+	border-top: 1px solid var(--fa-border);
+}
+
+.pane span {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.lane small {
-	font-family: var(--ifm-font-family-monospace);
-	font-size: 10px;
-	letter-spacing: 0.1em;
-	color: var(--muted);
-	border: 1px solid var(--fa-border);
-	border-radius: 4px;
-	padding: 1px 5px;
+.pane span:first-child {
+	color: var(--fg);
 }
 
-/* Local: the ports, and three lines. */
+.pane span[data-i] {
+	opacity: 0;
+	animation: streamIn 4.5s ease-out infinite;
+}
+
+.pane span[data-i="1"] {
+	animation-delay: 0.5s;
+}
+
+.pane span[data-i="2"] {
+	animation-delay: 1s;
+}
+
+.pane span[data-i="3"] {
+	animation-delay: 1.7s;
+}
+
+.pane span[data-ok] {
+	color: var(--working);
+}
+
+@keyframes streamIn {
+	0% {
+		opacity: 0;
+	}
+	12%,
+	100% {
+		opacity: 1;
+	}
+}
+
+/* Local: the machine as a box filling the card — the mark inside, packets on
+   the traces that never cross the edge, the facts and the licence within. */
 [data-mini="local"] {
+	align-self: stretch;
 	display: flex;
-	align-items: center;
-	gap: 16px;
 }
 
-.ports {
-	width: 120px;
-	height: 64px;
+.machine {
+	width: 100%;
+	height: 100%;
 	fill: none;
-	stroke: var(--trace-on);
 	stroke-width: 1.5;
-	flex: none;
 }
 
-.ports rect:first-child {
+.machine [data-box] {
+	stroke: var(--trace-on);
+	stroke-dasharray: 4 3;
+}
+
+.machine [data-chip] {
 	fill: var(--fa-housing, #272b31);
+	stroke: oklch(40% 0.02 250);
+	stroke-width: 10;
+}
+
+.machine [data-f] {
+	fill: var(--fa-primary);
 	stroke: none;
 }
 
-.ports rect + rect,
-.ports g rect {
+.machine [data-trace] {
+	stroke: oklch(34% 0.02 250);
+}
+
+.machine [data-pad] {
 	fill: var(--fa-background);
+	stroke: oklch(40% 0.02 250);
+}
+
+.machine [data-packet] {
+	fill: var(--fa-primary);
+	opacity: 0;
+}
+
+.cell:hover .machine [data-packet] {
+	opacity: 1;
+}
+
+.machine [data-label] {
+	fill: var(--hud);
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 6.5px;
+	letter-spacing: 0.25em;
+	text-transform: uppercase;
 	stroke: none;
 }
 
-.ports path {
-	stroke-dasharray: 26;
-	animation: none;
-}
-
-.plain {
-	list-style: none;
-	margin: 0;
-	padding: 0;
+.machine [data-fact] {
+	fill: var(--muted);
 	font-family: var(--ifm-font-family-monospace);
-	font-size: 11px;
+	font-size: 8px;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
-	color: var(--muted);
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
+	stroke: none;
+}
+
+.machine [data-mit] {
+	stroke: var(--fa-border);
+}
+
+.machine [data-mitText] {
+	fill: var(--fa-primary);
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 7.5px;
+	font-weight: 600;
+	letter-spacing: 0.15em;
+	text-anchor: middle;
+	dominant-baseline: central;
+	stroke: none;
 }
 
 /* ── Download ───────────────────────────────────────────────────────────── */

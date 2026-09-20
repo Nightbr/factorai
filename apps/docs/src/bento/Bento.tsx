@@ -12,7 +12,7 @@ import {
 	SessionsMini,
 	SidebarMini,
 	ViewerMini,
-	WorktreesMini,
+	ShellMini,
 } from './minis';
 
 const MINIS: Record<string, () => ReactNode> = {
@@ -22,7 +22,7 @@ const MINIS: Record<string, () => ReactNode> = {
 	changes: ChangesMini,
 	sidebar: SidebarMini,
 	viewer: ViewerMini,
-	worktrees: WorktreesMini,
+	shell: ShellMini,
 	local: LocalMini,
 };
 

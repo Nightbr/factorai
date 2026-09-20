@@ -58,17 +58,17 @@ export const CELLS: CellCopy[] = [
 		span: 3,
 	},
 	{
-		id: 'worktrees',
-		label: 'parallel',
-		title: 'One agent per checkout',
-		line: 'Worktrees give each session its own checkout; profiles keep several Claude configurations apart.',
+		id: 'shell',
+		label: 'shell',
+		title: 'Your shell, beside the agent',
+		line: 'A terminal in the project directory under every session: a test loop, a dev server, a git log. It belongs to the project, splits, and outlives the session above it.',
 		span: 3,
 	},
 	{
 		id: 'local',
 		label: 'local',
-		title: 'Nothing leaves your machine',
-		line: 'No telemetry, no account, no server. Quitting confirms, then kills every agent. No orphans, ever.',
+		title: 'Local, private, open source',
+		line: "Runs on your machine and reads the CLI's own files. No account, no server, no telemetry. MIT licensed, and it stays that way.",
 		span: 3,
 	},
 ];
