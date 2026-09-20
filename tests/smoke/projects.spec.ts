@@ -103,6 +103,29 @@ test.describe('projects sidebar', () => {
 		expect(killed).toBeDefined();
 	});
 
+	test('@smoke a session opened from a cold load spawns once, with its cwd', async ({ page }) => {
+		// **A regression guard for PERF-09.** `projectCwd` came out of
+		// `list_projects` as `null` until that query answered, and it is in the
+		// terminal's mount effect dependency list — so opening a session before
+		// the projects were in cache ran that effect twice, the first time
+		// spawning a PTY with no cwd, and the cleanup in between hid the host the
+		// first run had just shown.
+		//
+		// Straight to the session URL, which is the cold case: nothing has read
+		// `list_projects` yet.
+		const fx = fixtureOneProjectOneSession();
+		await installMockBridge(page, fx);
+		await page.goto(`/#/projects/${FOO_ID}/sessions/session-uuid-001`);
+		await expect(page.locator('.xterm:visible')).toBeVisible();
+
+		const spawns = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? []).filter((c) => c.name === 'terminal_spawn'),
+		);
+		expect(spawns).toHaveLength(1);
+		const opts = spawns[0]?.args?.opts as { cwd?: string } | undefined;
+		expect(opts?.cwd).toBeTruthy();
+	});
+
 	test('@smoke opening a session spawns the PTY at the pane size', async ({ page }) => {
 		const fx = fixtureOneProjectOneSession();
 		await installMockBridge(page, fx);

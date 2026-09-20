@@ -293,7 +293,12 @@ if the number is inside the budget. In the spec's order:
 - [x] **PERF-08** — libgit2 out of the database write transaction. **Landed 2026-09-20**:
       `checkout_owners` builds the checkout map on a pooled reader before the transaction
       opens. The transaction went from 1.46-1.82ms to 0.14-0.19ms on this workspace.
-- [ ] **PERF-09** — item 54, session switch: the `projectCwd` double-mount first, then the profile.
+- [ ] **PERF-09** — item 54, session switch. **The `projectCwd` double-mount landed
+      2026-09-20**: `undefined` now means "`list_projects` has not answered", so the mount
+      effect runs once. The defect it was really causing was a PTY spawned with no cwd, and
+      a smoke test holds that. **The profile is still owed** — click-to-first-paint for a
+      pooled session, a first open, and a cross-project switch — along with the other three
+      candidates in the spec entry.
 - [ ] **PERF-10** — the file tree's per-row query observers and per-row decoration index.
 - [ ] **PERF-11** — idle polling cadence, and polls that continue while the window is unfocused.
 - [ ] **PERF-12** — persisted stores writing `localStorage` on every drag frame.

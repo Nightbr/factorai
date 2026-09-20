@@ -53,7 +53,12 @@ function SessionView() {
 		queryFn: () => cmd.listProjects(),
 	});
 	const project = projectsQ.data?.find((p) => p.id === projectId);
-	const projectCwd = project?.realPath ?? null;
+	// **`undefined` until the query has answered** (PERF-09). `Terminal` puts
+	// this in its mount effect's dependency list, so a `null` that later becomes
+	// a path runs that effect twice — the first time spawning a PTY with no cwd.
+	// A query that errors settles too, and lands on `null`, which is the same
+	// answer this used to give immediately.
+	const projectCwd = projectsQ.isPending ? undefined : (project?.realPath ?? null);
 
 	// **Which checkout this session is working in** (F21). Absent for a
 	// single-checkout project, which is the 95% case — so that header renders

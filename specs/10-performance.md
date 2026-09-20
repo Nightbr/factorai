@@ -635,6 +635,20 @@ ADR-0002's transport.
 *Measure.* Main-thread time per chunk on WebKitGTK with `cat` of a large
 file, and the keystroke-to-glyph budget under load, before and after.
 
+**PERF-29 — The file tree is not virtualized, and at 2 000 rows it is nineteen times its budget.**
+Impact H on a large repository, cost M to H, measured 2026-09-20.
+`list_dir` caps a directory at 2 000 entries (`rs/services/files.rs:25`) and
+`FileTreeNode` renders every one of them (`ts/components/files/FileTreeNode.tsx:245-254`).
+After PERF-10 removed the per-row query observers and memoised the row,
+expanding such a directory still takes **1 911 ms** against a 100 ms budget,
+and the main thread stays busy long enough afterwards that a 1 500 ms timer
+fires at 15 s.
+*Fix.* A windowed list over the rows. The tree is recursive and each node
+fetches its own listing, so there is no flat list of what is visible — which is
+the same thing that limits shift-click to one directory today. Building one is
+the work.
+*Measure.* The same two numbers as PERF-10, against the 100 ms budget.
+
 **PERF-16 — One watcher event re-checks every transcript in the directory.**
 Impact M, cost L to M, confirmed by reading. Lands with PERF-03.
 `scan_dir_path` (`rs/services/indexer.rs:279-300`) lists the directory, stats

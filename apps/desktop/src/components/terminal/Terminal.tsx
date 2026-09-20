@@ -632,7 +632,14 @@ function ensureTerminal(
 interface TerminalProps {
 	sessionId: string;
 	projectId: string;
-	projectCwd: string | null;
+	/** The project's folder. **Three states, and the third one matters**
+	 *  (PERF-09): a path, `null` for a project that has none, and `undefined`
+	 *  while `list_projects` has not answered yet. This is in the mount effect's
+	 *  dependency list, so without the distinction a cold switch ran that effect
+	 *  twice — once with no cwd, reaching `attachPty` and spawning without one,
+	 *  then again with the real value — and the cleanup in between hid the host
+	 *  the first run had just shown. */
+	projectCwd: string | null | undefined;
 	/** The cwd recorded in this session's transcript, when there is one. First
 	 *  base a relative path in the output resolves against (F19). */
 	sessionCwd: string | null;
@@ -653,14 +660,18 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 	// spawned.
 	useFileLinks({
 		termKey: sessionId,
-		bases: [sessionCwd, projectCwd],
-		treeRoot: projectCwd,
+		bases: [sessionCwd, projectCwd ?? null],
+		treeRoot: projectCwd ?? null,
 		focus: () => pool.get(sessionId)?.term.focus(),
 	});
 
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
+		// Wait for the answer rather than spawning against a guess (PERF-09).
+		// `undefined` is "`list_projects` has not said yet"; `null` is "it said,
+		// and there is no folder", which is a real answer and does run.
+		if (projectCwd === undefined) return;
 
 		const entry = getOrCreateTerm(sessionId, container, () => agentTerminalId(sessionId));
 		// Only ever true for a terminal built against a *previous* pane — the
