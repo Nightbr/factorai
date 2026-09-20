@@ -140,8 +140,12 @@ export function AppMock() {
 							</div>
 						))}
 						<div className={styles.sidebarFoot}>
-							<span>v0.45.0</span>
 							<span className={styles.upToDate}>Up to date</span>
+							<span className={styles.zoom}>
+								<i>−</i>
+								<b>100%</b>
+								<i>+</i>
+							</span>
 						</div>
 					</aside>
 

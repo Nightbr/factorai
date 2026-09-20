@@ -289,6 +289,26 @@
 	color: var(--muted);
 }
 
+/* F15: minus, the level, plus; the level resets on click. */
+.zoom {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-variant-numeric: tabular-nums;
+}
+
+.zoom i {
+	font-style: normal;
+	width: 16px;
+	text-align: center;
+	color: var(--muted);
+}
+
+.zoom b {
+	font-weight: 400;
+	color: var(--muted);
+}
+
 /* ── Session: header, terminal, footer shell ───────────────────────────── */
 .main {
 	display: flex;
