@@ -121,16 +121,20 @@
 }
 
 .stage {
-	flex: 1 1 auto;
+	/* Fixed per row, so every title in a row starts on the same line and the
+	   text block, not the illustration, absorbs the difference in copy. */
+	flex: none;
+	height: var(--stage, 200px);
 	position: relative;
-	min-height: 150px;
-	padding: 20px 20px 0;
+	padding: 16px 20px;
 	display: flex;
-	align-items: flex-end;
+	align-items: center;
+	justify-content: center;
 	overflow: hidden;
 }
 
 .text {
+	flex: 1 1 auto;
 	padding: 16px 20px 20px;
 	border-top: 1px solid color-mix(in oklch, var(--fa-border) 60%, transparent);
 }
@@ -1013,7 +1017,7 @@
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	height: 22px;
+	height: 19px;
 	padding: 0 8px;
 	border-radius: 4px;
 	color: var(--fg);
@@ -1103,13 +1107,13 @@
 .code {
 	display: flex;
 	flex-direction: column;
-	gap: 7px;
-	padding: 10px 8px;
+	gap: 6px;
+	padding: 8px;
 }
 
 .code span {
 	display: block;
-	height: 7px;
+	height: 6px;
 	border-radius: 2px;
 	background: oklch(28% 0.008 250);
 	animation: decrypt 4s ease-in-out infinite;
@@ -1160,7 +1164,7 @@
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	height: var(--row);
+	height: 24px;
 	padding: 0 8px;
 	color: var(--muted);
 	font-size: 12px;
@@ -1189,7 +1193,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	height: 24px;
+	height: 22px;
 	padding: 0 8px;
 	border-bottom: 1px solid var(--fa-border);
 }
@@ -1211,8 +1215,8 @@
 .pane {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 8px;
+	gap: 2px;
+	padding: 6px 8px;
 	font-family: var(--ifm-font-family-monospace);
 	font-size: 10.5px;
 	line-height: 14px;

@@ -68,7 +68,12 @@ export function Bento() {
 							key={cell.id}
 							className={styles.cell}
 							data-cell={cell.id}
-							style={{ '--span': cell.span } as React.CSSProperties}
+							style={
+								{
+									'--span': cell.span,
+									'--stage': cell.span >= 4 ? '236px' : '224px',
+								} as React.CSSProperties
+							}
 						>
 							<span className={`${styles.corner} ${styles.tl}`} />
 							<span className={`${styles.corner} ${styles.br}`} />
