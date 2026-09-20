@@ -312,7 +312,7 @@ pub fn delete(
 fn drop_rows(db: &Db, session_id: &str) -> AppResult<()> {
 	db.with_mut(|conn| {
 		let tx = conn.transaction()?;
-		tx.execute("DELETE FROM messages_fts WHERE session_id = ?1", [session_id])?;
+		tx.execute("DELETE FROM messages WHERE session_id = ?1", [session_id])?;
 		tx.execute("DELETE FROM session_worktrees WHERE session_id = ?1", [session_id])?;
 		tx.execute("DELETE FROM session_routines WHERE session_id = ?1", [session_id])?;
 		tx.execute("DELETE FROM sessions WHERE id = ?1", [session_id])?;
@@ -410,10 +410,10 @@ mod tests {
 		insert_session(&db, "s1", Some("/repo"));
 		set_worktree(&db, "s1", "/wt/feature-x", 10).unwrap();
 		db.with(|conn| {
-			// Three columns, not four: migration 0004 dropped `project_id` from the
-			// FTS table — a hit resolves its project through `sessions` now.
+			// Written to `messages`, not to the index: the index is external content
+			// over this table since ADR-0053, and its triggers do the rest.
 			conn.execute(
-				"INSERT INTO messages_fts(session_id, role, body) VALUES ('s1', 'user', 'hello')",
+				"INSERT INTO messages(session_id, role, body) VALUES ('s1', 'user', 'hello')",
 				[],
 			)?;
 			Ok(())
@@ -430,11 +430,9 @@ mod tests {
 		let hits: i64 = db
 			.with(|conn| {
 				Ok(conn
-					.query_row(
-						"SELECT count(*) FROM messages_fts WHERE session_id = 's1'",
-						[],
-						|r| r.get(0),
-					)
+					.query_row("SELECT count(*) FROM messages WHERE session_id = 's1'", [], |r| {
+						r.get(0)
+					})
 					.unwrap())
 			})
 			.unwrap();

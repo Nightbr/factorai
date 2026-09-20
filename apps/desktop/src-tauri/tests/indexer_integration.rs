@@ -100,8 +100,10 @@ fn counts(db: &Db, session_id: &str) -> (i64, i64) {
 			params![session_id],
 			|r| r.get(0),
 		)?;
+		// `messages`, not the index: since ADR-0053 the index is external content
+		// over this table and has no `session_id` column of its own.
 		let fts: i64 = conn.query_row(
-			"SELECT COUNT(*) FROM messages_fts WHERE session_id = ?1",
+			"SELECT COUNT(*) FROM messages WHERE session_id = ?1",
 			params![session_id],
 			|r| r.get(0),
 		)?;
@@ -159,7 +161,7 @@ fn fts_rows_inserted_for_indexed_messages() {
 	db.with(|conn| {
 		let count: i64 = conn
 			.query_row(
-				"SELECT COUNT(*) FROM messages_fts WHERE session_id = ?1",
+				"SELECT COUNT(*) FROM messages WHERE session_id = ?1",
 				params![&session_id],
 				|row| row.get(0),
 			)
@@ -960,7 +962,9 @@ fn subagent_messages_are_searchable() {
 	db.with(|conn| {
 		let hits: i64 = conn
 			.query_row(
-				"SELECT COUNT(*) FROM messages_fts WHERE session_id = 'agent-1111' AND messages_fts MATCH 'Explore'",
+				"SELECT COUNT(*) FROM messages_fts \
+				 JOIN messages ON messages.id = messages_fts.rowid \
+				 WHERE messages.session_id = 'agent-1111' AND messages_fts MATCH 'Explore'",
 				[],
 				|row| row.get(0),
 			)

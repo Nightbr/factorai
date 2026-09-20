@@ -168,7 +168,7 @@ set_session_worktree(session_id: String, project_path: String, path: String) -> 
 set_session_pinned(session_id: String, pinned: bool) -> ()
 // The one write into the agent's store that is not fork (ADR-0027, F2): moves
 // `<store dir>/<id>.jsonl` and the `<id>/` sub-agent directory to the OS trash,
-// then drops the session's rows — sessions, messages_fts, session_worktrees,
+// then drops the session's rows — sessions, messages, session_worktrees,
 // session_routines — in one transaction and emits `sessions:changed`. The same
 // four tables and the same order Indexer::reap_deleted uses, because it is the
 // same removal arriving by a different route.

@@ -426,19 +426,41 @@ project called `subagents`.
 
 Live status is in-memory only and has no column here.
 
-### `messages_fts` (FTS5 virtual table)
+### `messages` and `messages_fts` (FTS5 external content)
 
 ```sql
+CREATE TABLE messages (
+  id         INTEGER PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  role       TEXT NOT NULL,  -- 'user' | 'assistant'
+  body       TEXT NOT NULL   -- flattened text content
+);
+CREATE INDEX idx_messages_session ON messages(session_id);
+
 CREATE VIRTUAL TABLE messages_fts USING fts5(
-  session_id UNINDEXED,
-  role,        -- 'user' | 'assistant'
-  body,        -- flattened text content
+  role, body,
+  content = 'messages', content_rowid = 'id',
   tokenize = 'porter unicode61'
 );
 ```
 
-Populated by the indexer; not the source of truth (rebuildable). No
-`project_id`: a workspace id is not stable across a remove and a re-add, so
+Populated by the indexer; not the source of truth (rebuildable). **Every write
+goes to `messages`**; three triggers (`messages_ai`, `messages_ad`,
+`messages_au`) keep the index in step, and nothing writes to `messages_fts`
+directly.
+
+**`session_id` is a column of the table, not of the index** (ADR-0053,
+migration 0020). It used to be an `UNINDEXED` FTS5 column, which meant
+`DELETE … WHERE session_id = ?` read every row of every session — 8 ms at 232
+sessions, 121 ms at 11 600, on the thread that paints, on every re-index of a
+changed transcript. With a b-tree over it the delete is a lookup and flat in
+the size of the index.
+
+Two consequences for anything querying it: **`body` is column 1** for
+`snippet()`, where the old shape had it at 2, and a hit recovers its session
+through `JOIN messages ON messages.id = messages_fts.rowid`.
+
+No `project_id`: a workspace id is not stable across a remove and a re-add, so
 storing one would leave rows pointing at projects that no longer exist. The
 project is resolved through `sessions` → `discovered_projects` at query time.
 
@@ -766,10 +788,10 @@ same way, so parsing a folder you never added would be work no query can read.
         for each .jsonl:
           if (mtime, size) unchanged from sessions.{file_mtime,file_size}: skip
           else: parse incrementally → upsert sessions row
-                re-tokenize → DELETE messages_fts WHERE session_id = ?
-                              INSERT new rows
+                re-tokenize → DELETE messages WHERE session_id = ?
+                              INSERT new rows   (triggers reindex)
         reap: rows for this directory whose .jsonl is no longer in the
-              listing → DELETE sessions + messages_fts, one transaction
+              listing → DELETE sessions + messages, one transaction
 
 [add a project]
   └── scan_project(id) — the same, for one folder. Nothing was parsed before.

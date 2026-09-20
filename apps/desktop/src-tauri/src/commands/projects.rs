@@ -195,7 +195,7 @@ pub fn remove_project_in(db: &Db, id: &str) -> AppResult<()> {
 		// Order matters: `discovered_projects.project_id` is ON DELETE SET NULL,
 		// so once the project row goes there is no way back to its sessions.
 		tx.execute(
-			"DELETE FROM messages_fts WHERE session_id IN (
+			"DELETE FROM messages WHERE session_id IN (
 			   SELECT s.id FROM sessions s
 			     JOIN discovered_projects d ON d.id = s.discovered_id
 			    WHERE d.project_id = ?1)",

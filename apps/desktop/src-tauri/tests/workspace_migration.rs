@@ -249,7 +249,9 @@ fn an_unresolvable_directory_is_dropped_rather_than_guessed_at() {
 		1
 	);
 	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM sessions WHERE id = 's4'"), 0);
-	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM messages_fts WHERE session_id = 's4'"), 0);
+	// `messages` since ADR-0053: 0020 moved the rows there and the index has no
+	// `session_id` column of its own any more.
+	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM messages WHERE session_id = 's4'"), 0);
 	// And the three sessions that did have a home are all still here.
 	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM sessions"), 3);
 }

@@ -26,6 +26,12 @@ use tempfile::TempDir;
 /// referenced by `session_pins`. Nothing else in the schema is in the blast
 /// radius, and a hand-written copy of all seventeen migrations would be a second
 /// source of truth for the schema rather than a test.
+///
+/// **Plus `messages_fts`, which 0018 does not touch and 0020 reads.** Every
+/// real database at this mark has had it since 0002, and 0020 moves its rows
+/// into `messages` (ADR-0053); a fixture without it is a database no user has,
+/// and the migration would fail against it for a reason no user would ever
+/// hit. Two rows, so the carry-over is asserted rather than assumed.
 fn seed_at_0017(data_dir: &Path) {
 	std::fs::create_dir_all(data_dir).unwrap();
 	let conn = Connection::open(data_dir.join("factorai.db")).unwrap();
@@ -75,6 +81,12 @@ fn seed_at_0017(data_dir: &Path) {
 			session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
 			pinned_at  INTEGER NOT NULL
 		);
+		CREATE VIRTUAL TABLE messages_fts USING fts5(
+			session_id UNINDEXED,
+			role,
+			body,
+			tokenize = 'porter unicode61'
+		);
 
 		INSERT INTO _meta(key, value) VALUES
 			('migration:0001_init', '2026-01-01T00:00:00Z'),
@@ -115,6 +127,10 @@ fn seed_at_0017(data_dir: &Path) {
 			('s3', 2, 'elsewhere', 3, 3, 1, 0, 0, '/home/me/code/bar');
 
 		INSERT INTO session_pins(session_id, pinned_at) VALUES ('s2', 99);
+
+		INSERT INTO messages_fts(session_id, role, body) VALUES
+			('s1', 'user', 'please refactor the sqlite indexer'),
+			('s3', 'assistant', 'a message from the unlinked discovery');
 		"#,
 	)
 	.unwrap();
@@ -138,6 +154,21 @@ fn every_session_and_pin_survives_the_rebuild() {
 	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM sessions"), 3);
 	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM session_pins"), 1);
 	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM discovered_projects"), 2);
+
+	// 0020's half of the same property: the FTS rows moved into `messages`
+	// rather than being dropped, and the rebuilt index still answers for them
+	// (ADR-0053). `s3`'s row is there too — an unlinked discovery's messages
+	// are not this migration's to reap.
+	assert_eq!(scalar::<i64>(&db, "SELECT COUNT(*) FROM messages"), 2);
+	assert_eq!(
+		scalar::<String>(&db, "SELECT session_id FROM messages WHERE body LIKE '%indexer%'"),
+		"s1"
+	);
+	assert_eq!(
+		scalar::<i64>(&db, "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH 'indexer'"),
+		1,
+		"the rebuilt index has to answer, not merely carry the rows"
+	);
 
 	// Including the row nothing in the workspace points at: a discovery outside
 	// the workspace is history, not garbage.

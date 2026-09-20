@@ -646,7 +646,7 @@ menu yet.
 **What it does** (ADR-0027): moves the transcript
 `<store dir>/<session-id>.jsonl` to the operating system's trash, along with the
 `<session-id>/` directory holding its sub-agent transcripts, and drops the
-session's index rows — `sessions`, `messages_fts`, `session_worktrees`,
+session's index rows — `sessions`, `messages`, `session_worktrees`,
 `session_routines` — in one transaction. `sessions:changed` follows, so the
 project page and the sidebar agree without waiting for a poll.
 
@@ -801,7 +801,8 @@ tab strip are scanned by — then the session title, then the matched role. The
 project's folder is the row's hover title.
 
 **Backend.** `search_sessions(query, project_id?, limit)` → FTS5 over
-`messages_fts` with `snippet()` + `bm25()` ranking. Returns up to `limit`
+`messages_fts`, joined to `messages` on the rowid it reads through
+(ADR-0053), with `snippet()` + `bm25()` ranking. Returns up to `limit`
 (default/cap 200) hits, each
 `{ sessionId, projectId, projectName, projectPath, title, role, snippet }`
 (`title` JOINed from `sessions`, `projectName` / `projectPath` from `projects`,
@@ -810,7 +811,11 @@ from the path, so a name alone would colour the same project differently here
 than in the sidebar. The FTS index stores no per-event position, so hits carry
 no `event_index`.
 
-`messages_fts` carries **no `project_id` column**. It used to, holding the
+`messages_fts` carries **no `session_id` and no `project_id` column** — both
+live on `messages`, which the query joins on `messages_fts.rowid`. `session_id`
+moved there in migration 0020 so that deleting a session's rows is an index
+lookup rather than a scan of the whole index (ADR-0053); `project_id` went
+earlier and for a different reason. It used to, holding the
 encoded directory name, which was stable; a workspace id is not, since removing
 a project and adding it back mints a new one and every stored row would be
 stale. The project is resolved through `sessions` → `discovered_projects` →

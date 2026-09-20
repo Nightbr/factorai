@@ -69,7 +69,9 @@ fn session_count(db: &Db) -> i64 {
 }
 
 fn fts_count(db: &Db) -> i64 {
-	db.with(|conn| Ok(conn.query_row("SELECT COUNT(*) FROM messages_fts", [], |r| r.get(0))?))
+	// The indexed rows live in `messages` since ADR-0053; the FTS table is
+	// external content over it and counts the same rows either way.
+	db.with(|conn| Ok(conn.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?))
 		.expect("count")
 }
 

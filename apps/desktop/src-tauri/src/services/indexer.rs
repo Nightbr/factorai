@@ -422,7 +422,7 @@ impl Indexer {
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			{
-				let mut del_fts = tx.prepare("DELETE FROM messages_fts WHERE session_id = ?1")?;
+				let mut del_fts = tx.prepare("DELETE FROM messages WHERE session_id = ?1")?;
 				// F21's checkout record. This is what `ON DELETE CASCADE` used to do,
 				// moved here when migration 0007 dropped the foreign key: the record
 				// is keyed by an id we minted and has to be writable before the scan
@@ -631,10 +631,13 @@ impl Indexer {
 					PARSE_VERSION,
 				],
 			)?;
-			tx.execute("DELETE FROM messages_fts WHERE session_id = ?1", params![session_id])?;
+			// `messages`, never `messages_fts`: the index is external content over
+			// this table and its triggers keep it in step (ADR-0053). The delete is
+			// an index lookup rather than a scan of every session's rows.
+			tx.execute("DELETE FROM messages WHERE session_id = ?1", params![session_id])?;
 			{
 				let mut stmt = tx.prepare(
-					"INSERT INTO messages_fts(session_id, role, body) VALUES(?1, ?2, ?3)",
+					"INSERT INTO messages(session_id, role, body) VALUES(?1, ?2, ?3)",
 				)?;
 				for (role, body) in &fts_rows {
 					stmt.execute(params![session_id, role, body])?;

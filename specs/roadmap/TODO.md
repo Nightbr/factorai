@@ -256,7 +256,11 @@ spec P1).
 **Tier P1 is the M6 gate**, each item measured first and closed with its number rather than fixed
 if the number is inside the budget. In the spec's order:
 
-- [ ] **PERF-01** — the FTS delete-by-session full scan (`session_id UNINDEXED`); migration + ADR.
+- [x] **PERF-01** — the FTS delete-by-session full scan (`session_id UNINDEXED`). **Landed
+      2026-09-20**: `messages` is a real table and the index is external content over it
+      (ADR-0053, migration 0020). Delete-by-session went from `SCAN` to a covering-index
+      lookup — 8.0ms to 4.8ms at 232 sessions, 121.2ms to 8.9ms at 11 600, and a one-row
+      session from 2.5ms to 0.0ms. Search returns the same hits in the same order.
 - [ ] **PERF-02** — one SQLite connection behind one mutex, the indexer writing through it; fix
       the pool drift in `03-backend-rust.md` first, then the reader connection and `off_main`.
 - [ ] **PERF-03** — full transcript re-parse on every change; index the appended tail.

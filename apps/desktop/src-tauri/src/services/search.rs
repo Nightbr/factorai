@@ -56,15 +56,20 @@ pub fn search(
 	};
 	let limit = limit.clamp(1, MAX_HITS) as i64;
 
-	// Column 2 of messages_fts is `body` → snippet target. bm25() ascending
-	// puts the best matches first. The FTS table is named in full (not
-	// aliased) so the bm25()/snippet() auxiliary functions resolve cleanly.
-	let select = "SELECT messages_fts.session_id, discovered_projects.project_id, \
+	// **Column 1 of messages_fts is `body`** → snippet target. It was column 2
+	// until ADR-0053 made the index external content over `messages`, which took
+	// `session_id` out of the index entirely: the columns are `role`, `body`.
+	// The session id and the role come from `messages`, joined on the rowid the
+	// index reads through. bm25() ascending puts the best matches first. The FTS
+	// table is named in full (not aliased) so the bm25()/snippet() auxiliary
+	// functions resolve cleanly.
+	let select = "SELECT messages.session_id, discovered_projects.project_id, \
 		projects.display_name, projects.real_path, \
-		COALESCE(sessions.title, ''), messages_fts.role, \
-		snippet(messages_fts, 2, '', '', '…', 16) \
+		COALESCE(sessions.title, ''), messages.role, \
+		snippet(messages_fts, 1, '', '', '…', 16) \
 		FROM messages_fts \
-		JOIN sessions ON sessions.id = messages_fts.session_id \
+		JOIN messages ON messages.id = messages_fts.rowid \
+		JOIN sessions ON sessions.id = messages.session_id \
 		JOIN discovered_projects ON discovered_projects.id = sessions.discovered_id \
 		JOIN projects ON projects.id = discovered_projects.project_id \
 		WHERE messages_fts MATCH ?1 AND discovered_projects.project_id IS NOT NULL";
@@ -119,9 +124,15 @@ mod tests {
 			"CREATE TABLE projects (id TEXT PRIMARY KEY, real_path TEXT, display_name TEXT);
 			 CREATE TABLE discovered_projects (id INTEGER PRIMARY KEY, project_id TEXT);
 			 CREATE TABLE sessions (id TEXT PRIMARY KEY, discovered_id INTEGER, title TEXT);
+			 CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL,
+				role TEXT NOT NULL, body TEXT NOT NULL);
+			 CREATE INDEX idx_messages_session ON messages(session_id);
 			 CREATE VIRTUAL TABLE messages_fts USING fts5(
-				session_id UNINDEXED, role, body,
+				role, body, content = 'messages', content_rowid = 'id',
 				tokenize = 'porter unicode61');
+			 CREATE TRIGGER messages_ai AFTER INSERT ON messages BEGIN
+				INSERT INTO messages_fts(rowid, role, body) VALUES (new.id, new.role, new.body);
+			 END;
 			 INSERT INTO projects(id, real_path, display_name)
 			   VALUES('p1', '/home/dev/factorai', 'factorai'),
 			         ('p2', '/home/dev/orchard', 'orchard');
@@ -140,7 +151,7 @@ mod tests {
 		];
 		for (sid, role, body) in rows {
 			conn.execute(
-				"INSERT INTO messages_fts(session_id, role, body) VALUES(?1,?2,?3)",
+				"INSERT INTO messages(session_id, role, body) VALUES(?1,?2,?3)",
 				params![sid, role, body],
 			)
 			.unwrap();

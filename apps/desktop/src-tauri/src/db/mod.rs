@@ -78,6 +78,12 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// agent's default, so an existing install keeps working with nothing written.
 	// A plain `CREATE TABLE`, so not standalone: the rebuild was 0018's problem.
 	("0019_project_profiles", include_str!("migrations/0019_project_profiles.sql")),
+	// Messages become a real table and the FTS index becomes external content
+	// over it (ADR-0053), because `session_id UNINDEXED` made every
+	// delete-by-session a scan of the whole index — on the thread that paints.
+	// Not standalone: it drops and recreates the *virtual* table, and nothing
+	// references it, so there is no foreign key to break.
+	("0020_messages_table", include_str!("migrations/0020_messages_table.sql")),
 ];
 
 /// Migrations that need the connection to themselves, with foreign keys off.

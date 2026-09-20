@@ -147,7 +147,8 @@ Line numbers are as of `main` at `9c1faf9`, 2026-09-20.
 ### P1 — before the M6 tag
 
 **PERF-01 — Deleting a session's rows from `messages_fts` is a full-table scan.**
-Impact H, cost M, confirmed by reading.
+Impact H, cost M, confirmed by reading. **Landed 2026-09-20** (ADR-0053,
+migration 0020); the numbers are at the end of this entry.
 `session_id` is declared `UNINDEXED` in the live FTS5 table
 (`rs/db/migrations/0004_workspace_projects.sql:144-149`). FTS5 keeps an
 `UNINDEXED` column only in its content table with no index, so
@@ -157,13 +158,29 @@ session. It runs on every re-index (`rs/services/indexer.rs:634`), on reap
 removal (`rs/commands/projects.rs:198`), always inside a write transaction
 that holds the one database lock (PERF-02). At hundreds of sessions this is
 the length of every main-thread stall the sidebar polls feel.
-*Fix.* Either drop `UNINDEXED` and delete through
-`MATCH 'session_id:"<uuid>"'`, or move to an external-content FTS5 table over
-a `messages(id, session_id, role, body)` table with a b-tree on `session_id`
-and the standard triggers, which also gives PERF-03 a rowid to append after.
-A migration rebuild and an ADR for the table shape. *Measure.*
-`EXPLAIN QUERY PLAN` before (`SCAN messages_fts`) and after, and a timed
-re-index of one session at 300 sessions.
+*Fixed by* an external-content FTS5 index over a real
+`messages(id, session_id, role, body)` table with a b-tree on `session_id` and
+the standard triggers, which also gives PERF-03 a rowid to append after. The
+alternative, dropping `UNINDEXED` and matching on the id, was rejected for the
+reason ADR-0053 gives: it puts UUIDs through the porter tokenizer and makes
+every unqualified `MATCH` search the identity column.
+
+*Measured*, on copies of the live 232-session index and on the same data grown
+ten and fifty times. `EXPLAIN QUERY PLAN` went from `SCAN messages_fts` to
+`SEARCH messages USING COVERING INDEX idx_messages_session`.
+
+| Index size | Delete a 363-row session, before | after |
+| --- | --- | --- |
+| 232 sessions, 6 014 rows | 8.0 ms | 4.8 ms |
+| 2 320 sessions, 60 140 rows | 29.7 ms | 5.6 ms |
+| 11 600 sessions, 300 700 rows | 121.2 ms | 8.9 ms |
+
+Deleting a **one-row** session went from 2.5 ms to 0.0 ms, which is the shape
+of the win: the cost is the session's own rows now, not the table's. Search is
+unchanged in what it returns (the same 112 hits in the same order with the same
+snippets) and costs 8.7 ms through the app's own `search()` at the live size,
+inside the 200 ms budget. The migration itself is 123 ms on the live index,
+once, and does not re-parse a transcript.
 
 **PERF-02 — One SQLite connection behind one mutex, and the indexer writes through it.**
 Impact H, cost M, confirmed by reading; stall length needs a profile.
