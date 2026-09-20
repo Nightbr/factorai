@@ -75,6 +75,7 @@ export function Hero({ copy }: Props) {
 	const trigger = useRef<ScrollTrigger | null>(null);
 
 	const [step, setStep] = useState(0);
+	const loader = useRef<HTMLDivElement>(null);
 	const stepRef = useRef(0);
 	stepRef.current = step;
 	const [released, setReleased] = useState(false);
@@ -113,7 +114,10 @@ export function Hero({ copy }: Props) {
 			const forgeEl = stageEl.querySelector<HTMLElement>('[data-forge]');
 			if (!forgeEl || !expansion.current) return;
 
-			const fogState = { progress: 0, density: 1, warm: 0 };
+			// Dark until ready: the fog fades up and the first line rises once the
+			// scroll timeline below exists, and the loader that covered the page
+			// from the server-rendered HTML onward goes with them.
+			const fogState = { progress: 0, density: 0, warm: 0 };
 			const pushFog = () => fog.current?.set(fogState);
 			pushFog();
 
@@ -190,6 +194,22 @@ export function Hero({ copy }: Props) {
 				onLeave: () => setReleased(true),
 				onEnterBack: () => setReleased(false),
 			});
+
+			stageEl.dataset.ready = '';
+			const reveal = gsap.timeline({ delay: 0.15 });
+			reveal
+				.to(fogState, { density: 1, duration: 1.4, ease: 'power2.out', onUpdate: pushFog }, 0)
+				.fromTo(
+					msg1.current,
+					{ opacity: 0, y: 14 },
+					{ opacity: 1, y: 0, duration: 0.9, ease: 'power2.out' },
+					0.2,
+				);
+			if (loader.current) {
+				reveal
+					.to(loader.current, { opacity: 0, duration: 0.6, ease: 'power1.out' }, 0)
+					.set(loader.current, { display: 'none' });
+			}
 
 			// Below the stage, the section under the middle of the viewport owns
 			// the hash.
@@ -374,6 +394,15 @@ export function Hero({ copy }: Props) {
 
 	return (
 		<div className={styles.root}>
+			<div ref={loader} className={styles.loader} aria-hidden="true">
+				<span className={`${styles.corner} ${styles.tl}`} />
+				<span className={`${styles.corner} ${styles.br}`} />
+				<svg className={styles.loaderMark} viewBox="0 0 512 512" aria-hidden="true">
+					<rect x="8" y="8" width="496" height="496" rx="108" />
+					<path d="M153.6 136H377.6V198.4H233.6V232H332.8L273.6 291.2H233.6V379.2H153.6Z" />
+				</svg>
+				<span className={styles.loaderLine} />
+			</div>
 			<div ref={stage} className={styles.stage}>
 				<Fog ref={fog} className={styles.fog} />
 				<Hud step={step} />

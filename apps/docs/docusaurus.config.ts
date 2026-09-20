@@ -49,12 +49,17 @@ const config: Config = {
 			respectPrefersColorScheme: false,
 		},
 		navbar: {
-			title: 'factorai',
 			logo: {
 				alt: 'factorai',
 				src: 'img/factorai-icon.svg',
 			},
 			items: [
+				{
+					// The wordmark set the app's way (B8): bold, -0.04em, `ai` in amber.
+					type: 'html',
+					position: 'left',
+					value: '<a class="navbar-wordmark" href="/factorai/">factor<span>ai</span></a>',
+				},
 				{
 					// Opens the platform dialog on the index (Download.tsx listens for
 					// the class); the query opens it on arrival from any other page.
@@ -96,7 +101,7 @@ const config: Config = {
 					],
 				},
 			],
-			copyright: 'MIT licence · open source · built with agents, supervised by a human',
+			copyright: 'Built with agents, supervised by human',
 		},
 	} satisfies Preset.ThemeConfig,
 };

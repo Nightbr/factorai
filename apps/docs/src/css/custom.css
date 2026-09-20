@@ -59,13 +59,27 @@ body[data-fa-intro] .navbar {
 	pointer-events: none;
 }
 
-.navbar__title {
-	font-weight: 700;
-	letter-spacing: -0.04em;
-}
-
 .navbar__logo {
 	height: 1.25rem;
+	margin-right: 0.5rem;
+}
+
+.navbar-wordmark {
+	font-weight: 700;
+	font-size: 1rem;
+	letter-spacing: -0.04em;
+	color: var(--fa-foreground);
+	text-decoration: none;
+	margin-right: 0.5rem;
+}
+
+.navbar-wordmark:hover {
+	color: var(--fa-foreground);
+	text-decoration: none;
+}
+
+.navbar-wordmark span {
+	color: var(--fa-primary);
 }
 
 /* Hero pages: the navbar floats so the pinned stage starts at the very top. */

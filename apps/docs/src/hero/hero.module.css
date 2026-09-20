@@ -1,3 +1,79 @@
+/* The loader: in the server-rendered HTML, over everything, until the scroll
+   timeline exists. Without it the five scenes stack on top of each other for
+   as long as the script takes to arrive. Light: the mark's outline breathing,
+   an amber hairline sweeping. */
+.loader {
+	position: fixed;
+	inset: 0;
+	z-index: 300;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--fa-background);
+	pointer-events: none;
+}
+
+.loaderMark {
+	width: 56px;
+	height: 56px;
+	fill: none;
+	stroke: oklch(70% 0.06 240 / 0.7);
+	stroke-width: 10;
+	animation: breathe 1.8s ease-in-out infinite;
+}
+
+.loaderMark path {
+	fill: var(--fa-primary);
+	stroke: none;
+}
+
+@keyframes breathe {
+	0%,
+	100% {
+		opacity: 0.55;
+		transform: scale(0.97);
+	}
+	50% {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+.loaderLine {
+	position: absolute;
+	left: 50%;
+	top: calc(50% + 54px);
+	width: 120px;
+	height: 1px;
+	transform: translateX(-50%);
+	background: oklch(100% 0 0 / 0.08);
+	overflow: hidden;
+}
+
+.loaderLine::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: -40%;
+	width: 40%;
+	height: 100%;
+	background: var(--fa-primary);
+	animation: sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes sweep {
+	to {
+		left: 100%;
+	}
+}
+
+/* Scenes stay out of sight until the timeline has set their first frame. */
+.stage:not([data-ready]) .scene,
+.stage:not([data-ready]) .forge,
+.stage:not([data-ready]) .fog {
+	visibility: hidden;
+}
+
 /* A block parent for the pinned stage; see Hero.tsx on pinSpacing. */
 .root {
 	display: block;
