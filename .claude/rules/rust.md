@@ -12,6 +12,15 @@ paths:
 - Commands return `Result<T, AppError>` — a `thiserror` enum that serializes to a
   tagged union on the TS side (`specs/03-backend-rust.md` § "Errors"). `anyhow`
   inside command bodies. Never `unwrap()` outside `setup()`.
+- `AppHandle::emit`, never `Window::emit` — a window-scoped emit does not reach
+  JS here. Emits are best-effort: `let _ = app.emit(...)`.
+- Sync C or CPU work (libgit2, hashing, big directory walks) goes through
+  `tauri::async_runtime::spawn_blocking`, not a plain `async fn` — see
+  `commands/git.rs`. Never hold a lock across an await or a child `wait()`;
+  that deadlocked the GTK main thread once.
+- Plugin "not allowed" errors mean a missing entry in
+  `capabilities/default.json`. New plugin needs an ADR; `-store` and `-sql`
+  are out on purpose.
 - PTY output is base64-encoded **bytes**, not UTF-8 strings — Claude's ANSI
   breaks at UTF-8 chunk boundaries.
 - Kill-on-quit is wired through both an explicit `kill_all()` and `Drop` on the

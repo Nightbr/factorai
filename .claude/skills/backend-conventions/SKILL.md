@@ -1,6 +1,6 @@
 ---
 name: backend-conventions
-description: Rust/Tauri house rules — command module layout, AppState and lock choice, anyhow-inside/thiserror-at-the-boundary errors, base64 PTY bytes, kill-on-quit — plus the hand-mirrored IPC types and the macOS/Linux Tauri gotchas (PATH, stripped env under turbo, AppImage env leaking into children). Use before writing Rust, adding a Tauri command, or debugging "works when I run the binary directly, not under pnpm dev".
+description: Rust/Tauri house rules — command module layout, AppState and lock choice, anyhow-inside/thiserror-at-the-boundary errors, base64 PTY bytes, kill-on-quit — plus command vs event vs spawn_blocking, AppHandle::emit, capabilities and plugins, the hand-mirrored IPC types, and the macOS/Linux Tauri gotchas (PATH, stripped env under turbo, AppImage env leaking into children, WebKitGTK divergences). Use before writing Rust, adding a Tauri command, event, plugin or capability, or debugging "works when I run the binary directly, not under pnpm dev".
 ---
 
 # IPC and types
@@ -28,6 +28,46 @@ description: Rust/Tauri house rules — command module layout, AppState and lock
 - **Kill-on-quit is non-optional** and wired through both an explicit
   `kill_all()` and `Drop` on the terminal manager. See `specs/05-features.md`
   § "Quit guard". No orphan zombies, ever.
+
+# Commands, events, blocking work
+
+- **Request/response is a command; backend-initiated is an event.** A command
+  returns `AppResult<T>`. Anything the backend pushes on its own (watcher
+  change, scan progress, PTY data) is an event with a `camelCase` payload
+  mirrored in `packages/types`, same as a command's return type.
+- **`AppHandle::emit`, never `Window::emit`.** A window-scoped emit does not
+  reach JS listeners in this app (see the comment in `commands/files.rs`).
+  Emits are best-effort: `let _ = app.emit(...)`, not `?` and not `unwrap()`.
+- **Sync C or CPU work goes through `spawn_blocking`.** An `async fn` command
+  that calls libgit2, hashes a tree or walks a big directory blocks the
+  runtime thread and the UI with it. Wrap the work in
+  `tauri::async_runtime::spawn_blocking`, map the join error to
+  `AppError::Process`, and let the inner `AppResult` through — `commands/git.rs`
+  is the template. Plain `async` is for awaitable I/O only.
+- **Never hold a lock across an await or a child `wait()`.** The terminal
+  manager once held `child.lock()` across `wait()` and deadlocked the GTK main
+  thread; the UI froze with no error anywhere. Take the lock, copy what you
+  need, drop it, then wait.
+- **A serde panic on `invoke()` is a missing derive.** Every type that crosses
+  the boundary derives `Serialize`/`Deserialize` with
+  `#[serde(rename_all = "camelCase")]`; no code generation, so the TS mirror is
+  hand-written in the same commit.
+
+# Capabilities and plugins
+
+- Permissions live in `capabilities/default.json`, scoped to the `main`
+  window. A plugin command failing with "not allowed" or "capability not
+  granted" means the permission is missing there. Add the single `allow-*`
+  the webview needs rather than a plugin's `default` set when one permission
+  is enough.
+- Only the webview's direct plugin calls need a permission. `std::fs`,
+  `reqwest`, rusqlite inside a command need nothing in the capability file.
+- Registered plugins: dialog, fs, process, shell, updater, clipboard-manager.
+  A new plugin is a new permission surface and a new binary dependency — it
+  needs an ADR. `tauri-plugin-store` and `tauri-plugin-sql` are out on
+  purpose; storage is rusqlite through `db/`.
+- A second window gets its own capability file listing only what that window
+  needs; it does not reuse `default`.
 
 # Tauri gotchas (macOS + Linux)
 
@@ -76,3 +116,10 @@ description: Rust/Tauri house rules — command module layout, AppState and lock
   leak is a new bug rather than that one; the workaround is `env -u` the
   poisoned vars and filter `.mount_` out of `PATH` / `XDG_DATA_DIRS` rather than
   unsetting those wholesale.
+- **The renderer is WebKitGTK on Linux and WKWebView on macOS, not Chromium.**
+  Things that differ from what Playwright's Chromium shows: `navigator.clipboard
+  .writeText` throws `NotAllowedError` in WebKitGTK, so text copies go through
+  the clipboard plugin; the native context menu is suppressed only in the
+  chrome, and the terminal keeps its live Paste entry; zoom and rendering bugs
+  reproduce only in the real engine. Verify renderer-facing backend changes in
+  the real window (`manual-qa`), not only in `pnpm e2e`.
