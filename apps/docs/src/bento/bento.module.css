@@ -271,15 +271,21 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	max-width: 40%;
-	animation: tabActive 6s steps(1, end) infinite;
+}
+
+/* Each tab lights in its own third of the six-second cycle the reel below
+   steps through — one keyframe set per tab and no delays, so the two can
+   never drift apart. */
+.tab[data-i="0"] {
+	animation: tabA 6s steps(1, end) infinite;
 }
 
 .tab[data-i="1"] {
-	animation-delay: -6s;
+	animation: tabB 6s steps(1, end) infinite;
 }
 
 .tab[data-i="2"] {
-	animation-delay: -3s;
+	animation: tabC 6s steps(1, end) infinite;
 }
 
 /* At rest the first tab is the active one. */
@@ -289,7 +295,7 @@
 	background: var(--fa-background);
 }
 
-@keyframes tabActive {
+@keyframes tabA {
 	0%,
 	33.3% {
 		color: var(--fg);
@@ -301,6 +307,42 @@
 		color: var(--muted);
 		border-color: transparent;
 		background: transparent;
+	}
+}
+
+@keyframes tabB {
+	0%,
+	33.3% {
+		color: var(--muted);
+		border-color: transparent;
+		background: transparent;
+	}
+	33.4%,
+	66.6% {
+		color: var(--fg);
+		border-color: var(--fa-border);
+		background: var(--fa-background);
+	}
+	66.7%,
+	100% {
+		color: var(--muted);
+		border-color: transparent;
+		background: transparent;
+	}
+}
+
+@keyframes tabC {
+	0%,
+	66.6% {
+		color: var(--muted);
+		border-color: transparent;
+		background: transparent;
+	}
+	66.7%,
+	100% {
+		color: var(--fg);
+		border-color: var(--fa-border);
+		background: var(--fa-background);
 	}
 }
 
@@ -318,37 +360,36 @@
 	overflow: hidden;
 }
 
+/* One strip of three screens, stepped a screen at a time: exactly one is ever
+   in the window, so nothing can overlap. */
+.reel {
+	display: flex;
+	flex-direction: column;
+	animation: reel 6s steps(1, end) infinite;
+}
+
 .screen {
-	position: absolute;
-	inset: 0;
+	flex: none;
+	height: 112px;
 	padding: 10px 12px;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	opacity: 0;
-	animation: screenOn 6s steps(1, end) infinite;
+	overflow: hidden;
 }
 
-.screen[data-i="1"] {
-	animation-delay: -6s;
-}
-
-.screen[data-i="2"] {
-	animation-delay: -3s;
-}
-
-.cell:not(:hover) .screen[data-i="0"] {
-	opacity: 1;
-}
-
-@keyframes screenOn {
+@keyframes reel {
 	0%,
 	33.3% {
-		opacity: 1;
+		transform: translateY(0);
 	}
 	33.4%,
+	66.6% {
+		transform: translateY(-112px);
+	}
+	66.7%,
 	100% {
-		opacity: 0;
+		transform: translateY(-224px);
 	}
 }
 

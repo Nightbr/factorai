@@ -28,17 +28,19 @@ export function SessionsMini() {
 				))}
 			</div>
 			<div className={styles.screens}>
-				{rows.map(([name, , a, b], i) => (
-					<div key={name} className={styles.screen} data-i={i}>
-						<span className={styles.termLine} style={{ width: '58%' }} />
-						<span className={styles.termLine} style={{ width: '36%' }} />
-						<span className={styles.termPrompt}>{a}</span>
-						<span className={styles.termPrompt}>
-							{b}
-							<i className={styles.caret} />
-						</span>
-					</div>
-				))}
+				<div className={styles.reel}>
+					{rows.map(([name, , a, b]) => (
+						<div key={name} className={styles.screen}>
+							<span className={styles.termLine} style={{ width: '58%' }} />
+							<span className={styles.termLine} style={{ width: '36%' }} />
+							<span className={styles.termPrompt}>{a}</span>
+							<span className={styles.termPrompt}>
+								{b}
+								<i className={styles.caret} />
+							</span>
+						</div>
+					))}
+				</div>
 			</div>
 		</div>
 	);
