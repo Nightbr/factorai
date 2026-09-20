@@ -300,7 +300,14 @@ if the number is inside the budget. In the spec's order:
       work on the next event from 9 171ms to 1 918ms. **Against a 100ms budget, so the
       surface still misses it by nineteen times** — the profile has resolved the
       conditional and virtualization is now PERF-29, in the spec's P2 tier.
-- [ ] **PERF-11** — idle polling cadence, and polls that continue while the window is unfocused.
+- [x] **PERF-11** — idle polling cadence, and polls that continue while the window is
+      unfocused. **Landed 2026-09-20**: `focusManager` listens to `tauri://focus` and
+      `tauri://blur`, so an interval stops when the window goes behind something, and the
+      two sidebar polls went from 2s and 5s to 15s. Backend calls over a 30s idle window
+      went from 21 to 4 focused, and from 21 to 0 blurred. It also uncovered a bug the
+      2s poll was hiding: remove, import and add-by-picker never invalidated the sidebar's
+      own key, so the tree was refreshed by the poll rather than by the mutation.
+      `git_status`'s own change detection is still open, in the spec entry.
 - [ ] **PERF-12** — persisted stores writing `localStorage` on every drag frame.
 - [ ] **PERF-13** — item 55, the markdown preview and mermaid.
 - [ ] **PERF-14** — background PTYs flushed at the active session's cadence.

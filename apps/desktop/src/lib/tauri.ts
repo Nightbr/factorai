@@ -545,6 +545,12 @@ export const events = {
 		listen<TerminalExitEvent>('terminal:exit', cb),
 	onQuitRequested: (cb: (p: QuitRequestedEvent) => void) =>
 		listen<QuitRequestedEvent>('app:quit-requested', cb),
+	/** The window came to the front. Tauri's own event, not ours — it is what
+	 *  `visibilitychange` cannot tell us in a desktop shell, where a window
+	 *  behind another application is still `visible` (PERF-11, `lib/queryFocus`). */
+	onWindowFocus: (cb: () => void) => listen<unknown>('tauri://focus', cb),
+	/** The window went behind something. */
+	onWindowBlur: (cb: () => void) => listen<unknown>('tauri://blur', cb),
 	/** The agent asked to show a file, through the IDE bridge (F20). */
 	onIdeOpenFile: (cb: (p: IdeOpenFileEvent) => void) =>
 		listen<IdeOpenFileEvent>('ide:open-file', cb),

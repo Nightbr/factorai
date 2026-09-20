@@ -183,7 +183,14 @@ export function Sidebar() {
 	const sidebarQ = useQuery({
 		queryKey: queryKeys.sidebar(),
 		queryFn: () => cmd.listSidebar(),
-		refetchInterval: dragging ? false : 2000,
+		// **The net under a missed event, not the mechanism** (PERF-11).
+		// `sessions:changed` is what keeps this current; this was two seconds,
+		// which ran two correlated aggregate subqueries per project every two
+		// seconds for the life of the app and reordered rows under the pointer.
+		// Fifteen, and a refetch when the window comes back, is the same
+		// guarantee at a fifteenth of the cost.
+		refetchInterval: dragging ? false : 15_000,
+		refetchOnWindowFocus: true,
 	});
 	const progress = useIndexerStore((s) => s.progress);
 	// One dot per project, worst-status-wins over its **open** sessions (F10,
@@ -500,6 +507,8 @@ export function Sidebar() {
 			// cache, and landing there before the row exists renders "not found"
 			// for a beat.
 			await queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+			// The tree is its own key (ADR-0025) — see `useRemoveProject`.
+			await queryClient.invalidateQueries({ queryKey: queryKeys.sidebar() });
 			await navigate({ to: '/projects/$id', params: { id: project.id } });
 		} catch (e) {
 			setAddError(formatError(e));

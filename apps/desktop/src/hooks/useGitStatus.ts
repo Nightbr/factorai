@@ -5,8 +5,14 @@ import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { usePanelStore } from '@store/panelStore';
 
-/** How often the repository is re-read while the panel is open (Q20).
- *  `Sidebar` already polls at 2s, so neither the pattern nor its cost is new. */
+/** How often the repository is re-read while the panel is open **and the window
+ *  is in front** (Q20, PERF-11).
+ *
+ *  Three seconds is a full `statuses()` walk with untracked recursion and two
+ *  diffs — 100-120ms on an 8 900-commit repository per ADR-0035 — so this is
+ *  the most expensive poll in the app and the one that most wants the change
+ *  detection PERF-11 leaves open. What it no longer does is run while nobody
+ *  is looking at the window. */
 const GIT_POLL_MS = 3000;
 
 /**
@@ -15,8 +21,10 @@ const GIT_POLL_MS = 3000;
  * One query per project, **shared** by the Changes tab and the file tree's
  * decorations — which is why the poll follows the panel being open rather than
  * the Changes tab being visible: the tree paints dots on the same data. Closing
- * the panel stops it entirely, and TanStack pauses intervals while the window
- * is hidden, so a backgrounded app is silent.
+ * the panel stops it entirely, and TanStack pauses the interval while the
+ * window is not focused — which since PERF-11 means *not in front*, rather than
+ * the `visibilitychange` sense that a desktop window almost never reaches. See
+ * `lib/queryFocus`.
  *
  * No watcher, deliberately. `.git/index` churns mid-operation — VS Code's own
  * watcher has to filter `index.lock` out — so a watcher would need debouncing

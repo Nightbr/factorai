@@ -561,7 +561,11 @@ export function SessionList({
 	const sessionsQ = useQuery({
 		queryKey: queryKeys.sessions(project.id),
 		queryFn: () => cmd.listSessions(project.id),
-		refetchInterval: 5000,
+		// One of these per **expanded** project, so the cost is multiplied by how
+		// much of the tree is open. Fifteen seconds for the same reason the
+		// sidebar's own poll is (PERF-11): the event is the mechanism.
+		refetchInterval: 15_000,
+		refetchOnWindowFocus: true,
 	});
 
 	const sessions = useMemo(() => orderSessions(sessionsQ.data ?? [], open), [sessionsQ.data, open]);

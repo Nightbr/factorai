@@ -84,6 +84,12 @@ export function useRemoveProject(): (projectId: string) => Promise<void> {
 
 			await cmd.removeProject(projectId);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+			// **And the tree, which is a different key** (ADR-0025): `projects` is
+			// the flat membership list, `sidebar` is the arrangement, and the
+			// sidebar draws from the second. Missing this was invisible for as long
+			// as that query polled every two seconds — the row went on the next
+			// tick and looked like the invalidation working (PERF-11).
+			await queryClient.invalidateQueries({ queryKey: queryKeys.sidebar() });
 			// The candidate list has a new importable row now, so a dialog opened
 			// next must not show a stale `alreadyOpen`.
 			await queryClient.invalidateQueries({ queryKey: queryKeys.importCandidates() });

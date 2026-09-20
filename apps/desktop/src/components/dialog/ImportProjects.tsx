@@ -103,6 +103,9 @@ export function ImportProjects({ open, onOpenChange }: ImportProjectsProps) {
 		},
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+			// The tree is its own key (ADR-0025), and imported folders are new rows
+			// in it. See the note in `useRemoveProject` for why this was missing.
+			await queryClient.invalidateQueries({ queryKey: queryKeys.sidebar() });
 			await queryClient.invalidateQueries({ queryKey: queryKeys.importCandidates() });
 			close();
 		},

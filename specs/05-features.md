@@ -135,8 +135,8 @@ since changed cannot be applied. Extended to two levels, that check also catches
 row named at two levels at once, which a per-scope check cannot see. One command
 rather than a scoped pair is what makes moving a project *between* groups a single
 atomic write. The renderer writes optimistically and restores its snapshot on that
-error, and it **pauses the 2s poll for the duration of the drag**, so no row can
-move, appear or vanish under the pointer mid-gesture.
+error, and it **pauses the sidebar poll for the duration of the drag**, so no
+row can move, appear or vanish under the pointer mid-gesture.
 
 **A newly added project lands at the top** of the top level, via
 `MIN(sort_order) - 1` rather than renumbering. F1 already navigates to the project
@@ -404,9 +404,9 @@ change whenever the indexer runs, and a stale count is worse than a join.
   with the path shown in `destructive` under the title.
 
   It is a `missing` column on `projects`, **set by the indexer's scan** — not
-  computed per `list_projects` call, which is polled every 2s and would put a
-  stat on every project in a hot path to answer a question that changes when
-  someone deletes a directory. The flag clears on a later scan, so a restored
+  computed per `list_projects` call, which is polled and would put a stat on
+  every project in a hot path to answer a question that changes when someone
+  deletes a directory. The flag clears on a later scan, so a restored
   folder needs no wiped database, and `add_project` clears it too — that command
   has just canonicalized the directory, so it knows better than a stale flag
   does.

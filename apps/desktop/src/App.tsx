@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createHashHistory, createRouter, RouterProvider } from '@tanstack/react-router';
+import { installQueryFocusListener } from '@lib/queryFocus';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { indexRoute } from './routes/index';
 import { projectRoute } from './routes/project';
@@ -17,9 +18,17 @@ declare module '@tanstack/react-router' {
 	}
 }
 
+// **Before the client, because the client reads it as soon as an observer
+// mounts.** What "focused" means in a desktop window is not what the default
+// listener thinks (PERF-11) — see `lib/queryFocus`.
+installQueryFocusListener();
+
 const queryClient = new QueryClient({
 	defaultOptions: {
 		queries: {
+			// Left off as a default: most queries here are driven by an event or a
+			// poll, and a refetch of everything on every alt-tab is not what this
+			// app wants. The polled ones opt in for themselves.
 			refetchOnWindowFocus: false,
 			staleTime: 1000,
 		},

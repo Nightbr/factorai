@@ -535,8 +535,7 @@ explicitly excludes starting a virtualization project on a hunch, and this is
 no longer a hunch.
 
 **PERF-11 — Idle polling: the sidebar every 2 s, every expanded project every 5 s, the working tree every 3 s, and all of it while the window is merely unfocused.**
-Impact M, cost L, confirmed by reading; the backend cost of each poll needs
-the span PERF-02 adds.
+Impact M, cost L. **Landed 2026-09-20**; numbers and what is left at the end.
 - `list_sidebar` every 2 s (`ts/components/layout/Sidebar.tsx:183-187`) runs
   two correlated aggregate subqueries per project
   (`rs/commands/projects.rs:24-38`) and re-diffs the tree; under the `recent`
@@ -559,13 +558,45 @@ the span PERF-02 adds.
   `hidden`; a window behind another app keeps every poll running on both
   engines. `useGitStatus`'s comment assumes a backgrounded app is silent; it
   is silent only when minimised or on another workspace.
-*Fix.* Lengthen the sidebar and per-project polls to 10 to 30 s and let the
-event and `refetchOnWindowFocus` carry them, or emit a `sidebar:changed` from
-the writes that reorder it; gate every interval on the window's own focus
-through `tauri://focus` and `tauri://blur`; for `git_status`, poll only while
-the panel is visible and gate the diff on `.git/index` mtime and size plus
-the HEAD oid. *Measure.* Backend milliseconds per minute at idle with the
-panel open, before and after.
+*Fixed by* two changes, and the first is the one that matters.
+
+**`focusManager` now knows what a window is.** TanStack's default listener is
+`visibilitychange`, which a desktop window reaches only when it is minimised or
+on another workspace — sitting behind a browser it is `visible`, so every
+interval in the app kept running for a window nobody was looking at.
+`lib/queryFocus` listens to Tauri's own `tauri://focus` and `tauri://blur` as
+well, which makes `refetchIntervalInBackground: false` mean what it says.
+
+**And the two sidebar polls went from 2 s and 5 s to 15 s**, with
+`refetchOnWindowFocus` on. `sessions:changed` is the mechanism and always was;
+the polls are the net under a missed event, and their own comments said so.
+
+*Measured* in the browser lane, two projects, one expanded, panel open,
+counting backend calls over a 30-second idle window:
+
+| | before | after |
+|---|---|---|
+| Window focused | 21 | 4 |
+| Window behind another application | 21 | 0 |
+
+The second row is the whole finding: before, blurring changed nothing, because
+the event the focus manager was listening for never fired.
+
+**And it found a bug the poll was hiding.** Three mutations that change which
+projects exist — remove, import and add-by-picker — invalidated
+`queryKeys.projects()` and not `queryKeys.sidebar()`. Those are different keys
+on purpose (ADR-0025: one is the flat membership list, the other is the
+arrangement), and the sidebar draws from the second. At a two-second poll the
+row went on the next tick and looked like the invalidation working; at fifteen
+it took fifteen seconds. Three smoke tests caught it. All three sites now
+invalidate the tree as well, which is what the finding's other option — "emit a
+`sidebar:changed` from the writes that reorder it" — was reaching for.
+
+*Still open.* `git_status` still re-diffs the whole worktree every three
+seconds while the panel is open and the window is in front — it is the most
+expensive poll in the app, 100–120 ms per call on an 8 900-commit repository
+per ADR-0035. Gating the diff on `.git/index`'s mtime and size plus the HEAD
+oid is backend work of its own and is not done here.
 
 **PERF-12 — Persisted Zustand stores write `localStorage` on every `set`, including per-frame drag and resize sets.**
 Impact M during a drag, cost L, mechanism confirmed by reading.
