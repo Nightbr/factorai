@@ -418,10 +418,13 @@ Mechanics, now that the shape is decided:
       (Profiles, Worktrees, Keyboard shortcuts) — short pages written from the specs, in the
       site's own style, with the navbar and footer linking in. Each page is a first pass to be
       checked against the running app before release.
-- [ ] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
+- [x] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
       Pointing Pages at a folder would publish the decision trail as a website by accident.
-- [ ] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
+      Done 2026-09-20: the repository's Pages source is *GitHub Actions*.
+- [x] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
       It has to be cheap enough to run on every push, or it will be skipped and go stale.
+      Landed 2026-09-20: runs when a push touches `apps/docs/`, the brand masters, the lockfile
+      or the workflow itself, and by hand; one Docusaurus build, uploaded and deployed.
 - [ ] **Whether the site reuses `assets/images/`** or keeps its own copies. Screenshots go stale on
       their own schedule; one copy is one re-shoot. The `app-screenshot` skill owns how they are
       taken, including the DEV badge and the blurring of private project names.

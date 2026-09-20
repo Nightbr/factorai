@@ -1,0 +1,69 @@
+name: Pages
+
+# The site (apps/docs) to GitHub Pages, through the Pages *artifact* workflow
+# rather than the serve-a-branch-folder mode: pointing Pages at a folder would
+# publish the decision trail as a website by accident (roadmap item 39).
+#
+# Runs on every push to main that touches the site or what it is built with,
+# and by hand. Cheap enough to run on every push, or it would be skipped and go
+# stale — the whole build is one Docusaurus run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/docs/**'
+      - 'assets/brand/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  # One deployment at a time; a newer push supersedes a running one rather than
+  # racing it to the same URL.
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # Version comes from `packageManager` in package.json.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the site
+        run: pnpm --filter @factorai/docs run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/docs/build
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
