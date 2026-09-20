@@ -1366,6 +1366,7 @@ impl TerminalManager {
 			handle.clone(),
 			self.on_data.clone(),
 			self.on_status.clone(),
+			self.ui.clone(),
 		);
 		// Wait thread: owns the child and blocks on `wait()`; emits on_exit
 		// when it terminates. Owning (not sharing) the child is what keeps
@@ -1521,12 +1522,41 @@ const FLUSH_WINDOW: Duration = Duration::from_millis(16);
 /// window fires, emit immediately so the renderer doesn't fall behind.
 const FLUSH_BYTES: usize = 32 * 1024;
 
+/// Flush window for a session the human is **not** looking at (PERF-14,
+/// `specs/10-performance.md`).
+///
+/// Ten events a second instead of sixty. The bytes are the same bytes and they
+/// arrive just as soon; what changes is how many pieces they cross the bridge
+/// in, and each piece costs a JSON payload, a script evaluation on the main
+/// thread and a listener call per pooled terminal. With ten sessions streaming
+/// at once that was six hundred wake-ups a second for nine terminals nobody
+/// could see.
+///
+/// **Status is unaffected**, which is the property that makes this safe: the
+/// title scanner runs in the reader thread, so a background session's dot still
+/// changes the moment its title does.
+const BACKGROUND_FLUSH_WINDOW: Duration = Duration::from_millis(100);
+
+/// How long this PTY's flusher should wait before its next drain.
+///
+/// A shell has no session, and a session the renderer has not named is not in
+/// front — but neither is a reason to slow a terminal the human may well be
+/// looking at, so only a session that is *definitely* someone else's gets the
+/// longer window.
+fn flush_window(ui: &UiState, session_id: Option<&str>) -> Duration {
+	match session_id {
+		Some(id) if ui.is_backgrounded(id) => BACKGROUND_FLUSH_WINDOW,
+		_ => FLUSH_WINDOW,
+	}
+}
+
 fn spawn_reader(
 	id: TerminalId,
 	mut reader: Box<dyn Read + Send>,
 	handle: Arc<TerminalHandle>,
 	on_data: DataCb,
 	on_status: StatusCb,
+	ui: Arc<UiState>,
 ) {
 	let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(FLUSH_BYTES)));
 	let eof = Arc::new(AtomicBool::new(false));
@@ -1535,6 +1565,8 @@ fn spawn_reader(
 	let buf_r = buffer.clone();
 	let eof_r = eof.clone();
 	let handle_r = handle.clone();
+	// The flusher asks this which session it is serving, per tick.
+	let handle_f = handle.clone();
 	let id_r = id.clone();
 	std::thread::Builder::new()
 		.name(format!("term-reader-{id}"))
@@ -1576,7 +1608,11 @@ fn spawn_reader(
 		.name(format!("term-flush-{id}"))
 		.spawn(move || {
 			loop {
-				std::thread::sleep(FLUSH_WINDOW);
+				// Re-read per tick rather than per spawn: which session is in front
+				// changes while the PTY runs, and a terminal that was in the
+				// background when it started is the common case for the one you
+				// switch to (PERF-14).
+				std::thread::sleep(flush_window(&ui, handle_f.session_id.as_deref()));
 				let chunk = {
 					let mut buf = buffer.lock();
 					if buf.is_empty() {
@@ -1703,6 +1739,24 @@ fn now_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
+
+	#[test]
+	fn a_background_session_is_flushed_less_often_than_the_one_in_front() {
+		let ui = UiState::default();
+		ui.set(crate::services::ide::ui_state::UiSnapshot {
+			active_session: Some("front".into()),
+			open_file: None,
+		});
+
+		assert_eq!(flush_window(&ui, Some("front")), FLUSH_WINDOW);
+		assert_eq!(flush_window(&ui, Some("behind")), BACKGROUND_FLUSH_WINDOW);
+		// A shell has no session, and nothing named means the renderer has not
+		// said yet — neither is a reason to slow a terminal someone may be
+		// watching. `is_backgrounded` is why this is not `!is_active`.
+		assert_eq!(flush_window(&ui, None), FLUSH_WINDOW);
+		assert_eq!(flush_window(&UiState::default(), None), FLUSH_WINDOW);
+		assert_eq!(flush_window(&UiState::default(), Some("anything")), FLUSH_WINDOW);
+	}
 	use super::*;
 	use std::sync::{Arc, Mutex as StdMutex};
 

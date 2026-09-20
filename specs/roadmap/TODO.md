@@ -313,7 +313,11 @@ if the number is inside the budget. In the spec's order:
       out, for all seven persisted stores. A 60-step drag went from 60 writes and 4 980
       bytes to 13 and 1 002.
 - [ ] **PERF-13** — item 55, the markdown preview and mermaid.
-- [ ] **PERF-14** — background PTYs flushed at the active session's cadence.
+- [x] **PERF-14** — background PTYs flushed at the active session's cadence. **Landed
+      2026-09-20**: 100ms for a session another one is in front of, 16ms for the one you
+      are looking at. The condition is `is_backgrounded`, not `!is_active` — before the
+      renderer names a session nothing is in front, and writing it the other way slowed
+      every terminal at the start of a run.
 - [ ] **The first-paint signal** (spec P8): one log line on the first `list_sidebar` answer, so
       exec-to-populated is a number. Then re-run P7 and fill the row.
 - [ ] **Accept the budgets** — an ADR once the numbers in P3 are agreed, and every `DONE.md` entry

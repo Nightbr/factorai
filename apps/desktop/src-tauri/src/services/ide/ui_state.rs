@@ -55,6 +55,18 @@ impl UiState {
 		self.0.lock().active_session.as_deref() == Some(session_id)
 	}
 
+	/// Is some **other** session the one in front?
+	///
+	/// Not the negation of [`UiState::is_active`], and the difference is the
+	/// case where the renderer has named nothing: on the project list, in
+	/// settings, or before the first `ide_report_ui` of a run. `is_active`
+	/// answers "may this bridge take the window", where no answer means no; this
+	/// answers "is this session definitely not the one being watched", where no
+	/// answer means it might be (PERF-14).
+	pub fn is_backgrounded(&self, session_id: &str) -> bool {
+		matches!(self.0.lock().active_session.as_deref(), Some(active) if active != session_id)
+	}
+
 	/// What `getOpenEditors` answers.
 	pub fn open_files(&self) -> Vec<String> {
 		self.0.lock().open_file.iter().cloned().collect()

@@ -663,8 +663,8 @@ a `sops` query settling each stop re-parsing; then a genuinely large document
 before deciding chunked rendering is needed at all.
 
 **PERF-14 — Background PTYs are flushed at the active session's cadence.**
-Impact M at ten live sessions, cost L, confirmed by reading. The cheap half
-of PERF-19.
+Impact M at ten live sessions, cost L. **Landed 2026-09-20**; what it does and
+what it deliberately does not are at the end.
 Each PTY has a reader thread, a flusher thread that wakes every 16 ms
 unconditionally and emits up to 32 KiB pieces (`rs/services/terminal.rs:1519-1522`,
 `:1575-1598`), and a waiter thread; ten PTYs are thirty threads and six
@@ -673,11 +673,28 @@ at full rate although `UiState::is_active` exists and the manager holds it
 (`rs/services/ide/ui_state.rs:54-56`, `terminal.rs:485`). There is no
 backpressure: the reader-to-flusher buffer is unbounded, and if the main
 thread stalls (PERF-02) events pile up and burst.
-*Fix, inside the P1 rule.* A longer window and larger threshold for sessions
-that are not active, driven by `is_active`; it changes chunking only and
-never touches an xterm. Optionally one shared 16 ms ticker over the `DashMap`.
-*Measure.* Events per second and main-thread time with ten sessions
-streaming, one visible.
+*Fixed by* a flush window that is 16 ms for the session in front and 100 ms
+for one that is not: ten events a second instead of sixty, for each terminal
+nobody can see. It changes how many pieces the bytes arrive in and nothing
+else — no xterm is touched, which is what keeps it inside P1's rule.
+
+**The condition is `is_backgrounded`, which is not the negation of
+`is_active`.** `is_active` answers "may this bridge take the window", where no
+answer means no; a PTY needs "is some *other* session definitely the one being
+watched", because before the renderer's first `ide_report_ui` nothing is named
+and the session may well be the one you are looking at. Writing it as
+`!is_active` slowed every terminal for the first moments of a run, and the
+existing PTY streaming test caught it.
+
+**Status is untouched, and that is the property that makes this safe.** The
+title scanner runs in the reader thread, not the flusher, so a background
+session's dot still changes the moment its title does.
+
+*Not measured as a number.* What this changes is events per second, which is
+arithmetic — sixty to ten per background terminal — and its effect on the
+renderer is PERF-04's measurement, taken with the terminals already paused.
+The shared ticker the entry also suggested is not built: thirty threads for ten
+PTYs is a shape worth revisiting, and it is not what this finding was about.
 
 ### P2 — after the tag, each measured first
 
