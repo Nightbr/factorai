@@ -442,7 +442,8 @@ export function Hero({ copy }: Props) {
 					<p className={styles.appLead}>
 						Hand each task to an agent and keep every one in view. A dot turns amber the moment one
 						needs you; switch to it, answer, and move on. The Changes panel shows what it touched,
-						the graph shows what it landed, and nothing is committed that you have not seen.
+						the graph shows what it landed, and every line of it is yours to audit, whenever you
+						choose.
 					</p>
 				</div>
 				<AppMock />
