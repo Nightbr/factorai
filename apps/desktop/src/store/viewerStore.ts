@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DiffMode } from '@hooks/useFileViewer';
 import type { ViewerHost } from '@lib/viewerLayout';
+import { deferredLocalStorage } from '@lib/persistStorage';
 
 /**
  * One open file in the viewer's strip (F7, ADR-0037).
@@ -288,6 +289,9 @@ export const useViewerStore = create<ViewerState>()(
 		}),
 		{
 			name: 'factorai.viewer',
+			// Deferred rather than written on every `set` (PERF-12) — see
+			// `lib/persistStorage`.
+			storage: deferredLocalStorage(),
 			version: 1,
 			// Only the open files round-trip. The measured width, the host and the
 			// expanded modal all describe this window right now.

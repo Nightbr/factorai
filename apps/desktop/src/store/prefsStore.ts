@@ -2,6 +2,7 @@ import type { KeymapOverrides } from '@lib/keymap';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { legacyDiffInline } from '@store/diffInlineHandover';
+import { deferredLocalStorage } from '@lib/persistStorage';
 
 /**
  * User preferences the **renderer alone** reads (F11, ADR-0013).
@@ -125,6 +126,9 @@ export const usePrefsStore = create<PrefsState>()(
 		}),
 		{
 			name: 'factorai.prefs',
+			// Deferred rather than written on every `set` (PERF-12) — see
+			// `lib/persistStorage`.
+			storage: deferredLocalStorage(),
 			version: 1,
 			// Named `Prefs` rather than spelled out, so a preference added to the
 			// interface and not to storage is a type error rather than a value that

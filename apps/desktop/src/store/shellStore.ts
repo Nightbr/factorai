@@ -1,6 +1,7 @@
 import type { TerminalId, TerminalStatusDto } from '@factorai/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { deferredLocalStorage } from '@lib/persistStorage';
 
 /** The most panes one chip holds (`specs/05-features.md` § F24). */
 export const MAX_PANES = 5;
@@ -259,6 +260,9 @@ export const useShellStore = create<ShellState>()(
 		}),
 		{
 			name: 'factorai.shells',
+			// Deferred rather than written on every `set` (PERF-12) — see
+			// `lib/persistStorage`.
+			storage: deferredLocalStorage(),
 			version: 3,
 			migrate: (persisted, version) => migratePersisted(persisted, version),
 			// **The live half never round-trips.** A `terminalId` from a previous

@@ -599,7 +599,7 @@ per ADR-0035. Gating the diff on `.git/index`'s mtime and size plus the HEAD
 oid is backend work of its own and is not done here.
 
 **PERF-12 — Persisted Zustand stores write `localStorage` on every `set`, including per-frame drag and resize sets.**
-Impact M during a drag, cost L, mechanism confirmed by reading.
+Impact M during a drag, cost L. **Landed 2026-09-20**; numbers at the end.
 Zustand's `persist` runs `partialize`, `JSON.stringify` and `setItem` on
 every state change whether or not the persisted slice moved.
 `viewerStore.setShellWidth` runs from `AppShell`'s `ResizeObserver`
@@ -610,10 +610,24 @@ resize frame although `shellWidth` is excluded from `partialize`
 `pointermove` from `PanelResizer` (`ts/components/layout/PanelResizer.tsx:73`),
 and those are persisted, so every drag frame is a synchronous serialise and a
 SQLite-backed write on WebKitGTK.
-*Fix.* Move `shellWidth` and `host` out of the persisted store; commit drag
-widths on `pointerup` and key-up only, or wrap the persist storage in a
-debounced adapter. *Measure.* Longest frame during a panel drag, before and
-after.
+*Fixed by* the third option, which covers all seven persisted stores with one
+change instead of auditing every setter: `lib/persistStorage` holds the value
+as an object and writes it after 150 ms of quiet, so a burst becomes one
+`JSON.stringify` and one write. A pending write is flushed when the page is
+hidden or unloaded, and a read sees a pending value, so a rehydrate inside the
+window cannot read a state the store has already left.
+
+*Measured* in the browser lane, a 60-step drag of the sidebar's resizer,
+counting writes to `factorai.*` keys:
+
+| | before | after |
+|---|---|---|
+| Writes | 60 | 13 |
+| Bytes serialised | 4 980 | 1 002 |
+
+Six unit tests in `persistStorage.test.ts` cover the coalescing, the read of a
+pending value, the flush on the way out, the removal of a queued write, corrupt
+JSON and a storage that refuses.
 
 **PERF-13 — The markdown preview re-parses on every host render, and mermaid multiplies it (item 55).**
 Impact M, cost L, confirmed by reading. The analysis moved here from the

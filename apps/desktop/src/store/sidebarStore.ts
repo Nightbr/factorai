@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { deferredLocalStorage } from '@lib/persistStorage';
 
 /** How the project list is ordered (specs/05-features.md F1).
  *
@@ -144,6 +145,9 @@ export const useSidebarStore = create<SidebarState>()(
 		}),
 		{
 			name: 'factorai.sidebar',
+			// Deferred rather than written on every `set` (PERF-12) — see
+			// `lib/persistStorage`.
+			storage: deferredLocalStorage(),
 			version: 2,
 			migrate: migrateSidebarState,
 			// Spelled out so a field added to the state and not to storage is a

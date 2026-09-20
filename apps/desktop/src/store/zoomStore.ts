@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { deferredLocalStorage } from '@lib/persistStorage';
 
 /** Below this the UI is unreadable; above it a 1400px window fits almost
  *  nothing. Matches the range browsers offer for the same reason. */
@@ -47,6 +48,13 @@ export const useZoomStore = create<ZoomState>()(
 			resetZoom: () => set({ zoom: DEFAULT_ZOOM }),
 			setZoom: (zoom) => set({ zoom: clampZoom(zoom) }),
 		}),
-		{ name: 'factorai.zoom', version: 1 },
+		{
+			name: 'factorai.zoom',
+			version: 1,
+			// Deferred rather than written on every `set` (PERF-12) — see
+			// `lib/persistStorage`. Zoom is stepped rather than dragged, so this one
+			// is for consistency: every persisted store writes the same way.
+			storage: deferredLocalStorage(),
+		},
 	),
 );

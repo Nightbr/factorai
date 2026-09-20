@@ -2,6 +2,7 @@ import { legacyDiffInline } from '@store/diffInlineHandover';
 import { clampViewerWidth, DEFAULT_VIEWER_WIDTH } from '@lib/viewerLayout';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { deferredLocalStorage } from '@lib/persistStorage';
 
 /** Narrower than this and file names are unreadable; wider and the terminal
  *  loses more columns than the tree is worth.
@@ -310,6 +311,9 @@ export const usePanelStore = create<PanelState>()(
 		}),
 		{
 			name: 'factorai.panel',
+			// Deferred rather than written on every `set` (PERF-12) — see
+			// `lib/persistStorage`.
+			storage: deferredLocalStorage(),
 			version: 3,
 			/**
 			 * v1 → v2: `DEFAULT_DETAIL_HEIGHT` went 200 → 280.

@@ -2,6 +2,7 @@ import type { TerminalId, TerminalStatus, TerminalStatusDto } from '@factorai/ty
 import { usePrefsStore } from '@store/prefsStore';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { deferredLocalStorage } from '@lib/persistStorage';
 
 /** A PTY that is (or was) live for a session. Present in the store iff the
  *  process has not exited. */
@@ -349,6 +350,9 @@ export const useTerminalStore = create<TerminalState>()(
 		}),
 		{
 			name: 'factorai.terminals',
+			// Deferred rather than written on every `set` (PERF-12) — see
+			// `lib/persistStorage`.
+			storage: deferredLocalStorage(),
 			version: 1,
 			// `tabs` alone. `bySession` describes processes that died at quit, so
 			// persisting it would be a claim about something that is gone — and it

@@ -308,7 +308,10 @@ if the number is inside the budget. In the spec's order:
       2s poll was hiding: remove, import and add-by-picker never invalidated the sidebar's
       own key, so the tree was refreshed by the poll rather than by the mutation.
       `git_status`'s own change detection is still open, in the spec entry.
-- [ ] **PERF-12** — persisted stores writing `localStorage` on every drag frame.
+- [x] **PERF-12** — persisted stores writing `localStorage` on every drag frame. **Landed
+      2026-09-20**: `lib/persistStorage` defers the write by 150ms and flushes on the way
+      out, for all seven persisted stores. A 60-step drag went from 60 writes and 4 980
+      bytes to 13 and 1 002.
 - [ ] **PERF-13** — item 55, the markdown preview and mermaid.
 - [ ] **PERF-14** — background PTYs flushed at the active session's cadence.
 - [ ] **The first-paint signal** (spec P8): one log line on the first `list_sidebar` answer, so
