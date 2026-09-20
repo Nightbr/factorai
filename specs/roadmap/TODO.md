@@ -505,6 +505,14 @@ so the history does not fill; landing on any of them scrolls there, past the pin
 distinct from the section hash: every button and the navbar's and footer's Download write it,
 closing removes it, arriving with it opens the dialog.
 
+**The app mock, 2026-09-20.** Between the intro and the bento, a working mock of the app drawn
+in its own tokens — sidebar with groups and sessions, the tab strip, a terminal, the footer
+shell, the Files/Changes/Graph panel — rendered at 1120×640 and scaled to the viewport, driven
+by a screenplay on a loop that runs only while on screen: an agent reads, edits, tests and
+commits while Changes fills and empties and the graph stacks; a second session stops to ask and
+its dots go amber; you switch to it, answer, and it commits on a second lane. Invented names,
+the app's behaviour, no screenshot to redact.
+
 **Prototyped, then chosen, 2026-09-19.** Four throwaway pages were built under `proto/` — copy
 A (the brief, corrected) against copy C (shortest), a flat SVG hammer against a three.js one,
 and a fourth, futuristic treatment: Inter at weight 200 with open tracking, mono labels, a HUD

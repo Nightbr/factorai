@@ -501,3 +501,39 @@
 		display: none;
 	}
 }
+
+/* ── The app mock's section ────────────────────────────────────────────── */
+.appSection {
+	padding: clamp(64px, 10vh, 120px) 16px clamp(24px, 4vh, 48px);
+	background: var(--fa-background);
+}
+
+.appHead {
+	max-width: 1120px;
+	margin: 0 auto 2rem;
+}
+
+.eyebrow {
+	display: block;
+	font-family: var(--ifm-font-family-monospace);
+	font-size: 0.68rem;
+	letter-spacing: 0.28em;
+	text-transform: uppercase;
+	color: oklch(70% 0.06 240 / 0.7);
+	margin-bottom: 0.9rem;
+}
+
+.appHeading {
+	margin: 0 0 0.6rem;
+	font-size: clamp(1.5rem, 3.2vw, 2.6rem);
+	font-weight: 200;
+	letter-spacing: 0.005em;
+	line-height: 1.2;
+}
+
+.appLead {
+	margin: 0;
+	max-width: 60ch;
+	color: var(--fa-muted-foreground);
+	line-height: 1.55;
+}

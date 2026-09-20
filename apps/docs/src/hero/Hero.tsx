@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { About } from '../bento/About';
 import { Bento } from '../bento/Bento';
 import { Download } from '../bento/Download';
+import { AppMock } from '../mock/AppMock';
 import { Fog, type FogHandle } from './Fog';
 import { Forge } from './Forge';
 import { Hud } from './Hud';
@@ -24,7 +25,7 @@ interface Props {
  * of them scrolls there. The download dialog's own state is `?modal=download`,
  * a query, so a link to the dialog and a link to the section stay distinct.
  */
-const SECTIONS = ['features', 'download', 'about'] as const;
+const SECTIONS = ['app', 'features', 'download', 'about'] as const;
 
 function setHash(hash: string) {
 	const { pathname, search } = window.location;
@@ -216,7 +217,7 @@ export function Hero({ copy }: Props) {
 					window.location.hash.replace(/^#/, '') ||
 					params.get('section') ||
 					(params.get('modal') === 'download' ? 'download' : '');
-				if (/^(features|download|about)$/.test(wanted)) return wanted;
+				if (/^(app|features|download|about)$/.test(wanted)) return wanted;
 				const seq = /^seq-([1-5])$/.exec(wanted);
 				return seq ? Number(seq[1]) - 1 : null;
 			};
@@ -434,6 +435,17 @@ export function Hero({ copy }: Props) {
 				Skip
 			</button>
 
+			<section className={styles.appSection} id="app">
+				<div className={styles.appHead}>
+					<span className={styles.eyebrow}>the app</span>
+					<h2 className={styles.appHeading}>Three agents, one afternoon.</h2>
+					<p className={styles.appLead}>
+						A session per agent, the dot that says who needs you, the changes as they land, the
+						graph as it stacks. Invented names; the app's own behaviour.
+					</p>
+				</div>
+				<AppMock />
+			</section>
 			<Bento />
 			<Download />
 			<About />
