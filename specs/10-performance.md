@@ -434,14 +434,35 @@ still painting during a decrypt, a reveal, an import — is a real-window
 observation, and it is owed on both engines with the rest of P8.
 
 **PERF-08 — `link_worktrees` opens libgit2 inside the database write transaction.**
-Impact M, cost L, confirmed by reading.
+Impact M, cost L. **Landed 2026-09-20**; numbers at the end.
 `rs/commands/projects.rs:314-354` runs `git::worktree_paths` per workspace
 project (a discover, a `.git/worktrees` walk and a `canonicalize`,
 `rs/services/git.rs:1097-1107`) from `reconcile` (`:278-294`), which runs
 inside `discover()`'s transaction (`rs/services/indexer.rs:235`, every full
 scan and every scan of an unknown directory) and inside `add_project_in`'s
 (`:172`, main thread). The comment at `:311-313` knows.
-*Fix.* Build the checkout-to-project map before opening the transaction.
+*Fixed by* `checkout_owners`, which builds the checkout-to-project map before
+the transaction opens — and on a pooled reader (PERF-02), so it does not wait
+for the writer either. `reconcile` takes the map and does SQL only.
+
+`add_project_in` is the one caller for which a stale map would matter, because
+the project it is adding is not in the table yet; it claims that project's own
+checkouts in the map before starting. Claiming leaves alone anything another
+project already owns, so an idempotent re-add finds the existing entry rather
+than overwriting it — the same first-wins rule the map always had.
+
+*Measured* on the live workspace, 9 projects and 23 discovered directories:
+
+| | |
+|---|---|
+| Write transaction held | 1.46–1.82 ms before, 0.14–0.19 ms after |
+| The libgit2 walks, now outside it | 1.34–4.04 ms |
+
+A tenth of the time in the lock, on local SSD. The walks themselves have not
+got cheaper and are not meant to have; they are simply no longer somewhere
+every reader is waiting. On a filesystem where a `.git/worktrees` listing is
+slow — WSL's 9p, which `services/wsl.rs` exists for — the gap is the one that
+grows.
 
 **PERF-09 — Switching session (item 54).**
 Impact M, cost L; the `projectCwd` half is confirmed by reading, the rest

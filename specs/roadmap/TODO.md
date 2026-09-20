@@ -290,7 +290,9 @@ if the number is inside the budget. In the spec's order:
       stopped deserialising the events it skips, 37-58ms to 30-32ms on a 33MB transcript.
       The binary cache the entry proposed was dropped — `03-backend-rust.md` had already
       decided against it, and the reason holds.
-- [ ] **PERF-08** — libgit2 out of the database write transaction.
+- [x] **PERF-08** — libgit2 out of the database write transaction. **Landed 2026-09-20**:
+      `checkout_owners` builds the checkout map on a pooled reader before the transaction
+      opens. The transaction went from 1.46-1.82ms to 0.14-0.19ms on this workspace.
 - [ ] **PERF-09** — item 54, session switch: the `projectCwd` double-mount first, then the profile.
 - [ ] **PERF-10** — the file tree's per-row query observers and per-row decoration index.
 - [ ] **PERF-11** — idle polling cadence, and polls that continue while the window is unfocused.

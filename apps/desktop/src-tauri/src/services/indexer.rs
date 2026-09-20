@@ -274,6 +274,10 @@ impl Indexer {
 			.iter()
 			.map(|p| (p.id.clone(), claude::discover(Path::new(&p.config_dir))))
 			.collect();
+		// The repository walks `reconcile` used to do inside this transaction
+		// (PERF-08). On a pooled reader, so they do not wait for the writer
+		// either.
+		let owners = self.db.read(crate::commands::projects::checkout_owners)?;
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			{
@@ -289,7 +293,7 @@ impl Indexer {
 					}
 				}
 			}
-			reconcile(&tx)?;
+			reconcile(&tx, &owners)?;
 			tx.commit()?;
 			Ok(())
 		})

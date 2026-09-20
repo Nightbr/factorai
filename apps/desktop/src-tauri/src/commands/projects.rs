@@ -152,6 +152,13 @@ pub fn add_project_in(db: &Db, path: &str) -> AppResult<Project> {
 	let id = uuid::Uuid::new_v4().to_string();
 	let now = chrono::Utc::now().timestamp_millis();
 
+	// **The repository walks happen before the transaction opens** (PERF-08).
+	// The project being added is not in the table yet, so its own checkouts are
+	// claimed here — `add` leaves alone anything another project already owns, so
+	// an idempotent re-add finds its existing entry rather than overwriting it.
+	let mut owners = db.read(checkout_owners)?;
+	owners.add(&id, &real_path);
+
 	db.with_mut(|conn| {
 		let tx = conn.transaction()?;
 		tx.execute(
@@ -170,7 +177,7 @@ pub fn add_project_in(db: &Db, path: &str) -> AppResult<Project> {
 			|r| r.get(0),
 		)?;
 		crate::commands::sidebar::ensure_project_row(&tx, &row_project_id)?;
-		reconcile(&tx)?;
+		reconcile(&tx, &owners)?;
 		tx.commit()?;
 		Ok(())
 	})?;
@@ -285,7 +292,7 @@ pub fn resolve_project_path(state: State<'_, AppState>, id: String) -> AppResult
 /// **Two passes, and the order is the compatibility story.** Exact path first,
 /// exactly as it always was; the repository roll-up only ever touches what the
 /// first pass left unlinked.
-pub fn reconcile(conn: &Connection) -> AppResult<()> {
+pub fn reconcile(conn: &Connection, owners: &CheckoutOwners) -> AppResult<()> {
 	// Pass 1 — exact canonical path, and nothing else: an agent's own naming
 	// scheme is its business. A session recorded in `/repo/apps/web` belongs to
 	// `/repo/apps/web`, not to `/repo`, even when only the latter is open.
@@ -300,7 +307,63 @@ pub fn reconcile(conn: &Connection) -> AppResult<()> {
 	)?;
 	// A directory whose folder we never identified can't belong to anything.
 	conn.execute("UPDATE discovered_projects SET project_id = NULL WHERE real_path IS NULL", [])?;
-	link_worktrees(conn)
+	link_worktrees(conn, owners)
+}
+
+/// Every checkout of every workspace project, mapped to the project that owns
+/// it.
+///
+/// **Built before the caller opens its transaction** (PERF-08,
+/// `specs/10-performance.md`). This is the libgit2 half of `reconcile`: one
+/// repository discovery, one `.git/worktrees` listing and a `canonicalize` per
+/// checkout, per project. It used to run *inside* the write transaction — on
+/// every full scan, every scan of an unknown directory, and on the main thread
+/// when a project was added — which put a C library's filesystem walk inside
+/// the lock every reader was waiting on.
+///
+/// The map can be a moment stale by the time the transaction opens: a project
+/// added in between is not in it. That is already the shape of this data —
+/// `reconcile` runs on every scan and the next one corrects it — and the one
+/// caller for which it would matter, `add_project_in`, adds its own project's
+/// checkouts to the map before it starts.
+///
+/// First project wins if two of them somehow share a repository — which happens
+/// when the main checkout *and* a worktree are both added, and in that case
+/// pass 1 has already claimed the rows that matter, so the tie is between two
+/// answers that are both defensible.
+pub fn checkout_owners(conn: &Connection) -> AppResult<CheckoutOwners> {
+	let mut stmt = conn.prepare("SELECT id, real_path FROM projects")?;
+	let projects: Vec<(String, String)> =
+		stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+	drop(stmt);
+
+	let mut owners = CheckoutOwners::default();
+	for (project_id, real_path) in &projects {
+		owners.add(project_id, real_path);
+	}
+	Ok(owners)
+}
+
+/// The checkout → project map [`checkout_owners`] builds.
+#[derive(Debug, Default)]
+pub struct CheckoutOwners(HashMap<PathBuf, String>);
+
+impl CheckoutOwners {
+	/// Walk one project's repository and claim its checkouts, leaving any that
+	/// another project already claimed.
+	pub fn add(&mut self, project_id: &str, real_path: &str) {
+		for checkout in git::worktree_paths(real_path) {
+			self.0.entry(checkout).or_insert_with(|| project_id.to_string());
+		}
+	}
+
+	fn get(&self, path: &Path) -> Option<&String> {
+		self.0.get(path)
+	}
+
+	fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
 }
 
 /// Pass 2 — a directory that is a **checkout of a project's repository** belongs
@@ -318,10 +381,11 @@ pub fn reconcile(conn: &Connection) -> AppResult<()> {
 /// 1: a session recorded in a *subdirectory* of a checkout does not roll up, for
 /// the same reason one in a subdirectory of the project does not.
 ///
-/// The git reads happen inside the caller's transaction. Short and bounded — one
-/// `.git/worktrees` listing per project, and projects are counted in tens — but
-/// worth knowing about before anything heavier is added here.
-fn link_worktrees(conn: &Connection) -> AppResult<()> {
+/// **No git reads happen here** (PERF-08). They did, inside the caller's
+/// transaction; they are now [`checkout_owners`]'s, run before it opens. What
+/// is left inside the transaction is a `canonicalize` per unlinked directory,
+/// which is one `realpath` against a path the scan has just been reading.
+fn link_worktrees(conn: &Connection, owner: &CheckoutOwners) -> AppResult<()> {
 	let mut stmt = conn.prepare(
 		"SELECT id, real_path FROM discovered_projects
 		  WHERE project_id IS NULL AND real_path IS NOT NULL",
@@ -333,21 +397,6 @@ fn link_worktrees(conn: &Connection) -> AppResult<()> {
 		return Ok(());
 	}
 
-	let mut stmt = conn.prepare("SELECT id, real_path FROM projects")?;
-	let projects: Vec<(String, String)> =
-		stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
-	drop(stmt);
-
-	// checkout path → project id. First project wins if two of them somehow share
-	// a repository — which happens when the main checkout *and* a worktree are
-	// both added, and in that case pass 1 has already claimed the rows that
-	// matter, so the tie is between two answers that are both defensible.
-	let mut owner: HashMap<PathBuf, String> = HashMap::new();
-	for (project_id, real_path) in &projects {
-		for checkout in git::worktree_paths(real_path) {
-			owner.entry(checkout).or_insert_with(|| project_id.clone());
-		}
-	}
 	if owner.is_empty() {
 		return Ok(());
 	}
