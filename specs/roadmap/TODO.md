@@ -278,7 +278,11 @@ if the number is inside the budget. In the spec's order:
       burst and 180 to 90 at a large one; half surviving the pause at volume is an open
       question recorded in the spec. **The macOS run is still owed** — the wheel region
       this pool is designed around is WKWebView's alone.
-- [ ] **PERF-05** — `list_sessions` canonicalises under the database lock on the main thread.
+- [x] **PERF-05** — `list_sessions` canonicalises under the database lock on the main thread.
+      **Landed 2026-09-20**: each distinct path is resolved once per call, and PERF-02 had
+      already taken it off the lock. 593 resolutions became 305 and the command went from
+      1.9ms to 1.3ms on the busiest project here — inside its budget before and after, so
+      the index-time columns the entry also proposed are not being built.
 - [ ] **PERF-06** — `[profile.release]` (lto, codegen-units, strip, panic).
 - [ ] **PERF-07** — the synchronous commands that spawn a process, walk the store or wait on I/O
       go `async` + `spawn_blocking`, one per commit.

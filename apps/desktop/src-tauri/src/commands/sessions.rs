@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rusqlite::params;
 use tauri::{Emitter, State};
 
@@ -76,7 +78,7 @@ pub fn list_sessions_in(
 		          (s.subagent_of IS NULL) DESC,
 		          s.updated_at DESC",
 	)?;
-	let rows = stmt
+	let mut rows = stmt
 		.query_map(params![project_id], |row| {
 			Ok(SessionSummary {
 				id: row.get(0)?,
@@ -99,10 +101,15 @@ pub fn list_sessions_in(
 				// was given, not its resolved twin. Canonicalising the stored value
 				// would make that probe miss for exactly the moved sessions it
 				// exists for.
-				cwd: resolved(row.get(6)?),
+				// **Raw here, resolved below.** Every one of these goes through
+				// `fs::canonicalize`, and a project's sessions name the same handful
+				// of directories over and over — so resolving inside the row mapper
+				// meant up to ten `realpath()` per row and thousands per poll, each
+				// one stat-ing every component of the path (PERF-05).
+				cwd: row.get(6)?,
 				subagent_of: row.get(7)?,
 				worktree: row.get(8)?,
-				last_cwd: resolved(row.get(9)?),
+				last_cwd: row.get(9)?,
 				touched_paths: touched(row.get(10)?),
 				routine_id: row.get(11)?,
 				routine_name: row.get(12)?,
@@ -112,37 +119,75 @@ pub fn list_sessions_in(
 			})
 		})?
 		.collect::<rusqlite::Result<Vec<_>>>()?;
+	resolve_paths(&mut rows);
 	Ok(rows)
 }
 
-/// A path as the filesystem really names it, or unchanged if it cannot say.
+/// Replace every stored path in the list with the one the filesystem really
+/// uses, resolving each distinct path once.
 ///
-/// A path that no longer exists is left alone rather than dropped: it is still
-/// the honest record of where the session ran, and every consumer of these
-/// fields already treats a path it cannot match as "no checkout".
-fn resolved(path: Option<String>) -> Option<String> {
-	Some(canonical(path?))
+/// **Why resolved at all** (F21). Every path in `git_worktrees` has been
+/// through `fs::canonicalize`, and the renderer decides which checkout a
+/// session is in by comparing these against those — so a path that reaches the
+/// same file by a different name resolves to no checkout at all and the panel
+/// sits silently on the project. A tool's absolute path can carry `..`, and a
+/// shell's own idea of its directory is the *logical* one, which keeps whatever
+/// symlink you walked through.
+///
+/// **Why not at write time.** `resume_cwd` probes for a transcript at
+/// `encode_path(cwd)`, and `claude` encoded the path it was given, not its
+/// resolved twin. Canonicalising the stored value would make that probe miss
+/// for exactly the moved sessions it exists for.
+///
+/// **Why once per distinct path** (PERF-05). A `realpath()` stats every
+/// component, and a project's sessions share a cwd — three hundred sessions
+/// naming the same two directories used to be three thousand syscalls per poll,
+/// every five seconds, per expanded project. The map is per call and is thrown
+/// away with it: these paths are answers about a filesystem that moves, and a
+/// cache that outlived the call would be a cache nobody invalidates.
+fn resolve_paths(rows: &mut [SessionSummary]) {
+	let mut memo: HashMap<String, String> = HashMap::new();
+	for row in rows.iter_mut() {
+		if let Some(cwd) = row.cwd.take() {
+			row.cwd = Some(resolve(&mut memo, cwd));
+		}
+		if let Some(last) = row.last_cwd.take() {
+			row.last_cwd = Some(resolve(&mut memo, last));
+		}
+		for path in row.touched_paths.iter_mut() {
+			*path = resolve(&mut memo, std::mem::take(path));
+		}
+	}
 }
 
-/// The stored `touched_paths` JSON as a list the renderer can compare (F21,
-/// migration 0010).
+/// The stored `touched_paths` JSON as a list (F21, migration 0010). Resolved
+/// later, with the rest, by [`resolve_paths`].
 ///
 /// **A column that will not parse yields no paths rather than an error.** It is
 /// a derived cache of a guess at another program's schema, and the parse
 /// version stamp rewrites it on the next scan — failing a whole project's
 /// session list over it would trade a wrong panel root for no panel at all.
 fn touched(stored: Option<String>) -> Vec<String> {
-	stored
-		.and_then(|json| serde_json::from_str::<Vec<String>>(&json).ok())
-		.unwrap_or_default()
-		.into_iter()
-		.map(canonical)
-		.collect()
+	stored.and_then(|json| serde_json::from_str::<Vec<String>>(&json).ok()).unwrap_or_default()
 }
 
-/// One path as the filesystem really names it, or unchanged if it cannot say.
-fn canonical(path: String) -> String {
-	std::fs::canonicalize(&path).map(|p| p.to_string_lossy().to_string()).unwrap_or(path)
+/// One path as the filesystem really names it, or unchanged if it cannot say,
+/// answered from `memo` when it has been asked before.
+///
+/// A path that no longer exists is left alone rather than dropped: it is still
+/// the honest record of where the session ran, and every consumer of these
+/// fields already treats a path it cannot match as "no checkout". A failure is
+/// memoised too — the answer is the same for the rest of this call, and it is
+/// the case a session-heavy workspace has most of.
+fn resolve(memo: &mut HashMap<String, String>, path: String) -> String {
+	if let Some(hit) = memo.get(&path) {
+		return hit.clone();
+	}
+	let resolved = std::fs::canonicalize(&path)
+		.map(|p| p.to_string_lossy().to_string())
+		.unwrap_or_else(|_| path.clone());
+	memo.insert(path, resolved.clone());
+	resolved
 }
 
 /// Read the **last** `limit` events from a session. Default 100. The

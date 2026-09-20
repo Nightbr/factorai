@@ -325,17 +325,38 @@ transform on the host is exactly the kind of change it would notice. Verify in
 the real window before the tag.
 
 **PERF-05 — `list_sessions` runs up to ten `realpath()` per row, every 5 s, on the main thread, under the database lock.**
-Impact M to H on session-heavy workspaces, cost L to M, confirmed by reading.
+Impact M to H on session-heavy workspaces, cost L to M. **Landed 2026-09-20**;
+the numbers are at the end, and they are smaller than the entry expected.
 `rs/commands/sessions.rs:100-104` canonicalises `cwd`, `last_cwd` and up to
 eight `touched_paths` per row through `std::fs::canonicalize` (`:142-144`)
 inside `state.db.with` (`:18`), and the renderer asks for it every 5 s per
 expanded project (`ts/components/layout/SidebarProject.tsx:561-565`). At 300
 sessions that is about 3 000 `realpath()` calls, each stat-ing every path
 component, per poll per expanded project.
-*Fix.* Canonicalise outside the lock and memoise per call (rows repeat
-paths); better, resolve at index time into resolved columns. Renderer side,
-PERF-11 lengthens the poll. *Measure.* `list_sessions` on a 300-session
-project, before and after.
+*Fixed by* resolving each distinct path once per call. The rows come out of
+SQLite with their stored paths and one pass over the list resolves them through
+a map that lives and dies with the call — deliberately not a longer-lived
+cache, because these are answers about a filesystem that moves and a cache
+nobody invalidates is a worse bug than the syscalls. The lock half of the
+finding was already gone: PERF-02 moved this command onto a pooled reader.
+
+*Measured* on the live workspace's busiest project, 90 sessions:
+
+| | |
+|---|---|
+| Paths resolved per call | 593 before, 305 after |
+| Resolution step | 1.26 ms, 0.63 ms |
+| Whole command | 1.9 ms, 1.3 ms |
+
+**Smaller than this entry predicted, and worth saying so.** It assumed ten
+paths a row and three hundred sessions; the real shape is about six and a half
+paths a row, and the busiest project here has ninety. The command was already
+inside its 10 ms budget before the change and is further inside it now. The
+saving grows with how much a project's sessions share directories, which is
+total for `cwd` and partial for the touched paths.
+
+Resolving at index time into their own columns was the other candidate and is
+not being built: the numbers do not ask for it.
 
 **PERF-06 — No `[profile.release]`.**
 Impact M, cost L, confirmed by reading; the delta needs one build.
