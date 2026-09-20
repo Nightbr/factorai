@@ -359,18 +359,41 @@ Resolving at index time into their own columns was the other candidate and is
 not being built: the numbers do not ask for it.
 
 **PERF-06 — No `[profile.release]`.**
-Impact M, cost L, confirmed by reading; the delta needs one build.
+Impact M, cost L. **Landed 2026-09-20**; numbers at the end.
 `Cargo.toml` has no release profile, and there is no workspace-level or
 `.cargo/config.toml` one, so the shipped binary is built with sixteen codegen
 units, no link-time optimisation, `panic = "unwind"` and full symbols. The
 universal macOS build carries two such binaries. Tauri's own guidance is
 `lto = true`, `codegen-units = 1`, `strip = true`, `panic = "abort"`, with
 `opt-level` left at 3 for speed.
-*Fix.* Exactly that block; `lto = "thin"` if the full one makes the release
-job too slow. `panic = "abort"` ends the process instead of surfacing a panic
-as `AppError::Process` at `rs/commands/git.rs:630`; record that in the
-`DONE.md` entry. *Measure.* Binary size on both platforms and the release
-job's wall time.
+*Fixed with* `opt-level = 3`, `lto = "thin"`, `codegen-units = 1`,
+`panic = "abort"` and `strip = true`. `opt-level` stays at 3 rather than
+Tauri's `"s"`: the hot paths here are a JSONL parser, an FTS5 index and a PTY
+pump, and trading their speed for megabytes is the wrong way round when
+`strip` and `lto` do most of the shrinking anyway.
+
+**`panic = "abort"` is the one with a consequence.** A panic inside
+`spawn_blocking` surfaced as `AppError::Process` through `commands::off_main`
+and the renderer toasted it; the process now ends instead. That is the honest
+behaviour for a panic in a background task holding a database lock or a PTY,
+and it is what makes the unwinding tables removable.
+
+**It has to be in the workspace root, and it was written in the member first.**
+Cargo reads `[profile.*]` from the root only and *silently ignores* a member's
+— the warning is one line in a build that otherwise succeeds. The member copy
+changed the binary by one kilobyte and looked like it had worked.
+
+*Measured*, Linux x86-64:
+
+| | before | after |
+|---|---|---|
+| Binary | 28.2 MB | 16.4 MB |
+| Release build from clean | 57 s | 4 m 43 s |
+
+42% off the binary, and the macOS universal build carries two of them. The
+build time is the price, and it is paid by CI and by whoever cuts a release
+rather than by anyone developing — `cargo build` without `--release` is
+untouched.
 
 **PERF-07 — Synchronous commands that spawn a process, walk the store or wait on I/O run on the thread that paints.**
 Impact M, cost L each. **Landed 2026-09-20**; what was done, what was measured

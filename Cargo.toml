@@ -1,3 +1,30 @@
 [workspace]
 members = ["apps/desktop/src-tauri"]
 resolver = "2"
+
+# **Here and not in `apps/desktop/src-tauri/Cargo.toml`**, which is where this
+# was first written: cargo reads `[profile.*]` from the workspace root only and
+# silently ignores it in a member, so the member copy changed the binary by one
+# kilobyte and looked like it had worked.
+# **The release profile, which was cargo's default until 2026-09-20** (PERF-06,
+# `specs/10-performance.md`): sixteen codegen units, no link-time optimisation,
+# unwinding panics and full debug symbols, in the binary users download — and in
+# the macOS universal build, twice.
+#
+# `opt-level` stays at 3. Tauri's guidance offers `"s"` for size, and this is a
+# desktop app whose hot paths are a JSONL parser, an FTS5 index and a PTY pump;
+# trading their speed for megabytes is the wrong way round when `strip` and
+# `lto` between them do most of the shrinking anyway.
+#
+# **`panic = "abort"` is the one with a consequence.** A panic inside
+# `spawn_blocking` currently surfaces as `AppError::Process` — see
+# `commands::off_main` — and the renderer toasts it; with `abort` the process
+# ends instead. That is the honest behaviour for a panic in a background task
+# holding a database lock or a PTY, and it is what makes the unwinding tables
+# removable.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true

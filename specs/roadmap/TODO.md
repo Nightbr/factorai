@@ -283,7 +283,11 @@ if the number is inside the budget. In the spec's order:
       already taken it off the lock. 593 resolutions became 305 and the command went from
       1.9ms to 1.3ms on the busiest project here — inside its budget before and after, so
       the index-time columns the entry also proposed are not being built.
-- [ ] **PERF-06** — `[profile.release]` (lto, codegen-units, strip, panic).
+- [x] **PERF-06** — `[profile.release]`. **Landed 2026-09-20**, in the **workspace root**,
+      which is the only place cargo reads it — a member's copy is ignored with a one-line
+      warning and shrank the binary by one kilobyte. 28.2MB to 16.4MB on Linux, and the
+      macOS universal build carries two of them. Release builds go from 57s to 4m43s;
+      `panic = "abort"` ends the process where a background task's panic used to toast.
 - [x] **PERF-07** — the synchronous commands that spawn a process, walk the store or wait on
       I/O. **Landed 2026-09-20**: `off_main` moved out of `commands/git.rs` and thirteen
       commands went behind it, from `terminal_spawn` to `read_pdf`. `get_session_tail` also
