@@ -293,13 +293,13 @@ if the number is inside the budget. In the spec's order:
 - [x] **PERF-08** — libgit2 out of the database write transaction. **Landed 2026-09-20**:
       `checkout_owners` builds the checkout map on a pooled reader before the transaction
       opens. The transaction went from 1.46-1.82ms to 0.14-0.19ms on this workspace.
-- [ ] **PERF-09** — item 54, session switch. **The `projectCwd` double-mount landed
-      2026-09-20**: `undefined` now means "`list_projects` has not answered", so the mount
-      effect runs once. The defect it was really causing was a PTY spawned with no cwd, and
-      a smoke test holds that. **The profile is still owed** — click-to-first-paint for a
-      pooled session, a first open, and a cross-project switch — along with the other three
-      candidates in the spec entry.
-- [ ] **PERF-10** — the file tree's per-row query observers and per-row decoration index.
+- [ ] **PERF-09** — item 54, session switch: the `projectCwd` double-mount first, then the profile.
+- [x] **PERF-10** — the file tree's per-row query observers and per-row decoration index.
+      **Landed 2026-09-20**: one `FileTreeProvider` off `PanelBody` and a memoised row.
+      Expanding a 2 000-entry directory went from 3 804ms to 1 911ms and the main-thread
+      work on the next event from 9 171ms to 1 918ms. **Against a 100ms budget, so the
+      surface still misses it by nineteen times** — the profile has resolved the
+      conditional and virtualization is now PERF-29, in the spec's P2 tier.
 - [ ] **PERF-11** — idle polling cadence, and polls that continue while the window is unfocused.
 - [ ] **PERF-12** — persisted stores writing `localStorage` on every drag frame.
 - [ ] **PERF-13** — item 55, the markdown preview and mermaid.

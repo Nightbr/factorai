@@ -490,8 +490,9 @@ needs the profile item 54 asks for. The analysis moved here from the roadmap.
 first open this run, and a cross-project switch.
 
 **PERF-10 — Every file-tree row mounts five query observers, three router subscriptions and its own decoration index.**
-Impact H on a large repository with the panel open, cost M, structure
-confirmed by reading, magnitude needs a profile.
+Impact H on a large repository with the panel open, cost M. **Landed
+2026-09-20**, and the profile it asked for says the surface is still outside
+its budget afterwards — see the end of this entry and PERF-29.
 `FileTreeNode` (`ts/components/files/FileTreeNode.tsx:77`) calls
 `useGitDecorations`, which calls `useGitStatus`, which calls
 `useActiveCheckout`, which is `useActiveProject` plus `useWorktrees` plus a
@@ -507,12 +508,31 @@ row per result; and every navigation re-renders every row. `list_dir` caps a
 directory at 2 000 entries (`rs/services/files.rs:25`), so one expanded
 `node_modules` is 2 000 rows times all of the above. `FileTreeNode` is not
 memoised and nothing is virtualised.
-*Fix.* Compute decorations, `root`, `projectId`, the active session id and
-`openViewer` once in `PanelBody` and pass them down through one context;
-`memo(FileTreeNode)` with primitive props; keep the per-row query only for
-directories. Virtualise only if the profile still says so afterwards.
-*Measure.* Commits per `git_status` tick and time to expand a 2 000-entry
-directory, before and after.
+*Fixed by* `FileTreeProvider`: `PanelBody` resolves the checkout root, the
+project, the active session, the viewer and the decorations once and puts them
+in a context, and `FileTreeNode` is `memo` with `entry`, `depth` and `siblings`
+as its props — all three come out of a TanStack cache entry or are a number, so
+a poll that changed nothing does not re-render the tree. The per-row directory
+query stays, because it is the row's own data.
+
+*Measured* in the browser lane, expanding a 2 000-entry directory and then
+firing one event at the settled tree:
+
+| | before | after |
+|---|---|---|
+| Click to 2 000 rows on screen | 3 804 ms | 1 911 ms |
+| Long tasks on the next event | 7, totalling 9 171 ms | 2, totalling 1 918 ms |
+| A 1 500 ms timer set after that event actually fired at | 55.6 s | 15.3 s |
+
+That last row is the one to read twice: the main thread was so far behind that
+a timer set for a second and a half took the better part of a minute. It is
+five times better and still not acceptable.
+
+**The budget is 100 ms and this is 1 911 ms, so the conditional in the original
+fix has resolved: the profile does ask for virtualization.** That is its own
+piece of work and its own finding — PERF-29 — because item 59's scope
+explicitly excludes starting a virtualization project on a hunch, and this is
+no longer a hunch.
 
 **PERF-11 — Idle polling: the sidebar every 2 s, every expanded project every 5 s, the working tree every 3 s, and all of it while the window is merely unfocused.**
 Impact M, cost L, confirmed by reading; the backend cost of each poll needs

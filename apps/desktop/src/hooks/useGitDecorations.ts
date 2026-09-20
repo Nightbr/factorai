@@ -22,7 +22,7 @@ function decorationFor(kind: GitChangeKind): Decoration {
 	return 'modified';
 }
 
-interface GitDecorations {
+export interface GitDecorations {
 	/** Decoration for an exact path, file or directory. */
 	get: (path: string) => Decoration | undefined;
 }

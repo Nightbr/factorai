@@ -1,13 +1,12 @@
 import type { DirEntry } from '@factorai/types';
 import { ContextMenu, ContextMenuTrigger } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from '@tanstack/react-router';
 import { Check, ChevronRight, Link2, X } from 'lucide-react';
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from 'react';
+import { memo, type MouseEvent as ReactMouseEvent, type ReactNode, useRef, useState } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
+import { useFileTreeContext } from '@components/files/fileTreeContext';
 import { FileRowMenu, type RowOutcome } from '@components/files/FileRowMenu';
-import { useFileViewer } from '@hooks/useFileViewer';
-import { DECORATION_CLASSES, useGitDecorations } from '@hooks/useGitDecorations';
+import { DECORATION_CLASSES } from '@hooks/useGitDecorations';
 import { cmd } from '@lib/tauri';
 import { queryKeys } from '@lib/queryKeys';
 import { expandedFor, usePanelStore } from '@store/panelStore';
@@ -29,9 +28,6 @@ function errorText(e: unknown): string {
 
 interface FileTreeNodeProps {
 	entry: DirEntry;
-	/** Project root, passed to list_dir so it can flag escaping symlinks. */
-	root: string;
-	projectId: string;
 	depth: number;
 	/** The rows rendered beside this one, in display order.
 	 *
@@ -53,14 +49,26 @@ interface FileTreeNodeProps {
  *  this is the conventional 400ms rather than a guess at the user's setting. */
 const DOUBLE_CLICK_MS = 400;
 
-export function FileTreeNode({
+/**
+ * One row of the tree, and its children when it is an expanded directory.
+ *
+ * **`memo`, and the props are what make it worth having** (PERF-10): `entry`
+ * and `siblings` come straight out of a TanStack cache entry, so they keep
+ * their identity across a poll that changed nothing, and `depth` is a number.
+ * The rest — the checkout root, the project, the active session, the viewer and
+ * the decorations — is one context off `PanelBody` rather than five query
+ * observers per row.
+ *
+ * The root row passes `trailing`, which is fresh JSX each render, so that one
+ * row re-renders with its parent. It is one row.
+ */
+export const FileTreeNode = memo(function FileTreeNode({
 	entry,
-	root,
-	projectId,
 	depth,
 	siblings,
 	trailing,
 }: FileTreeNodeProps) {
+	const { root, activeSessionId, openViewer, decorations } = useFileTreeContext();
 	// Keyed on `root` — the checkout the tree is rooted at, not the project (F21).
 	const expanded = usePanelStore((s) => expandedFor(s, root).has(entry.path));
 	const selected = usePanelStore((s) => s.selectedPaths.has(entry.path));
@@ -68,13 +76,8 @@ export function FileTreeNode({
 	const select = usePanelStore((s) => s.select);
 	const toggleSelected = usePanelStore((s) => s.toggleSelected);
 	const selectRange = usePanelStore((s) => s.selectRange);
-	const { open: openViewer } = useFileViewer();
 	/** When this row was last clicked, for the pin gesture above. */
 	const lastClickAt = useRef(0);
-	// Which agent "Add to agent context" would hand these to: the session in front, and
-	// nothing when the human is on the project list or in settings (F20).
-	const { sessionId: activeSessionId } = useParams({ strict: false }) as { sessionId?: string };
-	const decorations = useGitDecorations();
 	const decoration = decorations.get(entry.path);
 	const [menuOpen, setMenuOpen] = useState(false);
 	// The menu has closed by the time a copy resolves, so the acknowledgement
@@ -229,7 +232,7 @@ export function FileTreeNode({
 					onOpen={entry.isDir ? undefined : () => openViewer(entry.path)}
 					onCopied={reportCopy}
 					menuOpen={menuOpen}
-					activeSessionId={activeSessionId ?? null}
+					activeSessionId={activeSessionId}
 				/>
 			</ContextMenu>
 
@@ -246,8 +249,6 @@ export function FileTreeNode({
 						<FileTreeNode
 							key={child.path}
 							entry={child}
-							root={root}
-							projectId={projectId}
 							depth={depth + 1}
 							siblings={listing.data.entries}
 						/>
@@ -261,7 +262,7 @@ export function FileTreeNode({
 			)}
 		</li>
 	);
-}
+});
 
 interface PlaceholderProps {
 	depth: number;

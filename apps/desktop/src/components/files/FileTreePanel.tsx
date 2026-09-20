@@ -1,12 +1,15 @@
 import type { DirEntry } from '@factorai/types';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
+import { useParams } from '@tanstack/react-router';
 import { ChevronsDownUp, FolderGit2, RefreshCw, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { IconButton } from '@factorai/ui';
 import { ChangesView } from '@components/files/ChangesView';
 import { FileTreeNode } from '@components/files/FileTreeNode';
+import { FileTreeProvider } from '@components/files/fileTreeContext';
 import { GraphView } from '@components/graph/GraphView';
 import { useActiveCheckout } from '@hooks/useActiveCheckout';
+import { useGitDecorations } from '@hooks/useGitDecorations';
 import { checkoutLabel } from '@hooks/useWorktrees';
 import { useActiveProject } from '@hooks/useActiveProject';
 import { PanelEmpty as Empty } from '@components/layout/PanelEmpty';
@@ -123,6 +126,21 @@ function PanelBody() {
 	const collapseAll = usePanelStore((s) => s.collapseAll);
 	const seedRoot = usePanelStore((s) => s.seedRoot);
 
+	// **Everything the rows share, resolved once here** (PERF-10). Each of these
+	// used to be called by every `FileTreeNode`, which put five query observers
+	// and a per-row ancestor walk behind a directory that can hold two thousand
+	// entries. See `fileTreeContext.ts`.
+	const { sessionId: activeSessionId } = useParams({ strict: false }) as { sessionId?: string };
+	const { open: openViewer } = useFileViewer();
+	const decorations = useGitDecorations();
+	const treeContext = useMemo(
+		() =>
+			root && projectId
+				? { root, projectId, activeSessionId: activeSessionId ?? null, openViewer, decorations }
+				: null,
+		[root, projectId, activeSessionId, openViewer, decorations],
+	);
+
 	useEffect(() => {
 		if (root) seedRoot(root);
 	}, [root, seedRoot]);
@@ -182,38 +200,38 @@ function PanelBody() {
 							{!projectId && <Empty>Select a project to browse its files.</Empty>}
 							{projectId && isLoading && <Empty>Loading…</Empty>}
 							{projectId && !isLoading && !root && <Empty>Project folder not found on disk.</Empty>}
-							{projectId && root && (
-								<ul>
-									<FileTreeNode
-										entry={rootEntry(root, project?.displayName ?? root)}
-										root={root}
-										projectId={projectId}
-										depth={0}
-										// **Which checkout this tree is** (F21), beside the root
-										// folder's name — moved here from the panel header on user
-										// feedback: that row already holds three tabs and two icons
-										// at 288px, and a fourth thing in it is a fourth thing
-										// competing for the same width.
-										//
-										// The cost, accepted: the Changes and Graph tabs have no root
-										// row, so they carry no mark. The session header names the
-										// checkout too, and it is visible from all three — a mark can
-										// only appear when a session is in front, since a project
-										// route always resolves to the project's own checkout.
-										trailing={
-											isLinked && worktree ? (
-												<span
-													data-testid="panel-checkout"
-													title={`Showing the worktree ${worktree.path}`}
-													className="flex shrink-0 items-center gap-1 text-muted-foreground/70 text-xs"
-												>
-													<FolderGit2 className="size-3 shrink-0" aria-hidden />
-													{checkoutLabel(worktree)}
-												</span>
-											) : undefined
-										}
-									/>
-								</ul>
+							{projectId && root && treeContext && (
+								<FileTreeProvider value={treeContext}>
+									<ul>
+										<FileTreeNode
+											entry={rootEntry(root, project?.displayName ?? root)}
+											depth={0}
+											// **Which checkout this tree is** (F21), beside the root
+											// folder's name — moved here from the panel header on user
+											// feedback: that row already holds three tabs and two icons
+											// at 288px, and a fourth thing in it is a fourth thing
+											// competing for the same width.
+											//
+											// The cost, accepted: the Changes and Graph tabs have no root
+											// row, so they carry no mark. The session header names the
+											// checkout too, and it is visible from all three — a mark can
+											// only appear when a session is in front, since a project
+											// route always resolves to the project's own checkout.
+											trailing={
+												isLinked && worktree ? (
+													<span
+														data-testid="panel-checkout"
+														title={`Showing the worktree ${worktree.path}`}
+														className="flex shrink-0 items-center gap-1 text-muted-foreground/70 text-xs"
+													>
+														<FolderGit2 className="size-3 shrink-0" aria-hidden />
+														{checkoutLabel(worktree)}
+													</span>
+												) : undefined
+											}
+										/>
+									</ul>
+								</FileTreeProvider>
 							)}
 						</>
 					)}
