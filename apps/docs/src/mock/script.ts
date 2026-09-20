@@ -83,7 +83,7 @@ export const INITIAL: MockState = {
 		},
 	],
 	panel: 'changes',
-	sidebarStatus: { 'billing-api': 'working' },
+	sidebarStatus: { 'billing-api': 'working', 'docs-site': 'working' },
 };
 
 let seq = 0;
@@ -238,6 +238,8 @@ export const SCRIPT: Step[] = [
 				),
 			),
 	],
+	// docs-site's own agent hands the turn back.
+	[16800, (s) => ({ ...s, sidebarStatus: { ...s.sidebarStatus, 'docs-site': 'waiting' } })],
 	// The third session wakes up for a release.
 	[22000, (s) => tab(s, 'c', 'working')],
 	[23800, (s) => tab(s, 'c', 'waiting')],
