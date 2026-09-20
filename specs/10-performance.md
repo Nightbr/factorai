@@ -113,11 +113,18 @@ profiler when the question is renderer-side.
 **By signals, not screenshots.** Launch timing uses `wmctrl -lp` for the
 window-mapped instant, the app's own `RUST_LOG=info` timestamps for what the
 backend did and when, and `/proc/<pid>/status` for RSS. First paint with data
-needs a signal the app emits itself, a log line on the first `list_sidebar`
-answer, and that signal does not exist yet; it is the first thing P5 asks
-for. Capture tooling is for a single confirming screenshot at the end of a
-verification, never a polling probe: on 2026-09-20 a 50 ms loop of window
-activation plus capture took down the desktop session it ran in.
+is `commands/sidebar.rs`'s **"first sidebar answer"**, logged once per run when
+`list_sidebar` first returns — the one number a launch cannot be timed by from
+outside, because it happens inside the webview. Capture tooling is for a single
+confirming screenshot at the end of a verification, never a polling probe: on
+2026-09-20 a 50 ms loop of window activation plus capture took down the desktop
+session it ran in.
+
+**And the binary has to come from `pnpm tauri build`.** A bare
+`cargo build --release` produces one that still points at the dev server: it
+opens a window saying `Could not connect to localhost: Connection refused`,
+which counts as many colours and looks exactly like a painted app to anything
+measuring pixels. The first attempt at this measurement fell into it.
 
 **Backend numbers come from `tracing` spans and SQLite's own tools.** A span
 around `setup()`, around each indexer transaction and around the two polled
@@ -964,26 +971,38 @@ One line each, so the next audit starts from here rather than from zero.
 
 ## P7 — Measured, 2026-09-20, Linux
 
-Commit `9c1faf9`; this machine: 16 cores, 31 GB, X11, WebKitGTK 2.52;
-release binary built with the tree's own profile (none) under the dev
-identifier so it never touched the live app's data; data directory with 14
-workspace projects; warm disk cache. Three runs, killed after eight seconds.
+Two runs: **before** any of this landed, at commit `9c1faf9`, and **after** the
+P1 tier, at the head of the same day. This machine: 16 cores, 31 GB, X11,
+WebKitGTK 2.52; release builds; the real workspace database, 232 sessions
+across 14 discovered directories; warm disk cache. Three launches each, and the
+launch numbers come from a `pnpm tauri build` binary for the reason P4 gives.
 
-| Measure | Value | Budget | Method |
+| Measure | Before | After | Budget |
 |---|---|---|---|
-| Exec to window mapped | 115 ms, 114 ms, 176 ms | ≤ 300 ms | `wmctrl -lp` polled at 50 ms |
-| Backend `setup()` to `scan complete` | 500 ms first run (reaped 23 rows), 5 to 15 ms after | not budgeted; must not gate first paint | `RUST_LOG=info` timestamps |
-| Exec to sidebar populated | **not measured** | ≤ 1.5 s | needs the in-app signal P4 names |
-| RSS at +8 s, idle, no session | 197 MB app + 172 MB `WebKitWebProcess` + 58 MB `WebKitNetworkProcess` = 427 MB | ≤ 1.5 GB after 1 h with 10 sessions | `/proc/<pid>/status` |
-| Release binary, Linux, x86-64 | 27.5 MB unstripped | see PERF-06 | `ls -l` |
-| Shipped v0.45.0 | AppImage 88 MB; `.dmg` 26 MB; `.app.tar.gz` 27 MB | ≤ 70 MB; ≤ 20 MB | GitHub release assets |
-| `pnpm vite:build` | entry 1.42 MB (390 KB gzip); Monaco 2.62 MB; pdf.js 428 KB + worker 1.19 MB; mermaid core 663 KB + katex 259 KB + cytoscape 436 KB; `FileView` 320 KB; total `dist/` 15 MB of which `pdfjs/` fonts, CMaps and WASM are 4 MB | entry ≤ 800 KB | build log, `du` |
-| `cargo build --release` from clean | 57 s incremental, about 5 min from an empty target, 16 cores | not budgeted | wall clock |
+| Exec to window mapped | 115–176 ms | 147–184 ms | ≤ 300 ms |
+| Exec to sidebar populated | not measurable — the signal did not exist | **1 271–1 325 ms** | ≤ 1.5 s |
+| RSS, idle, no session | 427 MB (197 app + 230 helpers) | 505–510 MB (202 app + 303 helpers) | ≤ 1.5 GB after 1 h with 10 sessions |
+| Release binary, `cargo build --release` | 28.2 MB | 16.4 MB | — |
+| Release binary, `pnpm tauri build` (what ships, frontend embedded) | — | 21.2 MB | — |
+| `pnpm vite:build` entry chunk | 1.42 MB | 1.42 MB (PERF-17 is P2) | ≤ 800 KB |
+| `cargo build --release` from clean | 57 s | 4 m 43 s | — |
 
-Everything else in P3 is unmeasured today. The macOS column does not exist
-yet.
+**Two of these deserve a note rather than a cheer.**
 
----
+*Memory went up, not down, and the increase is honest.* The WebKit helper
+processes hold about 70 MB more. Nothing in the P1 tier was aimed at memory;
+what changed around it is a pooled reader set, a deferred write queue and one
+more observer. It is a third of the budget and it is idle with no session open,
+so the number that matters — after an hour with ten sessions — is still unmeasured
+and is what P8 owes.
+
+*Window-mapped time did not improve and was never going to.* It is the process
+starting and GTK making a window; nothing in P1 touches it, and it was inside
+budget to begin with.
+
+Everything else in P3 is unmeasured on this platform, and the macOS column does
+not exist. The per-finding numbers — the ones that show what each change bought
+— are in each P5 entry.
 
 ## P8 — What this spec leaves open
 

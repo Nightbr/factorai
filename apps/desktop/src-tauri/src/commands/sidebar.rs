@@ -58,10 +58,31 @@ pub enum SidebarOrder {
 
 #[tauri::command]
 pub fn list_sidebar(state: State<'_, AppState>) -> AppResult<Vec<SidebarRow>> {
-	// `read`, not `with`: this runs every two seconds while the app is open, and
-	// on the writer connection it waited for whatever transaction the indexer was
-	// in the middle of (PERF-02).
-	state.db.read(list_sidebar_in)
+	// `read`, not `with`: this is polled while the app is open, and on the writer
+	// connection it waited for whatever transaction the indexer was in the middle
+	// of (PERF-02).
+	let rows = state.db.read(list_sidebar_in)?;
+	log_first_answer(rows.len());
+	Ok(rows)
+}
+
+/// The renderer has data to paint the sidebar with — logged once per run
+/// (`specs/10-performance.md` P4).
+///
+/// **The one number a launch cannot otherwise be timed by.** Everything else
+/// about startup is observable from outside: the process starts, the window is
+/// mapped, `setup` logs what it did. "Exec to the sidebar populated" is not,
+/// because it happens inside the webview, and the only alternative was
+/// screenshotting the window in a loop — which on 2026-09-20 took a desktop
+/// session down with it.
+///
+/// `info` rather than `debug`, so `RUST_LOG=info` is enough, and once rather
+/// than per call, because the poll would otherwise bury it.
+fn log_first_answer(rows: usize) {
+	static ANSWERED: std::sync::Once = std::sync::Once::new();
+	ANSWERED.call_once(|| {
+		tracing::info!(rows, "first sidebar answer — the renderer can paint");
+	});
 }
 
 /// The tree, already ordered.

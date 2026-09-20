@@ -297,7 +297,11 @@ if the number is inside the budget. In the spec's order:
 - [x] **PERF-08** — libgit2 out of the database write transaction. **Landed 2026-09-20**:
       `checkout_owners` builds the checkout map on a pooled reader before the transaction
       opens. The transaction went from 1.46-1.82ms to 0.14-0.19ms on this workspace.
-- [ ] **PERF-09** — item 54, session switch: the `projectCwd` double-mount first, then the profile.
+- [ ] **PERF-09** — item 54, session switch. **The `projectCwd` double-mount landed
+      2026-09-20** and a smoke test holds it; the defect it was really causing was a PTY
+      spawned with no cwd. **What is left is the measurement**: click-to-first-paint for a
+      pooled session, a first open this run, and a cross-project switch, in the real window
+      with the profiler on — plus the entry's other three candidates.
 - [x] **PERF-10** — the file tree's per-row query observers and per-row decoration index.
       **Landed 2026-09-20**: one `FileTreeProvider` off `PanelBody` and a memoised row.
       Expanding a 2 000-entry directory went from 3 804ms to 1 911ms and the main-thread
@@ -327,8 +331,11 @@ if the number is inside the budget. In the spec's order:
       are looking at. The condition is `is_backgrounded`, not `!is_active` — before the
       renderer names a session nothing is in front, and writing it the other way slowed
       every terminal at the start of a run.
-- [ ] **The first-paint signal** (spec P8): one log line on the first `list_sidebar` answer, so
-      exec-to-populated is a number. Then re-run P7 and fill the row.
+- [x] **The first-paint signal.** **Landed 2026-09-20**: `list_sidebar` logs "first sidebar
+      answer" once per run, and P7's row is filled — **1 271-1 325ms** against a 1.5s
+      budget. It also caught the measurement itself being wrong: a bare
+      `cargo build --release` binary still points at the dev server and shows a connection
+      error that counts as a painted window.
 - [ ] **Accept the budgets** — an ADR once the numbers in P3 are agreed, and every `DONE.md` entry
       above quotes before and after against them.
 
