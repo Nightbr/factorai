@@ -243,150 +243,66 @@ not a process one, and folding it in here would stall everything else.
 
 ## 59. Performance — one audit, measured, then the fixes it names
 
-**Asked for 2026-09-17, release-blocking.** Two performance reports are already filed as items 54
-and 55, both from the same week, both unmeasured. A public release is the wrong moment to
-discover the third one from a stranger, so this item is the sweep: **measure every surface, write
-the numbers down, then fix what the numbers name** — in that order, because at least two of the
-candidates in item 54 are cheap enough that fixing the wrong one would be indistinguishable from
-fixing nothing.
-
-**The two findings already filed are this item's first two entries**, kept as their own items
-because each has its own analysis: **item 54** (time from clicking a session to the first thing on
-screen) and **item 55** (the markdown preview re-parsing on every host render, with mermaid
-multiplying it).
+**Asked for 2026-09-17, release-blocking.** The audit landed on 2026-09-20 as
+[`specs/10-performance.md`](../10-performance.md): the proposed budgets (P3), how a number is taken
+(P4), twenty-eight findings scored impact × cost and tiered (P5), the surfaces checked and found
+inside their budget (P6), and the one Linux measurement run (P7). That spec is the contract; this
+entry is the checklist of what it says gates the tag.
 
 **The rule that bounds the whole sweep**, and it is not negotiable: nothing here may be paid for
-by disposing, detaching or re-creating a pooled xterm. `Terminal.tsx` § "Persistent xterm pool"
-keeps one terminal per session alive for the app's life, and the reason it does not reparent is a
-macOS wheel bug its comment records. That is the change that looks like a win in a profile and is
-a regression in the window.
+by disposing, detaching or re-creating a pooled xterm (`Terminal.tsx` § "Persistent xterm pool";
+spec P1).
 
-- [ ] **Write the budgets down first**, so "slow" stops being a matter of opinion: cold launch to
-      a usable window, session switch to first paint, keystroke-to-glyph in a PTY under load,
-      search latency on a real workspace, tree expand on a large repository, and the memory a
-      session-heavy app holds after an hour. A budget nobody agreed to is not a budget.
-- [ ] **Measure in the real window, on both engines.** The `manual-qa` lane with the React
-      profiler; a Playwright run sees none of this, and WebKitGTK and WKWebView have already
-      diverged on zoom, clipboard and scrolling.
-- [ ] **The surfaces worth measuring, in the order they are likely to hurt**: startup and first
-      paint; the indexer and FTS5 against a workspace with hundreds of sessions; the sidebar's
-      `refetchInterval` (every ~2s, and it reorders rows); ten live sessions with output arriving
-      in all of them; the graph walk on a large repository; the file tree on a directory with
-      thousands of entries; and the renderer bundle, where the heavy chunks (Monaco, pdf.js,
-      mermaid) are lazy and should be proved still lazy.
-- [ ] **Rust side too.** Lock hold times across the command boundary — the terminal freeze in
-      `DONE.md` was a `child.lock` held across `wait()` and it deadlocked the GTK main thread, so
-      this is a class of bug this repo has already shipped once.
-- [ ] **Fix, then re-measure against the budget**, and record both numbers in the `DONE.md` entry.
-      A performance fix with no before and after is a story.
+**Tier P1 is the M6 gate**, each item measured first and closed with its number rather than fixed
+if the number is inside the budget. In the spec's order:
+
+- [ ] **PERF-01** — the FTS delete-by-session full scan (`session_id UNINDEXED`); migration + ADR.
+- [ ] **PERF-02** — one SQLite connection behind one mutex, the indexer writing through it; fix
+      the pool drift in `03-backend-rust.md` first, then the reader connection and `off_main`.
+- [ ] **PERF-03** — full transcript re-parse on every change; index the appended tail.
+- [ ] **PERF-04** — hidden pooled terminals are still rendered by xterm; make them
+      non-intersecting without removing layout. **Verify on macOS before it lands.**
+- [ ] **PERF-05** — `list_sessions` canonicalises under the database lock on the main thread.
+- [ ] **PERF-06** — `[profile.release]` (lto, codegen-units, strip, panic).
+- [ ] **PERF-07** — the synchronous commands that spawn a process, walk the store or wait on I/O
+      go `async` + `spawn_blocking`, one per commit.
+- [ ] **PERF-08** — libgit2 out of the database write transaction.
+- [ ] **PERF-09** — item 54, session switch: the `projectCwd` double-mount first, then the profile.
+- [ ] **PERF-10** — the file tree's per-row query observers and per-row decoration index.
+- [ ] **PERF-11** — idle polling cadence, and polls that continue while the window is unfocused.
+- [ ] **PERF-12** — persisted stores writing `localStorage` on every drag frame.
+- [ ] **PERF-13** — item 55, the markdown preview and mermaid.
+- [ ] **PERF-14** — background PTYs flushed at the active session's cadence.
+- [ ] **The first-paint signal** (spec P8): one log line on the first `list_sidebar` answer, so
+      exec-to-populated is a number. Then re-run P7 and fill the row.
+- [ ] **Accept the budgets** — an ADR once the numbers in P3 are agreed, and every `DONE.md` entry
+      above quotes before and after against them.
 
 **What this item is not.** A rewrite, a virtualization project, or a dependency swap done on a
-hunch. If the numbers say the app is inside its budgets on a surface, the entry for that surface
-is one line saying so — which is worth as much as a fix, because it stops the next person
-re-deriving it.
+hunch. Tier P2 (the raw-bytes PTY channel, WebGL, the entry chunk, `git_status` change detection,
+the graph window) is post-release and each of those is measured first; P3 is done when the
+adjacent code is touched.
 
 ## 54. Switching session — time to the first thing on screen
 
-**Asked for 2026-09-15**, unmeasured: the report is that changing session takes visibly longer to
-show anything than it should. So the first task is a number, not a patch — the candidates below
-are what reading the code suggests, and at least two of them are cheap enough that fixing the
-wrong one would be indistinguishable from fixing nothing.
+**Asked for 2026-09-15**, unmeasured. The analysis this entry carried moved to
+[`specs/10-performance.md`](../10-performance.md) **PERF-09** on 2026-09-20, with the audit's
+verdict on each of its four candidates: the `projectCwd` double mount is confirmed and flickers,
+the panel re-root is confirmed free, and "every hidden terminal still has layout" was understated —
+they are rendered too, which is **PERF-04**. Tier P1 in both cases; the checklist is item 59's.
 
-**What is already right, and must stay right.** The xterm pool (`Terminal.tsx` § "Persistent xterm
-pool") keeps one terminal per session alive for the app's life: a switch toggles `visibility` in
-`showOnly`, it does not rebuild a buffer or reparent a host, and the reason it does not reparent is
-a macOS wheel bug the comment there records. `FileTreePanel` and the shell footer hang off
-`AppShell`, not off the route, so neither unmounts on a switch (ADR-0032). Nothing in this item may
-be paid for by disposing, detaching or re-creating a pooled terminal — that is the change that
-looks like a win in a profile and is a regression in the window.
-
-- [ ] **Measure first, in the real window.** Click-to-first-paint for three cases, which are not
-      the same case: a session whose terminal is already pooled, one being opened for the first
-      time this run (a `terminal_spawn` plus `claude --resume` redrawing the transcript), and a
-      switch that also crosses projects. The `manual-qa` lane, with the React profiler on;
-      a Playwright smoke run cannot see any of this.
-
-**The candidates, in the order they are worth checking.**
-
-- **The route's three queries gate the header.** `SessionView` reads `list_projects`,
-  `list_sessions` and `list_profiles`, and `App.tsx`'s app-wide default is `staleTime: 1000` — so
-  any switch more than a second after the last read refetches. Cached data still renders, so
-  this should not be visible; what *is* visible is that `projectCwd` is `null` until
-  `list_projects` answers, and `projectCwd` is in the dependency list of `Terminal`'s mount effect.
-  A cold switch therefore runs that effect twice, and the first run reaches `attachPty` with a null
-  cwd. Worth fixing on its own merits whatever the profile says.
-- **The first frame is deliberately the old grid.** The mount effect defers `fitToHost`,
-  `scrollToBottom` and `focus` into a `setTimeout(…, 0)`, and an adopted host gets a second
-  `fitToHost` plus a full `refresh` in a `requestAnimationFrame`. Both are correct — the layout is
-  not real any earlier — but they are also the two places a switch can be seen to settle rather
-  than appear.
-- **Every hidden terminal still has layout.** `showOnly`'s own note says it: a background session's
-  rows are laid out, though never painted, as its output arrives, and `content-visibility: hidden`
-  is not used because it zeroes descendant geometry and brings back the measurement bug the pool
-  exists to avoid. That comment asks for exactly this — a profile at a session count that hurts.
-  Ten live sessions is the case to measure; if it is flat, say so in the comment and close the
-  question.
-- **The panel re-roots on the switch.** `useActiveCheckout` recomputes `root`, `FileTreePanel`
-  draws `Loading…` while `isLoading`, and the tree relists. For two sessions in the same checkout
-  the root does not change, so this should be free; confirm that it actually is, rather than the
-  panel blanking and redrawing the same tree.
-
-**What good looks like.** Switching between two pooled sessions in one checkout paints the header
-and the terminal in the frame after the click, with no `Loading…` anywhere in the panel. A session
-being opened for the first time cannot do that — the transcript comes back through the PTY — but
-it can paint its chrome immediately and wait for the body, which is not what "nothing for a
-moment, then everything" does today.
+- [ ] **Measure first, in the real window** — click-to-first-paint for a pooled session, a first
+      open this run, and a cross-project switch — then fix what the number names. The budget is
+      spec P3's "session switch" row.
 
 ## 55. The markdown preview re-parses far more often than it changes, and mermaid pays for it
 
-**Asked for 2026-09-15**, with a large document and a document full of diagrams as the two cases
-that hurt. Two separate causes with one symptom, and the first one is the one to fix.
-
-**The document is re-parsed on every render of its host.** `MarkdownView` is not memoized, and
-react-markdown 10 has no incremental parse — it runs remark and rebuilds the whole hast tree every
-time it renders. Its host is `FileView`, which holds the edit buffer's state machine
-(`useEditBuffer`: dirty, saving, save error, conflict, banner), the SOPS plaintext and its four
-states, a `sops` status query, the selection the footer's mention button reads, and the preview
-toggle itself. Every one of those state changes re-parses the entire document. Even a host that
-re-rendered for a good reason would not be able to skip it: `remarkPlugins={[remarkGfm]}` and the
-`components` object are fresh literals on each render, so no `memo` would ever bail out.
-
-- [ ] **Hoist what does not change and memoize what does.** `remarkPlugins` becomes a module
-      constant; `components` becomes a `useMemo` on `[path, onOpenPath]`, which is all the three
-      overrides actually capture; `MarkdownView` gets `memo`. Confirm with the profiler that a
-      keystroke in the footer's search, a save, and a `sops` query settling each stop re-parsing
-      the document.
-- [ ] **`previewSource` reads a ref during render** (`FileView.tsx:304`:
-      `dirty ? bufferRef.current : file.contents`). It works because the editor is unmounted while
-      the preview is up, so the buffer cannot move underneath it — but it is a render-time read of
-      mutable state, and it is what makes the preview's input look like it changes on every render
-      when it does not. Whatever shape the memo takes has to make that explicit rather than inherit
-      it.
-- [ ] **Measure a genuinely large document before deciding anything else is needed.** There is no
-      virtualization: a long README becomes one DOM tree under the `prose` classes in one pass. If
-      re-parse-on-every-render is the whole story, stop there — chunked rendering is a much
-      larger change and should not be started on a guess.
-
-**Mermaid is the second cause, and it multiplies the first.** Each fence is a `MermaidDiagram` that
-calls `loadMermaid()` in its own effect:
-
-- **`loadMermaid` reads the palette off the document on every call** — nine `getComputedStyle`
-  reads through `diagramPalette` and `currentFontFamily`, one forced style recalculation per
-  diagram, to compute a key that is almost always identical to the last one. The module already
-  caches the *configuration* behind `configuredFor`; it does not cache the reads that produce the
-  key. A palette moves on a theme switch (item 32), which is an event, not a per-render condition.
-- **Every diagram renders independently and concurrently** against the one global mermaid
-  instance — no queue, no batching — and each `render` builds a temporary node, runs DOMPurify
-  and hands back an SVG *string*, which `MermaidDiagram` then parses a second time with
-  `DOMParser` and adopts with `importNode`. A document with twenty diagrams does that twenty
-  times, unthrottled, on the first frame the preview is up.
-- **A `code` change empties the host before the new SVG lands** — state goes back to `pending` and
-  the effect `replaceChildren()`s the node — so each diagram collapses to zero height and the page
-  reflows through it. Keeping the old SVG until the new one is ready is the obvious fix and costs
-  nothing, since the failure path already keeps the source.
-
-The 2.5MB dynamic `import()` (ADR-0021) is not on this list: it is paid once, only by documents
-that have a fence, and it is the right trade.
+**Asked for 2026-09-15.** The analysis this entry carried moved to
+[`specs/10-performance.md`](../10-performance.md) **PERF-13** on 2026-09-20, unchanged by the audit:
+hoist and memoise the parse, make the render-time ref read explicit, cache the palette reads behind
+the theme event, queue diagram renders, keep the old SVG during a re-render, and measure a
+genuinely large document before deciding anything else is needed. Tier P1; the checklist is item
+59's.
 
 ## 39. The site — a Docusaurus build carrying the guide, deployed to Pages
 
