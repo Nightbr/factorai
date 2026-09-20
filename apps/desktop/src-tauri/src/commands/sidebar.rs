@@ -58,7 +58,10 @@ pub enum SidebarOrder {
 
 #[tauri::command]
 pub fn list_sidebar(state: State<'_, AppState>) -> AppResult<Vec<SidebarRow>> {
-	state.db.with(list_sidebar_in)
+	// `read`, not `with`: this runs every two seconds while the app is open, and
+	// on the writer connection it waited for whatever transaction the indexer was
+	// in the middle of (PERF-02).
+	state.db.read(list_sidebar_in)
 }
 
 /// The tree, already ordered.

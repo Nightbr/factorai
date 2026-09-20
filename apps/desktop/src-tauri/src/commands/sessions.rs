@@ -15,7 +15,9 @@ pub fn list_sessions(
 	state: State<'_, AppState>,
 	project_id: String,
 ) -> AppResult<Vec<SessionSummary>> {
-	state.db.with(|conn| list_sessions_in(conn, &project_id))
+	// `read`, not `with`: one poll every five seconds per expanded project, and
+	// the writer connection made each of them wait on the indexer (PERF-02).
+	state.db.read(|conn| list_sessions_in(conn, &project_id))
 }
 
 /// The body of [`list_sessions`], against a connection rather than the managed
@@ -199,7 +201,7 @@ pub fn search_sessions(
 	limit: Option<usize>,
 ) -> AppResult<Vec<SearchHit>> {
 	let limit = limit.unwrap_or(200);
-	state.db.with(|conn| search::search(conn, &query, project_id.as_deref(), limit))
+	state.db.read(|conn| search::search(conn, &query, project_id.as_deref(), limit))
 }
 
 /// The agent store directory a session's transcript lives in, the parent

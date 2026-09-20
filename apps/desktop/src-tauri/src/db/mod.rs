@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use tracing::info;
 
 use crate::error::{AppError, AppResult};
@@ -106,14 +106,36 @@ const MIGRATIONS: &[(&str, &str)] = &[
 /// reference would otherwise be discovered by an unrelated write, hours later.
 const STANDALONE: &[&str] = &["0018_discovered_profile"];
 
-/// Thread-safe handle to the SQLite connection.
+/// How many read-only connections are kept alive between reads.
 ///
-/// Single connection wrapped in a Mutex — simplest correct option for our
-/// write-heavy indexer + read-mostly commands. Switch to a pool if it ever
-/// becomes the bottleneck.
+/// Four, because that is the number of readers that can be in flight at once on
+/// the surfaces that poll: the sidebar's two-second tree, a per-project session
+/// list, the git panel and whatever the user just clicked. A fifth reader is
+/// still served — `read` opens a connection rather than waiting — it is just not
+/// kept afterwards. Opening one costs about a hundred microseconds; blocking
+/// behind the indexer costs as long as its transaction.
+const MAX_IDLE_READERS: usize = 4;
+
+/// Thread-safe handle to the SQLite database: one writer, and a small pool of
+/// read-only connections.
+///
+/// **Why two kinds** (PERF-02, `specs/10-performance.md`). There used to be one
+/// connection behind one mutex, and the indexer wrote through it — so every
+/// synchronous command, including the sidebar's two-second poll, waited on the
+/// main thread for the length of the indexer's current write transaction. WAL
+/// has let readers run alongside a writer since the day it was turned on; the
+/// mutex was what prevented it.
+///
+/// [`Db::with`] and [`Db::with_mut`] are unchanged: they take the writer, and
+/// everything they serialise stays serialised. [`Db::read`] is the new one, and
+/// its connections are opened **read-only**, so a write that reaches one fails
+/// loudly instead of quietly stepping outside the single-writer discipline —
+/// which is what makes moving a caller across provable rather than a judgement.
 #[derive(Clone)]
 pub struct Db {
 	conn: Arc<Mutex<Connection>>,
+	readers: Arc<Mutex<Vec<Connection>>>,
+	path: Arc<Path>,
 }
 
 impl Db {
@@ -128,9 +150,33 @@ impl Db {
 		conn.pragma_update(None, "foreign_keys", "ON")?;
 		conn.pragma_update(None, "synchronous", "NORMAL")?;
 
-		let db = Self { conn: Arc::new(Mutex::new(conn)) };
+		let db = Self {
+			conn: Arc::new(Mutex::new(conn)),
+			readers: Arc::new(Mutex::new(Vec::new())),
+			path: Arc::from(path.as_path()),
+		};
 		db.migrate()?;
 		Ok(db)
+	}
+
+	/// One read-only connection, from the pool or freshly opened.
+	///
+	/// Only ever called after `open` has migrated, so the database and its `-shm`
+	/// file exist — a read-only connection cannot create either.
+	fn reader(&self) -> AppResult<Connection> {
+		if let Some(conn) = self.readers.lock().pop() {
+			return Ok(conn);
+		}
+		let conn = Connection::open_with_flags(
+			&*self.path,
+			OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+		)
+		.map_err(AppError::from)?;
+		// A reader never blocks on the writer in WAL, but it can meet a
+		// checkpoint; a bounded wait is better than an error the caller has no
+		// way to act on.
+		conn.busy_timeout(std::time::Duration::from_secs(5))?;
+		Ok(conn)
 	}
 
 	/// Apply what has not been applied, in order.
@@ -181,6 +227,29 @@ impl Db {
 	pub fn with_mut<R>(&self, f: impl FnOnce(&mut Connection) -> AppResult<R>) -> AppResult<R> {
 		let mut conn = self.conn.lock();
 		f(&mut conn)
+	}
+
+	/// Run a **read-only** closure on a pooled connection, without waiting for
+	/// the writer.
+	///
+	/// This is where every query on a surface that polls belongs. Two things it
+	/// is not: it is not a transaction (two `read` calls can see two different
+	/// commits, and a caller that needs one consistent view of several tables
+	/// wants [`Db::with`]), and it is not a place to write — the connection is
+	/// read-only and SQLite will refuse.
+	pub fn read<R>(&self, f: impl FnOnce(&Connection) -> AppResult<R>) -> AppResult<R> {
+		let conn = self.reader()?;
+		let out = f(&conn);
+		// Kept only on the happy path. A connection that errored may be mid
+		// statement, and one that panicked never gets here at all — either way
+		// the next `read` opens a fresh one, which costs microseconds.
+		if out.is_ok() {
+			let mut idle = self.readers.lock();
+			if idle.len() < MAX_IDLE_READERS {
+				idle.push(conn);
+			}
+		}
+		out
 	}
 }
 

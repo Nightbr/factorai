@@ -183,7 +183,8 @@ inside the 200 ms budget. The migration itself is 123 ms on the live index,
 once, and does not re-parse a transcript.
 
 **PERF-02 — One SQLite connection behind one mutex, and the indexer writes through it.**
-Impact H, cost M, confirmed by reading; stall length needs a profile.
+Impact H, cost M. **Landed 2026-09-20**; the numbers are at the end of this
+entry, and the remaining half is named there too.
 `Db` is `Arc<parking_lot::Mutex<Connection>>` (`rs/db/mod.rs:103-112`; its
 own comment says to pool "if it ever becomes the bottleneck"). Every
 synchronous database command, which is every one but the six git commands,
@@ -198,11 +199,33 @@ the scan; after a `PARSE_VERSION` bump it waits on all of it.
 already describes an "r2d2-style pool, 4 connections" and a `tokio::spawn`ed
 scan; the code is one connection and named threads. Correct the spec to what
 is there, then land the pool it wanted.
-*Fix.* A reader connection, or a small pool, for commands, one writer for the
-indexer; then `spawn_blocking` for database-touching commands (the
-`commands/git.rs` `off_main` shape) so a wait costs a pool thread, not a
-paint. *Measure.* A span on the main thread's lock wait during a full scan,
-before and after.
+*Fixed by* a third accessor rather than by changing what the existing two
+mean. `Db::with` and `Db::with_mut` still take the writer and still serialise
+everything they serialised; `Db::read` takes one of at most four pooled
+connections opened **read-only**, so a caller that turns out to write fails
+loudly instead of quietly stepping outside the single-writer discipline. That
+is what makes moving a caller across provable rather than a judgement, and it
+is why the move is being done a few callers at a time instead of all at once.
+
+Moved so far: `list_sidebar`, `list_sessions`, `list_projects` and
+`search_sessions` — the two polls, the flat project list every other surface
+reads, and search.
+
+*Measured* against a copy of the live index, with a writer holding a
+transaction the way an indexer commit does:
+
+| While the writer holds for | `Db::read` (now) | `Db::with` (before) |
+| --- | --- | --- |
+| 100 ms | 0.42 ms | 105.7 ms |
+| 400 ms | 0.33 ms | 400.1 ms |
+
+Uncontended, the two polled commands are inside their P3 budgets:
+`list_sidebar` 0.22–0.36 ms against 5 ms, `list_sessions` 1.8–1.9 ms for a
+90-session project against 10 ms.
+
+*What is left, and it is PERF-07's commit.* These commands are still
+synchronous, so they still run on the thread that paints — they simply no
+longer wait there. The `spawn_blocking` half is tracked as part of PERF-07.
 
 **PERF-03 — A changed transcript is re-read, re-parsed and re-tokenised in full.**
 Impact H, cost M, confirmed by reading; per-megabyte cost needs a profile.

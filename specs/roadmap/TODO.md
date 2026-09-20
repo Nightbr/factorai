@@ -261,8 +261,11 @@ if the number is inside the budget. In the spec's order:
       (ADR-0053, migration 0020). Delete-by-session went from `SCAN` to a covering-index
       lookup — 8.0ms to 4.8ms at 232 sessions, 121.2ms to 8.9ms at 11 600, and a one-row
       session from 2.5ms to 0.0ms. Search returns the same hits in the same order.
-- [ ] **PERF-02** — one SQLite connection behind one mutex, the indexer writing through it; fix
-      the pool drift in `03-backend-rust.md` first, then the reader connection and `off_main`.
+- [x] **PERF-02** — one SQLite connection behind one mutex, the indexer writing through it.
+      **Landed 2026-09-20**: `Db::read` hands out one of four read-only pooled connections and
+      the two polls, the project list and search now use it. With a writer holding a 400ms
+      transaction, a read went from 400.1ms to 0.33ms. `with`/`with_mut` are unchanged, so
+      nothing that was serialised stopped being. The `off_main` half is PERF-07's.
 - [ ] **PERF-03** — full transcript re-parse on every change; index the appended tail.
 - [ ] **PERF-04** — hidden pooled terminals are still rendered by xterm; make them
       non-intersecting without removing layout. **Verify on macOS before it lands.**

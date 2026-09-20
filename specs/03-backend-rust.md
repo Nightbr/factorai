@@ -1382,18 +1382,41 @@ binary that spawns sessions perfectly well, which is the same class of mistake a
 
 ```rust
 struct AppState {
-  db: DbHandle,                          // r2d2-style pool, 4 connections
-  indexer: Arc<IndexerService>,
-  terminals: Arc<TerminalManager>,
+  db: Db,                 // one writer + up to four pooled read-only connections
+  indexer: Arc<Indexer>,
+  terminals: TerminalManager,
   claude_dir: PathBuf,
   data_dir: PathBuf,
+  ui: Arc<UiState>,       // what the renderer has on screen, for the IDE bridge
+  routines: Arc<RoutineRunner>,
+  watch: Arc<watcher::Control>,
+  file_watch: Arc<FileWatch>,
 }
 ```
+
+**Corrected 2026-09-20.** This block said `DbHandle` with an "r2d2-style pool,
+4 connections" and listed five fields; neither was ever true. There is no r2d2,
+and there were four more fields. What is there now, after PERF-02
+(`10-performance.md`):
+
+- **`Db::with` / `Db::with_mut` take one writer connection behind a
+  `parking_lot::Mutex`.** Everything that needs a transaction, or one
+  consistent view across several statements, goes through them, and they
+  serialise against each other exactly as they always did.
+- **`Db::read` takes a pooled connection opened read-only**, up to four kept
+  idle, more opened on demand rather than waited for. In WAL a reader does not
+  wait for the writer, so the surfaces that poll — `list_sidebar` every two
+  seconds, `list_sessions` every five per expanded project — no longer stall
+  behind an indexer commit. The connections are read-only so that a caller
+  which turns out to write fails at the call rather than silently writing from
+  outside the single-writer discipline.
 
 Constructed in `setup()` after `app.path().app_data_dir()` resolves — which is
 derived from `identifier`, so a dev build lands in `dev.factorai-dev` rather
 than beside the installed release (ADR-0024). The indexer kicks off its first
-scan from `setup()` (`tokio::spawn`).
+scan from `setup()` on a **named `std::thread`**, not `tokio::spawn`: it is a
+long synchronous walk, and the runner and the watcher are started the same way
+for the same reason.
 
 ## Errors
 

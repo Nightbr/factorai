@@ -59,7 +59,7 @@ fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
 
 #[tauri::command]
 pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
-	state.db.with(list_projects_in)
+	state.db.read(list_projects_in)
 }
 
 /// Every project in the workspace, flat and by name.
