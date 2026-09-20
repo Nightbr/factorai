@@ -64,16 +64,27 @@ export function RoutinesMini() {
 			</div>
 			<ul className={styles.nextRuns}>
 				<li>
-					<small>next</small>Tomorrow 02:00
+					<small>next</small>
+					<span className={styles.nextIdle}>Tomorrow 02:00</span>
+					<span className={styles.nextNow}>02:00 · now</span>
 				</li>
 				<li>
 					<small>then</small>Sat 02:00 · Sun 02:00 · Mon 02:00
 				</li>
 			</ul>
-			<div className={styles.fire}>
-				<i className={`${styles.dot} ${styles.dotBackground}`} />
-				<span>
+			{/* Three states of the same row: waiting, running with no tab, done. */}
+			<div className={styles.fireRow}>
+				<span className={styles.fireIdle}>
+					<i className={styles.dot} />
+					nightly triage <small>waiting for 02:00</small>
+				</span>
+				<span className={styles.fireRunning}>
+					<i className={`${styles.dot} ${styles.dotBackground}`} />
 					nightly triage <small>running, no tab</small>
+				</span>
+				<span className={styles.fireDone}>
+					<i className={styles.dot} data-status="working" />
+					nightly triage <small>done · 4 issues labelled, 2 replies drafted</small>
 				</span>
 			</div>
 		</div>

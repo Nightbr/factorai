@@ -536,20 +536,114 @@
 	color: var(--hud);
 }
 
-.fire {
+/* The clock and the run, on one six-second cycle: waiting, then 02:00 comes
+   and the routine runs in the background, then it is done. One keyframe set
+   per state, no delays, so they cannot drift. */
+.nextIdle,
+.nextNow {
+	grid-area: 1 / 1;
+}
+
+.nextRuns li:first-child {
+	display: grid;
+	grid-template-columns: 36px 1fr;
+	align-items: center;
+}
+
+.nextRuns li:first-child small {
+	grid-column: 1;
+}
+
+.nextRuns li:first-child > span {
+	grid-column: 2;
+	grid-row: 1;
+}
+
+.nextNow {
+	color: var(--fa-primary);
+	opacity: 0;
+	animation: fireOn 6s steps(1, end) infinite;
+}
+
+.nextIdle {
+	animation: fireOff 6s steps(1, end) infinite;
+}
+
+.fireRow {
+	position: relative;
+	height: var(--row);
+	margin-top: 6px;
+	border-top: 1px solid var(--fa-border);
+}
+
+.fireRow > span {
+	position: absolute;
+	inset: 0;
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	height: var(--row);
 	padding: 0 8px;
-	margin-top: 6px;
-	border-top: 1px solid var(--fa-border);
-	animation: appear 4.5s ease-in-out infinite;
+	white-space: nowrap;
+	overflow: hidden;
 }
 
-.fire small {
+.fireRow small {
 	color: var(--muted);
 	margin-left: 6px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fireIdle {
+	animation: fireOff 6s steps(1, end) infinite;
+}
+
+.fireRunning {
+	opacity: 0;
+	animation: fireOn 6s steps(1, end) infinite;
+}
+
+.fireDone {
+	opacity: 0;
+	animation: fireDone 6s steps(1, end) infinite;
+}
+
+/* waiting 0–22%, running 22–58%, done 58–100% */
+@keyframes fireOff {
+	0%,
+	22% {
+		opacity: 1;
+	}
+	22.1%,
+	100% {
+		opacity: 0;
+	}
+}
+
+@keyframes fireOn {
+	0%,
+	22% {
+		opacity: 0;
+	}
+	22.1%,
+	58% {
+		opacity: 1;
+	}
+	58.1%,
+	100% {
+		opacity: 0;
+	}
+}
+
+@keyframes fireDone {
+	0%,
+	58% {
+		opacity: 0;
+	}
+	58.1%,
+	100% {
+		opacity: 1;
+	}
 }
 
 /* Search: a query typed, hits arriving. */
