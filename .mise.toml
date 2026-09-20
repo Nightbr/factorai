@@ -10,6 +10,10 @@ NODE_ENV = "development"
 description = "Start desktop app in development mode"
 run = "turbo dev --filter=@factorai/desktop"
 
+[tasks.docs]
+description = "Start the site (hero + guide) on http://localhost:3210/factorai/"
+run = "pnpm --filter @factorai/docs start"
+
 [tasks.build]
 description = "Build all packages and apps"
 run = "turbo build"

@@ -31,8 +31,8 @@ pnpm dev                  # tauri dev — the full app
 
 Inside `apps/desktop`: `pnpm vite:dev` runs the renderer alone with a mocked
 Tauri bridge; `pnpm tauri build` produces `.app` / `.dmg` / `.AppImage`.
-The site is `pnpm --filter @factorai/docs start` (port 3210); it is deliberately
-not part of `pnpm dev`.
+The site is `mise run docs` (or `pnpm --filter @factorai/docs start`), on port
+3210; it is deliberately not part of `pnpm dev`.
 
 ## Before you start
 
