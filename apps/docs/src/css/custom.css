@@ -61,7 +61,16 @@ body[data-fa-intro] .navbar {
 
 .navbar__logo {
 	height: 1.25rem;
-	margin-right: 0.5rem;
+	margin-right: 0;
+}
+
+/* The lockup's gap is the app's: 8px between mark and wordmark (B5a). */
+.navbar__brand {
+	margin-right: 8px;
+}
+
+.navbar__items .navbar__item:has(> .navbar-wordmark) {
+	padding-left: 0;
 }
 
 .navbar-wordmark {
@@ -70,7 +79,6 @@ body[data-fa-intro] .navbar {
 	letter-spacing: -0.04em;
 	color: var(--fa-foreground);
 	text-decoration: none;
-	margin-right: 0.5rem;
 }
 
 .navbar-wordmark:hover {
