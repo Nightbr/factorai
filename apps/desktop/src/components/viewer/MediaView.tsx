@@ -52,6 +52,8 @@ export function containerName(mime: string): string {
 	return CONTAINER_NAMES[mime] ?? mime;
 }
 
+const GONE = 'The file could not be read — it may have been moved or deleted.';
+
 /**
  * The sentence for a media element that gave up, or `null` to keep playing.
  *
@@ -59,24 +61,51 @@ export function containerName(mime: string): string {
  * like — closing the tab, switching file, navigating away — and reporting it
  * would flash an error card over a view that is already unmounting.
  *
- * `NETWORK` is the only code with a cause outside the codec. Over the asset
- * protocol there is no network, so it means the file moved, was deleted, or the
- * grant no longer matches — all of which the reader fixes the same way.
+ * **The element's code alone cannot tell a missing file from an unplayable
+ * one.** A file that has gone since the probe makes the asset protocol answer
+ * `404`, and the element calls an unusable response `SRC_NOT_SUPPORTED` — the
+ * same code it reports for a container it cannot demux. Blaming the codec for a
+ * deleted file is exactly the wrong sentence in an app where an agent moves
+ * files under the reader, so `status` carries what the transport said: the
+ * caller asks for one byte and reports what came back. `null` means the check
+ * itself could not be made, and the codec reading stands.
  *
- * Everything else — `DECODE`, `SRC_NOT_SUPPORTED` — is the webview declining the
- * container, and the two are not worth telling apart: a half-supported format
- * that dies mid-stream and one refused at the first byte leave the reader with
- * the same problem. Naming the container is what helps, because this failure is
- * platform-shaped rather than file-shaped (specs/05-features.md F7 § "Video and
- * audio"): Matroska does not demux in WKWebView at all, so the same `.mkv` that
- * plays on Linux lands here on macOS.
+ * `NETWORK` needs no status. It is a stream that died after starting, which
+ * over a local protocol means the file went away mid-read.
+ *
+ * Everything left is the webview declining the container, and naming it is what
+ * helps, because this failure is platform-shaped rather than file-shaped
+ * (specs/05-features.md F7 § "Video and audio"): Matroska does not demux in
+ * WKWebView at all, so the same `.mkv` that plays on Linux lands here on macOS.
  */
-export function mediaErrorMessage(code: number, mime: string): string | null {
+export function mediaErrorMessage(
+	code: number,
+	mime: string,
+	status: number | null,
+): string | null {
 	if (code === MEDIA_ERR_ABORTED) return null;
-	if (code === MEDIA_ERR_NETWORK) {
-		return 'The file could not be read — it may have been moved or deleted.';
-	}
+	if (code === MEDIA_ERR_NETWORK) return GONE;
+	// Anything the transport refused is a transport problem, whatever the
+	// element decided to call it.
+	if (status !== null && (status < 200 || status >= 300)) return GONE;
 	return `This webview can't decode ${containerName(mime)}. Open it in another app to play it.`;
+}
+
+/**
+ * What the transport says about a source the element just refused — the status
+ * of a one-byte range request, or `null` if even asking failed.
+ *
+ * One byte rather than a `HEAD`, because a range is what the protocol is built
+ * to answer and what it has already been answering; a `HEAD` is a shape neither
+ * the asset protocol nor the smoke lane's intercept is written for.
+ */
+async function transportStatus(src: string): Promise<number | null> {
+	try {
+		const res = await fetch(src, { headers: { Range: 'bytes=0-0' } });
+		return res.status;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -160,7 +189,14 @@ export function MediaView({ path }: { path: string }) {
 						path={path}
 						probe={probe}
 						onMeta={setMeta}
-						onFailure={(code) => setFailure(mediaErrorMessage(code, probe.mime))}
+						onFailure={(code) => {
+							if (code === MEDIA_ERR_ABORTED) return;
+							// The status decides which sentence this is, so the card
+							// waits for it rather than showing the wrong one first.
+							void transportStatus(mediaSrc(probe.path)).then((status) =>
+								setFailure(mediaErrorMessage(code, probe.mime, status)),
+							);
+						}}
 					/>
 				)}
 			</div>

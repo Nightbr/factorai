@@ -6,32 +6,53 @@ describe('mediaErrorMessage', () => {
 	it('says nothing for an abort, which is what a close looks like', () => {
 		// Code 1 is MEDIA_ERR_ABORTED. Reporting it would flash an error card
 		// over a view that is already unmounting.
-		expect(mediaErrorMessage(1, 'video/mp4')).toBeNull();
+		expect(mediaErrorMessage(1, 'video/mp4', 206)).toBeNull();
 	});
 
-	it('blames the file, not the codec, for a network error', () => {
-		// There is no network behind the asset protocol, so this one means the
-		// file moved or went away.
-		expect(mediaErrorMessage(2, 'video/mp4')).toMatch(/moved or deleted/);
+	it('blames the file, not the codec, for a stream that died', () => {
+		// Code 2 is MEDIA_ERR_NETWORK. There is no network behind the asset
+		// protocol, so it means the file went away mid-read.
+		expect(mediaErrorMessage(2, 'video/mp4', null)).toMatch(/moved or deleted/);
 	});
 
-	it('names the container for a decode failure, because that is the fix', () => {
+	it('names the container for a decode failure the transport served fine', () => {
 		// The failure this mostly serves: a .mkv on macOS, where WKWebView will
-		// not demux Matroska at all.
-		const message = mediaErrorMessage(3, 'video/x-matroska');
+		// not demux Matroska at all. 206 means the bytes arrived — so the codec
+		// really is the problem.
+		const message = mediaErrorMessage(3, 'video/x-matroska', 206);
 		expect(message).toContain('Matroska (.mkv)');
 		expect(message).toMatch(/another app/);
+	});
+
+	it('blames the file when the transport refused it, whatever the element said', () => {
+		// The bug this exists for: a file deleted between the probe and the
+		// fetch makes the protocol answer 404, and the element reports that as
+		// SRC_NOT_SUPPORTED — the same code an undecodable container gets.
+		// Saying "can't decode MP4" about a file that is simply gone is the
+		// wrong sentence, and in this app an agent deleting a file under the
+		// reader is ordinary.
+		expect(mediaErrorMessage(4, 'video/mp4', 404)).toMatch(/moved or deleted/);
+		expect(mediaErrorMessage(4, 'video/mp4', 403)).toMatch(/moved or deleted/);
+		expect(mediaErrorMessage(3, 'video/mp4', 500)).toMatch(/moved or deleted/);
+	});
+
+	it('falls back to the codec reading when the status could not be had', () => {
+		// `null` is "we could not even ask". Guessing the file is gone on no
+		// evidence would be the same mistake in the other direction.
+		expect(mediaErrorMessage(4, 'video/webm', null)).toMatch(/can't decode WebM/);
 	});
 
 	it('treats an unsupported source the same as a failed decode', () => {
 		// Refused at the first byte and dying mid-stream leave the reader with
 		// the same problem, so they get the same sentence.
-		expect(mediaErrorMessage(4, 'video/webm')).toEqual(mediaErrorMessage(3, 'video/webm'));
+		expect(mediaErrorMessage(4, 'video/webm', 206)).toEqual(
+			mediaErrorMessage(3, 'video/webm', 206),
+		);
 	});
 
 	it('falls back to the mime rather than inventing a name', () => {
 		expect(containerName('video/x-unheard-of')).toBe('video/x-unheard-of');
-		expect(mediaErrorMessage(3, 'video/x-unheard-of')).toContain('video/x-unheard-of');
+		expect(mediaErrorMessage(3, 'video/x-unheard-of', 200)).toContain('video/x-unheard-of');
 	});
 });
 

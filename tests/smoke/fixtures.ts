@@ -20,6 +20,7 @@ import type {
 	GitStatus,
 	GitWorktree,
 	ImageContents,
+	MediaProbe,
 	ImportCandidate,
 	PdfContents,
 	Profile,
@@ -34,6 +35,9 @@ import type {
 	TerminalId,
 	SidebarRow,
 } from '@factorai/types';
+import { readFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
+
 import type { Page } from '@playwright/test';
 
 export interface TestFixture {
@@ -80,6 +84,11 @@ export interface TestFixture {
 	/** Images keyed by absolute path (F7 viewer). An image-looking path that
 	 *  isn't listed rejects, which is how the binary-card fallback is reached. */
 	images?: Record<string, ImageContents>;
+	/** Media probes keyed by absolute path (F7 viewer, ADR-0056). Same rule as
+	 *  `images`: an unlisted media path rejects and reaches the binary card.
+	 *  The bytes are not here — `probe_media` never carries any — and the file
+	 *  the element fetches is served by `serveMediaFixtures` below. */
+	media?: Record<string, MediaProbe>;
 	/** Repository state keyed by project path (F13 Changes tab). An unlisted
 	 *  project has no repository — the "Not a git repository" state. */
 	gitStatuses?: Record<string, GitStatus>;
@@ -135,9 +144,89 @@ declare global {
  */
 export async function installMockBridge(page: Page, fixture: TestFixture): Promise<void> {
 	watchForRendererTrouble(page);
+	await serveMediaFixtures(page);
 	await page.addInitScript((fx) => {
 		(window as unknown as { __FACTORAI_TEST__: typeof fx }).__FACTORAI_TEST__ = fx;
 	}, fixture);
+}
+
+/** Where `mediaSrc()` points outside Tauri. Mirrors `MEDIA_MOCK_PREFIX` in
+ *  `lib/tauri.ts`; one string in two places because this file is outside the
+ *  renderer's module graph. */
+const MEDIA_PREFIX = '/__media/';
+
+/** The committed fixtures, beside this file. `__dirname` rather than
+ *  `import.meta.url`: the repo is CJS, and Playwright's transform leaves the
+ *  latter as an `exports` reference that throws before a single test runs. */
+const MEDIA_DIR = join(__dirname, 'fixtures', 'media');
+
+/** Enough to serve what `fixtures/media/` holds. The real protocol sniffs; this
+ *  only has to name the files committed beside it. */
+const MEDIA_TYPES: Record<string, string> = {
+	'.mp4': 'video/mp4',
+	'.webm': 'video/webm',
+	'.mp3': 'audio/mpeg',
+};
+
+/**
+ * Serve the committed media fixtures to the `<video>` / `<audio>` element
+ * (F7, ADR-0056).
+ *
+ * **A route intercept rather than a file the dev server hosts.** `public/` is
+ * copied verbatim into the shipped `.app` and `.AppImage`, so a fixture placed
+ * there would ride into the release; a Vite middleware would put test-only
+ * plumbing in the renderer's build config and create a URL that exists in dev
+ * and 404s in the shipped app. This is neither — it lives in the test lane.
+ *
+ * **It answers ranges**, because Chromium's media element asks for them and a
+ * flat `200` makes it give up on a file it could otherwise play. That is the
+ * same `206` / `Content-Range` contract Tauri's asset protocol implements for
+ * the real thing, which is what keeps the fixture honest about the shape of
+ * what it stands in for.
+ *
+ * A path the directory does not have is fulfilled as a 404, which is how a spec
+ * reaches the element's error card without committing a deliberately broken
+ * file.
+ */
+async function serveMediaFixtures(page: Page): Promise<void> {
+	await page.route(`**${MEDIA_PREFIX}*`, async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		const asked = decodeURIComponent(path.slice(path.indexOf(MEDIA_PREFIX) + MEDIA_PREFIX.length));
+		// The basename only, and only from the fixture directory: the renderer
+		// hands us whatever absolute path a fixture declared, and nothing in a
+		// test should be able to turn that into a read anywhere on this machine.
+		const file = join(MEDIA_DIR, basename(asked));
+		let body: Buffer;
+		try {
+			body = await readFile(file);
+		} catch {
+			await route.fulfill({ status: 404, body: '' });
+			return;
+		}
+
+		const contentType = MEDIA_TYPES[extname(asked).toLowerCase()] ?? 'application/octet-stream';
+		const range = /^bytes=(\d*)-(\d*)$/.exec(route.request().headers().range ?? '');
+		if (!range) {
+			await route.fulfill({
+				status: 200,
+				headers: { 'content-type': contentType, 'accept-ranges': 'bytes' },
+				body,
+			});
+			return;
+		}
+
+		const start = range[1] ? Number(range[1]) : 0;
+		const end = range[2] ? Math.min(Number(range[2]), body.length - 1) : body.length - 1;
+		await route.fulfill({
+			status: 206,
+			headers: {
+				'content-type': contentType,
+				'accept-ranges': 'bytes',
+				'content-range': `bytes ${start}-${end}/${body.length}`,
+			},
+			body: body.subarray(start, end + 1),
+		});
+	});
 }
 
 /**
@@ -672,6 +761,14 @@ const LOCKED_PDF =
 	'MjAzMDQwNTA2MDcwODA5MGEwYjBjMGQwZTBmPiA8MDAwMTAyMDMwNDA1MDYwNzA4MDkwYTBi' +
 	'MGMwZDBlMGY+XSA+PgpzdGFydHhyZWYKNjA0CiUlRU9GCg==';
 
+/** One media probe. No bytes, because `probe_media` carries none — the file the
+ *  element fetches is whatever `serveMediaFixtures` finds under the same
+ *  basename in `fixtures/media/`. `path` is the canonical one the renderer must
+ *  ask for (ADR-0056); in a fixture it is simply the path itself. */
+function media(path: string, kind: MediaProbe['kind'], mime: string, size: number): MediaProbe {
+	return { path, kind, mime, size };
+}
+
 function pdf(path: string, over: Partial<PdfContents> = {}): PdfContents {
 	return { path, base64: TWO_PAGE_PDF, size: 850, ...over };
 }
@@ -731,6 +828,17 @@ export function fixtureWithFileTree(): TestFixture {
 				entry(root, 'broken.png'),
 				entry(root, 'spec.pdf'),
 				entry(root, 'locked.pdf'),
+				entry(root, 'clip.mp4'),
+				entry(root, 'clip.webm'),
+				entry(root, 'song.mp3'),
+				// Declared in the tree and *not* in `media` below, the way
+				// `broken.png` is left out of `images`: the probe rejects it and
+				// the binary card is what the reader gets.
+				entry(root, 'notreally.mp4'),
+				// Probed fine and served as a 404 by `serveMediaFixtures`, because
+				// no such file sits in `fixtures/media/` — which is the element's
+				// own error card, reached without committing a broken file.
+				entry(root, 'vanished.mp4'),
 				entry(root, 'data.bin'),
 				entry(root, 'huge.log'),
 				entry(root, 'main.py'),
@@ -859,6 +967,12 @@ export function fixtureWithFileTree(): TestFixture {
 		images: { [`${root}/logo.png`]: image(`${root}/logo.png`) },
 		// `notreally.pdf` is missing for the same reason on the PDF side: routed
 		// here by extension, refused by the backend for its magic bytes.
+		media: {
+			[`${root}/clip.mp4`]: media(`${root}/clip.mp4`, 'video', 'video/mp4', 4932),
+			[`${root}/clip.webm`]: media(`${root}/clip.webm`, 'video', 'video/webm', 752),
+			[`${root}/song.mp3`]: media(`${root}/song.mp3`, 'audio', 'audio/mpeg', 4407),
+			[`${root}/vanished.mp4`]: media(`${root}/vanished.mp4`, 'video', 'video/mp4', 4932),
+		},
 		pdfs: {
 			[`${root}/spec.pdf`]: pdf(`${root}/spec.pdf`),
 			[`${root}/locked.pdf`]: pdf(`${root}/locked.pdf`, { base64: LOCKED_PDF, size: 898 }),

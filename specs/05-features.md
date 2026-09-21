@@ -1284,10 +1284,18 @@ preview binary file", which is a true sentence about the wrong problem.
   the arrows reach the native controls once the element has focus; the pane
   keeps `Escape`, `Mod+W` and the tab steps, none of which the controls claim.
 - **A format the webview cannot decode says which and why.** On the element's
-  `error` the player is replaced by a card naming the `MediaError`:
-  `DECODE` / `SRC_NOT_SUPPORTED` name the container and point at the app that
-  can open it, `NETWORK` says the file may have been moved or deleted, and
-  `ABORTED` is ignored because it is what a close looks like. Both carry the
+  `error` the player is replaced by a card. `ABORTED` is ignored — it is what a
+  close looks like. `NETWORK` says the file may have been moved or deleted.
+  Everything else names the container and points at the app that can open it —
+  **but only once the transport has been asked**. The element's own code cannot
+  tell a missing file from an unplayable one: a file that has gone since the
+  probe makes the protocol answer `404`, and the element reports an unusable
+  response as `SRC_NOT_SUPPORTED`, the same code it gives a container it cannot
+  demux. So the card first fetches one byte and reads the status, and any
+  refusal is reported as a file that went away. Blaming the codec for a deleted
+  file would be the wrong sentence in an app where an agent moves files under
+  the reader; a status that cannot be had at all leaves the codec reading to
+  stand. Both carry the
   binary card's own **Open in default app**, and the footer stays — the file's
   facts are still true. This is not hypothetical and it is not uniform:
   **Matroska does not demux in WKWebView at all**, so a `.mkv` that plays on
