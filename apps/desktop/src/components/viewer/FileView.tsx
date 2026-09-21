@@ -1,4 +1,5 @@
 import { ImageView } from '@components/viewer/ImageView';
+import { MediaView } from '@components/viewer/MediaView';
 import { MarkdownView } from '@components/viewer/MarkdownView';
 import {
 	BinaryCard,
@@ -93,12 +94,23 @@ interface FileViewProps {
  * A PDF is the same bargain again: `read_file` would find a null byte in the
  * first 8KB and hand back the binary card, which is what a `.pdf` used to get.
  *
+ * Media is the third, and the one that could never have been anything else: a
+ * recording is larger than any cap worth having and the element wants ranges
+ * rather than the file, so it streams over the asset protocol and nothing but
+ * the verdict crosses the bridge (ADR-0056). `iconKeyFor`'s `video` and `audio`
+ * keys are the same reuse `image` is — the viewer and the tree's icon cannot
+ * disagree about what a file is.
+ *
  * Routing is by extension because it is free; the *decision* is the backend's,
  * from the magic bytes. A `.png` that isn't one lands in the fallback card.
  */
 export function FileView({ path, position, onOpenPath }: FileViewProps) {
 	const iconKey = iconKeyFor(basename(path));
 	if (iconKey === 'image') return <ImageView path={path} />;
+	// **Keyed by path**, for the reason the text view is: everything a player
+	// holds is one file's playback state, and carrying it into the next file
+	// would resume a new video at the last one's timestamp.
+	if (iconKey === 'video' || iconKey === 'audio') return <MediaView key={path} path={path} />;
 	if (iconKey === 'pdf') {
 		return (
 			<Suspense fallback={<Centered>Loading PDF viewer…</Centered>}>

@@ -62,7 +62,17 @@
 		"jsx-a11y/no-autofocus": "off",
 		"jsx-a11y/no-static-element-interactions": "off",
 		"jsx-a11y/no-noninteractive-element-interactions": "off",
-		"jsx-a11y/prefer-tag-over-role": "off"
+		"jsx-a11y/prefer-tag-over-role": "off",
+
+		// The one a11y rule this repo cannot satisfy rather than one it declines
+		// to. `media-has-caption` wants a `<track kind="captions">` on every
+		// `<audio>` / `<video>`; the viewer plays whatever file is in the user's
+		// project (specs/05-features.md F7 § "Video and audio"), and there is no
+		// caption track to point at and none that can be synthesised. The
+		// alternatives are worse than the rule: a `<track>` with an empty `src`
+		// is a broken request and a lie to a screen reader, and `muted`, which
+		// the rule also accepts, would silence every file the viewer opens.
+		"jsx-a11y/media-has-caption": "off"
 	},
 
 	// oxlint reads `.gitignore`; these are the paths it would otherwise walk

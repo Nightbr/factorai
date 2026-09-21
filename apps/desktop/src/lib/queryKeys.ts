@@ -34,6 +34,11 @@ export const queryKeys = {
 	/** One PDF's bytes. Its own namespace for the same reason `image` is: the
 	 *  path decides which command answers, and only one ever does. */
 	pdf: (path: string) => ['pdf', path] as const,
+	/** One media file's probe (F7, ADR-0056) — the verdict and the canonical
+	 *  path, never the bytes. Its own namespace for the reason `image` and `pdf`
+	 *  have one, and the entry a reopen must refetch: the grant it carries is
+	 *  what makes the URL fetchable. */
+	media: (path: string) => ['media', path] as const,
 	/** Whether `sops` can be driven at all (F27). No path in the key: the answer
 	 *  is one per machine, the probe is cached in Rust for the run, and every
 	 *  encrypted file asks the same question. */
