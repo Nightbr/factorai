@@ -6,6 +6,8 @@ import { type MutableRefObject, useEffect, useRef } from 'react';
 import { type DiffMode, parseCommitRange } from '@hooks/useFileViewer';
 import { useEditBuffer } from '@hooks/useEditBuffer';
 import { diffEditsWorktree, diffReadOnlyReason, eolOf, readOnlyReason } from '@lib/editable';
+import { iconKeyFor } from '@lib/fileIcon';
+import { MediaView } from '@components/viewer/MediaView';
 import { formatBytes } from '@lib/format';
 import { cmd } from '@lib/tauri';
 import { IMMUTABLE_REV, REREAD_ON_OPEN } from '@lib/viewerQuery';
@@ -138,7 +140,49 @@ function basename(path: string): string {
  * diff would offer to save one into the other.
  */
 export function DiffView({ path, mode, sides = null }: DiffViewProps) {
+	// **Media is played, not compared** (F7, ADR-0056), and only where the file
+	// on disk is one of the sides. `diffEditsWorktree` is already the answer to
+	// that question: `unstaged` and `head` put the worktree on the right, while
+	// `staged` compares against the index and a commit range and F18's supplied
+	// `sides` compare two git objects — and an object has no path for the asset
+	// protocol to serve, so those keep the binary message below.
+	//
+	// Intercepted here rather than inside, so none of the edit-buffer machinery
+	// mounts for a file it could never write.
+	const iconKey = iconKeyFor(basename(path));
+	if ((iconKey === 'video' || iconKey === 'audio') && !sides && diffEditsWorktree(mode)) {
+		return <MediaDiff key={path} path={path} />;
+	}
 	return <DiffViewInner key={`${mode}:${path}`} path={path} mode={mode} sides={sides} />;
+}
+
+/**
+ * The working copy of a media file, with the one sentence that stops it reading
+ * as a comparison (F7).
+ *
+ * There is no before-and-after here and there cannot be: the other side is a git
+ * object, and playing one would mean writing it to a temp file and granting that
+ * — a lifetime with no owner, for a comparison almost nobody makes. So this
+ * shows what is on disk and says so, rather than the binary message a reader
+ * gets for every other binary in a diff.
+ *
+ * The inline / side-by-side toggle is absent rather than disabled, because it
+ * belongs to the editor this does not mount.
+ */
+function MediaDiff({ path }: { path: string }) {
+	return (
+		<div className="flex min-h-0 flex-1 flex-col">
+			<p
+				data-testid="media-diff-note"
+				className="shrink-0 border-border border-b bg-card px-3 py-1 text-muted-foreground text-xs"
+			>
+				Working copy — media files are not compared
+			</p>
+			<div className="flex min-h-0 flex-1 flex-col">
+				<MediaView path={path} />
+			</div>
+		</div>
+	);
 }
 
 function DiffViewInner({ path, mode, sides = null }: DiffViewProps) {

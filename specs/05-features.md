@@ -1304,9 +1304,13 @@ preview binary file", which is a true sentence about the wrong problem.
   `diffEditsWorktree(mode)`, which is the existing answer to "does this mode put
   the file on disk on the right": `unstaged` and `head` play it, under a muted
   line reading **"Working copy — media files are not compared"** with the
-  inline / side-by-side toggle hidden. `staged`, a commit range and F18's
+  inline / side-by-side toggle hidden — absent rather than disabled, because it
+  belongs to the editor this does not mount. `staged`, a commit range and F18's
   supplied sides keep the binary message, because those bytes are git objects
-  and the asset protocol can only serve a path. A deletion diff keeps it too.
+  and the asset protocol can only serve a path. A file **deleted** in the
+  worktree reaches the probe and is refused by it, so it lands on the binary
+  card saying the path is not there — which is a truer sentence than "cannot
+  preview binary file" for a file that is simply gone.
 
 **Find — `Cmd/Ctrl+F`** (shipped 2026-09-09). Monaco's own find widget, and
 **this section claimed it for a year while it did nothing.** The claim was
