@@ -16,7 +16,8 @@
 		"deps:check": "syncpack list-mismatches",
 		"deps:fix": "syncpack fix-mismatches",
 		"deps:unused": "knip",
-		"bytes:check": "node scripts/check-text-bytes.mjs"
+		"bytes:check": "node scripts/check-text-bytes.mjs",
+		"capture:hero": "node scripts/capture-hero-video.mjs"
 	},
 	"devDependencies": {
 		"@playwright/test": "1.60.0",

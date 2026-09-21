@@ -3,6 +3,32 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The launch film — `seq 03` to `seq 05`, captured for a feed** — 2026-09-21.
+  `assets/brand/factorai-hero.mp4` (1080x1080, 60fps, 10.1s, silent) and a VP9 sibling for a
+  page embed, produced by `scripts/capture-hero-video.mjs`: a headed Chromium plays the built
+  site on the GPU while `ffmpeg`'s `x11grab` records its viewport and the script walks the steps
+  with `ArrowDown` — the visitor's own `scrollToStep` path, not a synthetic timeline. The still
+  card of B5b is `seq 05` photographed; this is the same idea moving.
+
+  **Square, at 540 CSS pixels and device pixel ratio 2**, because a feed plays a video about
+  550px wide and the hero's small type is clamped at the top of its `clamp()`: filmed at 1920 the
+  expansion line, the forge line and the URL are 0.7% of the frame — four pixels on a card, which
+  is how they read. Halving the CSS viewport doubles every ratio and DPR 2 puts the pixels back,
+  and it falls below the hero's own 760px breakpoint, which drops the left-hand HUD readout that
+  at that size was noise. The three mono lines are raised 1.25x for the capture only, the same
+  cold-read adaptation B5b makes when it swaps the card's line, and `factorai.build` is injected
+  into the page rather than composited in post so it is the site's own JetBrains Mono.
+
+  **Every beat is a hold after an observed event**, never an offset from the start: a keypress
+  buys a 0.8s ease plus a 0.5s scrub tail, and on `seq 05` the forge waits, fades the mark in and
+  drives it down before the strike, so a clock-anchored beat sheet drifts a second and a half and
+  cuts the wordmark off — which the first take did. The film opens 1.3s after the first keypress,
+  past the frames where `seq 02`'s outgoing line is still legible. Two measurements make it
+  reproducible: `t0` is found in the file by a white flash fired into the trimmed pre-roll,
+  because ffmpeg reports its first frame later than it captured it, and the capture rectangle is
+  found by grabbing a magenta border the page draws on its own edges, because
+  `outerHeight - innerHeight` was 6px out and took a strip of the window with it.
+
 - **The site, its domain and the hero one-pager — items 39 and 58** — 2026-09-21, the last of
   it landing the day the domain resolved. `factorai.build` is live, it is one Docusaurus build,
   and its index is the page that sells the app.

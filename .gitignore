@@ -71,3 +71,8 @@ apps/desktop/installer/factorai-setup-*.exe
 # pdf.js assets above — and its *absence* is what tells a local build it is not a
 # release (ADR-0049), so committing one would make every dev build lie.
 apps/desktop/public/build-info.json
+
+# Where scripts/capture-hero-video.mjs works: the raw lossless take and the
+# frames pulled out of it while judging a cut. The film itself is committed to
+# assets/brand/; a 5MB raw take per retake is not.
+.capture/
