@@ -1,11 +1,12 @@
 <div align="center">
 
-<img src="assets/brand/factorai-lockup.png" alt="factorai" width="200">
+<a href="https://factorai.build"><img src="assets/brand/factorai-lockup.png" alt="factorai" width="200"></a>
 
 ### IDE is dead. Long live the ADE
 
 Agentic Development Environment for the AI era
 
+[![site: factorai.build](https://img.shields.io/badge/site-factorai.build-FFB020?style=flat-square&labelColor=272B31)](https://factorai.build)
 [![status: alpha](https://img.shields.io/badge/status-alpha-FFB020?style=flat-square&labelColor=272B31)](https://github.com/Nightbr/factorai/releases)
 [![platform: macOS and Linux](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-3A4048?style=flat-square&labelColor=272B31)](#install)
 [![CI](https://img.shields.io/github/actions/workflow/status/Nightbr/factorai/quality.yml?branch=main&style=flat-square&labelColor=272B31&color=FFB020&label=CI)](https://github.com/Nightbr/factorai/actions/workflows/quality.yml)
