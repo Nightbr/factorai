@@ -565,6 +565,41 @@ export interface PdfContents {
 	size: number;
 }
 
+/**
+ * Which element the viewer mounts for a media file (F7).
+ *
+ * Decided in Rust from the extension, not the bytes, because the bytes often
+ * cannot tell: an `.m4a` and an `.mp4` are both `ftyp`. The container sniff
+ * answers the other question — whether this is media at all.
+ */
+export type MediaKind = 'video' | 'audio';
+
+/**
+ * One playable file, and the permission to fetch it (F7, ADR-0056).
+ * Mirrors the Rust `MediaProbe`.
+ *
+ * **Carries no bytes**, which is what separates it from `ImageContents` and
+ * `PdfContents`. Video streams over the asset protocol in the ranges the
+ * element asks for, so all that crosses the bridge is the verdict.
+ */
+export interface MediaProbe {
+	/** The **canonical** path — what `probe_media` granted to the asset protocol
+	 *  and therefore the only path `mediaSrc()` may be given. The protocol
+	 *  canonicalizes a request before matching it against the scope, so asking
+	 *  for the path you started with can be refused when it ran through a
+	 *  symlink. */
+	path: string;
+	kind: MediaKind;
+	/** The container's own type where the magic bytes name one, the type implied
+	 *  by the extension where they do not. Unlike `ImageContents.mime` this is
+	 *  not a promise that the bytes were recognised: an unrecognised container is
+	 *  played anyway, and the element's error is what refuses it. */
+	mime: string;
+	/** Size on disk, in bytes. No cap to compare it against — it is here for the
+	 *  viewer's footer. */
+	size: number;
+}
+
 // ── IPC events (Rust → JS) ──────────────────────────────────────────────────
 
 export interface IndexerProgressEvent {

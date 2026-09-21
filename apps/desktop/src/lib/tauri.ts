@@ -13,6 +13,7 @@ import type {
 	IdeOpenFileEvent,
 	IdeStatusEvent,
 	IndexerProgressEvent,
+	MediaProbe,
 	Mention,
 	PathKind,
 	PdfContents,
@@ -151,6 +152,15 @@ export const cmd = {
 	 *  instead of failing inside pdf.js. */
 	readPdf: (path: string, maxBytes?: number | null) =>
 		invoke<PdfContents>('read_pdf', { path, maxBytes }),
+	/** Decide whether a file can be played and grant the webview permission to
+	 *  fetch it (F7, ADR-0056). Rejects anything whose bytes are positively
+	 *  something else — a picture, a PDF, an archive, text — which is the
+	 *  binary-card fallback; an unrecognised *container* is not a rejection,
+	 *  because the element's demuxer is better than ours.
+	 *
+	 *  **Use the `path` it answers with, never the one you asked about.** That
+	 *  one is canonical, and it is what was granted. */
+	probeMedia: (path: string) => invoke<MediaProbe>('probe_media', { path }),
 	/** Whether `sops` can be driven at all (F27). Answered from the resolved
 	 *  child PATH and cached in Rust for the run — the viewer asks before it
 	 *  offers Decrypt, so a missing or too-old install is a disabled control
@@ -653,6 +663,11 @@ interface TestFixture {
 	/** PDFs keyed by absolute path, for the F7 viewer. Same rule as `images`:
 	 *  a `.pdf` path that isn't listed rejects, reaching the binary card. */
 	pdfs?: Record<string, PdfContents>;
+	/** Media probes keyed by absolute path, for the F7 viewer. Same rule as
+	 *  `images`: a media-looking path that isn't listed rejects, reaching the
+	 *  binary card. The bytes themselves never come through the bridge — the
+	 *  smoke lane serves them over `mediaSrc`. */
+	media?: Record<string, MediaProbe>;
 	/** Repository state keyed by project path, for the F13 Changes tab. */
 	gitStatuses?: Record<string, GitStatus>;
 	/** Blobs keyed by `<rev>:<absolute path>`, for diff fixtures. `<rev>` is
@@ -1058,6 +1073,15 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// one — a fixture reaches the binary card by leaving the file out.
 			if (!pdf) throw { kind: 'InvalidInput', message: `not a PDF: ${path}` };
 			return pdf as unknown as T;
+		}
+		case 'probe_media': {
+			const path = String(args?.path ?? '');
+			const probe = fx?.media?.[path];
+			// Undeclared means "not media", the same way an undeclared image
+			// isn't one — a fixture reaches the binary card by leaving the file
+			// out.
+			if (!probe) throw { kind: 'InvalidInput', message: `not a media file: ${path}` };
+			return probe as unknown as T;
 		}
 		case 'sops_decrypt': {
 			// No `sops` and no keys in a browser: a fixture declares what the

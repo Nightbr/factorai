@@ -45,10 +45,16 @@ export function imageZoomPercent(scale: number): string {
  * One image, rendered, with zoom / pan / copy (F7).
  *
  * The bytes arrive base64 through `read_image` rather than over the asset
- * protocol, because that protocol wants a static path scope and the paths here
- * are "whatever project you opened". `read_file`'s validation already covers
- * this ground, so reusing the command boundary costs a 33% encoding overhead
- * and buys not having a second way into the filesystem.
+ * protocol. `read_file`'s validation already covers this ground, so reusing the
+ * command boundary costs a 33% encoding overhead on a file that was going to be
+ * held whole in memory anyway, and buys one way into the filesystem instead of
+ * two.
+ *
+ * **Media takes the other path** (ADR-0056), and that ADR narrows what this
+ * comment used to claim: the scope does not have to be static, it is granted a
+ * file at a time by `probe_media`. What survives is the reason a *picture* does
+ * not need it. A video does — it is larger than any cap worth having and it
+ * seeks — and a picture is neither.
  *
  * Anything the backend won't call an image — wrong magic bytes, over the size
  * limit — falls through to the same card a binary file gets, which already

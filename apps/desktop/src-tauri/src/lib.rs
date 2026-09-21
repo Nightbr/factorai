@@ -370,6 +370,7 @@ pub fn run() {
 			commands::files::read_file,
 			commands::files::write_file,
 			commands::files::read_image,
+			commands::files::probe_media,
 			commands::files::read_pdf,
 			commands::files::path_kinds,
 			commands::files::reveal_in_file_manager,

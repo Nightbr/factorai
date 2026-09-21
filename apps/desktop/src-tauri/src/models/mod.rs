@@ -435,6 +435,51 @@ pub struct PdfContents {
 	pub size: u64,
 }
 
+/// Which element the renderer mounts for a media file (F7).
+///
+/// Decided from the extension rather than the bytes, because the bytes often
+/// cannot tell: an `.m4a` and an `.mp4` are both `ftyp`, and a `.ogg` and an
+/// `.ogv` are both `OggS`. The container sniff answers a different question —
+/// *is this media at all* — and the two verdicts are kept apart for that
+/// reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MediaKind {
+	Video,
+	Audio,
+}
+
+/// One playable file, and the permission to fetch it (F7, ADR-0056).
+///
+/// Carries no bytes at all, which is what separates it from [`ImageContents`]
+/// and [`PdfContents`]. A video is streamed over the asset protocol in ranges
+/// the media element asks for, so the only thing that has to cross the IPC
+/// bridge is the verdict — is this media, what is it, how big — plus the
+/// canonical path the renderer turns into a URL.
+///
+/// **`path` is canonical, and callers must use *this* path rather than the one
+/// they asked about.** The asset protocol canonicalizes an incoming request
+/// before matching it against the scope, while the grant stores the pattern as
+/// it was given, so a symlinked path granted verbatim would be refused on
+/// fetch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaProbe {
+	/// The canonical path, which is both what was granted and what the renderer
+	/// must ask for.
+	pub path: String,
+	pub kind: MediaKind,
+	/// The container's own type where the magic bytes name one, and the type
+	/// implied by the extension where they do not. Unlike `ImageContents.mime`
+	/// this is not a promise the bytes were recognised — see
+	/// `services::files::probe_media` for why an unrecognised container is
+	/// still played.
+	pub mime: String,
+	/// True size on disk, in bytes. There is no cap to compare it against; it
+	/// is here for the viewer's footer.
+	pub size: u64,
+}
+
 /// Which side of git a blob is read from (F13). The worktree isn't here: that
 /// side is `read_file`, which already handles caps, binaries and lossy UTF-8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -17,8 +17,9 @@ commands/
                       #   session_transcript_path, set_session_pinned,
                       #   delete_session
   terminal.rs         # terminal_spawn, terminal_write, terminal_resize, terminal_kill, shell_spawn, shell_name
-  files.rs            # read_file, read_image, read_pdf, list_dir, path_kinds,
-                      #   watch_file, unwatch_file, reveal_in_file_manager
+  files.rs            # read_file, read_image, read_pdf, probe_media, list_dir,
+                      #   path_kinds, watch_file, unwatch_file,
+                      #   reveal_in_file_manager
                       #   (+ write_file — F26, planned)
   git.rs              # git_status, git_blob, git_graph, git_commit, git_blob_at
                       #   (+ git_worktrees — F21, planned)
@@ -43,7 +44,8 @@ services/
   search.rs           # FTS query builder + result hydration
   sessions.rs         # the small `sessions` reads something outside the
                       #   command layer needs — today, a recorded cwd
-  files.rs            # list_dir, read_file, read_image, read_pdf, path_kinds
+  files.rs            # list_dir, read_file, read_image, read_pdf, probe_media,
+                      #   path_kinds
   sops.rs             # what a SOPS-encrypted file looks like, and where the
                       #   `sops` binary is (F27)
   file_watch.rs       # FileWatch — the one watch on the file the viewer has
@@ -107,7 +109,8 @@ it does rather than of its contract; the ones that are, as of 2026-09-20:
   `sops_decrypt`, `sops_encrypt`, `check_claude_cli`, `validate_claude_binary`,
   `reveal_in_file_manager`.
 - **Walks the filesystem, or reads something large**: `list_import_candidates`,
-  `get_session_tail`, `read_image`, `read_pdf`, `delete_session` (the trash).
+  `get_session_tail`, `read_image`, `read_pdf`, `probe_media`, `delete_session`
+  (the trash).
 - **Opens a repository**: the six `git_*` commands, `set_session_worktree`,
   `ide_mention`.
 
@@ -313,6 +316,13 @@ read_image(path: String, max_bytes: Option<usize>) -> ImageContents
 // 32MB cap — larger than an image's because a scan legitimately is. No mime (it
 // can only be one thing) and no page count (pdf.js reads it from these bytes).
 read_pdf(path: String, max_bytes: Option<usize>) -> PdfContents
+// Media for the viewer (F7, ADR-0056): a verdict and a canonical path, and no
+// bytes at all — the element streams the file over the asset protocol in the
+// ranges it asks for. Reads 512 bytes to sniff the container and grants that one
+// file to `asset_protocol_scope()`, which is the only thing that ever widens it.
+// Refuses a positive mismatch (a picture, a PDF, an archive, text) and plays an
+// unrecognised container anyway; see the ADR for why those differ.
+probe_media(path: String) -> MediaProbe
 list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped, git-ignored flagged
 // Batch stat for the terminal's link provider (F19): is each of these a file,
 // a directory, or nothing? One call per hovered line, so it takes a list.

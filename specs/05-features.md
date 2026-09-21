@@ -1240,6 +1240,74 @@ host-agnostic, which is what makes three hosts possible at all.
   container on create, and inside a dialog that is mid-open-animation that
   measures zero.
 
+**Video and audio** (2026-09-21, user ask;
+[ADR-0056](adr/0056-the-asset-protocol-carries-media-one-file-at-a-time.md)).
+A fourth branch in `FileView`'s dispatch, beside the image and the PDF: `mkv`,
+`mp4`, `m4v`, `mov`, `webm`, `avi`, `ogv`, `mpg`, `mpeg`, `wmv`, `flv`, `m2ts`
+and `mts` mount a `<video>`, and `mp3`, `wav`, `flac`, `aac`, `ogg`, `opus`,
+`m4a` and `wma` mount an `<audio>`. Before this they reached `read_file`, hit a
+null byte in the first 8KB, and got the binary card — the one that says "Cannot
+preview binary file", which is a true sentence about the wrong problem.
+
+- **The bytes do not cross the bridge** (ADR-0056). `probe_media` answers with a
+  verdict and a canonical path, and the element streams the file itself over the
+  asset protocol, which serves the ranges it asks for. This is the one preview
+  command that reads no more than 512 bytes: a 2GB recording costs a `stat` and
+  a short read. The scope is granted one file at a time by that same command, so
+  a URL the webview can fetch exists only for a file a human opened.
+- **Routing is by extension and the verdict is the bytes'**, as it is for an
+  image — but the verdict is a *looser* one, and ADR-0056 says why. A container
+  the sniff cannot name is still played, with the type its extension implies,
+  because the webview's demuxer is better than ours. Only bytes that positively
+  identify as something else — a picture, a PDF, an archive, an executable,
+  text — fall to the binary card. **`.ts` is not in the table**: it is MPEG-TS
+  everywhere else and TypeScript in every project this app opens.
+- **`.svg` and `.gif` are unchanged** — both are pictures here, for the reasons
+  `read_image` already gives.
+- **Native controls, and our own footer.** Transport, volume, buffering and
+  fullscreen are the webview's, which means they look like GTK on Linux and like
+  WebKit on macOS and are correct on both. The footer is `ImageView`'s row:
+  `mime · dimensions · duration · size` as one truncating span, with **Open in
+  default app** at the right, degrading in the order the footer rules above set
+  — the action keeps its glyph longest and the metadata truncates last. Audio
+  drops the dimensions. Dimensions and duration are read off the element on
+  `loadedmetadata`, never parsed in Rust, for the reason `ImageView` reads
+  `naturalWidth`: the browser is about to work it out anyway.
+- **Audio is the same view with no picture.** A centred card — the file's own
+  icon, its name, the controls beneath — on the stage an image gets. A `<video>`
+  element plays a `.wav` perfectly well and shows a black rectangle doing it,
+  which reads as a broken video rather than a sound file.
+- **Nothing plays until asked.** `preload="metadata"` so the footer can fill,
+  no autoplay, no loop, and no position remembered between opens. A single click
+  in the tree opens a preview tab, and a preview tab that starts making noise is
+  the wrong default in a window whose foreground job is a terminal. `Space` and
+  the arrows reach the native controls once the element has focus; the pane
+  keeps `Escape`, `Mod+W` and the tab steps, none of which the controls claim.
+- **A format the webview cannot decode says which and why.** On the element's
+  `error` the player is replaced by a card naming the `MediaError`:
+  `DECODE` / `SRC_NOT_SUPPORTED` name the container and point at the app that
+  can open it, `NETWORK` says the file may have been moved or deleted, and
+  `ABORTED` is ignored because it is what a close looks like. Both carry the
+  binary card's own **Open in default app**, and the footer stays — the file's
+  facts are still true. This is not hypothetical and it is not uniform:
+  **Matroska does not demux in WKWebView at all**, so a `.mkv` that plays on
+  Linux gets this card on macOS, and WebKitGTK plays it only with the right
+  GStreamer plugins installed. There is no transcoding fallback — ADR-0056's
+  consequences cover what that would have cost.
+- **Expanding does not mean two players.** `ViewerPane` and `FileViewerModal`
+  are both mounted while the modal is open, each rendering its own `FileView`,
+  which is invisible for text and two decoders for media. Each host names itself
+  through a context; the player that is not on screen pauses and records its
+  `currentTime`, and the one taking over resumes at it. Expand and collapse are
+  seamless rather than a restart, and nothing changes for text, images or PDFs.
+- **In a diff, media shows the working copy and says so.** Gated on
+  `diffEditsWorktree(mode)`, which is the existing answer to "does this mode put
+  the file on disk on the right": `unstaged` and `head` play it, under a muted
+  line reading **"Working copy — media files are not compared"** with the
+  inline / side-by-side toggle hidden. `staged`, a commit range and F18's
+  supplied sides keep the binary message, because those bytes are git objects
+  and the asset protocol can only serve a path. A deletion diff keeps it too.
+
 **Find — `Cmd/Ctrl+F`** (shipped 2026-09-09). Monaco's own find widget, and
 **this section claimed it for a year while it did nothing.** The claim was
 untrue for the same reason JSON rendered unhighlighted, one level up:

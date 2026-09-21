@@ -14,7 +14,9 @@ use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{DirEntry, DirListing, FileContents, ImageContents, PathKind, PdfContents};
+use crate::models::{
+	DirEntry, DirListing, FileContents, ImageContents, MediaKind, MediaProbe, PathKind, PdfContents,
+};
 use crate::services::git::IgnoreChecker;
 use crate::services::sops;
 
@@ -285,6 +287,221 @@ pub fn read_pdf(path: &str, max_bytes: Option<usize>) -> AppResult<PdfContents> 
 	}
 
 	Ok(PdfContents { path: path.to_string(), base64: B64.encode(&bytes), size })
+}
+
+/// Extensions the viewer hands to a media element, with the element to mount
+/// and the type to assume when the bytes name none (F7, ADR-0056).
+///
+/// **`ts` is deliberately absent.** It is TypeScript here and in every project
+/// this app is pointed at; MPEG-TS video spells itself `m2ts` or `mts` often
+/// enough that claiming `.ts` would trade a rare video for every source file in
+/// the tree. `svg` is absent for the reason `read_image` leaves it out — it is
+/// better served as source.
+///
+/// Mirrored by `iconKeyFor` in the renderer, which decides *which door a file
+/// knocks on*; this table decides what is behind it. The two can disagree
+/// harmlessly in one direction only — an extension the renderer routes here and
+/// this table does not know is refused below, which is the binary card.
+const MEDIA_EXTENSIONS: &[(&str, MediaKind, &str)] = &[
+	("mkv", MediaKind::Video, "video/x-matroska"),
+	("mp4", MediaKind::Video, "video/mp4"),
+	("m4v", MediaKind::Video, "video/x-m4v"),
+	("mov", MediaKind::Video, "video/quicktime"),
+	("webm", MediaKind::Video, "video/webm"),
+	("avi", MediaKind::Video, "video/x-msvideo"),
+	("ogv", MediaKind::Video, "video/ogg"),
+	("mpg", MediaKind::Video, "video/mpeg"),
+	("mpeg", MediaKind::Video, "video/mpeg"),
+	("wmv", MediaKind::Video, "video/x-ms-wmv"),
+	("flv", MediaKind::Video, "video/x-flv"),
+	("m2ts", MediaKind::Video, "video/mp2t"),
+	("mts", MediaKind::Video, "video/mp2t"),
+	("mp3", MediaKind::Audio, "audio/mpeg"),
+	("wav", MediaKind::Audio, "audio/wav"),
+	("flac", MediaKind::Audio, "audio/flac"),
+	("aac", MediaKind::Audio, "audio/aac"),
+	("ogg", MediaKind::Audio, "audio/ogg"),
+	("opus", MediaKind::Audio, "audio/ogg"),
+	("m4a", MediaKind::Audio, "audio/mp4"),
+	("wma", MediaKind::Audio, "audio/x-ms-wma"),
+];
+
+/// How much of the file the container sniff reads. MPEG-TS needs byte 188 to
+/// confirm its second sync word, and nothing here looks further.
+const MEDIA_SNIFF_BYTES: usize = 512;
+
+/// The element and fallback type for this path's extension, or `None` when the
+/// viewer should never have routed it here.
+fn media_extension(path: &str) -> Option<(MediaKind, &'static str)> {
+	let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
+	MEDIA_EXTENSIONS.iter().find(|(e, _, _)| *e == ext).map(|(_, kind, mime)| (*kind, *mime))
+}
+
+/// The container these bytes are, where we recognise one.
+///
+/// `ext_mime` breaks the ties the magic bytes cannot: Matroska and WebM share
+/// an EBML header, Ogg carries audio and video under one `OggS`, and every MP4
+/// family member starts `ftyp`. Where the brand *is* decisive — QuickTime's
+/// `qt  `, the `M4A ` audio brand — it wins over the extension, because that is
+/// the file telling us what it is.
+pub(crate) fn sniff_media_mime(bytes: &[u8], ext_mime: &str) -> Option<&'static str> {
+	let at = |i: usize, j: usize| bytes.get(i..j);
+
+	if at(4, 8) == Some(b"ftyp") {
+		return match at(8, 12) {
+			Some(b"qt  ") => Some("video/quicktime"),
+			Some(b"M4A ") => Some("audio/mp4"),
+			// Every other brand is an ISO-BMFF box, and whether it holds a movie
+			// or a song is what the extension already told us.
+			_ if ext_mime.starts_with("audio/") => Some("audio/mp4"),
+			_ => Some("video/mp4"),
+		};
+	}
+	if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+		// The DocType that separates `webm` from `matroska` lives inside the
+		// first EBML element rather than at a fixed offset, and reading it means
+		// a parser. The extension is right often enough, and both play or fail
+		// together in any given webview anyway.
+		return Some(if ext_mime == "video/webm" { "video/webm" } else { "video/x-matroska" });
+	}
+	if at(0, 4) == Some(b"RIFF") {
+		return match at(8, 12) {
+			Some(b"AVI ") => Some("video/x-msvideo"),
+			Some(b"WAVE") => Some("audio/wav"),
+			_ => None,
+		};
+	}
+	if bytes.starts_with(b"OggS") {
+		return Some(if ext_mime.starts_with("video/") { "video/ogg" } else { "audio/ogg" });
+	}
+	if bytes.starts_with(b"fLaC") {
+		return Some("audio/flac");
+	}
+	if bytes.starts_with(b"FLV\x01") {
+		return Some("video/x-flv");
+	}
+	// ASF, which is what `.wmv` and `.wma` both are.
+	if bytes.starts_with(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11") {
+		return Some(if ext_mime.starts_with("audio/") {
+			"audio/x-ms-wma"
+		} else {
+			"video/x-ms-asf"
+		});
+	}
+	// MPEG program stream: a pack header.
+	if bytes.starts_with(b"\x00\x00\x01\xba") {
+		return Some("video/mpeg");
+	}
+	// MPEG transport stream: 0x47 every 188 bytes. Two syncs is enough to tell
+	// it from a file that merely opens with a `G`.
+	if bytes.first() == Some(&0x47) && bytes.get(188) == Some(&0x47) {
+		return Some("video/mp2t");
+	}
+	if bytes.starts_with(b"ID3") {
+		return Some("audio/mpeg");
+	}
+	// A bare MPEG audio frame: eleven sync bits set, and a version/layer pair
+	// that is not one of the two reserved encodings.
+	if let Some([b0, b1, ..]) = bytes.get(0..2) {
+		if *b0 == 0xff && b1 & 0xe0 == 0xe0 && b1 & 0x18 != 0x08 && b1 & 0x06 != 0x00 {
+			return Some("audio/mpeg");
+		}
+	}
+	None
+}
+
+/// What these bytes are instead, when they are positively something else.
+///
+/// The half of the verdict that refuses. Kept separate from `sniff_media_mime`
+/// because the two are not opposites: between them sits the file we do not
+/// recognise and play anyway.
+fn media_mismatch(bytes: &[u8]) -> Option<&'static str> {
+	if let Some(mime) = sniff_image_mime(bytes) {
+		return Some(mime);
+	}
+	if bytes.starts_with(PDF_MAGIC) {
+		return Some("a PDF");
+	}
+	if bytes.starts_with(b"PK\x03\x04") {
+		return Some("a zip archive");
+	}
+	if bytes.starts_with(b"\x7fELF") {
+		return Some("an executable");
+	}
+	// Last, and only after every container above has declined: a file with no
+	// NUL byte in its first block is text, by the same test `read_file` uses to
+	// draw the binary card. Every container we play has NULs in its header, so
+	// reaching here with none is a `.mp4` that is really a shell script.
+	if !bytes.iter().take(MEDIA_SNIFF_BYTES).any(|b| *b == 0) {
+		return Some("text");
+	}
+	None
+}
+
+/// Whether this file can be handed to a media element, and what to call it
+/// (F7, [ADR-0056](../../../../specs/adr/0056-the-asset-protocol-carries-media-one-file-at-a-time.md)).
+///
+/// **Reads the first 512 bytes and no more.** This is the one preview command
+/// that never carries the file: a video is streamed over the asset protocol in
+/// the ranges the element asks for, so there is no cap here to refuse against
+/// and no base64 to pay for. A 2GB recording costs one `stat` and one short
+/// read.
+///
+/// **A looser bargain than `read_image`, deliberately.** That one refuses every
+/// magic it does not know, because a wrong guess draws a broken-image icon.
+/// Here a wrong guess costs nothing: the container we failed to name is handed
+/// to a demuxer far better than this function, and if it also declines, the
+/// element's own error says so in a sentence. So an unrecognised container
+/// plays with the type its extension implies, and only bytes that positively
+/// identify as something *else* — a picture, a PDF, an archive, an executable,
+/// text — are refused to the binary card.
+///
+/// The path comes back canonicalized because that is what the caller must grant
+/// and what the renderer must then ask for; see [`MediaProbe`].
+pub fn probe_media(path: &str) -> AppResult<MediaProbe> {
+	let (kind, ext_mime) = media_extension(path)
+		.ok_or_else(|| AppError::InvalidInput(format!("not a media file: {path}")))?;
+
+	let p = Path::new(path);
+	let meta = fs::metadata(p).map_err(|e| match e.kind() {
+		std::io::ErrorKind::NotFound => AppError::NotFound(format!("path {path}")),
+		std::io::ErrorKind::PermissionDenied => AppError::Io(format!("permission denied: {path}")),
+		_ => AppError::Io(format!("{path}: {e}")),
+	})?;
+	if meta.is_dir() {
+		return Err(AppError::InvalidInput(format!("is a directory: {path}")));
+	}
+	// An empty file has no magic to read and nothing to play; the element would
+	// report a decode error against a file that is merely absent of content.
+	if meta.len() == 0 {
+		return Err(AppError::InvalidInput(format!("empty file: {path}")));
+	}
+
+	let mut file = fs::File::open(p).map_err(|e| match e.kind() {
+		std::io::ErrorKind::PermissionDenied => AppError::Io(format!("permission denied: {path}")),
+		_ => AppError::Io(format!("{path}: {e}")),
+	})?;
+	let mut head = Vec::new();
+	file.by_ref()
+		.take(MEDIA_SNIFF_BYTES as u64)
+		.read_to_end(&mut head)
+		.map_err(|e| AppError::Io(format!("{path}: {e}")))?;
+
+	if let Some(what) = media_mismatch(&head) {
+		return Err(AppError::InvalidInput(format!("not media, it is {what}: {path}")));
+	}
+
+	let canonical = fs::canonicalize(p)
+		.map_err(|e| AppError::Io(format!("{path}: {e}")))?
+		.to_string_lossy()
+		.into_owned();
+
+	Ok(MediaProbe {
+		path: canonical,
+		kind,
+		mime: sniff_media_mime(&head, ext_mime).unwrap_or(ext_mime).to_string(),
+		size: meta.len(),
+	})
 }
 
 /// The MIME for these bytes, or `None` if they aren't an image we display.
@@ -1184,5 +1401,134 @@ sops:
 		assert!(read.truncated);
 		assert!(!read.lossy);
 		assert_eq!(read.contents, "a");
+	}
+
+	// ---- probe_media (F7, ADR-0056) ------------------------------------------
+
+	/// An ISO-BMFF header: a `ftyp` box with the `isom` brand, padded past the
+	/// point the sniffer reads. The NUL in the box length is what keeps it out
+	/// of the `text` arm, exactly as a real file's would.
+	fn mp4_header(brand: &[u8; 4]) -> Vec<u8> {
+		let mut b = vec![0x00, 0x00, 0x00, 0x20];
+		b.extend_from_slice(b"ftyp");
+		b.extend_from_slice(brand);
+		b.resize(256, 0);
+		b
+	}
+
+	#[test]
+	fn probes_a_video_without_reading_it() {
+		let dir = tempdir().unwrap();
+		let bytes = mp4_header(b"isom");
+		let path = write_bytes(dir.path(), "clip.mp4", &bytes);
+
+		let probe = probe_media(&path).expect("probe");
+
+		assert_eq!(probe.kind, MediaKind::Video);
+		assert_eq!(probe.mime, "video/mp4");
+		assert_eq!(probe.size, bytes.len() as u64);
+	}
+
+	#[test]
+	fn the_probed_path_is_canonical_so_the_grant_matches_the_fetch() {
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "clip.mp4", &mp4_header(b"isom"));
+		let indirect = dir.path().join("sub").join("..").join("clip.mp4");
+		fs::create_dir(dir.path().join("sub")).unwrap();
+
+		let probe = probe_media(indirect.to_str().unwrap()).expect("probe");
+
+		assert_eq!(probe.path, fs::canonicalize(&path).unwrap().to_string_lossy());
+		assert!(!probe.path.contains(".."));
+	}
+
+	#[test]
+	fn a_brand_that_names_itself_beats_the_extension() {
+		// `.mp4` says video; the QuickTime brand says otherwise and wins,
+		// because that is the file speaking rather than its name.
+		assert_eq!(sniff_media_mime(&mp4_header(b"qt  "), "video/mp4"), Some("video/quicktime"));
+		assert_eq!(sniff_media_mime(&mp4_header(b"M4A "), "video/mp4"), Some("audio/mp4"));
+	}
+
+	#[test]
+	fn the_extension_breaks_the_ties_the_bytes_cannot() {
+		// One EBML header, two answers; one `OggS`, two more.
+		let ebml = b"\x1a\x45\xdf\xa3\x01\x00\x00\x00";
+		assert_eq!(sniff_media_mime(ebml, "video/webm"), Some("video/webm"));
+		assert_eq!(sniff_media_mime(ebml, "video/x-matroska"), Some("video/x-matroska"));
+		assert_eq!(sniff_media_mime(b"OggS\x00\x02", "audio/ogg"), Some("audio/ogg"));
+		assert_eq!(sniff_media_mime(b"OggS\x00\x02", "video/ogg"), Some("video/ogg"));
+	}
+
+	#[test]
+	fn riff_is_a_container_so_the_form_decides() {
+		assert_eq!(
+			sniff_media_mime(b"RIFF\x00\x00\x00\x00AVI ", "video/x-msvideo"),
+			Some("video/x-msvideo")
+		);
+		assert_eq!(sniff_media_mime(b"RIFF\x00\x00\x00\x00WAVE", "audio/wav"), Some("audio/wav"));
+		// A WebP is a RIFF too, and it is not media — `media_mismatch` catches
+		// it before this ever runs, but the sniffer must not claim it either.
+		assert_eq!(sniff_media_mime(b"RIFF\x00\x00\x00\x00WEBP", "video/x-msvideo"), None);
+	}
+
+	#[test]
+	fn an_unrecognised_container_still_plays() {
+		// The whole point of the looser bargain: bytes we cannot name, with a
+		// NUL so they are not text, get the extension's type and reach the
+		// element rather than the binary card.
+		let dir = tempdir().unwrap();
+		let mut bytes = vec![0x00; 8];
+		bytes.extend_from_slice(b"something we have never heard of");
+		let path = write_bytes(dir.path(), "recording.wmv", &bytes);
+
+		let probe = probe_media(&path).expect("probe");
+
+		assert_eq!(probe.mime, "video/x-ms-wmv");
+		assert_eq!(probe.kind, MediaKind::Video);
+	}
+
+	#[test]
+	fn a_positive_mismatch_is_refused_to_the_binary_card() {
+		let dir = tempdir().unwrap();
+		for (name, bytes) in [
+			("clip.mp4", TINY_PNG),
+			("clip.mkv", b"%PDF-1.7\x00 not a movie".as_slice()),
+			("clip.webm", b"PK\x03\x04\x00\x00 archive".as_slice()),
+			("song.mp3", b"#!/bin/sh\necho not a song\n".as_slice()),
+		] {
+			let path = write_bytes(dir.path(), name, bytes);
+			assert!(
+				matches!(probe_media(&path), Err(AppError::InvalidInput(_))),
+				"{name} should have been refused"
+			);
+		}
+	}
+
+	#[test]
+	fn typescript_is_never_a_video() {
+		// `.ts` is MPEG-TS to the rest of the world and TypeScript here, and
+		// this table answers to the projects this app opens.
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "store.ts", b"export const x = 1;\n");
+
+		assert!(matches!(probe_media(&path), Err(AppError::InvalidInput(_))));
+		assert!(media_extension("a/b/store.ts").is_none());
+	}
+
+	#[test]
+	fn an_empty_file_is_refused_rather_than_handed_over_to_decode() {
+		let dir = tempdir().unwrap();
+		let path = write_bytes(dir.path(), "empty.mp4", b"");
+
+		assert!(matches!(probe_media(&path), Err(AppError::InvalidInput(_))));
+	}
+
+	#[test]
+	fn a_missing_video_is_not_found_rather_than_invalid() {
+		let dir = tempdir().unwrap();
+		let path = dir.path().join("gone.mp4");
+
+		assert!(matches!(probe_media(path.to_str().unwrap()), Err(AppError::NotFound(_))));
 	}
 }

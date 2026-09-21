@@ -1,9 +1,9 @@
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::off_main;
-use crate::error::AppResult;
-use crate::models::{DirListing, FileContents, ImageContents, PathKind, PdfContents};
+use crate::error::{AppError, AppResult};
+use crate::models::{DirListing, FileContents, ImageContents, MediaProbe, PathKind, PdfContents};
 use crate::services::{files, reveal};
 use crate::state::AppState;
 
@@ -63,6 +63,35 @@ pub async fn read_image(path: String, max_bytes: Option<usize>) -> AppResult<Ima
 #[tauri::command]
 pub async fn read_pdf(path: String, max_bytes: Option<usize>) -> AppResult<PdfContents> {
 	off_main(move || files::read_pdf(&path, max_bytes)).await
+}
+
+/// Decide whether a file can be played, and grant the webview permission to
+/// fetch it (F7, ADR-0056).
+///
+/// **The verdict and the grant are one act, on purpose.** There is no other
+/// command that widens the asset-protocol scope, so a URL the media element can
+/// fetch is obtainable only by asking about a real file and being told yes. The
+/// grant names exactly that file — never its directory — and it is the
+/// *canonical* path, because the protocol canonicalizes an incoming request
+/// before matching it while `allow_file` stores the pattern verbatim.
+///
+/// Grants accumulate for the life of the process. That is the honest cost of
+/// the design and ADR-0056 states it: what the scope holds at any moment is a
+/// list of media files a human opened in this session. It is not narrowed on
+/// close, because Tauri's fs scope gives a forbidden pattern permanent
+/// precedence over an allowed one — revoking a file would refuse it for the
+/// rest of the run, including to the reader who opens it again.
+///
+/// Off the main thread for the `stat`, the short read and the canonicalize:
+/// each is a filesystem round trip, and on a cold network mount a freeze
+/// (PERF-07).
+#[tauri::command]
+pub async fn probe_media(app: AppHandle, path: String) -> AppResult<MediaProbe> {
+	let probe = off_main(move || files::probe_media(&path)).await?;
+	app.asset_protocol_scope()
+		.allow_file(&probe.path)
+		.map_err(|e| AppError::Io(format!("{}: {e}", probe.path)))?;
+	Ok(probe)
 }
 
 /// Classify a batch of paths for the terminal's link provider (F19): file,
