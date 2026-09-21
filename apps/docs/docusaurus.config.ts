@@ -26,11 +26,15 @@ const config: Config = {
 	headTags: [
 		{
 			tagName: 'link',
-			attributes: { rel: 'icon', type: 'image/png', sizes: '32x32', href: `${baseUrl}img/favicon.ico` },
+			attributes: { rel: 'icon', type: 'image/x-icon', href: `${baseUrl}img/favicon.ico` },
 		},
 		{
 			tagName: 'link',
-			attributes: { rel: 'apple-touch-icon', sizes: '180x180', href: `${baseUrl}img/apple-touch-icon.png` },
+			attributes: {
+				rel: 'apple-touch-icon',
+				sizes: '180x180',
+				href: `${baseUrl}img/apple-touch-icon.png`,
+			},
 		},
 		// Docusaurus emits og:image, twitter:image and the card type from
 		// `themeConfig.image`; these are what it leaves out, and a scraper that
@@ -41,7 +45,8 @@ const config: Config = {
 			tagName: 'meta',
 			attributes: {
 				property: 'og:image:alt',
-				content: 'The factorai mark seated on a circuit board, over the wordmark and the line "Agentic Development Environment (ADE) for the AI era"',
+				content:
+					'The factorai mark seated on a circuit board, over the wordmark and the line "Agentic Development Environment (ADE) for the AI era"',
 			},
 		},
 		{ tagName: 'meta', attributes: { property: 'og:site_name', content: 'factorai' } },

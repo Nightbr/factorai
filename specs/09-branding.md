@@ -245,6 +245,79 @@ icons derive from `factorai-icon.svg`.
 
 ---
 
+## B5b — The social card and the site's favicons
+
+What a link to the site unfurls as, and what its tab shows.
+
+### The card is a capture, not a drawing
+
+**The card is the hero's fifth step, photographed.** `seq 05` is the forge at
+rest: the mark seated in its socket, the board powered, the wordmark under it.
+It is already a composed image of the brand on the brand's own ground, so the
+lockup of B5a is *not* laid over it — that would put a second mark and a second
+wordmark in a picture that has both.
+
+One thing is changed for the capture, in the page and not in the source: the
+line under the wordmark reads **the site's tagline**, `Agentic Development
+Environment (ADE) for the AI era`, in place of step 5's `Forged for the agentic
+era.` The hero's line is a payoff that lands after four steps of setup. A card
+is seen cold, once, at thumbnail size, and has to say what the thing is.
+`apps/docs/src/hero/copy.ts` keeps the hero's line.
+
+### Two ratios, two captures
+
+| | Size | Lives at | For |
+|---|---|---|---|
+| Site card | 1200 × 630 | `apps/docs/static/img/factorai-social.png` | `og:image`, `twitter:image` |
+| Repository card | 1280 × 640 | `assets/brand/factorai-social-github.png` | GitHub's repository social preview |
+
+**Neither is a crop of the other.** `Forge.tsx` builds the board from the
+scene's `clientWidth`/`clientHeight`: the traces, the ports they leave from and
+the vias they end at are laid out for the viewport they are drawn in. A 1.91∶1
+crop of a 2∶1 capture puts the board's geometry in the wrong place and eats the
+bottom hairline. Each ratio is captured at its own viewport, at device pixel
+ratio 2, and downscaled — 2400 × 1260 and 2560 × 1280 respectively.
+
+The repository card is a master and is uploaded by hand in the repository's
+settings; GitHub has no file for it in the tree. **It must stay under 1MB** —
+GitHub's limit. At 551KB it has room, but a busier frame would not: quantize to
+an adaptive 256-colour palette before reaching for JPEG, because the fog is a
+gradient and JPEG is kinder to it than a palette is only once banding shows.
+
+### Capturing it again
+
+The hero will change, and then the card is stale. To retake it: serve the site,
+land on `#seq-5`, hide the navbar, the Next arrow and the Skip button — keep
+the HUD, whose brackets, hairline and `seq 05` readout are the treatment — and
+swap the forge line for the tagline.
+
+**Wait for the board rather than for the clock.** The capture is only stable
+once every `[data-trace="base"]` path carries `data-powered`, which is what
+`powerBoard` sets when its pulse arrives at each via. Then suppress
+`[data-trace="lit"]` and `[data-trace="glow"]`: `idlePulse` keeps sending a
+highlight down the traces for as long as the scene is on screen, so a capture
+taken on a timer catches it mid-flight, in a different place every run. Freezing
+those two groups is what makes the frame reproducible; the powered base traces
+are the lit state the card wants.
+
+### The favicons
+
+`favicon` in `docusaurus.config.ts` stays `factorai-icon.svg` — a browser that
+asks for an SVG should get the master. Two rasters cover the ones that do not,
+both downscaled from `assets/brand/factorai-icon-1024.png` with a Lanczos
+filter:
+
+| File | Size | Note |
+|---|---|---|
+| `favicon.ico` | 16, 32, 48 in one file | Transparency kept; this is what an indexing crawler takes |
+| `apple-touch-icon.png` | 180 × 180 | **Opaque.** iOS masks its own corners and composites a transparent PNG onto white, so the housing's `#272B31` is flattened out to the edges first |
+
+Both are wired through `headTags`, not `favicon`, and their `href`s are built
+from the `baseUrl` constant: Docusaurus prepends the base URL to `favicon` and
+to `themeConfig.image`, and writes a `headTags` href out verbatim.
+
+---
+
 ## B6 — Rules
 
 - **Minimum size 16px.** Below that the ports close up and the 45° cut vanishes.
