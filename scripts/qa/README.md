@@ -12,6 +12,7 @@ Linux/X11 + GNOME.
 | `screenshot.sh OUT.png` | Captures the active window via `gnome-screenshot` (fallback: `import`, `scrot`) | ✓ |
 | `geometry.sh` | Prints `WIDTH HEIGHT X Y` of the content window | ✓ |
 | `doc-shot.sh OUT.png` | A documentation image: 1440x900 of the client area, no frame, no shadow, no resampling. Launch with `VITE_FACTORAI_SCREENSHOT=1` first so the DEV badge is absent | ✓ README, 2026-08-27 |
+| `fixture-workspace.py build\|seed\|env` | Builds a **fabricated workspace** to photograph — four repositories with history, their Claude transcripts, and the workspace rows and groups that put them in the sidebar. Points the app at it with `CLAUDE_CONFIG_DIR` + `XDG_DATA_HOME`, so the real store and database are untouched | ✓ built and booted, 2026-09-21 |
 | `redact.py IN OUT X,Y,W,H…` | Blurs regions before an image ships; `--probe` writes a coordinate grid to read the boxes off | ✓ |
 | `drag.sh FX FY TX TY [STEPS]` | Press, step, release — a real pointer drag for the dnd-kit surfaces (session tabs, project rows). **Content-relative coordinates**, unlike `click.sh` — see below | ✓ project reorder, 2026-08-26 |
 | `kill.sh` | Descends pgrep tree from launcher pid, kills children deepest-first; sweeps stray dev factorai subtrees | ✓ exit 0, no survivors |
@@ -172,6 +173,38 @@ It also resizes the window instead of resampling the capture. The app is 12px an
 **An image that ships gets its private names blurred**, and the `app-screenshot`
 skill owns that checklist — what to blur, what to leave legible, and why framing
 the shot to avoid the problem beats blurring it away.
+
+**Better still, photograph a workspace with nothing to blur.**
+`fixture-workspace.py` builds one: `billing-api`, `docs-site`, `homelab` and
+`recipes`, in the groups `Pro` and `Side projects` — the same invented world the
+site's hero mock draws (`apps/docs/src/mock`) — with git history a graph can
+draw, a dirty tree for Changes, eight transcripts, and one routine. The app is
+pointed at it by two variables and writes nothing outside it:
+
+```bash
+scripts/qa/fixture-workspace.py build
+eval "$(scripts/qa/fixture-workspace.py env)"     # CLAUDE_CONFIG_DIR, XDG_DATA_HOME
+VITE_FACTORAI_SCREENSHOT=1 scripts/qa/launch.sh   # first boot: creates the db
+scripts/qa/kill.sh
+scripts/qa/fixture-workspace.py seed              # projects, groups, routine
+VITE_FACTORAI_SCREENSHOT=1 scripts/qa/launch.sh
+```
+
+Two boots, because `seed` writes into the database the migrations create. The
+indexer only parses a directory once its project is in the workspace (migration
+`0004`), so the sessions appear on the second one.
+
+**`CLAUDE_CONFIG_DIR` had to be added to `turbo.json`'s `globalPassThroughEnv`**
+for this to work under `pnpm dev` — turbo strips everything it is not told to
+keep, so the app honoured the variable when run directly and silently ignored it
+under the dev task. That was a real bug for anyone with a non-default config
+directory exported, not only for this fixture.
+
+**What the fixture cannot show is a signed-in agent.** Opening a session spawns
+`claude --resume` in the fixture's config directory, where no account is set up,
+so the pane shows the trust prompt and then a sign-in screen. Running `claude`
+once interactively with `CLAUDE_CONFIG_DIR` pointed at the fixture store is the
+fix, and it is a human's job at the keyboard.
 
 ## Tooling deps
 

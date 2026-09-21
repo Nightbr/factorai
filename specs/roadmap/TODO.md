@@ -424,12 +424,12 @@ What is left:
       shortcuts). A page written from a spec is a page that describes the app as designed; the
       release is the first time a stranger reads it as the app as built. Troubleshooting and
       *First run* are the two the scaffold does not yet have.
-- [ ] **Whether the site reuses `assets/images/`** or keeps its own copies under
-      `apps/docs/static/img/`. Screenshots go stale on their own schedule; one copy is one
-      re-shoot, which argues for reuse, and there are two mechanisms for it — a relative path out
-      of `apps/docs/docs/` that the MDX image loader resolves, or
-      `staticDirectories: ['static', '../../assets/images']` in `docusaurus.config.ts`. **Decide
-      with the first image rather than before it**; the images themselves are item 61.
+- [x] **The site reuses `assets/images/`** — decided and measured 2026-09-21. A relative path
+      out of `apps/docs/docs/` (`../../../assets/images/<name>.png`) is resolved by the MDX
+      image loader: the build emits it under `/assets/images/` with a content hash, no
+      `staticDirectories` entry is needed, and a path that does not exist fails the build rather
+      than shipping a broken image. One copy per screenshot, so one re-shoot serves the README
+      and the guide. The images themselves are item 61.
 - [ ] **Versioning is deliberately off at first.** Docusaurus can version the docs per release;
       switching it on before there is a second release to compare against buys a directory of
       duplicates. Revisit when the stable channel has shipped twice.
@@ -485,27 +485,42 @@ document rather than as a product — the finding that killed the 2026-08-27 att
 the reason item 58 has never had a still. So the subject is **fabricated**, and it is the same
 fixture items 41 and 58 want. Build it once here:
 
-- [ ] **A seeded workspace on disk**, not the mock bridge. `pnpm vite:dev` + `installMockBridge`
-      draws the renderer from fake data in a browser and would be quicker, but it is not the
-      app's window — no titlebar, no real PTY, no real diff — and a picture of it is a picture of
-      something else. A script under `scripts/qa/` that seeds a throwaway directory with three or
-      four small git repos, invented names and a few commits gives the real app something real to
-      show. The invented names carry the whole point of the sidebar (groups, statuses) without
-      carrying anyone's client list.
-- [ ] **Sessions with history.** A screenshot of the terminal needs an agent that has said
-      something. Seeding `~/.claude` for the fixture, or recording one scripted run against the
-      fake repos, is the piece with no shortcut — and it is what makes the Sessions, Terminal and
-      Changes shots worth taking at all.
-- [ ] **One shot per guide page, each showing the one thing its page is about**: Projects (the
-      sidebar with groups), Sessions (the tab strip, a running dot, an amber one waiting),
-      Routines (the schedule editor and the next-runs echo), Files / Changes / Graph (the panel
-      in its three tabs), Terminal (the footer shell with a split), Advanced → Worktrees, and
-      Keyboard shortcuts (the Keyboard settings section). More than one picture per page is a
-      page that stopped explaining.
+- [x] **A seeded workspace on disk**, not the mock bridge — `scripts/qa/fixture-workspace.py`,
+      2026-09-21. `billing-api`, `docs-site`, `homelab` and `recipes` in the groups `Pro` and
+      `Side projects`, the site mock's own names, so the hero and the guide show one invented
+      world. Git history a graph can draw (a merged branch, two tags, one still open), a dirty
+      tree for Changes, eight transcripts, and one routine. `CLAUDE_CONFIG_DIR` and
+      `XDG_DATA_HOME` point the app at it and nothing outside it is written. The mock bridge was
+      rejected: `pnpm vite:dev` draws the renderer from fake data in a browser, but it has no
+      titlebar, no real PTY and no real diff, so a picture of it is a picture of something else.
+      **It also found a real bug** — `CLAUDE_CONFIG_DIR` was not in `turbo.json`'s
+      `globalPassThroughEnv`, so the app honoured it when run directly and silently ignored it
+      under `pnpm dev`. Fixed in the same commit; it affected anyone with a non-default config
+      directory exported, not only the fixture.
+- [x] **Sessions with history**, from the transcripts the script writes: eight of them, in the
+      JSONL shape specs/02-data-model.md records, with `ai-title` events so the list reads as
+      sentences, tool-use blocks so the panel has touched paths, and timestamps spread over three
+      weeks so the times read as times.
+- [ ] **A signed-in fixture store, for the one shot that needs a live agent.** Opening a session
+      spawns `claude --resume` in the fixture's config directory, where no account is set up, so
+      the pane shows the trust prompt and then a sign-in screen. Running `claude` once
+      interactively with `CLAUDE_CONFIG_DIR` pointed at the fixture store fixes it for good, and
+      it is a human's job at the keyboard rather than something a session should arrange. Until
+      then the Sessions and Terminal pages get the session list, the tab strip and a footer
+      shell, none of which need an account.
+- [ ] **One shot per guide page, each showing the one thing its page is about.** The fixture is
+      built and the app is drivable against it — `scripts/qa/click.sh` reaches the renderer,
+      re-verified 2026-09-21 — so what is left is the capture pass itself: Projects (the sidebar
+      with its two groups, a project selected, its sessions listed), Sessions (the tab strip and
+      a transcript; the status dots wait on a signed-in store), Routines (the schedule editor and
+      the next-runs echo), Files / Changes / Graph (the panel in its three tabs, which the dirty
+      tree and the merged branch are there for), Terminal (the footer shell with a split),
+      Advanced → Worktrees, and Keyboard shortcuts (the Keyboard settings section). More than one
+      picture per page is a page that stopped explaining.
 - [ ] **Dark only.** The site is dark and the light palette does not render yet (item 32); a
       light shot would be of a theme neither the app nor the page currently shows.
-- [ ] **Where they live** is item 39's open checkbox — reuse `assets/images/` or copy into
-      `apps/docs/static/img/`. Answer it with the first image that lands.
+- [x] **Where they live**, which was item 39's open checkbox: `assets/images/`, referenced from
+      a guide page by a relative path, verified by a build 2026-09-21.
 - [ ] **Re-shoot the five in `assets/images/` from the same fixture.** They predate it, the
       README and the guide should not show two different workspaces, and it is the same session
       at the keyboard.

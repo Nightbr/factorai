@@ -34,6 +34,17 @@ scripts/qa/kill.sh                                   # if one is already running
 VITE_FACTORAI_SCREENSHOT=1 scripts/qa/launch.sh
 ```
 
+**Or photograph a workspace with nothing to redact, which is the better
+answer.** `scripts/qa/fixture-workspace.py build` invents one — four
+repositories with git history, their transcripts, groups, and a routine — and
+`… env` prints the two variables (`CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`) that
+point the app at it without touching the real store or database. Its names are
+the site mock's names, so the hero and the guide show one world. Guide images
+come from there; only a shot that has to show *this* machine needs the blurring
+below. Its one gap: a session opens `claude --resume` in the fixture's config
+directory, where no account is set up, so a live agent pane needs a human to run
+`claude` there once first.
+
 **Set the app up before capturing, and prefer framing over blurring.** A shot
 with no project selected leaks nothing from the main pane. Group names you chose
 ("Pro", "Side projects") are the point of a sidebar picture and stay legible. Ask
