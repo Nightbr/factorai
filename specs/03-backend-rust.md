@@ -316,12 +316,12 @@ read_image(path: String, max_bytes: Option<usize>) -> ImageContents
 // 32MB cap — larger than an image's because a scan legitimately is. No mime (it
 // can only be one thing) and no page count (pdf.js reads it from these bytes).
 read_pdf(path: String, max_bytes: Option<usize>) -> PdfContents
-// Media for the viewer (F7, ADR-0056): a verdict and a canonical path, and no
-// bytes at all — the element streams the file over the asset protocol in the
-// ranges it asks for. Reads 512 bytes to sniff the container and grants that one
-// file to `asset_protocol_scope()`, which is the only thing that ever widens it.
-// Refuses a positive mismatch (a picture, a PDF, an archive, text) and plays an
-// unrecognised container anyway; see the ADR for why those differ.
+// Media for the viewer (F7, ADR-0057): a verdict and a URL, and no bytes at all
+// — the element fetches the file from the loopback media server in the ranges it
+// asks for. Reads 512 bytes to sniff the container, then publishes that one file
+// to the server, which is the only thing that ever adds to it. Refuses a positive
+// mismatch (a picture, a PDF, an archive, text) and plays an unrecognised
+// container anyway; see the ADR for why those differ.
 probe_media(path: String) -> MediaProbe
 list_dir(path: String, root: Option<String>) -> DirListing            // one level, capped, git-ignored flagged
 // Batch stat for the terminal's link provider (F19): is each of these a file,

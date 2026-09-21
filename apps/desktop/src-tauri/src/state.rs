@@ -1,10 +1,11 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::db::Db;
 use crate::services::file_watch::FileWatch;
 use crate::services::ide::ui_state::UiState;
 use crate::services::indexer::Indexer;
+use crate::services::media_server::MediaServer;
 use crate::services::routines::Runner as RoutineRunner;
 use crate::services::terminal::TerminalManager;
 
@@ -30,4 +31,8 @@ pub struct AppState {
 	/// the renderer owns its lifetime — it watches on open and releases on
 	/// close, so an app with no viewer open holds no watch at all.
 	pub file_watch: Arc<FileWatch>,
+	/// The loopback server the viewer's media files are fetched from (F7,
+	/// ADR-0057). Started on the first `probe_media` and not before: an app that
+	/// never opens a video never opens a socket.
+	pub media: Arc<OnceLock<MediaServer>>,
 }

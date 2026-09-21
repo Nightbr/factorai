@@ -12,11 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# `protocol-asset` is what registers the `asset:` scheme the media viewer
-# streams over (ADR-0056). `assetProtocol.enable` in tauri.conf.json asks the
-# CLI for the same feature; naming it here too keeps a bare `cargo clippy` /
-# `cargo test`, which never reads that config, building the same crate CI does.
-tauri = { version = "2", features = ["devtools", "protocol-asset"] }
+tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-process = "2"

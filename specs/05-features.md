@@ -1249,12 +1249,18 @@ and `mts` mount a `<video>`, and `mp3`, `wav`, `flac`, `aac`, `ogg`, `opus`,
 null byte in the first 8KB, and got the binary card — the one that says "Cannot
 preview binary file", which is a true sentence about the wrong problem.
 
-- **The bytes do not cross the bridge** (ADR-0056). `probe_media` answers with a
-  verdict and a canonical path, and the element streams the file itself over the
-  asset protocol, which serves the ranges it asks for. This is the one preview
+- **The bytes do not cross the bridge** (ADR-0057). `probe_media` answers with a
+  verdict and a URL, and the element fetches the file itself from a **loopback
+  HTTP server** that serves the ranges it asks for. This is the one preview
   command that reads no more than 512 bytes: a 2GB recording costs a `stat` and
-  a short read. The scope is granted one file at a time by that same command, so
-  a URL the webview can fetch exists only for a file a human opened.
+  a short read. That command is the only thing that publishes a file, so a URL
+  the webview can fetch exists only for a file a human opened; the URL names an
+  opaque id and carries the run's bearer token, never a path.
+  **Not a custom protocol** — ADR-0056 shipped one and ADR-0057 measured why it
+  cannot work: WebKitGTK plays media through GStreamer, which never sees a
+  scheme handler the WebView registered, so `<video src="asset://…">` fails
+  while `fetch()` of the same URL returns the whole file. The server starts on
+  the first media file of a run and not before.
 - **Routing is by extension and the verdict is the bytes'**, as it is for an
   image — but the verdict is a *looser* one, and ADR-0056 says why. A container
   the sniff cannot name is still played, with the type its extension implies,

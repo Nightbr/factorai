@@ -75,6 +75,10 @@ The site is `mise run docs` (or `pnpm --filter @factorai/docs start`), on port
 Tests live next to the code: `src/lib/foo.test.ts` beside `src/lib/foo.ts`;
 `tests/foo_integration.rs` for cross-module Rust tests, `#[cfg(test)] mod tests`
 in-module. Playwright smoke tests are in `tests/smoke/`, tagged `@smoke`.
+**Data fixtures a test reads from disk go in `tests/fixtures/`**, whichever lane
+uses them — binary media, sample documents, anything that is content rather than
+code. A new kind of binary asset there also needs its extension named in
+`scripts/check-text-bytes.mjs`, which fails closed.
 
 Run all of these green before calling a task done, in this order:
 

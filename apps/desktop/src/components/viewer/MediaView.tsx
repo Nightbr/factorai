@@ -3,7 +3,7 @@ import type { MediaProbe } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
 import { formatBytes } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
-import { cmd, mediaSrc, openExternally } from '@lib/tauri';
+import { cmd, openExternally } from '@lib/tauri';
 import { REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { useQuery } from '@tanstack/react-query';
 import { hostIsShowing, useViewerHost } from '@components/viewer/viewerHost';
@@ -193,7 +193,7 @@ export function MediaView({ path }: { path: string }) {
 							if (code === MEDIA_ERR_ABORTED) return;
 							// The status decides which sentence this is, so the card
 							// waits for it rather than showing the wrong one first.
-							void transportStatus(mediaSrc(probe.path)).then((status) =>
+							void transportStatus(probe.url).then((status) =>
 								setFailure(mediaErrorMessage(code, probe.mime, status)),
 							);
 						}}
@@ -281,11 +281,11 @@ function MediaElement({
 	onMeta: (meta: MediaMeta) => void;
 	onFailure: (code: number) => void;
 }) {
-	// **The canonical path, not the one we were asked about** (ADR-0056). That
-	// is the path `probe_media` granted, and the protocol canonicalizes an
-	// incoming request before matching it — so a file reached through a symlink
-	// is refused if we ask for the name we started with.
-	const src = mediaSrc(probe.path);
+	// **The URL the probe answered with** (ADR-0057) — a loopback address naming
+	// an opaque id and carrying the run's token. The renderer never builds it:
+	// where the bytes live is the server's answer, and the path is for the
+	// things that are about the file rather than its contents.
+	const src = probe.url;
 	const ref = useRef<HTMLMediaElement>(null);
 	useMediaHandover(ref, path);
 	const shared = {

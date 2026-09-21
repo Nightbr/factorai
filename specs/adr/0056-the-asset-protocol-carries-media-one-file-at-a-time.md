@@ -1,7 +1,15 @@
 # ADR-0056 — The asset protocol carries media, one file at a time
 
 **Date.** 2026-09-21
-**Status.** Accepted. Narrows one sentence in `ImageView`'s doc comment, which
+**Status.** Superseded by
+[ADR-0057](0057-media-is-served-over-loopback-http-not-a-custom-protocol.md) on
+2026-09-21, the same day, before any release carried it. The mechanism below
+cannot work on Linux: WebKitGTK's media element does not load from a custom URI
+scheme, which ADR-0057 measures. Everything here that is not the *transport* —
+the probe, the extension-first routing, the looser sniff, the one-file-at-a-time
+grant — was carried forward unchanged. The text stands as written.
+
+Narrows one sentence in `ImageView`'s doc comment, which
 declined the asset protocol for the viewer's binary previews; images and PDFs
 are unchanged and keep the base64 path. The contract is `specs/05-features.md`
 F7 § "Video and audio".

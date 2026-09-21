@@ -457,17 +457,20 @@ pub enum MediaKind {
 /// bridge is the verdict — is this media, what is it, how big — plus the
 /// canonical path the renderer turns into a URL.
 ///
-/// **`path` is canonical, and callers must use *this* path rather than the one
-/// they asked about.** The asset protocol canonicalizes an incoming request
-/// before matching it against the scope, while the grant stores the pattern as
-/// it was given, so a symlinked path granted verbatim would be refused on
-/// fetch.
+/// **The renderer fetches `url`, never `path`.** `path` is the canonical path on
+/// disk and is for the things that are about the *file* — the reveal, the open
+/// in another app, the tab. `url` is a loopback address naming an opaque id and
+/// carrying the run's bearer token, and it is the only way to the bytes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaProbe {
-	/// The canonical path, which is both what was granted and what the renderer
-	/// must ask for.
+	/// The canonical path on disk. Canonical because the probe resolved it, so
+	/// a file reached through a symlink has one identity here.
 	pub path: String,
+	/// Where the media element fetches this file from (ADR-0057). Filled in by
+	/// the command rather than the service: the service decides *whether* this
+	/// is media, and the server decides where it lives.
+	pub url: String,
 	pub kind: MediaKind,
 	/// The container's own type where the magic bytes name one, and the type
 	/// implied by the extension where they do not. Unlike `ImageContents.mime`

@@ -8,6 +8,7 @@ pub mod ide;
 pub mod indexer;
 pub mod jsonl;
 pub mod mcp_wire;
+pub mod media_server;
 // macOS only: the menu exists to give up `Cmd+W` (ADR-0046). Nothing to build
 // on Linux, where the same actions are renderer hotkeys.
 #[cfg(target_os = "macos")]

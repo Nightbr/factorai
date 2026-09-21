@@ -456,8 +456,8 @@ fn media_mismatch(bytes: &[u8]) -> Option<&'static str> {
 /// identify as something *else* — a picture, a PDF, an archive, an executable,
 /// text — are refused to the binary card.
 ///
-/// The path comes back canonicalized because that is what the caller must grant
-/// and what the renderer must then ask for; see [`MediaProbe`].
+/// The path comes back canonicalized, so a file reached through a symlink has
+/// one identity; the caller publishes *that* path. See [`MediaProbe`].
 pub fn probe_media(path: &str) -> AppResult<MediaProbe> {
 	let (kind, ext_mime) = media_extension(path)
 		.ok_or_else(|| AppError::InvalidInput(format!("not a media file: {path}")))?;
@@ -498,6 +498,10 @@ pub fn probe_media(path: &str) -> AppResult<MediaProbe> {
 
 	Ok(MediaProbe {
 		path: canonical,
+		// Left blank here and filled by the command. Where the bytes are served
+		// from is the media server's answer, and this function is the one that
+		// decides there are bytes worth serving.
+		url: String::new(),
 		kind,
 		mime: sniff_media_mime(&head, ext_mime).unwrap_or(ext_mime).to_string(),
 		size: meta.len(),
@@ -1430,7 +1434,7 @@ sops:
 	}
 
 	#[test]
-	fn the_probed_path_is_canonical_so_the_grant_matches_the_fetch() {
+	fn the_probed_path_is_canonical_so_one_file_has_one_identity() {
 		let dir = tempdir().unwrap();
 		let path = write_bytes(dir.path(), "clip.mp4", &mp4_header(b"isom"));
 		let indirect = dir.path().join("sub").join("..").join("clip.mp4");

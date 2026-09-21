@@ -45,7 +45,7 @@ import type {
 	SidebarOrder,
 	SidebarRow,
 } from '@factorai/types';
-import { convertFileSrc, invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { type UnlistenFn, listen as tauriListen } from '@tauri-apps/api/event';
 
 /// True when running inside a Tauri webview (window.__TAURI_INTERNALS__ is
@@ -57,28 +57,6 @@ import { type UnlistenFn, listen as tauriListen } from '@tauri-apps/api/event';
 export function isTauri(): boolean {
 	return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
-
-/**
- * The URL a media element fetches a file from (F7, ADR-0056).
- *
- * Inside Tauri this is the asset protocol, which streams the file in the ranges
- * the element asks for — the reason video does not go through `invoke` the way
- * an image does. The path **must** be the canonical one `probeMedia` answered
- * with: that is what was granted, and the protocol canonicalizes an incoming
- * request before matching it, so the path you started with can be refused.
- *
- * Outside Tauri it is a URL nothing serves by default. The smoke lane
- * intercepts it (`installMockBridge`), and `pnpm vite:dev` on its own leaves it
- * to 404 into the element's error card — which is the honest answer in a
- * browser with no filesystem behind it.
- */
-export function mediaSrc(canonicalPath: string): string {
-	if (isTauri()) return convertFileSrc(canonicalPath);
-	return `${MEDIA_MOCK_PREFIX}${encodeURIComponent(canonicalPath)}`;
-}
-
-/** Where `mediaSrc` points outside Tauri. */
-const MEDIA_MOCK_PREFIX = '/__media/';
 
 async function invoke<T>(name: string, args?: Record<string, unknown>): Promise<T> {
 	if (isTauri()) return tauriInvoke<T>(name, args);
@@ -180,8 +158,8 @@ export const cmd = {
 	 *  binary-card fallback; an unrecognised *container* is not a rejection,
 	 *  because the element's demuxer is better than ours.
 	 *
-	 *  **Use the `path` it answers with, never the one you asked about.** That
-	 *  one is canonical, and it is what was granted. */
+	 *  Answers with the URL the element fetches from (ADR-0057) — a loopback
+	 *  address naming an opaque id, never a path. */
 	probeMedia: (path: string) => invoke<MediaProbe>('probe_media', { path }),
 	/** Whether `sops` can be driven at all (F27). Answered from the resolved
 	 *  child PATH and cached in Rust for the run — the viewer asks before it

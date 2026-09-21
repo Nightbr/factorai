@@ -1,9 +1,12 @@
+use std::path::Path;
+
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::off_main;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::models::{DirListing, FileContents, ImageContents, MediaProbe, PathKind, PdfContents};
+use crate::services::media_server::MediaServer;
 use crate::services::{files, reveal};
 use crate::state::AppState;
 
@@ -65,32 +68,36 @@ pub async fn read_pdf(path: String, max_bytes: Option<usize>) -> AppResult<PdfCo
 	off_main(move || files::read_pdf(&path, max_bytes)).await
 }
 
-/// Decide whether a file can be played, and grant the webview permission to
-/// fetch it (F7, ADR-0056).
+/// Decide whether a file can be played, and publish it for the webview to fetch
+/// (F7, ADR-0057).
 ///
-/// **The verdict and the grant are one act, on purpose.** There is no other
-/// command that widens the asset-protocol scope, so a URL the media element can
-/// fetch is obtainable only by asking about a real file and being told yes. The
-/// grant names exactly that file — never its directory — and it is the
-/// *canonical* path, because the protocol canonicalizes an incoming request
-/// before matching it while `allow_file` stores the pattern verbatim.
+/// **The verdict and the publication are one act.** Nothing else adds a file to
+/// the media server's table, so a URL the element can fetch exists only for a
+/// file somebody asked about and was told yes. The URL names an opaque id and
+/// carries the run's bearer token; it never contains the path.
 ///
-/// Grants accumulate for the life of the process. That is the honest cost of
-/// the design and ADR-0056 states it: what the scope holds at any moment is a
-/// list of media files a human opened in this session. It is not narrowed on
-/// close, because Tauri's fs scope gives a forbidden pattern permanent
-/// precedence over an allowed one — revoking a file would refuse it for the
-/// rest of the run, including to the reader who opens it again.
+/// **The server starts here, on the first media file of the run**, and not in
+/// `setup`: an app that never opens a video never opens a socket. `OnceLock`
+/// makes the race harmless — two viewers opening at once still bind once.
 ///
 /// Off the main thread for the `stat`, the short read and the canonicalize:
 /// each is a filesystem round trip, and on a cold network mount a freeze
 /// (PERF-07).
 #[tauri::command]
-pub async fn probe_media(app: AppHandle, path: String) -> AppResult<MediaProbe> {
-	let probe = off_main(move || files::probe_media(&path)).await?;
-	app.asset_protocol_scope()
-		.allow_file(&probe.path)
-		.map_err(|e| AppError::Io(format!("{}: {e}", probe.path)))?;
+pub async fn probe_media(state: State<'_, AppState>, path: String) -> AppResult<MediaProbe> {
+	let mut probe = off_main(move || files::probe_media(&path)).await?;
+	let server = match state.media.get() {
+		Some(server) => server,
+		None => {
+			// `set` losing the race means another caller bound first, and its
+			// server is as good as this one — so the loser drops its own and reads
+			// the winner's rather than failing a probe over it.
+			let started = MediaServer::start()?;
+			let _ = state.media.set(started);
+			state.media.get().expect("media server set")
+		}
+	};
+	probe.url = server.publish(Path::new(&probe.path), &probe.mime);
 	Ok(probe)
 }
 

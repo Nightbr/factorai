@@ -11,6 +11,12 @@ paths:
 - Smoke tests inject data with `installMockBridge(page, fixture)` before
   `page.goto(...)`; the mock layer reads `window.__FACTORAI_TEST__`. One fixture
   factory per shape of state, in `tests/smoke/fixtures.ts`. Tag titles `@smoke`.
+- **Data fixtures a test reads from disk live in `tests/fixtures/`**, not beside
+  the spec that happens to use them first — `tests/fixtures/media/` holds the
+  clips the media viewer plays, and the next lane that needs a sample file puts
+  it there too. The smoke lane reaches them through a `page.route()` intercept
+  rather than `apps/desktop/public/`, which Vite copies verbatim into the
+  shipped `.app` and `.AppImage`.
 - **`pnpm e2e` and `pnpm dev` both want port 1420**, and
   `webServer.reuseExistingServer` is on outside CI — running the suite while the
   app is open attaches Playwright to the *app's* vite and every test times out at

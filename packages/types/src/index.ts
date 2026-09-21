@@ -579,16 +579,18 @@ export type MediaKind = 'video' | 'audio';
  * Mirrors the Rust `MediaProbe`.
  *
  * **Carries no bytes**, which is what separates it from `ImageContents` and
- * `PdfContents`. Video streams over the asset protocol in the ranges the
- * element asks for, so all that crosses the bridge is the verdict.
+ * `PdfContents`. Video streams from a loopback server in the ranges the element
+ * asks for, so all that crosses the bridge is the verdict and an address.
  */
 export interface MediaProbe {
-	/** The **canonical** path — what `probe_media` granted to the asset protocol
-	 *  and therefore the only path `mediaSrc()` may be given. The protocol
-	 *  canonicalizes a request before matching it against the scope, so asking
-	 *  for the path you started with can be refused when it ran through a
-	 *  symlink. */
+	/** The canonical path on disk. For the things that are about the *file* —
+	 *  the tab, the reveal, the open in another app — and never for fetching. */
 	path: string;
+	/** Where the media element fetches this file from (ADR-0057): a loopback
+	 *  address naming an opaque id and carrying the run's bearer token. The
+	 *  only way to the bytes, and the reason the renderer needs no notion of
+	 *  how they are served. */
+	url: string;
 	kind: MediaKind;
 	/** The container's own type where the magic bytes name one, the type implied
 	 *  by the extension where they do not. Unlike `ImageContents.mime` this is

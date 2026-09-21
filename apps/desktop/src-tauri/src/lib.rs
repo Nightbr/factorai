@@ -269,6 +269,7 @@ pub fn run() {
 				routines: routines.clone(),
 				watch: watch.clone(),
 				file_watch: Arc::new(services::file_watch::FileWatch::new()),
+				media: Arc::new(std::sync::OnceLock::new()),
 			});
 
 			spawn_initial_scan(indexer.clone());

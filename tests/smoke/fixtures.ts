@@ -150,15 +150,19 @@ export async function installMockBridge(page: Page, fixture: TestFixture): Promi
 	}, fixture);
 }
 
-/** Where `mediaSrc()` points outside Tauri. Mirrors `MEDIA_MOCK_PREFIX` in
- *  `lib/tauri.ts`; one string in two places because this file is outside the
- *  renderer's module graph. */
+/** Where the smoke lane serves media from. In the app the URL comes from the
+ *  media server (ADR-0057); a fixture mints its own, and this is the prefix
+ *  `serveMediaFixtures` answers on. */
 const MEDIA_PREFIX = '/__media/';
 
-/** The committed fixtures, beside this file. `__dirname` rather than
- *  `import.meta.url`: the repo is CJS, and Playwright's transform leaves the
- *  latter as an `exports` reference that throws before a single test runs. */
-const MEDIA_DIR = join(__dirname, 'fixtures', 'media');
+/** Binary fixtures live in `tests/fixtures/`, one level up — the home for data
+ *  any test lane needs, not just this one, and it keeps the directory from
+ *  colliding with this file's own name.
+ *
+ *  `__dirname` rather than `import.meta.url`: the repo is CJS, and Playwright's
+ *  transform leaves the latter as an `exports` reference that throws before a
+ *  single test runs. */
+const MEDIA_DIR = join(__dirname, '..', 'fixtures', 'media');
 
 /** Enough to serve what `fixtures/media/` holds. The real protocol sniffs; this
  *  only has to name the files committed beside it. */
@@ -766,7 +770,10 @@ const LOCKED_PDF =
  *  basename in `fixtures/media/`. `path` is the canonical one the renderer must
  *  ask for (ADR-0056); in a fixture it is simply the path itself. */
 function media(path: string, kind: MediaProbe['kind'], mime: string, size: number): MediaProbe {
-	return { path, kind, mime, size };
+	// In the app this is a loopback URL the media server minted; here it is a
+	// path `serveMediaFixtures` answers, which is the same contract from the
+	// renderer's side — it fetches whatever the probe hands it.
+	return { path, url: `${MEDIA_PREFIX}${encodeURIComponent(basename(path))}`, kind, mime, size };
 }
 
 function pdf(path: string, over: Partial<PdfContents> = {}): PdfContents {
