@@ -17,7 +17,7 @@ declare const __APP_VERSION__: string;
  * fails rather than silently losing JSON highlighting.
  */
 declare module 'monaco-editor/languages/features/json/tokenization' {
-	// An inline `import type` rather than an import statement: biome reads the
+	// An inline `import type` rather than an import statement: the linter reads the
 	// latter as unused inside an ambient module declaration, and the rule is not
 	// one to silence with an ignore comment.
 	export function createTokenizationSupport(

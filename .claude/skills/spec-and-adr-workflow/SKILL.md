@@ -30,7 +30,7 @@ description: How work starts and lands here — read the spec first, start from 
 - Commit in small slices (one Red→Green or one feature step). Prefix with
   `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 - The bans that apply here (`--no-verify`, `as any`, `#[allow(...)]`,
-  `// biome-ignore`, emojis) are in AGENTS.md § "Code style" and § "Commits".
+  `// oxlint-disable`, emojis) are in AGENTS.md § "Code style" and § "Commits".
 
 Before declaring the task done, run the full gate — see the `quality-gate`
 skill.

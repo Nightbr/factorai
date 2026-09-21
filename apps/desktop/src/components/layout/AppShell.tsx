@@ -121,6 +121,12 @@ export function AppShell({ children }: AppShellProps) {
 	// at. Found in the dev app, after a reload (ADR-0037). A preview tab,
 	// because nothing about restoring a URL says the file was pinned.
 	const seen = useRef<ViewerSubject | null>(null);
+	// The four fields of `viewer` this effect reads are pulled out first, and
+	// they — not `viewer` — are what it depends on: the object is a fresh one
+	// on every viewer-store change, so depending on it would re-seed the strip
+	// on changes that have nothing to do with the subject. `open` and `close`
+	// are `useCallback`s, stable across those renders.
+	const { path: viewerPath, diff: viewerDiff, open: openViewer, close: closeViewer } = viewer;
 	useEffect(() => {
 		if (!root) return;
 		const state = useViewerStore.getState();
@@ -136,12 +142,12 @@ export function AppShell({ children }: AppShellProps) {
 		const handoff = viewerHandoff({
 			previous,
 			next,
-			showing: viewer.path,
+			showing: viewerPath,
 			last: state.activeByCheckout[root],
 			within: isWithin,
 		});
 		if (handoff.kind === 'close') {
-			viewer.close();
+			closeViewer();
 			return;
 		}
 		if (handoff.kind === 'restore') {
@@ -155,7 +161,7 @@ export function AppShell({ children }: AppShellProps) {
 			// the pane, and yanking the caret out of that session's terminal for a
 			// file the reader did not ask for is the ambush the focus rule exists
 			// inside.
-			viewer.open(handoff.path, {
+			openViewer(handoff.path, {
 				diff: tab?.diff ?? undefined,
 				preview: tab?.preview,
 				focus: false,
@@ -163,10 +169,10 @@ export function AppShell({ children }: AppShellProps) {
 			return;
 		}
 
-		if (!viewer.path) return;
-		if (tabsFor(state, root).some((t) => t.path === viewer.path)) return;
-		state.openTab(viewer.path, { preview: true, diff: viewer.diff });
-	}, [projectId, root, viewer.path, viewer.diff, viewer.open, viewer.close]);
+		if (!viewerPath) return;
+		if (tabsFor(state, root).some((t) => t.path === viewerPath)) return;
+		state.openTab(viewerPath, { preview: true, diff: viewerDiff });
+	}, [projectId, root, viewerPath, viewerDiff, openViewer, closeViewer]);
 
 	// **The stored width is clamped on every render, not only on drag.** A width
 	// dragged wide in a big window, or restored from a previous launch, would

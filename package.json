@@ -7,8 +7,8 @@
 		"dev": "turbo dev",
 		"build": "turbo build",
 		"lint": "turbo lint",
-		"format": "biome format --write .",
-		"format:check": "biome format . --max-diagnostics=200",
+		"format": "oxfmt .",
+		"format:check": "oxfmt --check .",
 		"typecheck": "turbo typecheck",
 		"test": "turbo test",
 		"e2e": "playwright test",
@@ -19,10 +19,11 @@
 		"bytes:check": "node scripts/check-text-bytes.mjs"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "1.9.4",
 		"@playwright/test": "1.60.0",
 		"@types/node": "22.13.4",
 		"knip": "5.38.2",
+		"oxfmt": "0.68.0",
+		"oxlint": "1.83.0",
 		"syncpack": "13.0.0",
 		"turbo": "2.7.5"
 	},
@@ -32,6 +33,6 @@
 		"pnpm": ">=10.0.0"
 	},
 	"pnpm": {
-		"onlyBuiltDependencies": ["@biomejs/biome", "esbuild", "@playwright/test"]
+		"onlyBuiltDependencies": ["esbuild", "@playwright/test"]
 	}
 }

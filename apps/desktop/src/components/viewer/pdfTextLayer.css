@@ -10,7 +10,7 @@
  * disagree — an upgrade that changes the block is a re-copy, caught by a test
  * rather than noticed by eye.
  *
- * Reformatted by biome on the way in, like every other CSS file in this repo and
+ * Reformatted by oxfmt on the way in, like every other CSS file in this repo and
  * for the same reason the vendored shadcn primitives were: a
  * file the formatter is not allowed to touch is a landmine. That is why the test
  * compares the rules with the whitespace dropped rather than byte for byte.

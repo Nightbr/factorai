@@ -16,11 +16,11 @@ them away from the human? An ADE where the agent is central is *not* one where
 the human is absent — every irreversible action keeps its confirmation, and "the
 agent already did it" is never a reason to skip asking.
 
-Tauri 2 (Rust) + React 19 + TypeScript, pnpm monorepo, Biome, Turborepo. macOS
-and Linux only for v1. Layout: `apps/desktop` (renderer + `src-tauri`),
-`apps/docs` (the site: Docusaurus, the hero and later the guide, ADR-0051),
-`packages/ui` (shadcn-style primitives), `packages/types` (cross-boundary types),
-`tests/smoke` (Playwright).
+Tauri 2 (Rust) + React 19 + TypeScript, pnpm monorepo, oxlint + oxfmt,
+Turborepo. macOS and Linux only for v1. Layout: `apps/desktop` (renderer +
+`src-tauri`), `apps/docs` (the site: Docusaurus, the hero and later the guide,
+ADR-0051), `packages/ui` (shadcn-style primitives), `packages/types`
+(cross-boundary types), `tests/smoke` (Playwright).
 
 ## Setup
 
@@ -46,12 +46,12 @@ The site is `mise run docs` (or `pnpm --filter @factorai/docs start`), on port
 
 ## Code style
 
-- Biome owns formatting and linting for JS/TS/CSS; `rustfmt` owns Rust. Neither
-  is reviewed by hand. Fixers: `pnpm format`, `cargo fmt`.
+- oxfmt owns formatting and oxlint owns linting for JS/TS/CSS; `rustfmt` owns
+  Rust. Neither is reviewed by hand. Fixers: `pnpm format`, `cargo fmt`.
 - TypeScript is `strict`, with `noUnusedLocals`, `noUnusedParameters`,
-  `noFallthroughCasesInSwitch`. Biome sets `noExplicitAny`, `noUnusedImports`,
-  `noUnusedVariables` to error. Clippy runs with `-D warnings`.
-- **Never** `as any`, `#[allow(...)]`, or `// biome-ignore` to silence a real
+  `noFallthroughCasesInSwitch`. oxlint sets `typescript/no-explicit-any` and
+  `no-unused-vars` to error. Clippy runs with `-D warnings`.
+- **Never** `as any`, `#[allow(...)]`, or `// oxlint-disable` to silence a real
   warning. A genuinely warranted `#[allow(...)]` carries a comment saying why.
 - **Never** `unwrap()` outside `setup()`. `anyhow` inside command bodies,
   `thiserror` `AppError` at the command boundary.
@@ -120,7 +120,7 @@ No native Windows port: Windows runs the Linux build inside WSL 2 under WSLg
 (ADR-0044), there is no `windows-msvc` target, and anything that must differ
 inside WSL is a runtime branch in `services/wsl.rs` rather than a `#[cfg]`. No
 ARM64 Windows. No telemetry, analytics or crash reporting. No localization. No
-code generation for Tauri bindings. No CodeScene / Codacy / SonarQube — Biome
+code generation for Tauri bindings. No CodeScene / Codacy / SonarQube — oxlint
 plus `tsc` plus clippy is the floor. No Claude OAuth helper. No mock data baked
 into the renderer.
 

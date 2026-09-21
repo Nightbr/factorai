@@ -37,8 +37,7 @@ const iconButtonVariants = cva(
 );
 
 export interface IconButtonProps
-	extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-		VariantProps<typeof iconButtonVariants> {
+	extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof iconButtonVariants> {
 	asChild?: boolean;
 }
 

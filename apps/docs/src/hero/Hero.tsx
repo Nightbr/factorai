@@ -52,11 +52,11 @@ const TOTAL = SEGMENTS + HOLD;
  */
 function splitChars(text: string, className: string) {
 	return text.split(' ').map((word, w) => (
-		// biome-ignore lint/suspicious/noArrayIndexKey: static string, never reordered
+		// oxlint-disable-next-line react/no-array-index-key -- static string, never reordered
 		<span key={w} className={styles.word}>
 			{w > 0 && <span className={className} aria-hidden="true" />}
 			{Array.from(word).map((ch, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: static string, never reordered
+				// oxlint-disable-next-line react/no-array-index-key -- static string, never reordered
 				<span key={i} data-char="">
 					{ch}
 				</span>

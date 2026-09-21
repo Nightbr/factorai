@@ -57,7 +57,7 @@ apps/desktop/public/pdfjs/
 
 # Worktrees created by the agent inside the project (F21). They are checkouts
 # of this same repository, so committing one would embed a git repo in itself —
-# and every tool that walks the tree (biome, knip, playwright) would otherwise
+# and every tool that walks the tree (oxlint, oxfmt, knip, playwright) would otherwise
 # see a second copy of the whole source and report duplicates.
 .claude/worktrees/
 

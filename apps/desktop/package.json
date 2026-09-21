@@ -11,7 +11,7 @@
 		"vite:dev": "vite",
 		"vite:build": "tsc --noEmit && vite build",
 		"typecheck": "tsc --noEmit",
-		"lint": "biome lint src",
+		"lint": "oxlint src",
 		"test": "vitest run"
 	},
 	"dependencies": {

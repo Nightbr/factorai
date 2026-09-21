@@ -75,15 +75,7 @@ export function PdfView({ path }: { path: string }) {
 	return <PdfDocumentView key={path} path={path} base64={pdfQ.data.base64} size={pdfQ.data.size} />;
 }
 
-function PdfDocumentView({
-	path,
-	base64,
-	size,
-}: {
-	path: string;
-	base64: string;
-	size: number;
-}) {
+function PdfDocumentView({ path, base64, size }: { path: string; base64: string; size: number }) {
 	const [doc, setDoc] = useState<PdfDocument | null>(null);
 	const [pages, setPages] = useState<Measured[]>([]);
 	const [failure, setFailure] = useState<string | null>(null);

@@ -108,6 +108,7 @@ function FieldList({ fields, className }: { fields: FrontmatterField[]; classNam
 				// The key is not unique: YAML permits a duplicate, and `yaml` keeps
 				// the last one — but a nested block can repeat a name its sibling
 				// used, so position is what identifies a row here.
+				// oxlint-disable-next-line react/no-array-index-key -- see above
 				<div key={`${field.key}-${i}`} className="col-span-2 grid grid-cols-subgrid">
 					<dt className="truncate font-mono text-muted-foreground text-xs leading-5">
 						{field.key}
@@ -135,6 +136,7 @@ function ValueCell({ value }: { value: FrontmatterValue }) {
 					{value.items.map((item, i) => (
 						// Position identifies an entry: a list may hold the same value
 						// twice, and both times it is a row of its own.
+						// oxlint-disable-next-line react/no-array-index-key -- see above
 						<ListItem key={`${i}-${item.kind}`} value={item} />
 					))}
 				</div>

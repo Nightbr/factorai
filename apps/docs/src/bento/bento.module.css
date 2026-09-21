@@ -26,7 +26,8 @@
 	--trace: oklch(34% 0.02 250);
 	--trace-on: oklch(62% 0.12 75);
 	padding: clamp(56px, 9vh, 120px) 16px clamp(48px, 8vh, 96px);
-	background: linear-gradient(oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 100% 96px,
+	background:
+		linear-gradient(oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 100% 96px,
 		linear-gradient(90deg, oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 96px 100%,
 		var(--fa-background);
 }
@@ -75,10 +76,14 @@
 .cell[data-powered]:hover {
 	border-color: var(--fa-primary);
 	transform: translateY(-4px);
-	box-shadow: 0 0 0 1px oklch(81.3% 0.165 75 / 0.25), 0 18px 40px oklch(0% 0 0 / 0.45), 0 0 32px
-		oklch(81.3% 0.165 75 / 0.12);
-	transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease, box-shadow
-		0.35s ease;
+	box-shadow:
+		0 0 0 1px oklch(81.3% 0.165 75 / 0.25),
+		0 18px 40px oklch(0% 0 0 / 0.45),
+		0 0 32px oklch(81.3% 0.165 75 / 0.12);
+	transition:
+		transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+		border-color 0.25s ease,
+		box-shadow 0.35s ease;
 }
 
 .cell:hover .corner {
@@ -103,7 +108,11 @@
 	border: 1px solid var(--hud);
 	opacity: 0.6;
 	z-index: 2;
-	transition: width 0.3s ease, height 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
+	transition:
+		width 0.3s ease,
+		height 0.3s ease,
+		border-color 0.3s ease,
+		opacity 0.3s ease;
 }
 
 .tl {
@@ -1623,7 +1632,9 @@
 	border-radius: 9999px;
 	border: 1px solid var(--fa-border);
 	padding: 2px;
-	transition: border-color 0.2s ease, transform 0.2s ease;
+	transition:
+		border-color 0.2s ease,
+		transform 0.2s ease;
 }
 
 .avatars a:hover {

@@ -33,10 +33,11 @@ factorai/
 │       ├── src/lib/utils.ts     # cn() helper
 │       └── src/styles/globals.css
 ├── specs/                       # this directory
-├── biome.json
+├── .oxlintrc.json
+├── .oxfmtrc.json
 ├── turbo.json
 ├── pnpm-workspace.yaml
-├── package.json                 # root: turbo, biome, knip, syncpack
+├── package.json                 # root: turbo, oxlint, oxfmt, knip, syncpack
 ├── Cargo.toml                   # cargo workspace, member: apps/desktop/src-tauri
 ├── knip.json
 ├── .syncpackrc.json
@@ -107,7 +108,7 @@ A thin `apps/desktop/src/lib/tauri.ts` re-exports typed wrappers around
 | ------------------ | --------------------------------------------------------------- |
 | `pnpm dev`         | `turbo dev --filter=@factorai/desktop` → `tauri dev --config src-tauri/tauri.dev.conf.json` |
 | `pnpm build`       | `turbo build` (vite build → tauri build)                        |
-| `pnpm lint`        | `turbo lint` (Biome over all packages)                          |
+| `pnpm lint`        | `turbo lint` (oxlint over all packages)                         |
 | `pnpm format`      | `turbo format`                                                  |
 | `pnpm typecheck`   | `turbo typecheck`                                               |
 | `pnpm deps:check`  | `syncpack list-mismatches`                                      |

@@ -88,7 +88,7 @@ describe('adoptLive', () => {
 		// order, and the live list arrives after. Adopting must not append a
 		// second entry or move the first — and, since F22, must not add one for
 		// the live session that has no tab, which is what a routine's looks like.
-		useTerminalStore.setState({ tabs: [{ sessionId: 'b', projectId: 'p1' }, ...[]] });
+		useTerminalStore.setState({ tabs: [{ sessionId: 'b', projectId: 'p1' }] });
 		useTerminalStore.getState().adoptLive([dto('a'), dto('b')]);
 		expect(ids()).toEqual(['b']);
 		expect(useTerminalStore.getState().bySession.a.terminalId).toBe('pty-a');

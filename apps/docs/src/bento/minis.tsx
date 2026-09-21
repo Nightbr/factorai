@@ -157,7 +157,7 @@ export function ChangesMini() {
 						['add', 44],
 						['ctx', 80],
 					].map(([k, w], i) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: static rows
+						// oxlint-disable-next-line react/no-array-index-key -- static rows
 						<span key={i} data-k={k} style={{ width: `${w}%` }} />
 					))}
 				</div>
@@ -245,7 +245,7 @@ export function ViewerMini() {
 				</div>
 				<div className={styles.code}>
 					{[58, 34, 71, 46].map((w, i) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: static rows
+						// oxlint-disable-next-line react/no-array-index-key -- static rows
 						<span key={i} style={{ width: `${w}%` }} data-i={i} />
 					))}
 				</div>

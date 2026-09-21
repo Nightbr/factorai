@@ -1,7 +1,8 @@
 # Contributing
 
 factorai is Tauri 2 (Rust) + React 19 + TypeScript in a pnpm/Turborepo
-monorepo, with Biome as the single lint/format gate. macOS and Linux only.
+monorepo, with oxlint and oxfmt as the single lint/format gate. macOS and
+Linux only.
 
 This page is the practical half: how to build it and how to check your work.
 The rules the project actually runs under live in
@@ -52,7 +53,7 @@ pnpm deps:unused
 cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
-`pnpm format` (Biome, whole repo) and `cargo fmt` are the two fixers.
+`pnpm format` (oxfmt, whole repo) and `cargo fmt` are the two fixers.
 CI runs all of the above except `e2e`, on every PR and every push to `main`.
 
 ## Testing lanes

@@ -1493,3 +1493,31 @@ it, the same measured rule as item 48 decides tree-beside-viewer or tree-above-v
 
 None of it is started until item 48 has shipped and been lived with.
 
+
+## 60. The oxlint rules the Biome migration left off
+
+**Deferred 2026-09-21**, in ADR-0054, which swapped Biome for oxlint + oxfmt and deliberately did
+not change renderer behaviour in the same commit. Two families are off in `.oxlintrc.json`, each
+with its reason written beside it there. This item is the work of turning them on.
+
+- [ ] **The React Compiler family — 77 findings.** `react/refs` (53), `react/set-state-in-effect`
+      (12), `react/immutability` (9), `react/preserve-manual-memoization` (2) and
+      `react/exhaustive-effect-dependencies` (1). Biome 1.9 had no equivalent, so none of this
+      code was ever written against them. They are not style: a ref read during render and a
+      `setState` in an effect are the two ways a pane goes stale, and the Hero's scrubber and the
+      terminal's xterm wiring are exactly where they fire. Expect a real reading of each, not a
+      fix-all — and expect some to be correct as written, in which case the suppression carries
+      the reason.
+- [ ] **Four `jsx-a11y` rules — 9 findings.** `no-autofocus` (2), `no-static-element-interactions`
+      (4), `no-noninteractive-element-interactions` (1), `prefer-tag-over-role` (2). Every other
+      `jsx-a11y` rule is already on and green. Each of these fires on a deliberate pattern —
+      `autoFocus` in a dialog that opens onto one field, `role="separator"` on a resizer that is a
+      focusable widget rather than an `<hr>`, pointer handlers on containers whose keyboard path
+      is bound elsewhere — so the work is deciding, per site, between a keyboard path that is
+      genuinely missing and a suppression that says why it is not.
+- [ ] **While in there: `oxfmt` import sorting, and one root `oxlint`.** `sortImports` would
+      rewrite 181 files and gate the ordering Biome's `organizeImports` was configured for and
+      never enforced. A single root `oxlint` run — now 191 ms for the tree — would replace the
+      per-package fan-out and lint `tests/` and `scripts/`, which nothing has ever linted. Both
+      are one-line config changes with a wide diff behind them; neither belongs in a commit with
+      the other two.

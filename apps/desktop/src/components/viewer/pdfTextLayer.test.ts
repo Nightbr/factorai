@@ -24,7 +24,7 @@ describe('the vendored text-layer CSS', () => {
 	/**
 	 * Whitespace out, on both sides.
 	 *
-	 * The copy is **not** byte-identical, and shouldn't be: biome formats every
+	 * The copy is **not** byte-identical, and shouldn't be: oxfmt formats every
 	 * CSS file in this repo, vendored ones included — the same call the shadcn
 	 * primitives got, so they stop being a landmine. What has to
 	 * hold is that the *rules* are upstream's, which is what survives dropping

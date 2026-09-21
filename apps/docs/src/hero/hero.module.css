@@ -123,7 +123,8 @@
 	width: 100%;
 	overflow: hidden;
 	color: var(--fa-foreground);
-	background: linear-gradient(oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 100% 96px,
+	background:
+		linear-gradient(oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 100% 96px,
 		linear-gradient(90deg, oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 96px 100%,
 		var(--fa-background);
 }
@@ -201,7 +202,9 @@
 /* The word dies: flicker, shift, lose contrast. Time-based, runs while step 3 is
    active; the slam itself is scrubbed. */
 .decay .ide {
-	animation: flicker 1.8s steps(1, end) 0.5s infinite, fade 4s ease-out 0.7s forwards;
+	animation:
+		flicker 1.8s steps(1, end) 0.5s infinite,
+		fade 4s ease-out 0.7s forwards;
 }
 
 @keyframes flicker {
@@ -214,7 +217,9 @@
 	7% {
 		opacity: 0.55;
 		transform: translateX(-3px);
-		text-shadow: 4px 0 oklch(70% 0.1 255 / 0.6), -4px 0 oklch(70% 0.15 25 / 0.5);
+		text-shadow:
+			4px 0 oklch(70% 0.1 255 / 0.6),
+			-4px 0 oklch(70% 0.15 25 / 0.5);
 	}
 	9% {
 		opacity: 1;
@@ -224,7 +229,9 @@
 	23% {
 		opacity: 0.3;
 		transform: translateX(2px) skewX(-6deg);
-		text-shadow: -6px 0 oklch(70% 0.1 255 / 0.6), 6px 0 oklch(70% 0.15 25 / 0.5);
+		text-shadow:
+			-6px 0 oklch(70% 0.1 255 / 0.6),
+			6px 0 oklch(70% 0.15 25 / 0.5);
 	}
 	25% {
 		opacity: 1;
@@ -367,7 +374,9 @@
 	fill: var(--fa-background);
 	stroke: oklch(34% 0.02 250);
 	stroke-width: 1.5;
-	transition: fill 0.3s ease, stroke 0.3s ease;
+	transition:
+		fill 0.3s ease,
+		stroke 0.3s ease;
 }
 
 .board [data-lit] {
@@ -477,7 +486,10 @@
 	place-items: center;
 	cursor: pointer;
 	z-index: 5;
-	transition: opacity 0.4s ease, transform 0.4s ease, background 0.2s ease;
+	transition:
+		opacity 0.4s ease,
+		transform 0.4s ease,
+		background 0.2s ease;
 	animation: nudge 2.4s ease-in-out 1.2s 2;
 	border-width: 1px;
 	border-radius: 2px;

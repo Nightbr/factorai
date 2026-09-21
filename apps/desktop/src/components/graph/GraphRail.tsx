@@ -73,6 +73,7 @@ export function GraphRail({ lane, edges, pitch, width, node }: GraphRailProps) {
 				<path
 					// Edges have no identity of their own — they are derived from the
 					// row's lanes every poll, so the index *is* the identity.
+					// oxlint-disable-next-line react/no-array-index-key -- see above
 					key={`${edge.kind}:${edge.fromLane}:${edge.toLane}:${index}`}
 					d={pathFor(edge, centre, mid)}
 					fill="none"

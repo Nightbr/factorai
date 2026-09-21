@@ -22,7 +22,7 @@
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit",
-		"lint": "biome lint src"
+		"lint": "oxlint src"
 	},
 	"peerDependencies": {
 		"react": "19.2.4",

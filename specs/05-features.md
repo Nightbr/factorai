@@ -991,7 +991,7 @@ is the wrong destination in a webview anyway.
 Two consequences worth keeping:
 
 - **`window.confirm` and `window.prompt` are unusable in this app**, from our
-  code or anyone's. Biome's `noRestrictedGlobals` denies both, so ours cannot
+  code or anyone's. oxlint's `no-restricted-globals` denies both, so ours cannot
   come back; a dependency's cannot be stopped that way, only survived — which is
   what F17's classification now does. Use a `Dialog` from `@factorai/ui`
   (`components/dialog/CloseSessionConfirm` is the pattern).

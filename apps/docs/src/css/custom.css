@@ -48,7 +48,9 @@ html {
 
 .navbar {
 	border-bottom: 1px solid var(--fa-border);
-	transition: background 0.5s ease, border-color 0.5s ease;
+	transition:
+		background 0.5s ease,
+		border-color 0.5s ease;
 }
 
 /* The blur lives on a pseudo-element: `backdrop-filter` on the nav itself
@@ -80,11 +82,15 @@ body[data-fa-intro] .navbar {
 body[data-fa-intro] .navbar__inner {
 	transform: translateY(-100%);
 	opacity: 0;
-	transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease;
+	transition:
+		transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+		opacity 0.5s ease;
 }
 
 .navbar__inner {
-	transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease;
+	transition:
+		transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+		opacity 0.5s ease;
 }
 
 /* The burger on the right, the lockup first. */
@@ -152,7 +158,8 @@ body[data-fa-hero] .navbar {
 .footer {
 	position: relative;
 	--hud: oklch(70% 0.06 240 / 0.7);
-	background: linear-gradient(oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 100% 96px,
+	background:
+		linear-gradient(oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 100% 96px,
 		linear-gradient(90deg, oklch(100% 0 0 / 0.025) 1px, transparent 1px) 0 0 / 96px 100%,
 		var(--fa-background);
 	border-top: 1px solid var(--fa-border);

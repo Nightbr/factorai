@@ -1,5 +1,5 @@
 # Written to match the code that was already here rather than to change it —
-# the repo indents with tabs everywhere (see `biome.json`), and this side was
+# the repo indents with tabs everywhere (see `.oxfmtrc.json`), and this side was
 # hand-formatted at 100 columns with expressions kept on one line wherever they
 # fit.
 #

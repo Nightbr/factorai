@@ -4,7 +4,7 @@
  *
  * **Why this exists.** On 2026-09-09 a `DiffView.tsx` was committed—nearly—with
  * a literal U+0000 in a template literal, where a separator was meant.
- * Every other check passed: biome formats it, `tsc` parses it, 605 unit tests
+ * Every other check passed: the formatter formats it, `tsc` parses it, 605 unit tests
  * and 273 smoke tests ran against it. Git classified the file as binary (a NUL
  * in the first 8000 bytes is git's whole test), so `git diff` showed
  * `Bin 10692 -> 19617 bytes` instead of a diff — and factorai's own viewer,

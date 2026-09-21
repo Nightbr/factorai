@@ -8,7 +8,7 @@
 		"build": "docusaurus build",
 		"serve": "docusaurus serve --port 3210",
 		"typecheck": "tsc --noEmit",
-		"lint": "biome lint src docusaurus.config.ts"
+		"lint": "oxlint src docusaurus.config.ts"
 	},
 	"dependencies": {
 		"@docusaurus/core": "3.10.2",

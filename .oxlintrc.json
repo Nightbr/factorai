@@ -1,0 +1,78 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+
+	// Every rule turned off below says why. The list is the record of what this
+	// repo does *not* gate on yet; an "off" without a reason is how a config
+	// rots into something nobody can account for (same rule as `knip.jsonc`).
+
+	// `typescript`, `unicorn` and `oxc` are on by default; `react` and
+	// `jsx-a11y` are not, and the renderer is a React app. `import` and
+	// `vitest` stay off: `import/default` cannot see through Vite's `?worker`
+	// query and reports two real imports as missing, and `tsc` already resolves
+	// every import in the gate.
+	"plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y"],
+
+	// `correctness` is oxlint's default category and the only one on: the wider
+	// sets (`suspicious`, `perf`, `style`, `pedantic`) add ~1800 findings over
+	// this tree, which is a rewrite, not a lint floor.
+	"categories": { "correctness": "error" },
+
+	"rules": {
+		// The six that carried over from `biome.json` verbatim — ADR-0054.
+		"no-unused-vars": "error",
+		"typescript/no-explicit-any": "error",
+		"typescript/no-non-null-assertion": "warn",
+		"prefer-const": "error",
+		"prefer-template": "error",
+		// `confirm` and `prompt` block the WebKit main thread and cannot be
+		// styled; the app has its own dialogs (specs/05-features.md).
+		"no-restricted-globals": ["error", "confirm", "prompt"],
+
+		// Biome's recommended set reached past what oxlint calls `correctness`,
+		// and these five are that reach: loose equality (`null` excepted — `!=
+		// null` is the one-comparison undefined-or-null check), `var`, a key
+		// taken from an array index, a fragment wrapping one child, and
+		// `dangerouslySetInnerHTML`. Each is zero-cost here because the code
+		// already passed the Biome rule it mirrors.
+		"eqeqeq": ["error", "always", { "null": "ignore" }],
+		"no-var": "error",
+		"react/no-array-index-key": "error",
+		"react/jsx-no-useless-fragment": "error",
+		"react/no-danger": "error",
+
+		// React 19's automatic JSX runtime: `React` is not in scope and does not
+		// need to be.
+		"react/react-in-jsx-scope": "off",
+
+		// The React Compiler family. These are real, they are new — Biome 1.9
+		// had no equivalent and the code was never written against them — and
+		// between them they fire 77 times in renderer code that works. Turning
+		// them on is its own piece of work, tracked in specs/roadmap/TODO.md.
+		"react/refs": "off",
+		"react/immutability": "off",
+		"react/set-state-in-effect": "off",
+		"react/preserve-manual-memoization": "off",
+		"react/exhaustive-effect-dependencies": "off",
+
+		// Stricter than Biome's recommended a11y set was, and each fires on a
+		// deliberate pattern: `autoFocus` in a dialog that opens onto one field,
+		// `role="separator"` on a resizer that is a focusable widget rather than
+		// an `<hr>`, and pointer handlers on containers whose keyboard path is
+		// bound elsewhere. Every other `jsx-a11y` rule is on. Same TODO entry.
+		"jsx-a11y/no-autofocus": "off",
+		"jsx-a11y/no-static-element-interactions": "off",
+		"jsx-a11y/no-noninteractive-element-interactions": "off",
+		"jsx-a11y/prefer-tag-over-role": "off"
+	},
+
+	// oxlint reads `.gitignore`; these are the paths it would otherwise walk
+	// that git tracks or ignores per-package.
+	"ignorePatterns": [
+		"**/dist/**",
+		"**/build/**",
+		"**/coverage/**",
+		"**/src-tauri/target/**",
+		"**/.docusaurus/**",
+		"**/*.gen.ts"
+	]
+}

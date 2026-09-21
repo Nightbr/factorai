@@ -48,7 +48,8 @@ exist. `pnpm deps:fix` resolves the usual case.
 `bytes:check` is the newest, added 2026-09-09, the day the thing it catches
 nearly shipped. A `DiffView.tsx` was written with a literal U+0000 in a template
 literal where the author meant a separator. **Every other check passed** —
-biome formats a NUL, `tsc` parses it, and 605 unit tests plus 273 smoke tests
+the formatter formats a NUL, `tsc` parses it, and 605 unit tests plus 273 smoke
+tests
 ran green against the file. What noticed was git, which calls any file with a
 NUL in its first 8000 bytes binary: `git diff` reported
 `Bin 10692 -> 19617 bytes` instead of a diff, and factorai's own viewer, asking
@@ -65,13 +66,14 @@ binary asset turns the check red until someone names it, which is the right
 direction for a check whose whole job is telling text from not-text.
 
 **Formatting is gated as of 2026-08-16, both sides**, and the two fixers are
-`pnpm format` (biome, whole repo) and `cargo fmt`. It is in the list for the
+`pnpm format` (oxfmt, whole repo) and `cargo fmt`. It is in the list for the
 same reason `deps:check` is: the repo was *not* format-clean, in 32 JS/TS/CSS
 files and 16 Rust ones, and nothing said so. Two consequences of that had
 already cost time and are now gone:
 
 - `pnpm format` used to run `biome format --write src` in each of three
-  packages, so `tests/`, `knip.js` and every root config file were never
+  packages — Biome was the formatter until ADR-0054 replaced it with oxfmt —
+  so `tests/`, `knip.js` and every root config file were never
   formatted at all — and running it rewrote all of `packages/ui`, burying
   whatever you were actually changing. It is now one root command over the
   whole tree, and the vendored shadcn files have been formatted into house
@@ -81,8 +83,9 @@ already cost time and are now gone:
   there — see its own comment for why that third setting is the load-bearing
   one.
 
-Note `biome format` caps output at 20 diagnostics by default, which is how a
-32-file backlog can read as a 20-file one; `format:check` raises the cap.
+`oxfmt --check` lists every file it would rewrite and ends with the count.
+Under Biome, which capped output at 20 diagnostics by default, a 32-file
+backlog read as a 20-file one and `format:check` had to raise the cap.
 
 `deps:unused` (knip) is in the list too, as of 2026-08-15. It had drifted to 76
 findings — 68 of them false, from a config whose ignores had outlived their
@@ -102,17 +105,19 @@ builds the renderer (`vite:build`), which catches a bundler-visible break that
 
 ## The quality floor these checks enforce
 
-We use **Biome** (lint + format) + `tsc --noEmit` + `cargo clippy` as the gate.
-We do **not** wire CodeScene, Codacy, or any third-party quality service. The
-Biome config in `biome.json` is the contract; keep it that way.
+We use **oxlint** (lint) + **oxfmt** (format) + `tsc --noEmit` + `cargo clippy`
+as the gate — ADR-0054. We do **not** wire CodeScene, Codacy, or any
+third-party quality service. `.oxlintrc.json` and `.oxfmtrc.json` are the
+contract; keep it that way, and keep the reason beside every rule turned off in
+them.
 
 - TypeScript: `strict: true`, `noUnusedLocals`, `noUnusedParameters`,
   `noFallthroughCasesInSwitch`. Don't disable these.
-- Biome `noExplicitAny: error`, `noUnusedImports: error`,
-  `noUnusedVariables: error`.
+- oxlint `typescript/no-explicit-any: error`, `no-unused-vars: error` (which
+  covers unused imports), `prefer-const`, `prefer-template`, `eqeqeq`.
 - Rust: `cargo clippy --all-targets -- -D warnings`. `#[allow(...)]` needs a
   comment explaining why.
-- Formatting is not a matter of taste and not reviewed by hand: `biome` owns
+- Formatting is not a matter of taste and not reviewed by hand: `oxfmt` owns
   every JS/TS/CSS file and `rustfmt` owns every Rust one, both checked here.
 
 AGENTS.md § "Code style" lists the escape hatches that are banned outright.
@@ -128,8 +133,8 @@ tests` for in-module unit tests.
 ```bash
 pnpm dev                  # tauri dev — full app
 pnpm typecheck            # tsc --noEmit across the workspace
-pnpm lint                 # biome lint
-pnpm format               # biome format --write . — the whole repo, safe to run
+pnpm lint                 # oxlint, per package through turbo
+pnpm format               # oxfmt . — the whole repo, safe to run
 pnpm format:check         # the same, read-only. In the gate.
 pnpm deps:check           # syncpack — workspace version drift
 pnpm deps:unused          # knip — dead code / deps
