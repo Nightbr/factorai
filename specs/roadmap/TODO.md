@@ -26,6 +26,13 @@ shipped 2026-08-20**, **item 5 (the keybinding scheme, F28) shipped 2026-09-15**
 menu verified 2026-09-17, and the release pipeline builds, signs and publishes on a tag. Items 6
 (titlebar), 7 (error UX) and 8 (the smoke pass) are what M5 still owes.
 
+**M6 is down to three workstreams.** Items 39 and 58 landed 2026-09-21 (`DONE.md`): the site
+builds from `apps/docs`, deploys to Pages on every push that touches it, answers on
+**`factorai.build`** (ADR-0055) and opens on the hero one-pager. Both keep their numbers for a
+remainder — the guide's content for 39, the screenshots, the motion and the e2e test for 58 —
+and **item 61**, real screenshots in the guide, is the new entry that came out of them. Items
+51, 31 and 59 are what M6 still waits on.
+
 **The list is now headed by M6 — the public first release.** See the block below: five
 workstreams, in build order, and **only those five gate it**. Everything under them, M5's own
 remainder included, is post-release work and is not a reason to delay the tag.
@@ -43,10 +50,12 @@ stranger finds. Five workstreams, in the order they should be built, each an ite
    than housekeeping. The channel mechanism is open, including a manifest hosted on the site.
 3. **[Item 59](#59-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Items 54 and 55 are its
    first two known findings and sit directly under it.
-4. **[Item 39](#39-the-site--a-docusaurus-build-carrying-the-guide-deployed-to-pages) — the site: one Docusaurus build on GitHub Pages**, the guide under `/docs`,
-   a custom domain to decide.
-5. **[Item 58](#58-the-hero--a-one-pager-that-makes-someone-want-this-at-the-sites-root) — the hero one-pager**, which is that site's index and the first thing anyone
-   sees.
+4. **[Item 39](#39-the-site--the-guides-content-now-that-the-build-carries-it) — the site: one Docusaurus build on GitHub Pages.** The build, the
+   deployment and the domain landed 2026-09-21; the guide under `/docs` is scaffolded prose and
+   is what is left.
+5. **[Item 58](#58-the-hero--the-screenshots-the-motion-and-the-test-the-page-still-owes) — the hero one-pager**, which is that site's index and the first thing anyone
+   sees. **The page landed 2026-09-21**; the entry is now the screenshots, the motion and the
+   test it owes.
 
 **Item 36 (the Homebrew cask) sits directly after them**, because it is the install path the site
 will point macOS users at and its instructions change the day item 51 lands.
@@ -365,18 +374,20 @@ the theme event, queue diagram renders, keep the old SVG during a re-render, and
 genuinely large document before deciding anything else is needed. Tier P1; the checklist is item
 59's.
 
-## 39. The site — a Docusaurus build carrying the guide, deployed to Pages
+## 39. The site — the guide's content, now that the build carries it
 
-**Release-blocking, and settled 2026-09-17: one site, one deployment, one workflow.** A Docusaurus
-app whose **index is the hero one-pager (item 58)** and whose `/docs` is the guide. Two
-deployments were considered and dropped — two domains, two sets of links to keep honest, and a
-hero that cannot link straight into a guide page without leaving its own origin.
+**The build, the deployment and the domain shipped 2026-09-21** (`DONE.md`): `apps/docs`
+([ADR-0051](../adr/0051-the-site-is-apps-docs-and-the-mark-may-move-there.md)),
+`.github/workflows/pages.yml` on every push that touches it, and **`factorai.build`**
+([ADR-0055](../adr/0055-the-site-lives-at-factorai-build.md)) with item 58's hero as the index.
+What is left, and what still gates the release, is the **guide's own content**: seven pages
+written from the specs and not yet checked against the running app.
 
 **User ask, 2026-08-24, restated 2026-08-30**: *"we will write a full docs later for all factorai
-features"*. Everything written for a *user* today is `README.md` and the five screenshots in
-`assets/images/`. Everything else in the repository is written for whoever is building it: `specs/`
-is the design source of truth, `specs/adr/` is the decision trail, and this file is sequencing. All
-three read as internal because they are.
+features"*. Everything written for a *user* today is `README.md`, the five screenshots in
+`assets/images/` and those seven pages. Everything else in the repository is written for whoever
+is building it: `specs/` is the design source of truth, `specs/adr/` is the decision trail, and
+this file is sequencing. All three read as internal because they are.
 
 **The README is a pitch, not a manual, and it stays that way** — settled 2026-08-30 when the
 routines section arrived and its second half, which explained how to *configure* one, was cut the
@@ -405,130 +416,46 @@ What the guide holds, in the order a new user meets it:
   macOS permission prompt (item 51) until it is gone.
 - **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
 
-Mechanics, now that the shape is decided:
+What is left:
 
-- [x] **Docusaurus, in this repository**, so a behaviour change and its documentation can land in
-      one commit — the same argument the specs already win. **It lives in `apps/docs`**, decided
-      2026-09-19 ([ADR-0051](../adr/0051-the-site-is-apps-docs-and-the-mark-may-move-there.md)):
-      a third workspace beside `apps/desktop`, so it rides the same install, Biome, turbo and
-      knip as the app. The root `docs/` folder that would have made the name ambiguous was
-      dissolved the same day — `adr/` into `specs/`, `brand/` and `images/` into `assets/`.
-      **The guide is scaffolded** (2026-09-19, `apps/docs/docs/`): Installation and updates,
-      Projects, Sessions, Routines, Files (with Changes and Graph), Terminal, and Advanced
-      (Profiles, Worktrees, Keyboard shortcuts) — short pages written from the specs, in the
-      site's own style, with the navbar and footer linking in. Each page is a first pass to be
-      checked against the running app before release.
-- [x] **Deploy through the Pages *artifact* workflow, not the serve-a-branch-folder mode.**
-      Pointing Pages at a folder would publish the decision trail as a website by accident.
-      Done 2026-09-20: the repository's Pages source is *GitHub Actions*.
-- [x] `.github/workflows/pages.yml` on push to `main`, alongside `quality.yml` and `release.yml`.
-      It has to be cheap enough to run on every push, or it will be skipped and go stale.
-      Landed 2026-09-20: runs when a push touches `apps/docs/`, the brand masters, the lockfile
-      or the workflow itself, and by hand; one Docusaurus build, uploaded and deployed.
-- [ ] **Whether the site reuses `assets/images/`** or keeps its own copies. Screenshots go stale on
-      their own schedule; one copy is one re-shoot. The `app-screenshot` skill owns how they are
-      taken, including the DEV badge and the blurring of private project names.
-- [x] **A custom domain, or the default `nightbr.github.io/factorai`.** Wanted eventually; decide
-      before publishing so the links in the README and in every release note are written once. A
-      domain also decides whether item 31's manifest can live here.
-      Decided 2026-09-21, ADR-0055: `factorai.build`, apex, registered at Porkbun. The exact name
-      was taken on `.com`, `.ai`, `.dev`, `.app` and `.io`, and a prefixed `.com` would have read
-      as a landing page for a differently-named product. `baseUrl` is now `/`, and
-      `apps/docs/static/CNAME` pins the domain in the build as well as in the repository setting.
+- [ ] **Every page checked against the running app, not against the spec it was written from.**
+      The scaffold landed 2026-09-19 — Installation and updates, Projects, Sessions, Routines,
+      Files (with Changes and Graph), Terminal, and Advanced (Profiles, Worktrees, Keyboard
+      shortcuts). A page written from a spec is a page that describes the app as designed; the
+      release is the first time a stranger reads it as the app as built. Troubleshooting and
+      *First run* are the two the scaffold does not yet have.
+- [ ] **Whether the site reuses `assets/images/`** or keeps its own copies under
+      `apps/docs/static/img/`. Screenshots go stale on their own schedule; one copy is one
+      re-shoot, which argues for reuse, and there are two mechanisms for it — a relative path out
+      of `apps/docs/docs/` that the MDX image loader resolves, or
+      `staticDirectories: ['static', '../../assets/images']` in `docusaurus.config.ts`. **Decide
+      with the first image rather than before it**; the images themselves are item 61.
 - [ ] **Versioning is deliberately off at first.** Docusaurus can version the docs per release;
       switching it on before there is a second release to compare against buys a directory of
       duplicates. Revisit when the stable channel has shipped twice.
 
-## 58. The hero — a one-pager that makes someone want this, at the site's root
+## 58. The hero — the screenshots, the motion and the test the page still owes
 
-**Asked for 2026-09-17, release-blocking.** The index of item 39's site: one page, stylish and
-inspiring, that says what factorai is and gets a stranger to the download. It is the first thing
-anyone sees and today it does not exist — the README is a pitch written for someone already
-looking at the repository, which is a different reader entirely.
+**The page shipped 2026-09-21** (`DONE.md`): the five-step pinned intro, the app mock, the
+eight-cell bento, the download band that reads the real release assets, and the About lines, live
+at the site's root. **It is no longer what blocks the release.** What is left is the half the page
+currently argues with code — real pictures of the real app — and the test that guards it.
 
-**What it has to say**, and `PRODUCT.md` is the contract for all of it: an ADE, not an editor with
-an agent in a pane; the unit of work is a session; the human supervises, decides, reviews and sets
-the rules. The four verbs are the page's spine, not decoration. What it must **not** do is invent
-evidence — no user counts, no benchmarks, no logos, no testimonials, because there are none and a
-fabricated one is the fastest way to lose the reader this page is for.
+**What the page has to say**, and `PRODUCT.md` is the contract for all of it: an ADE, not an
+editor with an agent in a pane; the unit of work is a session; the human supervises, decides,
+reviews and sets the rules. The four verbs are the page's spine, not decoration. What it must
+**not** do is invent evidence — no user counts, no benchmarks, no logos, no testimonials, because
+there are none and a fabricated one is the fastest way to lose the reader this page is for.
 
-- [x] **The page.** Hero statement, the four verbs as the argument, three or four surfaces shown
-      rather than described, install for macOS and Linux, and a link into the guide. One column,
-      readable on a phone, and fast — a landing page that loads slowly is an argument against the
-      product it sells. **The bento landed 2026-09-19**: under the heading *"You supervise,
-      decide, review, and set the rules. Agents do the rest."*, eight cells on the board the hero
-      left powered — a trunk down the left gutter, a bus per row, a lead and a pad per cell, each
-      cell wiring in once as it scrolls into view. Sessions and Review are the large ones;
-      Routines, Search, Workspace, Files, Parallel and Local the rest. What each cell shows is a
-      **coded miniature** of the real surface in the app's own tokens, running a short loop of
-      the one behaviour the cell claims (a dot turning amber with the prompt, a routine firing
-      without a tab, a query typed and hit, a diff and a lane, a project dropped into a group, a
-      SOPS file decrypting), rather than a screenshot — no privacy problem, nothing the app does
-      not do. Then a download band: the platform the browser reports gets the primary button,
-      the others sit in a dialog with the detected one on top, and the exact asset links, sizes,
-      tag and date come from one call to the GitHub releases API (asset names carry the version,
-      so `/releases/latest/download/…` cannot be written statically), falling back to the
-      releases page. Then three lines of About. The guide link waits for the guide.
-- [ ] **It looks like the app.** `DESIGN.md` is the palette, the type scale and the named rules;
-      the site inheriting them is what makes the download feel like the same thing as the page.
-      `.impeccable/design.json` is the machine-readable sidecar if the theme wants generating.
 - [ ] **Screenshots, and the privacy problem item 41 already hit.** A dev build against the
       author's own workspace is full of client and employer names, and four blurred rows plus one
-      legible one reads as a redacted document. Use `VITE_FACTORAI_SCREENSHOT=1`, the
-      `app-screenshot` skill and a **fabricated** workspace, which is the same fixture item 41
-      needs for its GIF — build it once.
+      legible one reads as a redacted document. The subject has to be **fabricated**, which is
+      the same fixture item 41 needs for its GIF and item 61 needs for the guide — **build it
+      once, in item 61**, and this entry becomes a choice of which shots the hero wants beside
+      its coded miniatures.
 - [ ] **Motion, if any, is honest.** The sidebar gesture is the one thing a still cannot show
       (item 41). A WebM of the real gesture from fake data belongs here as much as in the README;
       a generic animated mockup of a product that does not behave that way does not.
-- [ ] **Download links resolve to the real artifacts** — the `/releases/latest` asset for each
-      platform, or whatever item 31 settles for channels, so the page cannot go stale between
-      releases. A hero with a dead download is worse than no hero.
-
-**The intro, decided 2026-09-19.** Above the bento the page opens on five full-viewport steps,
-one pinned stage scrubbed by scroll and snapped to five labels (GSAP + ScrollTrigger), with a
-round down-arrow button, the arrow keys and Escape as the other ways through, and a muted skip
-link after two idle seconds. **One gesture is one step** (decided 2026-09-19): while the stage
-is pinned, wheel and touch are intercepted (GSAP Observer) and each gesture walks one label with
-the button's tween, so a fast flick cannot skip a step and lose what plays on arrival. A gesture
-is a rising edge in the raw wheel delta, or a steady delta after a quiet spell; an inertia tail
-decays and is ignored. The scrollbar stays native and still snaps, nearest-label rather than
-directional, because a programmatic step landing a pixel short would otherwise be carried on. No progress dots: the reader is meant to discover the length. The
-steps, in order — digital fog (a WebGL noise shader quantised on the mark's grid) under a line
-about the pace AI set; the fog sweeping across to erase it and reveal a line about needing new
-tools; the fog dying to black under **"IDE is dead"**, the README hook verbatim, which then
-flickers and decays; **"Long live the ADE"** — the phrase in white, the acronym in amber and
-bolder — with only the expansion beneath it; and the forge: a socket waits on a board, the forged
-mark comes in from above the page and seats into it with a flash, a shake and sparks at the rim,
-the pads take power, traces etch out of the six ports and an amber pulse runs each one. Then the
-wordmark and **"Forged for the agentic era."**. The hammer that used to do the striking was
-dropped on 2026-09-19 — the mark seating itself is the better idea, and it took three.js with it. Transitions between steps are scrubbed;
-what happens *on* a step plays once on arrival, because a strike driven by a mouse wheel feels
-like mud. Phones get the full animation and `prefers-reduced-motion` is not honoured — both are
-choices to revisit with a device in hand, not oversights. The header is hidden until the stage
-releases into the bento. **The URL follows the scroll** (2026-09-19): `#seq-1` … `#seq-5`
-through the intro, `#features`, `#download` and `#about` below it, written with `replaceState`
-so the history does not fill; landing on any of them scrolls there, past the pinned stage, and
-`?section=<id>` is accepted too. The platform dialog's state is `?modal=download`, a query kept
-distinct from the section hash: every button and the navbar's and footer's Download write it,
-closing removes it, arriving with it opens the dialog.
-
-**The app mock, 2026-09-20.** Between the intro and the bento, a working mock of the app drawn
-in its own tokens — sidebar with groups and sessions, the tab strip, a terminal, the footer
-shell, the Files/Changes/Graph panel — rendered at 1120×640 and scaled to the viewport, driven
-by a screenplay on a loop that runs only while on screen: an agent reads, edits, tests and
-commits while Changes fills and empties and the graph stacks; a second session stops to ask and
-its dots go amber; you switch to it, answer, and it commits on a second lane. Invented names,
-the app's behaviour, no screenshot to redact.
-
-**Prototyped, then chosen, 2026-09-19.** Four throwaway pages were built under `proto/` — copy
-A (the brief, corrected) against copy C (shortest), a flat SVG hammer against a three.js one,
-and a fourth, futuristic treatment: Inter at weight 200 with open tracking, mono labels, a HUD
-layer of corner brackets and a step readout, a finer grid through the fog with a slow scanline,
-and environment-lit steel on the hammer. **The fourth won** and is now `index.tsx`; the others
-and the theme switch are deleted. Copy A is the copy. The wordmark under the forge is the
-brand's bold cut (B8), not the thin one — the thin wordmark was the one thing the treatment got
-wrong.
-
 - [ ] **The e2e hero test** — button through the five steps, each headline asserted — and the
       byte-identity check for `apps/docs/static/img/factorai-icon.svg` against the brand master,
       the same way `geometry.test.ts` guards the favicon copy (B5). Owed since the promotion.
@@ -537,6 +464,55 @@ wrong.
 
 **Not in scope:** a blog, a changelog page (item 31 owes the changelog question), pricing, or a
 newsletter. One page, one job.
+
+## 61. Real screenshots in the guide, from a fabricated workspace
+
+**Asked for 2026-09-21**, the day the site went live: *"for the docs, can we have some real UI
+screenshots of part to illustrate the docs?"*. Today the guide is seven pages of prose and not one
+picture, while the hero next door shows the app only as coded miniatures and a mock. The answer is
+yes, and **the hard part is not the capture, it is the subject**.
+
+**The capture tooling is already built and is not what is missing.**
+`VITE_FACTORAI_SCREENSHOT=1` suppresses the `DEV` chip (`DevBadge.tsx`, passed through
+`turbo.json`'s `globalPassThroughEnv`), `scripts/qa/doc-shot.sh` resizes the window so the client
+area is exactly 1440×900 and crops the frame and shadow rather than resampling, and
+`scripts/qa/redact.py` blurs a region read off a probe grid. The `app-screenshot` skill is the
+loop end to end.
+
+**What is missing is a workspace worth photographing.** The author's own is full of client and
+employer project names, and a sidebar with four rows blurred and one legible reads as a redacted
+document rather than as a product — the finding that killed the 2026-08-27 attempt (item 41) and
+the reason item 58 has never had a still. So the subject is **fabricated**, and it is the same
+fixture items 41 and 58 want. Build it once here:
+
+- [ ] **A seeded workspace on disk**, not the mock bridge. `pnpm vite:dev` + `installMockBridge`
+      draws the renderer from fake data in a browser and would be quicker, but it is not the
+      app's window — no titlebar, no real PTY, no real diff — and a picture of it is a picture of
+      something else. A script under `scripts/qa/` that seeds a throwaway directory with three or
+      four small git repos, invented names and a few commits gives the real app something real to
+      show. The invented names carry the whole point of the sidebar (groups, statuses) without
+      carrying anyone's client list.
+- [ ] **Sessions with history.** A screenshot of the terminal needs an agent that has said
+      something. Seeding `~/.claude` for the fixture, or recording one scripted run against the
+      fake repos, is the piece with no shortcut — and it is what makes the Sessions, Terminal and
+      Changes shots worth taking at all.
+- [ ] **One shot per guide page, each showing the one thing its page is about**: Projects (the
+      sidebar with groups), Sessions (the tab strip, a running dot, an amber one waiting),
+      Routines (the schedule editor and the next-runs echo), Files / Changes / Graph (the panel
+      in its three tabs), Terminal (the footer shell with a split), Advanced → Worktrees, and
+      Keyboard shortcuts (the Keyboard settings section). More than one picture per page is a
+      page that stopped explaining.
+- [ ] **Dark only.** The site is dark and the light palette does not render yet (item 32); a
+      light shot would be of a theme neither the app nor the page currently shows.
+- [ ] **Where they live** is item 39's open checkbox — reuse `assets/images/` or copy into
+      `apps/docs/static/img/`. Answer it with the first image that lands.
+- [ ] **Re-shoot the five in `assets/images/` from the same fixture.** They predate it, the
+      README and the guide should not show two different workspaces, and it is the same session
+      at the keyboard.
+
+**Whether this gates the tag is open, and the default is that it does not** — the M6 block names
+five workstreams and this is not one of them. A guide that is correct and unillustrated is worth
+shipping; say the word and it moves up.
 
 ## 36. A Homebrew cask, because the macOS build will stay unsigned
 

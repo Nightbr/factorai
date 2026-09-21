@@ -3,6 +3,63 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The site, its domain and the hero one-pager — items 39 and 58** — 2026-09-21, the last of
+  it landing the day the domain resolved. `factorai.build` is live, it is one Docusaurus build,
+  and its index is the page that sells the app.
+
+  **`apps/docs`, a third workspace** ([ADR-0051](../adr/0051-the-site-is-apps-docs-and-the-mark-may-move-there.md),
+  2026-09-19), so a behaviour change and its documentation land in one commit and the site rides
+  the same install, lint, turbo and knip as the app. The root `docs/` folder that would have made
+  the name ambiguous was dissolved the same day: `adr/` into `specs/`, `brand/` and `images/`
+  into `assets/`. The guide was scaffolded with it — Installation and updates, Projects,
+  Sessions, Routines, Files (with Changes and Graph), Terminal, Advanced — as prose written from
+  the specs, which is why item 39 keeps its number.
+
+  **Deployed through the Pages *artifact* workflow, not the serve-a-branch-folder mode** — that
+  one would have published the decision trail as a website by accident. `pages.yml` runs on a
+  push touching `apps/docs/`, the brand masters, the lockfile or itself, and by hand; one build,
+  uploaded and deployed.
+
+  **The domain: `factorai.build`, apex, at Porkbun**
+  ([ADR-0055](../adr/0055-the-site-lives-at-factorai-build.md), 2026-09-21). The exact name was
+  taken on `.com`, `.ai`, `.dev`, `.app` and `.io`, and a prefixed `.com` would have read as a
+  landing page for a differently-named product. `baseUrl` went back to `/`, and
+  `apps/docs/static/CNAME` pins the domain in the build as well as in the repository setting —
+  a Pages setting alone is lost the next time the build replaces the deployment. The README
+  points at it, and the links in every future release note can now be written once.
+
+  **The hero (item 58)** is that site's index. Five full-viewport steps on one pinned stage
+  scrubbed by scroll (GSAP + ScrollTrigger) — the digital fog, the sweep, *"IDE is dead"*,
+  *"Long live the ADE"*, and the forge where the mark seats itself into its socket — with one
+  gesture walking exactly one step (GSAP Observer), the arrow keys, Escape and a skip link as the
+  other ways through, and the URL following the scroll through `#seq-1`…`#seq-5`, `#features`,
+  `#download` and `#about`. Then a working **mock of the app** drawn in its own tokens at
+  1120×640, playing a screenplay on a loop: an agent reads, edits, tests and commits while
+  Changes fills and the graph stacks, a second session stops to ask and its dots go amber. Then
+  the **bento**: eight cells under *"You supervise, decide, review, and set the rules. Agents do
+  the rest."*, each a coded miniature of a real surface running the one behaviour it claims.
+  Then the download band — the platform the browser reports gets the primary button, the rest
+  sit in a dialog at `?modal=download`, and the asset links, sizes, tag and date come from one
+  call to the releases API, because asset names carry the version and a static
+  `/releases/latest/download/…` cannot. Then three lines of About.
+
+  **It looks like the app** because `custom.css` remaps Infima onto `DESIGN.md` rather than
+  theming around it, and the navbar wordmark is the brand's bold cut (B8). The favicon set,
+  `apple-touch-icon` and the social card are generated from the forge step, so the card a link
+  unfurls to is the page's own last frame.
+
+  **Four throwaway prototypes decided the treatment** (2026-09-19) — two copies, a flat SVG
+  hammer against a three.js one, and a futuristic fourth: Inter 200 with open tracking, mono
+  labels, corner brackets, a finer grid through the fog. The fourth won, the rest were deleted,
+  and the hammer went with three.js: the mark seating itself is the better idea and it took
+  three attempts to see it. The phone pass came last — fog, type size, the acronym, the forge
+  text and the menu.
+
+  **Both items keep their numbers.** Item 39 owes the guide's content checked against the running
+  app rather than against the spec it was written from, plus the images question and versioning.
+  Item 58 owes screenshots, the sidebar-gesture motion and its e2e test. **TODO item 61** is the
+  new entry both of those lean on: real screenshots of the app, shot from a fabricated workspace.
+
 - **An About section, and the build metadata it names — item 57, F29** — 2026-09-16, asked for
   and shipped the same day, after a clarify-needs interview over an interactive mockup (the loop
   items 47 and 49 used). A ninth settings section, last in the nav at `?settings=about`, editing
