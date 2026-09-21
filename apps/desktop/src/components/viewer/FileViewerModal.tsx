@@ -2,6 +2,7 @@ import { Dialog, DialogClose, DialogContent, DialogTitle, IconButton } from '@fa
 import { Check, Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { FindHandleProvider, useFindHandleSlot } from '@components/viewer/findHandle';
+import { ViewerHostProvider } from '@components/viewer/viewerHost';
 import { useKeymap } from '@hooks/useShortcuts';
 import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import type { DiffMode, ViewerPosition } from '@hooks/useFileViewer';
@@ -172,19 +173,24 @@ export function FileViewerModal({
 				</header>
 
 				<FindHandleProvider value={findSlot}>
-					<Suspense
-						fallback={
-							<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
-								Loading editor…
-							</p>
-						}
-					>
-						{diff ? (
-							<DiffView path={path} mode={diff} />
-						) : (
-							<FileView path={path} position={position} onOpenPath={onOpenPath} />
-						)}
-					</Suspense>
+					{/* **This host names itself** (F7). The pane is still mounted
+					    behind this dialog, so `MediaView` has to know which of the
+					    two copies it is — see `viewerHost.tsx`. */}
+					<ViewerHostProvider value="modal">
+						<Suspense
+							fallback={
+								<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
+									Loading editor…
+								</p>
+							}
+						>
+							{diff ? (
+								<DiffView path={path} mode={diff} />
+							) : (
+								<FileView path={path} position={position} onOpenPath={onOpenPath} />
+							)}
+						</Suspense>
+					</ViewerHostProvider>
 				</FindHandleProvider>
 			</DialogContent>
 		</Dialog>

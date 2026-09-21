@@ -184,6 +184,15 @@ export function viewerFocusVerdict(args: {
 	return 'take';
 }
 
+/** One player's position at the moment it handed over. */
+interface MediaPlayback {
+	/** Seconds into the file. */
+	time: number;
+	/** Whether it was running, so the player taking over can carry on rather
+	 *  than leaving the reader to press play again after an expand. */
+	playing: boolean;
+}
+
 interface ViewerState {
 	/**
 	 * The checkout the open files belong to (F21) — the store's actions read it
@@ -219,11 +228,27 @@ interface ViewerState {
 	 * launch would open the app with focus on a file nobody just asked for.
 	 */
 	focusRequest: string | null;
+	/**
+	 * Where a media file's playback was when its player handed over, keyed by
+	 * path (F7, ADR-0056).
+	 *
+	 * The pane and the expanded modal are **both mounted** while the modal is
+	 * open, each rendering its own `FileView`. That is invisible for text and
+	 * two decoders for media, so the player that is not on screen pauses and
+	 * leaves its position here for the one that is.
+	 *
+	 * Not persisted, and cleared when the tab closes: it exists to make one
+	 * expand seamless, not to remember where you were in a recording last
+	 * Tuesday. F7 says playback remembers nothing between opens.
+	 */
+	playback: Record<string, MediaPlayback>;
 
 	setCheckout: (checkout: string | null) => void;
 	setShellWidth: (width: number) => void;
 	setHost: (host: ViewerHost) => void;
 	setExpanded: (expanded: boolean) => void;
+	/** Hand playback over: where this player was, and whether it was running. */
+	handOverPlayback: (path: string, at: MediaPlayback) => void;
 	/** Ask the pane to take focus once it is showing `path`. */
 	requestFocus: (path: string) => void;
 	clearFocusRequest: () => void;
@@ -245,6 +270,7 @@ export const useViewerStore = create<ViewerState>()(
 			shellWidth: 0,
 			host: 'column',
 			expanded: false,
+			playback: {},
 			focusRequest: null,
 
 			setCheckout: (checkout) => set((s) => (s.checkout === checkout ? s : { checkout })),
@@ -252,6 +278,7 @@ export const useViewerStore = create<ViewerState>()(
 				set((s) => (s.shellWidth === width ? s : { shellWidth: Math.round(width) })),
 			setHost: (host) => set((s) => (s.host === host ? s : { host })),
 			setExpanded: (expanded) => set((s) => (s.expanded === expanded ? s : { expanded })),
+			handOverPlayback: (path, at) => set((s) => ({ playback: { ...s.playback, [path]: at } })),
 			requestFocus: (path) => set({ focusRequest: path }),
 			clearFocusRequest: () => set((s) => (s.focusRequest === null ? s : { focusRequest: null })),
 
@@ -280,9 +307,13 @@ export const useViewerStore = create<ViewerState>()(
 				const tabs = s.tabsByCheckout[s.checkout] ?? [];
 				const next = nextActivePath(tabs, path, active);
 				const remaining = withoutTab(tabs, path);
+				// The handover position dies with the tab. It exists to carry one
+				// expand across, and a file reopened later starts at the top (F7).
+				const { [path]: _closed, ...playback } = s.playback;
 				set({
 					tabsByCheckout: { ...s.tabsByCheckout, [s.checkout]: remaining },
 					activeByCheckout: nextEntry(s.activeByCheckout, s.checkout, next),
+					playback,
 				});
 				return next;
 			},

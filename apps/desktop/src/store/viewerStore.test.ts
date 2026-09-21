@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	nextActivePath,
+	useViewerStore,
 	type ViewerTab,
 	viewerFocusVerdict,
 	viewerHandoff,
@@ -218,5 +219,28 @@ describe('viewerFocusVerdict', () => {
 		// Clicking a tab chip opens through the same call: moving focus to the
 		// pane would take it off the chip the reader is stepping through.
 		expect(viewerFocusVerdict({ ...base, focusInside: true })).toBe('drop');
+	});
+});
+
+describe('the media handover position', () => {
+	it('dies with the tab, so a reopened file starts at the top', () => {
+		// F7: playback remembers nothing between opens. The position exists to
+		// carry one expand across, not to bookmark a recording.
+		useViewerStore.setState({
+			checkout: '/p',
+			tabsByCheckout: { '/p': [tab('/p/a.mp4'), tab('/p/b.mp4')] },
+			activeByCheckout: { '/p': '/p/a.mp4' },
+			playback: {
+				'/p/a.mp4': { time: 42, playing: true },
+				'/p/b.mp4': { time: 7, playing: false },
+			},
+		});
+
+		useViewerStore.getState().closeTab('/p/a.mp4', '/p/a.mp4');
+
+		const { playback } = useViewerStore.getState();
+		expect(playback['/p/a.mp4']).toBeUndefined();
+		// The other file's position is untouched — one close is one tab.
+		expect(playback['/p/b.mp4']).toEqual({ time: 7, playing: false });
 	});
 });

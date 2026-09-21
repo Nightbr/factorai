@@ -3,6 +3,7 @@ import { Maximize2 } from 'lucide-react';
 import { type KeyboardEvent, Suspense, useEffect, useRef } from 'react';
 import { FileTabs } from '@components/viewer/FileTabs';
 import { FindHandleProvider, useFindHandleSlot } from '@components/viewer/findHandle';
+import { ViewerHostProvider } from '@components/viewer/viewerHost';
 import { useKeymap, useShortcuts } from '@hooks/useShortcuts';
 import { stepTab } from '@lib/keymap';
 import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
@@ -225,25 +226,30 @@ export function ViewerPane() {
 				</IconButton>
 			</div>
 
-			<FindHandleProvider value={findSlot}>
-				<Suspense
-					fallback={
-						<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
-							Loading editor…
-						</p>
-					}
-				>
-					{viewer.diff ? (
-						<LazyDiffView path={viewer.path} mode={viewer.diff} />
-					) : (
-						<LazyFileView
-							path={viewer.path}
-							position={viewer.position}
-							onOpenPath={(path) => viewer.open(path)}
-						/>
-					)}
-				</Suspense>
-			</FindHandleProvider>
+			{/* **This host names itself** (F7). Both hosts are mounted while the
+			    modal is open, and `MediaView` is the one view for which that
+			    matters — two players on one file is two soundtracks. */}
+			<ViewerHostProvider value="pane">
+				<FindHandleProvider value={findSlot}>
+					<Suspense
+						fallback={
+							<p className="flex h-full items-center justify-center text-muted-foreground text-sm">
+								Loading editor…
+							</p>
+						}
+					>
+						{viewer.diff ? (
+							<LazyDiffView path={viewer.path} mode={viewer.diff} />
+						) : (
+							<LazyFileView
+								path={viewer.path}
+								position={viewer.position}
+								onOpenPath={(path) => viewer.open(path)}
+							/>
+						)}
+					</Suspense>
+				</FindHandleProvider>
+			</ViewerHostProvider>
 		</div>
 	);
 }

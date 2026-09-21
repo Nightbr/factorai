@@ -6,8 +6,10 @@ import { queryKeys } from '@lib/queryKeys';
 import { cmd, mediaSrc, openExternally } from '@lib/tauri';
 import { REREAD_ON_OPEN } from '@lib/viewerQuery';
 import { useQuery } from '@tanstack/react-query';
+import { hostIsShowing, useViewerHost } from '@components/viewer/viewerHost';
+import { useViewerStore } from '@store/viewerStore';
 import { ExternalLink, FileAudio, FileWarning } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * `MediaError` codes. The spec numbers them and names them on the interface,
@@ -169,6 +171,62 @@ export function MediaView({ path }: { path: string }) {
 }
 
 /**
+ * Keep exactly one player decoding, and carry the position between them (F7).
+ *
+ * Both hosts are mounted while the modal is open — see `viewerHost.tsx` — so
+ * without this, pressing expand leaves the pane's player running behind the
+ * dialog: two decoders on one file, and two soundtracks a few hundred
+ * milliseconds out of step.
+ *
+ * The player going off screen pauses and leaves its position in the store; the
+ * one coming on seeks to it and, if the other was running, carries on. So an
+ * expand is seamless rather than a restart, which is the whole reason the
+ * position is carried at all.
+ *
+ * **`play()` may be refused** — a webview can decline playback it does not
+ * consider user-initiated — and a refusal is left to stand. The reader sees a
+ * paused player at the right timestamp and presses play, which is a much
+ * better failure than an unhandled rejection.
+ */
+function useMediaHandover(ref: React.RefObject<HTMLMediaElement | null>, path: string) {
+	const host = useViewerHost();
+	const expanded = useViewerStore((s) => s.expanded);
+	const handOver = useViewerStore((s) => s.handOverPlayback);
+	const showing = hostIsShowing(host, expanded);
+
+	useEffect(() => {
+		const el = ref.current;
+		if (!el) return;
+
+		if (!showing) {
+			// Read before pausing: `pause()` does not move `currentTime`, but
+			// reading first keeps this true whatever the element does next.
+			handOver(path, { time: el.currentTime, playing: !el.paused });
+			el.pause();
+			return;
+		}
+
+		// Taking over. The position is read once, here, rather than subscribed
+		// to: this player owns playback from now on, and a subscription would
+		// yank its own timeline every time the other one wrote.
+		const at = useViewerStore.getState().playback[path];
+		if (!at) return;
+		// Seeking before metadata has loaded throws away the seek, so wait for
+		// the header when it is not there yet.
+		const seek = () => {
+			el.currentTime = at.time;
+			if (at.playing) void el.play().catch(() => undefined);
+		};
+		if (el.readyState >= HTMLMediaElement.HAVE_METADATA) {
+			seek();
+			return;
+		}
+		el.addEventListener('loadedmetadata', seek, { once: true });
+		return () => el.removeEventListener('loadedmetadata', seek);
+	}, [showing, path, handOver, ref]);
+}
+
+/**
  * The element itself, video or audio.
  *
  * **Audio is the same view with the picture taken out**, not a component of its
@@ -192,6 +250,8 @@ function MediaElement({
 	// incoming request before matching it — so a file reached through a symlink
 	// is refused if we ask for the name we started with.
 	const src = mediaSrc(probe.path);
+	const ref = useRef<HTMLMediaElement>(null);
+	useMediaHandover(ref, path);
 	const shared = {
 		src,
 		// `metadata` so the footer can fill without fetching the file. Nothing
@@ -223,13 +283,19 @@ function MediaElement({
 				    still unit-tests without the Vite icon plugin. */}
 				<FileAudio className="size-10 shrink-0 text-muted-foreground/60" />
 				<span className="max-w-full truncate text-sm">{basename(path)}</span>
-				<audio data-testid="media-element" className="w-72 max-w-full" {...shared} />
+				<audio
+					ref={ref as React.RefObject<HTMLAudioElement>}
+					data-testid="media-element"
+					className="w-72 max-w-full"
+					{...shared}
+				/>
 			</div>
 		);
 	}
 
 	return (
 		<video
+			ref={ref as React.RefObject<HTMLVideoElement>}
 			data-testid="media-element"
 			className="max-h-full max-w-full object-contain"
 			{...shared}
