@@ -428,9 +428,13 @@ Mechanics, now that the shape is decided:
 - [ ] **Whether the site reuses `assets/images/`** or keeps its own copies. Screenshots go stale on
       their own schedule; one copy is one re-shoot. The `app-screenshot` skill owns how they are
       taken, including the DEV badge and the blurring of private project names.
-- [ ] **A custom domain, or the default `nightbr.github.io/factorai`.** Wanted eventually; decide
+- [x] **A custom domain, or the default `nightbr.github.io/factorai`.** Wanted eventually; decide
       before publishing so the links in the README and in every release note are written once. A
       domain also decides whether item 31's manifest can live here.
+      Decided 2026-09-21, ADR-0055: `factorai.build`, apex, registered at Porkbun. The exact name
+      was taken on `.com`, `.ai`, `.dev`, `.app` and `.io`, and a prefixed `.com` would have read
+      as a landing page for a differently-named product. `baseUrl` is now `/`, and
+      `apps/docs/static/CNAME` pins the domain in the build as well as in the repository setting.
 - [ ] **Versioning is deliberately off at first.** Docusaurus can version the docs per release;
       switching it on before there is a second release to compare against buys a directory of
       duplicates. Revisit when the stable channel has shipped twice.
