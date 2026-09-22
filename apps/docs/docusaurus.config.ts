@@ -1,5 +1,55 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+
 import type * as Preset from '@docusaurus/preset-classic';
-import type { Config } from '@docusaurus/types';
+import type { Config, Plugin } from '@docusaurus/types';
+
+// Visit counts for the site, and only the site (ADR-0063). Umami's tracker is
+// fetched at build time and served from our own origin under a neutral name,
+// because blockers drop `cloud.umami.is/script.js` by URL. The beacon still
+// goes to Umami's gateway — the hosted script's default when `data-host-url`
+// is absent — so a blocker that lists that domain still drops the events.
+// `data-domains` keeps `docusaurus serve` and the Pages default address out of
+// the numbers.
+const umami = {
+	source: 'https://cloud.umami.is/script.js',
+	servedAt: 'js/site.js',
+	websiteId: 'cc580669-ba13-46e8-b4ab-7f94a6c492f0',
+	domains: 'factorai.build',
+};
+
+function umamiPlugin(): Plugin {
+	return {
+		name: 'factorai-umami',
+		injectHtmlTags() {
+			return {
+				headTags: [
+					{
+						tagName: 'script',
+						attributes: {
+							defer: true,
+							src: `${baseUrl}${umami.servedAt}`,
+							'data-website-id': umami.websiteId,
+							'data-domains': umami.domains,
+						},
+					},
+				],
+			};
+		},
+		// Only `docusaurus build` runs this, so `start` never fetches and the
+		// dev server answers the tag with a 404 that tracks nothing. A failed
+		// fetch fails the build rather than deploying a tag with nothing behind it.
+		async postBuild({ outDir }) {
+			const response = await fetch(umami.source);
+			if (!response.ok) {
+				throw new Error(`fetching ${umami.source}: HTTP ${response.status}`);
+			}
+			const target = join(outDir, umami.servedAt);
+			await mkdir(dirname(target), { recursive: true });
+			await writeFile(target, await response.text());
+		},
+	};
+}
 
 // The site: roadmap item 39 (one Docusaurus build, the guide under /docs) with
 // item 58's hero as its index. `url` is the custom domain of ADR-0055, so
@@ -60,6 +110,7 @@ const config: Config = {
 		defaultLocale: 'en',
 		locales: ['en'],
 	},
+	plugins: [umamiPlugin],
 	presets: [
 		[
 			'classic',

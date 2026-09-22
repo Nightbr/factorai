@@ -3,6 +3,15 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The site counts page views with Umami** — 2026-09-22. `factorai.build` loads Umami
+  Cloud's tracker from its own origin as `/js/site.js`: a plugin in
+  `apps/docs/docusaurus.config.ts` fetches `cloud.umami.is/script.js` in `postBuild`, so
+  URL-matching blockers let it load. The beacon still goes to `gateway.umami.is` (no proxy on
+  GitHub Pages), and `data-domains` counts only `factorai.build`. Checked in a headless browser
+  with `factorai.build` mapped to `docusaurus serve`: a pageview on load and another on
+  client-side navigation, and nothing sent from `localhost`. ADR-0063 scopes `PRODUCT.md`'s "no
+  analytics" to the app, which still counts nothing.
+
 - **Codex reaches factorai's tools, and the search list says which agent** — 2026-09-22. A
   Codex session in the app reported no factorai tools; the trace said otherwise. Codex's MCP
   client connected, initialised and listed the four tools against the app's live server (replayed

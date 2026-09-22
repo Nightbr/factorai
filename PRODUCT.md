@@ -101,7 +101,9 @@ table that is not built yet. Treat it as the thinnest of the four verbs.
 - Read-only on the agent's own state (`~/.claude/`) and on git. The app observes;
   the agent writes.
 - Kill-on-quit is non-optional — no orphaned agent processes, ever.
-- No cloud sync, no accounts, no telemetry, no analytics, no crash reporting.
+- No cloud sync, no accounts, no telemetry, no analytics, no crash reporting in
+  the app. The site counts page views, cookielessly (ADR-0063); the app counts
+  nothing.
 - English only; no localization in v1. Windows is supported through WSL 2
   (ADR-0044) — the Linux build under WSLg, not a native port.
 - Specifically the official `claude` CLI, not a multi-provider session manager.
