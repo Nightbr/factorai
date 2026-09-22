@@ -24,7 +24,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tracing::{debug, warn};
@@ -235,6 +235,7 @@ fn version_for(bin: &Path) -> Option<String> {
 		.spawn()
 		.map_err(|e| warn!(error = %e, bin = %bin.display(), "--version failed"))
 		.ok()?;
+	let deadline = Instant::now() + VERSION_TIMEOUT;
 
 	// Reading on this thread would be the hang the timeout exists to prevent —
 	// see `shell_path::path_from_shell`, the same pattern.
@@ -246,19 +247,33 @@ fn version_for(bin: &Path) -> Option<String> {
 		let _ = tx.send(buf);
 	});
 
-	let received = rx.recv_timeout(VERSION_TIMEOUT);
-	// Unconditionally, before looking at the result: on the happy path the
-	// child has already exited and this reaps it, and on timeout it is the
-	// only thing that stops a stuck `--version` living as long as the app does.
-	let _ = child.kill();
-	let status = child.wait().ok()?;
-	if !status.success() {
-		return None;
+	let out = match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+		Ok(out) => out,
+		Err(_) => {
+			warn!(bin = %bin.display(), "--version did not answer in time");
+			let _ = child.kill();
+			let _ = child.wait();
+			return None;
+		}
+	};
+	// F30's version probe accepts a clean CLI exit: stdout may close before
+	// shutdown finishes, so killing it here would discard valid output.
+	loop {
+		match child.try_wait() {
+			Ok(Some(status)) if status.success() => break,
+			Ok(Some(_)) | Err(_) => return None,
+			Ok(None) if Instant::now() < deadline => {
+				std::thread::sleep(Duration::from_millis(10));
+			}
+			Ok(None) => {
+				warn!(bin = %bin.display(), "--version did not exit in time");
+				let _ = child.kill();
+				let _ = child.wait();
+				return None;
+			}
+		}
 	}
 
-	let out = received
-		.map_err(|_| warn!(bin = %bin.display(), "--version did not answer in time"))
-		.ok()?;
 	let s = String::from_utf8_lossy(&out);
 	for tok in s.split_whitespace() {
 		if is_version_like(tok) {
@@ -310,6 +325,13 @@ mod tests {
 		let tmp = tempfile::TempDir::new().unwrap();
 		let bin = fake_claude(tmp.path(), "printf 'claude 1.2.3 (build abc)\\n'");
 		assert_eq!(version_for(&bin), Some("1.2.3".to_string()));
+	}
+
+	#[test]
+	fn version_for_waits_for_clean_exit_after_stdout_closes() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let bin = fake_claude(tmp.path(), "printf 'codex-cli 0.155.1\\n'; exec 1>&-; sleep 0.1");
+		assert_eq!(version_for(&bin), Some("0.155.1".to_string()));
 	}
 
 	#[test]
