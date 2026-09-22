@@ -5,9 +5,9 @@ title: Terminal
 
 # Terminal
 
-Every session is a real PTY with xterm.js in front of it, running the actual `claude` CLI. What
-you see is what the CLI prints, and what you type goes straight to it: factorai does not
-reimplement the agent and never sits between you and it.
+Every session is a real PTY with xterm.js in front of it, running the actual CLI — `claude` or
+`codex`. What you see is what the CLI prints, and what you type goes straight to it: factorai
+does not reimplement the agent and never sits between you and it.
 
 ## The session terminal
 
@@ -27,7 +27,7 @@ splits, so several shells can share it.
 
 ## Keyboard
 
-A focused terminal keeps everything it binds: typing to Claude is never interrupted by an app
+A focused terminal keeps everything it binds: typing to the agent is never interrupted by an app
 shortcut. The exceptions are the few chords that exist to reach the rest of the app from a
 terminal, such as `Mod+K` for search, `Mod+N` for a new session, `Mod+,` for settings and
 `Mod+Shift+E` for the file panel. See [keyboard shortcuts](advanced/keyboard-shortcuts).

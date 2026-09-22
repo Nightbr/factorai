@@ -35,13 +35,15 @@ reading code is something you do to *check on* the work.
 ### Run agents, not chats
 
 Every session is a real PTY with xterm.js in front of it — the actual `claude`
-CLI, not a reimplementation of it. Launch a new one, resume an old one, stop and
+or `codex` CLI, not a reimplementation of it. Claude Code and Codex sit side by
+side; a project runs whichever its profile says, and the chevron beside `+`
+starts the other. Launch a new one, resume an old one, stop and
 restart it. Terminals **survive navigation**: leave a session, go read a file,
 come back, it is still running.
 
 The dot beside each session says what it is doing — *working*, *waiting for
-you*, or *stopped* — read from Claude's own terminal title rather than guessed
-at, so "is it blocked on a permission prompt?" is answerable from the sidebar.
+you*, or *stopped* — read from the agent's own terminal title rather than
+guessed at, so "is it blocked on a permission prompt?" is answerable from the sidebar.
 Open sessions become tabs, and the tabs come back when you relaunch.
 
 ![factorai running a live session, with the sidebar showing session status](assets/images/factorai-sessions.png)
@@ -70,9 +72,10 @@ than an arrangement.
 
 ### Find the conversation you half-remember
 
-factorai reads `~/.claude/projects/` directly — projects, sessions, titles, turn
-counts, timestamps. Nothing is imported, copied or migrated; your transcripts
-stay exactly where the CLI put them, and that directory is treated as read-only.
+factorai reads `~/.claude/projects/` and `~/.codex/sessions/` directly —
+projects, sessions, titles, turn counts, timestamps. Nothing is imported, copied
+or migrated; your transcripts stay exactly where each CLI put them, and those
+directories are treated as read-only.
 
 On top of it sits SQLite FTS5 across **every message in every session**, so
 "which conversation was that?" takes a second rather than an afternoon of `grep`
@@ -99,11 +102,11 @@ viewer with syntax highlighting and rendered markdown.
 
 **Nothing leaves your machine.** No telemetry, no analytics, no crash reporting.
 No account, no server, no sync — factorai reads local files and runs local
-processes, and it never handles your credentials: it drives the `claude` CLI you
-have already logged into.
+processes, and it never handles your credentials: it drives the `claude` or
+`codex` CLI you have already logged into.
 
 **No orphan agents, ever.** Closing the window with live sessions always
-confirms, then kills every child (SIGTERM → SIGKILL). An unattended `claude`
+confirms, then kills every child (SIGTERM → SIGKILL). An unattended agent
 process is real money.
 
 ## Install
@@ -115,12 +118,13 @@ themselves** — factorai checks on launch and every six hours, stages the new
 version in the background, and shows `Restart` in the header when it is ready.
 Nothing restarts on its own, because a restart kills running sessions.
 
-You also need the [Claude Code CLI](https://claude.com/claude-code), already
-authenticated (`claude login`).
+You also need at least one agent CLI, already authenticated:
+[Claude Code](https://claude.com/claude-code) (`claude login`) or
+[Codex](https://developers.openai.com/codex/cli) (`codex login`).
 
 **On Windows, factorai runs inside WSL 2.** It is the Linux build in your own
 distribution, shown as a normal window by WSLg — not a native port. That is on
-purpose: your repositories, your toolchain and your `claude` login live in the
+purpose: your repositories, your toolchain and your CLI logins live in the
 distribution, and reaching them from Windows goes over a network filesystem that
 is slow and where file watching does not work at all. `factorai-setup.exe`
 checks the machine, installs into your default distribution and puts factorai in

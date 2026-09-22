@@ -6,9 +6,10 @@ sidebar_label: Installation
 
 # Installation and updates
 
-factorai is a desktop app for macOS and Linux, and for Windows through WSL 2. It needs the
-[Claude Code CLI](https://claude.com/claude-code), already logged in with `claude login`: factorai
-drives the `claude` you have, it never handles your credentials.
+factorai is a desktop app for macOS and Linux, and for Windows through WSL 2. It needs at least
+one agent CLI, already logged in: [Claude Code](https://claude.com/claude-code) (`claude login`)
+or [Codex](https://developers.openai.com/codex/cli) (`codex login`). factorai drives the CLI you
+have and never handles your credentials. See [Agents](agents) for what it does with each.
 
 ## Download
 
@@ -53,7 +54,7 @@ sessions: when a version is staged, **Update ready** appears in the sidebar foot
 
 ## On Windows, keep projects inside the distribution
 
-factorai runs as a Linux app under WSLg, so your repositories, toolchain and `claude` login live in
+factorai runs as a Linux app under WSLg, so your repositories, toolchain and CLI logins live in
 the distribution. Keep projects under `~` there. A folder on `/mnt/c` works, but it goes over a
 network filesystem: git is slow and file watching does not work, so the session list will not
 update on its own, and factorai marks such a project with a warning.

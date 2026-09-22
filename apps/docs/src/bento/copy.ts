@@ -19,7 +19,7 @@ export const CELLS: CellCopy[] = [
 		id: 'sessions',
 		label: 'sessions',
 		title: 'Run several agents at once',
-		line: 'One tab per agent, each a real claude CLI in a real terminal. Give every one a task, switch between them as they work in parallel, and get more done in a day than one pair of hands could.',
+		line: 'One tab per agent, each a real CLI in a real terminal: Claude Code or Codex, your pick per project. Give every one a task, switch between them as they work in parallel, and get more done in a day than one pair of hands could.',
 		span: 8,
 	},
 	{
@@ -33,7 +33,7 @@ export const CELLS: CellCopy[] = [
 		id: 'search',
 		label: 'search',
 		title: 'Every message, every session',
-		line: 'Full text across your whole transcript history, read straight from ~/.claude. Nothing imported, nothing copied.',
+		line: "Full text across your whole transcript history, read straight from each CLI's own store. Nothing imported, nothing copied.",
 		span: 4,
 	},
 	{
@@ -68,7 +68,7 @@ export const CELLS: CellCopy[] = [
 		id: 'local',
 		label: 'local',
 		title: 'Local, private, open source',
-		line: "Runs on your machine and reads the CLI's own files. No account, no server, no telemetry. MIT licensed, and it stays that way.",
+		line: "Runs on your machine and reads the CLIs' own files. No account, no server, no telemetry. MIT licensed, and it stays that way.",
 		span: 3,
 	},
 ];

@@ -187,8 +187,8 @@ export function Download() {
 				{PLATFORMS[platform].detail}
 				{primary ? ` · ${mb(primary.size)}` : ''}
 				{release && release !== 'failed' ? ` · ${release.tag}, ${ago(release.date)}` : ''}
-				{' · '}updates itself · needs the{' '}
-				<a href="https://claude.com/claude-code">Claude Code CLI</a>
+				{' · '}updates itself · needs <a href="https://claude.com/claude-code">Claude Code</a> or{' '}
+				<a href="https://developers.openai.com/codex/cli">Codex</a>
 			</p>
 
 			<dialog ref={dialog} className={styles.dialog} aria-label="Choose a platform">

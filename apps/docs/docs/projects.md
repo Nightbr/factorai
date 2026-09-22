@@ -5,21 +5,22 @@ title: Projects
 
 # Projects
 
-A project is a folder you added. Its sessions are the `claude` conversations that ran in that
-folder, read from `~/.claude/projects/` where the CLI keeps them. Nothing is imported, copied or
-migrated: factorai reads the CLI's own files and treats them as read-only.
+A project is a folder you added. Its sessions are the agent conversations that ran in that
+folder, read from where each CLI keeps them: `~/.claude/projects/` for Claude Code,
+`~/.codex/sessions/` for Codex. Nothing is imported, copied or migrated: factorai reads the CLIs'
+own files and treats them as read-only.
 
 ## Adding a project
 
 The `+` menu in the sidebar header has two entries.
 
-- **Add Project…** opens a directory picker. Any folder works, including one Claude has never
+- **Add Project…** opens a directory picker. Any folder works, including one no agent has ever
   run in; it starts with no sessions and gets them as you work there.
-- **Import from Claude Code…** lists every folder Claude has already worked in, one checkbox per
-  folder, with the sessions it holds. Tick the ones you want and they are added in turn, each
+- **Import from Claude Code…** lists every folder Claude Code has already worked in, one checkbox
+  per folder, with the sessions it holds. Tick the ones you want and they are added in turn, each
   indexing its transcripts with progress.
 
-A folder Claude has worked in but you never added does not appear anywhere, and nothing
+A folder an agent has worked in but you never added does not appear anywhere, and nothing
 announces it. Removing a project sticks: the next scan has nothing to put back.
 
 ## Organising the sidebar

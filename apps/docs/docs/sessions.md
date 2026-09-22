@@ -5,8 +5,9 @@ title: Sessions
 
 # Sessions
 
-A session is one `claude` process and its transcript. It is the unit of work in factorai: you
-launch, watch, resume and kill sessions, and read code to check on what they did.
+A session is one agent process — `claude` or `codex` — and its transcript. It is the unit of
+work in factorai: you launch, watch, resume and kill sessions, and read code to check on what
+they did. Which agent a project starts is decided by its profile; see [Agents](agents).
 
 ## Starting and resuming
 
@@ -14,8 +15,8 @@ Opening a session points a real terminal at it: a session with a transcript resu
 starts. There is no separate resume button.
 
 - **New session**: the `+` on a project row, the **New session** button on the project page, or
-  `Mod+N` in the active project. factorai assigns the id, so the session is linkable and shows a
-  status before `claude` prints a byte.
+  `Mod+N` in the active project. The session is linkable and shows a status before the agent
+  prints a byte. The chevron beside `+` starts the other installed agent instead.
 - **Resume**: click any session in the sidebar, the project page or a search hit.
 - **Stop and restart**: the `×` in the session header kills the process; **Restart** appears in
   its place when the process has exited.
@@ -25,7 +26,7 @@ Terminals survive navigation. Leave a session to read a file and come back: it i
 ## Status
 
 The dot beside a session, on its tab and on its project's avatar says what it is doing, read
-from Claude's own terminal title rather than guessed at.
+from the agent's own terminal title rather than guessed at.
 
 | Dot | Meaning |
 | --- | --- |
@@ -33,6 +34,7 @@ from Claude's own terminal title rather than guessed at.
 | Amber | Waiting for you: a permission prompt, a question, a turn handed back. |
 | Blue | Working with no tab open: a routine running in the background. |
 | Grey | Stopped. |
+| Hollow grey | Live, but the agent has not said what it is doing yet: a Codex session in its first second. |
 
 Changes that happen while you are elsewhere are visible the moment you look back, in the
 sidebar, on the tabs and on the project rows.
