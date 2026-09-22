@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -6,7 +6,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use tauri::{AppHandle, Emitter};
 use tracing::{debug, info, warn};
 
-use crate::agents::claude;
+use crate::agents::{claude, codex};
 use crate::commands::projects::reconcile;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
@@ -151,8 +151,58 @@ impl LinkedDir {
 	/// store it is reading — and so the one place a second agent adds a branch.
 	/// Until then every row is Claude's, which `discover` guarantees.
 	fn path(&self) -> PathBuf {
-		debug_assert_eq!(self.agent, crate::agents::CLAUDE);
-		Path::new(&self.config_dir).join("projects").join(&self.key)
+		match self.agent.as_str() {
+			// Codex keeps no per-folder directory (F30 § "Discovery"): every
+			// rollout sits under one `sessions/` tree and `index_dir` picks the
+			// ones whose first line names this folder.
+			crate::agents::CODEX => Path::new(&self.config_dir).join(codex::SESSIONS_SUBDIR),
+			_ => Path::new(&self.config_dir).join("projects").join(&self.key),
+		}
+	}
+
+	fn is_codex(&self) -> bool {
+		self.agent == crate::agents::CODEX
+	}
+}
+
+/// Which agent wrote a transcript, and what its store says from the side
+/// (F30): Codex's thread names live in `session_index.jsonl`, not in the file.
+pub struct TranscriptSource<'a> {
+	pub agent: &'a str,
+	pub names: &'a HashMap<String, String>,
+}
+
+/// The two readers behind one loop: same events, same byte accounting.
+enum Transcript {
+	Claude(EventIter),
+	Codex(codex::RolloutIter),
+}
+
+impl Transcript {
+	fn complete_bytes(&self) -> u64 {
+		match self {
+			Self::Claude(it) => it.complete_bytes(),
+			Self::Codex(it) => it.complete_bytes(),
+		}
+	}
+}
+
+impl Iterator for Transcript {
+	type Item = crate::models::SessionEvent;
+	fn next(&mut self) -> Option<Self::Item> {
+		match self {
+			Self::Claude(it) => it.next(),
+			Self::Codex(it) => it.next(),
+		}
+	}
+}
+
+/// The session id a transcript file names, per agent's filename scheme.
+fn transcript_id(dir: &LinkedDir, path: &Path) -> Option<String> {
+	if dir.is_codex() {
+		codex::session_id_of(path)
+	} else {
+		path.file_stem().and_then(|s| s.to_str()).map(str::to_owned)
 	}
 }
 
@@ -270,9 +320,19 @@ impl Indexer {
 	/// a directory it cannot read.
 	pub fn discover(&self) -> AppResult<()> {
 		let profiles = self.db.with(crate::services::profiles::list)?;
+		// Each profile's store is walked by its agent's discovery (ADR-0060,
+		// F30 § "Discovery"); a profile whose agent has none is skipped.
 		let found: Vec<(String, Vec<crate::agents::Discovered>)> = profiles
 			.iter()
-			.map(|p| (p.id.clone(), claude::discover(Path::new(&p.config_dir))))
+			.filter_map(|p| {
+				let dir = Path::new(&p.config_dir);
+				let discovered = match p.agent.as_str() {
+					crate::agents::CLAUDE => claude::discover(dir),
+					crate::agents::CODEX => codex::discover(dir),
+					_ => return None,
+				};
+				Some((p.id.clone(), discovered))
+			})
 			.collect();
 		// The repository walks `reconcile` used to do inside this transaction
 		// (PERF-08). On a pooled reader, so they do not wait for the writer
@@ -288,7 +348,6 @@ impl Indexer {
 				)?;
 				for (profile_id, dirs) in &found {
 					for d in dirs {
-						debug_assert_eq!(d.agent, crate::agents::CLAUDE);
 						stmt.execute(params![profile_id, d.key, d.real_path])?;
 					}
 				}
@@ -360,20 +419,66 @@ impl Indexer {
 		}
 	}
 
+	/// A changed Codex rollout (F30): its first line says which folder it
+	/// belongs to, and that folder is the key. The watcher hands the file here
+	/// rather than a directory because Codex has no per-folder directory to
+	/// hand.
+	pub fn scan_codex_file(&self, profile_id: &str, path: &Path) -> AppResult<()> {
+		let Some(meta) = codex::read_meta(path) else {
+			// Empty or still being written: the next event brings the rest.
+			debug!(?path, "codex rollout has no session_meta yet");
+			return Ok(());
+		};
+		if self.db.with(|conn| discovered_id_for(conn, profile_id, &meta.cwd))?.is_none() {
+			self.discover()?;
+		}
+		let linked = self.db.with(|conn| {
+			let sql = format!("{LINKED_SELECT} AND d.profile_id = ?1 AND d.key = ?2");
+			Ok(conn.query_row(&sql, params![profile_id, meta.cwd], map_linked).optional()?)
+		})?;
+		match linked {
+			Some(dir) => self.index_dir(&dir),
+			None => {
+				debug!(?path, "ignoring a codex rollout outside the workspace");
+				Ok(())
+			}
+		}
+	}
+
 	/// Parse every transcript in one linked directory that has changed since we
 	/// last looked.
 	fn index_dir(&self, dir: &LinkedDir) -> AppResult<()> {
-		let session_files: Vec<PathBuf> = match std::fs::read_dir(dir.path()) {
-			Ok(rd) => rd
-				.filter_map(Result::ok)
-				.map(|e| e.path())
-				.filter(|p| p.extension().is_some_and(|e| e == "jsonl"))
-				.collect(),
-			// Nothing below runs, the reap included. An unreadable directory and
-			// an empty one are different answers, and only one of them may delete
-			// rows — a store that has vanished (Claude uninstalled, CLAUDE_HOME
-			// moved) must leave the index alone rather than empty it.
-			Err(_) => return Ok(()),
+		let session_files: Vec<PathBuf> = if dir.is_codex() {
+			// Every rollout in the store whose first line names this folder.
+			// The store may legitimately be empty or absent before the first turn
+			// of the first session; either way there is nothing to reap from a
+			// listing we could not take.
+			if !dir.path().is_dir() {
+				return Ok(());
+			}
+			codex::rollouts(Path::new(&dir.config_dir))
+				.into_iter()
+				.filter(|p| codex::read_meta(p).is_some_and(|m| m.cwd == dir.key))
+				.collect()
+		} else {
+			match std::fs::read_dir(dir.path()) {
+				Ok(rd) => rd
+					.filter_map(Result::ok)
+					.map(|e| e.path())
+					.filter(|p| p.extension().is_some_and(|e| e == "jsonl"))
+					.collect(),
+				// Nothing below runs, the reap included. An unreadable directory and
+				// an empty one are different answers, and only one of them may delete
+				// rows — a store that has vanished (Claude uninstalled, CLAUDE_HOME
+				// moved) must leave the index alone rather than empty it.
+				Err(_) => return Ok(()),
+			}
+		};
+		// Codex's own name for each thread, read once per pass (F30 § "Transcripts").
+		let names = if dir.is_codex() {
+			codex::thread_names(Path::new(&dir.config_dir))
+		} else {
+			Default::default()
 		};
 
 		// Every id this directory holds a transcript for, built as we go and
@@ -384,10 +489,11 @@ impl Indexer {
 
 		let mut changed_ids: Vec<String> = Vec::new();
 		for session_path in &session_files {
-			if let Some(id) = session_path.file_stem().and_then(|s| s.to_str()) {
-				on_disk.insert(id.to_string());
+			if let Some(id) = transcript_id(dir, session_path) {
+				on_disk.insert(id);
 			}
-			match self.index_session_if_changed(dir.discovered_id, session_path, None) {
+			let source = TranscriptSource { agent: &dir.agent, names: &names };
+			match self.index_session_if_changed(dir.discovered_id, session_path, None, &source) {
 				Ok(Some(session_id)) => changed_ids.push(session_id),
 				Ok(None) => {}
 				Err(e) => warn!(path = ?session_path, error = %e, "session index failed"),
@@ -402,7 +508,10 @@ impl Indexer {
 		// They index against the *parent's* directory, `dir.discovered_id`: a
 		// `subagents/` folder is part of a session, not a directory of the
 		// store, which is the whole bug this replaced.
-		for session_path in &session_files {
+		//
+		// Codex has no such layout; its sub-agents are threads of their own with
+		// a `parent_thread_id`, which a later slice maps to `subagent_of`.
+		for session_path in session_files.iter().filter(|_| !dir.is_codex()) {
 			if let Some(session_id) = session_path.file_stem().and_then(|s| s.to_str()) {
 				for agent_path in subagent_files(session_path) {
 					if let Some(id) = agent_path.file_stem().and_then(|s| s.to_str()) {
@@ -412,6 +521,7 @@ impl Indexer {
 						dir.discovered_id,
 						&agent_path,
 						Some(session_id),
+						&TranscriptSource { agent: &dir.agent, names: &names },
 					) {
 						Ok(Some(agent_id)) => changed_ids.push(agent_id),
 						Ok(None) => {}
@@ -522,11 +632,20 @@ impl Indexer {
 		discovered_id: i64,
 		session_path: &Path,
 		subagent_of: Option<&str>,
+		source: &TranscriptSource<'_>,
 	) -> AppResult<Option<String>> {
-		let session_id = match session_path.file_stem().and_then(|s| s.to_str()) {
-			Some(name) => name.to_string(),
-			None => return Err(AppError::InvalidInput("session filename not utf-8".into())),
+		let session_id = match source.agent {
+			crate::agents::CODEX => codex::session_id_of(session_path)
+				.ok_or_else(|| AppError::InvalidInput("not a codex rollout filename".into()))?,
+			_ => match session_path.file_stem().and_then(|s| s.to_str()) {
+				Some(name) => name.to_string(),
+				None => return Err(AppError::InvalidInput("session filename not utf-8".into())),
+			},
 		};
+		// Where the file is, for an agent whose path is not derivable from the
+		// id and the folder (migration 0022). NULL for Claude, whose path is.
+		let transcript_path = (source.agent == crate::agents::CODEX)
+			.then(|| session_path.to_string_lossy().into_owned());
 
 		let meta = std::fs::metadata(session_path)?;
 		let mtime_ms = meta
@@ -639,9 +758,12 @@ impl Indexer {
 			}
 		}
 
-		let mut events = match resume {
-			Some(c) => EventIter::open_at(session_path, c.indexed_bytes as u64)?,
-			None => EventIter::open(session_path)?,
+		let offset = resume.map(|c| c.indexed_bytes as u64).unwrap_or(0);
+		let mut events = match source.agent {
+			crate::agents::CODEX => {
+				Transcript::Codex(codex::RolloutIter::open_at(session_path, offset)?)
+			}
+			_ => Transcript::Claude(EventIter::open_at(session_path, offset)?),
 		};
 		// `by_ref` so the iterator survives the loop: its byte offset is the whole
 		// point.
@@ -704,6 +826,13 @@ impl Indexer {
 		// written into right now ends in a partial line, and this is the offset
 		// that re-reads it when it is finished rather than skipping it.
 		let indexed_bytes = events.complete_bytes() as i64;
+		// Codex's own name for the thread is its `ai` title (F30): it lives in
+		// `session_index.jsonl`, not in the rollout, so it arrives from the side.
+		if source.agent == crate::agents::CODEX {
+			if let Some(name) = source.names.get(&session_id) {
+				ai_title = Some(name.clone());
+			}
+		}
 
 		// Stored as JSON rather than as a delimited string: a path can contain
 		// anything except NUL, so any separator worth reading back is one a path
@@ -747,9 +876,10 @@ impl Indexer {
 		self.db.with_mut(|conn| {
 			let tx = conn.transaction()?;
 			tx.execute(
-				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, touched_paths, parse_version, indexed_bytes, title_kind)
-				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, touched_paths, parse_version, indexed_bytes, title_kind, transcript_path)
+				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
 				 ON CONFLICT(id) DO UPDATE SET
+				   transcript_path = COALESCE(excluded.transcript_path, sessions.transcript_path),
 				   title = excluded.title,
 				   updated_at = excluded.updated_at,
 				   turn_count = excluded.turn_count,
@@ -778,6 +908,7 @@ impl Indexer {
 					PARSE_VERSION,
 					indexed_bytes,
 					title_kind.as_str(),
+					transcript_path,
 				],
 			)?;
 			// **Only when the whole file was parsed.** On the tail path the rows

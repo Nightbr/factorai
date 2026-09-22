@@ -1,6 +1,6 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback } from 'react';
-import { type SettingsSection, isSettingsSection } from '@lib/settingsDraft';
+import { type SettingsSection, settingsSectionOf } from '@lib/settingsDraft';
 
 /**
  * Which settings section is open, held in the URL as `?settings=<section>`
@@ -15,7 +15,7 @@ import { type SettingsSection, isSettingsSection } from '@lib/settingsDraft';
  */
 export function useSettingsModal(): {
 	section: SettingsSection | null;
-	/** Open the modal, at `claude` unless a section is named. */
+	/** Open the modal, at `agents` unless a section is named. */
 	open: (section?: SettingsSection) => void;
 	close: () => void;
 } {
@@ -23,7 +23,7 @@ export function useSettingsModal(): {
 	const navigate = useNavigate();
 
 	const open = useCallback(
-		(section: SettingsSection = 'claude') => {
+		(section: SettingsSection = 'agents') => {
 			void navigate({ to: '.', search: (prev) => ({ ...prev, settings: section }) });
 		},
 		[navigate],
@@ -34,7 +34,7 @@ export function useSettingsModal(): {
 	}, [navigate]);
 
 	return {
-		section: isSettingsSection(search.settings) ? search.settings : null,
+		section: settingsSectionOf(search.settings) ?? null,
 		open,
 		close,
 	};

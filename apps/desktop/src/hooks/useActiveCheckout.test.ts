@@ -47,6 +47,7 @@ function session(over: Partial<SessionSummary> = {}): SessionSummary {
 		routineStartedAt: null,
 		pinned: false,
 		profileName: null,
+		agent: 'claude',
 		...over,
 	};
 }

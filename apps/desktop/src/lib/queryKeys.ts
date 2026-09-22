@@ -1,4 +1,4 @@
-import type { SettingKey } from '@factorai/types';
+import type { SettingKey, AgentId } from '@factorai/types';
 
 export const queryKeys = {
 	projects: () => ['projects'] as const,
@@ -71,7 +71,7 @@ export const queryKeys = {
 	 *  one build, and it cannot change while the app is running — so this is
 	 *  fetched once, cached forever, and read only while About is open. */
 	buildInfo: () => ['build-info'] as const,
-	/** Where `claude` is and what version it reports. Invalidated when the
-	 *  override is saved, since the answer depends on it. */
-	claudeCli: () => ['claude-cli'] as const,
+	/** Where an agent's binary is and what version it reports (F11, F30).
+	 *  Invalidated when its override is saved, since the answer depends on it. */
+	agentCli: (agent: AgentId) => ['agent-cli', agent] as const,
 };

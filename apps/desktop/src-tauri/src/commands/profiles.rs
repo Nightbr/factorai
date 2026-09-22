@@ -61,6 +61,17 @@ pub fn set_default_profile(
 	profiles::set_default_and_announce(&state.db, &app, &id)
 }
 
+/// Make a profile the app default (F30): its agent's default, and its agent
+/// the one a project with no profile runs. The star in the Profiles section.
+#[tauri::command]
+pub fn set_app_default_profile(
+	state: State<'_, AppState>,
+	app: tauri::AppHandle,
+	id: String,
+) -> AppResult<Profile> {
+	profiles::set_app_default_and_announce(&state.db, &app, &id)
+}
+
 /// Delete a profile. Removes the row and nothing on disk, and refuses while
 /// the profile is its agent's default.
 ///

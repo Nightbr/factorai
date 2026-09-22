@@ -5,8 +5,8 @@ import { createRoute, useNavigate } from '@tanstack/react-router';
 import {
 	BookOpen,
 	GitBranch,
-	IdCard,
 	GitCommitHorizontal,
+	IdCard,
 	Pin,
 	PinOff,
 	Play,
@@ -23,6 +23,8 @@ import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useGitBranch } from '@hooks/useGitBranch';
 import { useSetSessionPinned } from '@hooks/useSetSessionPinned';
 import { cmd } from '@lib/tauri';
+import { AgentMark } from '@components/layout/AgentMark';
+import { agentName } from '@lib/agents';
 import { queryKeys } from '@lib/queryKeys';
 import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
@@ -155,6 +157,9 @@ function SessionView() {
 	const ideIssue = useTerminalStore((s) => s.ideIssues[sessionId]);
 
 	const live = useTerminalStore((s) => s.bySession[sessionId]);
+	// The live PTY's agent, as Rust resolved it at spawn; for a session that is
+	// not live, the profile's agent from the index (F30).
+	const agent = live?.agent ?? session?.agent ?? null;
 	const detach = useTerminalStore((s) => s.detach);
 	// Remounting the Terminal (new key) tears down the dead xterm and triggers a
 	// fresh spawn — used to restart a stopped session. The counter lives in the
@@ -293,6 +298,21 @@ function SessionView() {
 				    install's header is byte-identical to what it was, and the badge
 				    means "not the identity you would assume" rather than being a label
 				    every session carries. */}
+				{/* **Which agent this is** (F30): a small monochrome mark with the
+				    agent's name as its title, here and nowhere else — the sidebar rows
+				    are a list of sessions and the project menu already answers which
+				    agent a project is on. Drawn from what Rust resolved at spawn, so
+				    it appears with the PTY and is absent for a session not live. */}
+				{agent && (
+					<span
+						className="flex shrink-0 items-center text-muted-foreground"
+						title={agentName(agent)}
+						data-testid="session-agent"
+						data-agent={agent}
+					>
+						<AgentMark agent={agent} aria-hidden />
+					</span>
+				)}
 				{profileName && (
 					<span
 						className="flex min-w-0 max-w-[10rem] shrink-0 items-center gap-1 text-muted-foreground text-xs"

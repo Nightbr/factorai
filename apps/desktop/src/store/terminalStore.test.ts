@@ -12,6 +12,7 @@ function dto(sessionId: string, over: Partial<TerminalStatusDto> = {}): Terminal
 		kind: 'agent',
 		clientKey: null,
 		cwd: '/tmp',
+		agent: 'claude',
 		...over,
 	};
 }
@@ -54,7 +55,48 @@ describe('adoptLive', () => {
 			terminalId: 'pty-a',
 			projectId: 'p1',
 			status: 'waiting_input',
+			// Carried from the DTO (F30): the header mark reads it after a reload.
+			agent: 'claude',
 		});
+	});
+
+	it('seeds a Codex attach unknown, not working (F30)', () => {
+		// Rust seeds a Codex PTY `unknown` because nothing reads its title yet;
+		// painting green here would claim a state nothing will confirm.
+		useTerminalStore.getState().attach('c', 'pty-c', 'p1', { agent: 'codex' });
+		useTerminalStore.getState().attach('k', 'pty-k', 'p1', { agent: 'claude' });
+		const s = useTerminalStore.getState();
+		expect(s.bySession.c?.status).toBe('unknown');
+		expect(s.bySession.c?.agent).toBe('codex');
+		expect(s.bySession.k?.status).toBe('working');
+	});
+
+	it('re-keys every record of an adopted session in one move (F30, ADR-0062)', () => {
+		const s = useTerminalStore.getState();
+		s.attach('prov', 'pty-1', 'p1', { agent: 'codex' });
+		s.setLaunchAgent('prov', 'codex');
+		s.setRoutineOrigin('prov', 'r1', 'Nightly', 1);
+		s.rebindSession('prov', 'real');
+		const after = useTerminalStore.getState();
+		expect(after.bySession.prov).toBeUndefined();
+		expect(after.bySession.real).toEqual({
+			terminalId: 'pty-1',
+			projectId: 'p1',
+			status: 'unknown',
+			agent: 'codex',
+		});
+		expect(after.tabs.map((t) => t.sessionId)).toEqual(['real']);
+		expect(after.launchAgent.real).toBe('codex');
+		expect(after.routineBySession.real?.routineId).toBe('r1');
+		// A status event for the same PTY now lands on the adopted id.
+		after.setStatus('pty-1', 'working');
+		expect(useTerminalStore.getState().bySession.real?.status).toBe('working');
+	});
+
+	it('hands a launch override out exactly once', () => {
+		useTerminalStore.getState().setLaunchAgent('s', 'codex');
+		expect(useTerminalStore.getState().takeLaunchAgent('s')).toBe('codex');
+		expect(useTerminalStore.getState().takeLaunchAgent('s')).toBeUndefined();
 	});
 
 	it('keeps the real status rather than assuming working, unlike attach', () => {

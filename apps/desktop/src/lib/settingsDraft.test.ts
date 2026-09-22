@@ -6,6 +6,7 @@ import {
 	dirtySections,
 	isDirty,
 	isSettingsSection,
+	settingsSectionOf,
 	SECTION_FOR,
 	SETTINGS_SECTIONS,
 	type SettingsValues,
@@ -13,6 +14,7 @@ import {
 
 const SAVED: SettingsValues = {
 	claudeBinary: '',
+	codexBinary: '',
 	routinesCatchupHours: '',
 	routinesMaxConcurrent: '',
 	clock24: true,
@@ -27,6 +29,15 @@ const SAVED: SettingsValues = {
 describe('isSettingsSection', () => {
 	it('accepts every section in the nav', () => {
 		for (const section of SETTINGS_SECTIONS) expect(isSettingsSection(section)).toBe(true);
+	});
+
+	it('resolves the old claude section to agents and nothing else', () => {
+		// F30 renamed the section; links that say `?settings=claude` still open
+		// the agents cards rather than falling back to the first section.
+		expect(settingsSectionOf('claude')).toBe('agents');
+		expect(settingsSectionOf('agents')).toBe('agents');
+		expect(settingsSectionOf('advanced')).toBeUndefined();
+		expect(isSettingsSection('claude')).toBe(false);
 	});
 
 	it('rejects a hand-edited URL asking for something else', () => {
@@ -64,6 +75,7 @@ describe('dirtySections', () => {
 			const draft: SettingsValues = { ...SAVED };
 			// Flip whatever it is: booleans invert, the text fields get a value.
 			if (key === 'claudeBinary') draft.claudeBinary = '/usr/local/bin/claude';
+			else if (key === 'codexBinary') draft.codexBinary = '/usr/local/bin/codex';
 			else if (key === 'routinesCatchupHours') draft.routinesCatchupHours = '12';
 			else if (key === 'routinesMaxConcurrent') draft.routinesMaxConcurrent = '4';
 			else if (key === 'keymapOverrides') draft.keymapOverrides = { openSettings: null };
@@ -88,7 +100,7 @@ describe('dirtySections', () => {
 			claudeBinary: '/usr/local/bin/claude',
 			diffInline: true,
 		};
-		expect(dirtySections(SAVED, draft)).toEqual(['claude', 'editor', 'sessions']);
+		expect(dirtySections(SAVED, draft)).toEqual(['agents', 'editor', 'sessions']);
 	});
 
 	it('does not call whitespace around an unchanged path a change', () => {
@@ -101,7 +113,7 @@ describe('dirtySections', () => {
 
 	it('sees clearing an override as a change', () => {
 		const saved: SettingsValues = { ...SAVED, claudeBinary: '/usr/local/bin/claude' };
-		expect(dirtySections(saved, { ...saved, claudeBinary: '' })).toEqual(['claude']);
+		expect(dirtySections(saved, { ...saved, claudeBinary: '' })).toEqual(['agents']);
 	});
 });
 

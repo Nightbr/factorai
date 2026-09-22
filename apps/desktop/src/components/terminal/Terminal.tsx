@@ -195,6 +195,10 @@ export interface PooledTerm {
  *  what keeps them from ever colliding. */
 const pool = new Map<string, PooledTerm>();
 
+// Memoises the spawn so StrictMode's double-invoke (and any concurrent caller)
+// shares ONE `terminal_spawn` rather than racing two.
+const spawnInFlight = new Map<string, Promise<string>>();
+
 /** Push a window size to the PTY, ignoring the `NotFound` a terminal that has
  *  already exited returns — a resize losing that race is not worth surfacing. */
 function pushSize(terminalId: string, cols: number, rows: number): void {
@@ -501,6 +505,26 @@ export function attachStream(
 		});
 }
 
+/**
+ * Re-key a pooled terminal from the id a session started under to the one its
+ * agent gave it (F30, ADR-0062). The xterm, its scrollback and its listeners
+ * are untouched — they are filtered by *terminal* id, which does not change —
+ * only the map entry moves, so the session route mounting under the new id
+ * finds the same terminal. The store is re-keyed by the caller in the same
+ * breath (`rebindSession`).
+ */
+export function rebindTerminal(from: string, to: string): void {
+	const entry = pool.get(from);
+	if (!entry || from === to) return;
+	pool.delete(from);
+	pool.set(to, entry);
+	const inFlight = spawnInFlight.get(from);
+	if (inFlight) {
+		spawnInFlight.delete(from);
+		spawnInFlight.set(to, inFlight);
+	}
+}
+
 /** Dispose the pooled terminal for a session (used by restart). Does not kill
  *  the PTY — callers do that separately if needed. */
 export function disposeTerminal(sessionId: string): void {
@@ -585,10 +609,6 @@ export function startRoutineSession(fire: RoutineFireEvent): void {
 	attachPty(entry, fire.sessionId, fire.projectId, fire.cwd, fire.prompt);
 }
 
-// Memoises the spawn so StrictMode's double-invoke (and any concurrent caller)
-// shares ONE `terminal_spawn` rather than racing two.
-const spawnInFlight = new Map<string, Promise<string>>();
-
 function ensureTerminal(
 	sessionId: string,
 	projectId: string,
@@ -602,6 +622,10 @@ function ensureTerminal(
 
 	let pending = spawnInFlight.get(sessionId);
 	if (!pending) {
+		// The launch override, if the `+` menu set one for this id (F30). Taken,
+		// not read: a restart of the same session resolves the agent from its
+		// row like any resume, which is what the override was for one click of.
+		const agent = useTerminalStore.getState().takeLaunchAgent(sessionId);
 		pending = cmd
 			.terminalSpawn({
 				sessionId,
@@ -610,13 +634,14 @@ function ensureTerminal(
 				cols,
 				rows,
 				initialPrompt,
+				agent,
 			})
-			.then((id) => {
+			.then(({ id, agent }) => {
 				// A prompt means a routine fired this (F22), and a routine's session
 				// gets no tab until a human opens it.
 				useTerminalStore
 					.getState()
-					.attach(sessionId, id, projectId, { openTab: initialPrompt === undefined });
+					.attach(sessionId, id, projectId, { openTab: initialPrompt === undefined, agent });
 				spawnInFlight.delete(sessionId);
 				return id;
 			})

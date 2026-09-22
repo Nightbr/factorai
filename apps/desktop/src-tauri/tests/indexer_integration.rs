@@ -1117,6 +1117,7 @@ fn two_profiles_over_one_repository_both_index_into_the_same_project() {
 			&factorai_lib::models::ProfileInput {
 				name: "Work".into(),
 				config_dir: work.to_string_lossy().into_owned(),
+				agent: None,
 			},
 			0,
 		)?;
@@ -1164,4 +1165,112 @@ fn a_profile_whose_store_is_gone_keeps_its_sessions() {
 		(1, 2),
 		"the row and its FTS entries survive a store that is merely unreachable"
 	);
+}
+
+// ---------------------------------------------------------------------------
+// Codex (F30): the second agent's store, read through the same indexer.
+// ---------------------------------------------------------------------------
+
+/// A Codex store built from `tests/fixtures/codex`, with the rollout's folder
+/// rewritten to a real directory under the tempdir — `add_project` needs one —
+/// and a Codex profile pointing at it. Returns (codex_dir, cwd, session_id).
+fn fixture_codex_store(tmp: &Path, db: &Db) -> (PathBuf, PathBuf, String) {
+	let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/codex");
+	let codex_dir = tmp.join(".codex");
+	let cwd = make_folder(tmp, "pong");
+	let day = codex_dir.join("sessions/2026/09/22");
+	std::fs::create_dir_all(&day).expect("mkdir sessions");
+	let mut session_id = String::new();
+	for entry in std::fs::read_dir(fixture.join("sessions/2026/09/22")).expect("fixture day") {
+		let src = entry.expect("entry").path();
+		let body = std::fs::read_to_string(&src).expect("read rollout");
+		std::fs::write(
+			day.join(src.file_name().unwrap()),
+			body.replace("/home/alice/code/pong", cwd.to_str().unwrap()),
+		)
+		.expect("write rollout");
+		session_id = factorai_lib::agents::codex::session_id_of(&src).expect("rollout id");
+	}
+	std::fs::copy(fixture.join("session_index.jsonl"), codex_dir.join("session_index.jsonl"))
+		.expect("copy index");
+	factorai_lib::services::profiles::ensure_default_for(db, "codex", &codex_dir)
+		.expect("seed codex profile");
+	add_project_in(db, cwd.to_str().unwrap()).expect("add project");
+	(codex_dir, cwd, session_id)
+}
+
+#[test]
+fn a_codex_store_is_discovered_and_its_thread_indexed_with_codexs_own_name() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let claude_dir = tmp.path().join(".claude");
+	let (idx, changes) = make_indexer(db.clone(), claude_dir);
+	let (codex_dir, cwd, session_id) = fixture_codex_store(tmp.path(), &db);
+
+	idx.full_scan().expect("scan");
+
+	// One folder, keyed by itself (F30 § "Discovery"), linked to the project.
+	let (key, project_id): (String, Option<String>) = db
+		.with(|conn| {
+			Ok(conn.query_row(
+				"SELECT d.key, d.project_id FROM discovered_projects d
+				 JOIN profiles p ON p.id = d.profile_id WHERE p.agent = 'codex'",
+				[],
+				|r| Ok((r.get(0)?, r.get(1)?)),
+			)?)
+		})
+		.expect("discovered");
+	assert_eq!(Path::new(&key), cwd.as_path());
+	assert_eq!(project_id.as_deref(), Some(only_project(&db).id.as_str()));
+
+	// The row: Codex's auto-title as `ai`, the rollout's path recorded, the
+	// prompt and the answer in search, the injected context in neither.
+	let (title, kind, path, row_cwd): (String, String, Option<String>, Option<String>) = db
+		.with(|conn| {
+			Ok(conn.query_row(
+				"SELECT title, title_kind, transcript_path, cwd FROM sessions WHERE id = ?1",
+				params![session_id],
+				|r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+			)?)
+		})
+		.expect("session row");
+	assert_eq!(title, "Reply with pong");
+	assert_eq!(kind, "ai");
+	assert!(
+		path.as_deref().is_some_and(|p| p.starts_with(codex_dir.to_str().unwrap())),
+		"{path:?}"
+	);
+	assert_eq!(row_cwd.as_deref(), cwd.to_str());
+	let bodies: Vec<(String, String)> = db
+		.with(|conn| {
+			let mut st = conn.prepare("SELECT role, body FROM messages WHERE session_id = ?1")?;
+			let rows = st
+				.query_map(params![session_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+				.collect::<Result<Vec<_>, _>>()?;
+			Ok(rows)
+		})
+		.expect("messages");
+	assert!(bodies.iter().any(|(r, b)| r == "user" && b == "Reply with exactly the word: pong"));
+	assert!(bodies.iter().any(|(r, b)| r == "assistant" && b.contains("pong")));
+	assert!(bodies.iter().all(|(_, b)| !b.contains("AGENTS.md instructions")));
+	assert!(bodies.iter().all(|(_, b)| !b.contains("<environment_context>")));
+	assert!(changes.lock().unwrap().iter().any(|c| c.session_ids.contains(&session_id)));
+
+	// The summary names the agent, for the header mark of a session not live.
+	// (Resolved outside `with`: a nested `with` waits on the writer forever.)
+	let pid = only_project(&db).id;
+	let summaries = db
+		.with(|conn| factorai_lib::commands::sessions::list_sessions_in(conn, &pid))
+		.expect("summaries");
+	assert_eq!(summaries.len(), 1);
+	assert_eq!(summaries[0].agent, "codex");
+
+	// A second scan is a no-op, and a deleted rollout is reaped like any other.
+	idx.full_scan().expect("rescan");
+	assert_eq!(counts(&db, &session_id).0, 1);
+	for p in factorai_lib::agents::codex::rollouts(&codex_dir) {
+		std::fs::remove_file(p).expect("delete rollout");
+	}
+	idx.full_scan().expect("scan after delete");
+	assert_eq!(counts(&db, &session_id), (0, 0));
 }

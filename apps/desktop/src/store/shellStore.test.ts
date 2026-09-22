@@ -251,6 +251,7 @@ describe('adoptLive', () => {
 				kind: 'shell',
 				clientKey: chip.panes[0].key,
 				cwd: '/repo',
+				agent: null,
 			},
 			// An agent's row carries no pane key, so it matches nothing here.
 			{
@@ -262,6 +263,7 @@ describe('adoptLive', () => {
 				kind: 'agent',
 				clientKey: null,
 				cwd: '/repo',
+				agent: 'claude',
 			},
 		]);
 

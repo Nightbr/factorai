@@ -29,9 +29,9 @@ use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{Profile, ProfileInput};
 
-/// The only agent that has profiles today. A second one is an INSERT with a
-/// different value here, not a schema change — see migration 0017.
-pub const CLAUDE: &str = "claude";
+/// The agent every profile was for until F30; `crate::agents::CODEX` is the
+/// second value, written by the form's picker.
+pub const CLAUDE: &str = crate::agents::CLAUDE;
 
 /// The name [`ensure_default`] gives the profile it seeds. Not special to the
 /// code — it is renameable like any other — but it is what an existing install
@@ -60,6 +60,9 @@ const SELECT_JOINED: &str = "SELECT p.id, p.agent, p.name, p.config_dir, p.is_de
 fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Profile> {
 	let config_dir: String = row.get(3)?;
 	Ok(Profile {
+		// Filled in by `with_app_default` once the setting is known; a row read
+		// on its own says false, which is what every caller but `list` wants.
+		is_app_default: false,
 		id: row.get(0)?,
 		agent: row.get(1)?,
 		name: row.get(2)?,
@@ -80,7 +83,52 @@ pub fn list(conn: &Connection) -> AppResult<Vec<Profile>> {
 	let sql = format!("{SELECT} ORDER BY agent, is_default DESC, name COLLATE NOCASE");
 	let mut stmt = conn.prepare(&sql)?;
 	let rows = stmt.query_map([], map_row)?;
-	Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+	let app_default = app_default_agent(conn);
+	Ok(rows
+		.collect::<rusqlite::Result<Vec<_>>>()?
+		.into_iter()
+		.map(|p| Profile { is_app_default: p.is_default && p.agent == app_default, ..p })
+		.collect())
+}
+
+/// The agent a project with no profile runs (F30): `agent.default`, or Claude
+/// when unset or naming an agent no release wrote.
+fn app_default_agent(conn: &Connection) -> String {
+	crate::services::settings::get(conn, crate::models::SettingKey::AgentDefault)
+		.ok()
+		.flatten()
+		.and_then(|v| crate::agents::descriptor(&v).map(|d| d.id.to_string()))
+		.unwrap_or_else(|| crate::agents::default_id().to_string())
+}
+
+/// Make a profile **the** default (F30, ADR-0061): its agent's default, and
+/// its agent the one an unassigned project runs. One transaction, because the
+/// two facts have to agree — an `agent.default` naming an agent whose default
+/// is another row would send new projects to a profile nobody starred.
+pub fn set_app_default(conn: &mut Connection, id: &str) -> AppResult<Profile> {
+	let tx = conn.transaction()?;
+	let agent: String = tx
+		.query_row("SELECT agent FROM profiles WHERE id = ?1", params![id], |r| r.get(0))
+		.optional()?
+		.ok_or_else(|| AppError::NotFound(format!("profile {id}")))?;
+	clear_default(&tx, &agent)?;
+	tx.execute("UPDATE profiles SET is_default = 1 WHERE id = ?1", params![id])?;
+	// Claude is spelled as no row (F30 § "Storage"), so a fresh install and one
+	// that starred Claude are the same database.
+	let value = if agent == CLAUDE { None } else { Some(agent.as_str()) };
+	crate::services::settings::set(&tx, crate::models::SettingKey::AgentDefault, value)?;
+	tx.commit()?;
+	Ok(list(conn)?.into_iter().find(|p| p.id == id).unwrap_or(get(conn, id)?))
+}
+
+pub fn set_app_default_and_announce(
+	db: &Db,
+	app: &tauri::AppHandle,
+	id: &str,
+) -> AppResult<Profile> {
+	let profile = db.with_mut(|conn| set_app_default(conn, id))?;
+	announce(app);
+	Ok(profile)
 }
 
 pub fn get(conn: &Connection, id: &str) -> AppResult<Profile> {
@@ -114,7 +162,12 @@ pub fn default_for(conn: &Connection, agent: &str) -> AppResult<Option<Profile>>
 /// 2. **The project's assignment**, which is what a new session uses.
 /// 3. **The agent's default**, for a project nobody has assigned — the state
 ///    every install starts in.
-pub fn for_spawn(conn: &Connection, project_id: &str, session_id: Option<&str>) -> Option<Profile> {
+pub fn for_spawn(
+	conn: &Connection,
+	agent: &str,
+	project_id: &str,
+	session_id: Option<&str>,
+) -> Option<Profile> {
 	if let Some(session_id) = session_id {
 		match for_session(conn, session_id) {
 			Ok(Some(profile)) => return Some(profile),
@@ -126,24 +179,60 @@ pub fn for_spawn(conn: &Connection, project_id: &str, session_id: Option<&str>) 
 			Err(e) => warn!(error = %e, session_id, "could not resolve a session's profile"),
 		}
 	}
-	match assigned(conn, project_id, CLAUDE) {
+	match assigned(conn, project_id, agent) {
 		Ok(Some(profile)) => Some(profile),
-		Ok(None) => default_for(conn, CLAUDE).ok().flatten(),
+		Ok(None) => default_for(conn, agent).ok().flatten(),
 		Err(e) => {
 			warn!(error = %e, project_id, "could not resolve a project's profile");
-			default_for(conn, CLAUDE).ok().flatten()
+			default_for(conn, agent).ok().flatten()
 		}
 	}
+}
+
+/// Which agent a spawn runs (F30 § "Which agent a project runs"): the session's
+/// own profile's agent for a resume, then the project's assigned profile's,
+/// then `agent.default`. `None` only when the database cannot answer, which
+/// the caller reads as Claude.
+///
+/// Until roadmap 38 slice 4 lands ADR-0061's one-profile-per-project index, a
+/// project's assignment is still per agent and only Claude rows exist — so the
+/// middle step can only ever answer Claude, and the setting is what makes a
+/// Codex default reachable.
+pub fn agent_for_spawn(db: &Db, project_id: &str, session_id: Option<&str>) -> Option<String> {
+	let from_rows = db
+		.with(|conn| -> AppResult<Option<String>> {
+			if let Some(session_id) = session_id {
+				if let Some(p) = for_session(conn, session_id)? {
+					return Ok(Some(p.agent));
+				}
+			}
+			Ok(assigned_any(conn, project_id)?.map(|p| p.agent))
+		})
+		.ok()
+		.flatten();
+	Some(from_rows.unwrap_or_else(|| crate::services::settings::default_agent(db).to_string()))
+}
+
+/// The profile a project is assigned, whichever agent's (ADR-0061). While the
+/// per-agent index still stands there may be several; the first by agent name
+/// is the answer, which is Claude when a Claude row exists.
+fn assigned_any(conn: &Connection, project_id: &str) -> AppResult<Option<Profile>> {
+	let sql = format!(
+		"{SELECT_JOINED} JOIN project_profiles pp ON pp.profile_id = p.id
+		 WHERE pp.project_id = ?1 ORDER BY pp.agent LIMIT 1"
+	);
+	Ok(conn.query_row(&sql, params![project_id], map_row).optional()?)
 }
 
 /// The config directory a spawn runs under. [`for_spawn`] with the row thrown
 /// away, for `services::terminal`, which wants a path and no opinions.
 pub fn config_dir_for_spawn(
 	db: &Db,
+	agent: &str,
 	project_id: &str,
 	session_id: Option<&str>,
 ) -> Option<PathBuf> {
-	db.with(|conn| Ok(for_spawn(conn, project_id, session_id)))
+	db.with(|conn| Ok(for_spawn(conn, agent, project_id, session_id)))
 		.ok()
 		.flatten()
 		.map(|p| PathBuf::from(p.config_dir))
@@ -201,12 +290,12 @@ pub fn assign(conn: &Connection, project_id: &str, profile_id: Option<&str>) -> 
 				params![project_id, profile.id, profile.agent, crate::epoch_ms()],
 			)?;
 		}
-		// Clearing is scoped to this agent for the same reason assigning is: a
-		// second agent's assignment is a different fact and must survive.
+		// "Default profile" clears the project's assignment, whichever agent's
+		// (ADR-0061: a project runs one profile, so there is one thing to clear).
 		None => {
 			conn.execute(
-				"DELETE FROM project_profiles WHERE project_id = ?1 AND agent = ?2",
-				params![project_id, CLAUDE],
+				"DELETE FROM project_profiles WHERE project_id = ?1",
+				params![project_id],
 			)?;
 		}
 	}
@@ -256,14 +345,21 @@ pub fn all(db: &Db) -> Vec<Profile> {
 /// - **Neither.** One row is written, which is the path a database whose
 ///   `profiles` table was emptied by hand takes.
 pub fn ensure_default(db: &Db, claude_dir: &Path) -> AppResult<Profile> {
-	let dir = claude_dir.to_string_lossy().into_owned();
+	ensure_default_for(db, CLAUDE, claude_dir)
+}
+
+/// [`ensure_default`] for any agent (F30): Codex's default is seeded at
+/// `~/.codex` the first time a `codex` binary is found, by `check_agent_cli`,
+/// so an install without Codex has no Codex row to explain.
+pub fn ensure_default_for(db: &Db, agent: &str, seed_dir: &Path) -> AppResult<Profile> {
+	let dir = seed_dir.to_string_lossy().into_owned();
 	db.with_mut(|conn| {
 		let tx = conn.transaction()?;
 		let resolved_default: Option<String> = tx
 			.query_row(
 				"SELECT id FROM profiles
 				  WHERE agent = ?1 AND is_default = 1 AND config_dir <> ''",
-				params![CLAUDE],
+				params![agent],
 				|r| r.get(0),
 			)
 			.optional()?;
@@ -271,14 +367,14 @@ pub fn ensure_default(db: &Db, claude_dir: &Path) -> AppResult<Profile> {
 			let holder: Option<String> = tx
 				.query_row(
 					"SELECT id FROM profiles WHERE agent = ?1 AND config_dir = ?2",
-					params![CLAUDE, dir],
+					params![agent, dir],
 					|r| r.get(0),
 				)
 				.optional()?;
 			let blank: Option<String> = tx
 				.query_row(
 					"SELECT id FROM profiles WHERE agent = ?1 AND config_dir = ''",
-					params![CLAUDE],
+					params![agent],
 					|r| r.get(0),
 				)
 				.optional()?;
@@ -294,12 +390,12 @@ pub fn ensure_default(db: &Db, claude_dir: &Path) -> AppResult<Profile> {
 						)?;
 						tx.execute("DELETE FROM profiles WHERE id = ?1", params![blank])?;
 					}
-					clear_default(&tx, CLAUDE)?;
+					clear_default(&tx, agent)?;
 					tx.execute("UPDATE profiles SET is_default = 1 WHERE id = ?1", params![id])?;
 				}
 				(None, Some(id)) => {
 					info!(%id, config_dir = %dir, "resolving the seeded default profile");
-					clear_default(&tx, CLAUDE)?;
+					clear_default(&tx, agent)?;
 					tx.execute(
 						"UPDATE profiles SET config_dir = ?2, is_default = 1 WHERE id = ?1",
 						params![id, dir],
@@ -308,11 +404,11 @@ pub fn ensure_default(db: &Db, claude_dir: &Path) -> AppResult<Profile> {
 				(None, None) => {
 					let id = uuid::Uuid::new_v4().to_string();
 					info!(%id, config_dir = %dir, "writing a default profile from scratch");
-					clear_default(&tx, CLAUDE)?;
+					clear_default(&tx, agent)?;
 					tx.execute(
 						"INSERT INTO profiles(id, agent, name, config_dir, is_default, created_at)
 						 VALUES (?1, ?2, ?3, ?4, 1, ?5)",
-						params![id, CLAUDE, unique_seed_name(&tx)?, dir, crate::epoch_ms()],
+						params![id, agent, unique_seed_name(&tx, agent)?, dir, crate::epoch_ms()],
 					)?;
 				}
 			}
@@ -320,7 +416,7 @@ pub fn ensure_default(db: &Db, claude_dir: &Path) -> AppResult<Profile> {
 		tx.commit()?;
 		Ok(())
 	})?;
-	db.with(|conn| default_for(conn, CLAUDE))?
+	db.with(|conn| default_for(conn, agent))?
 		.ok_or_else(|| AppError::Db("the default profile is missing right after seeding".into()))
 }
 
@@ -340,14 +436,14 @@ fn clear_default(conn: &Connection, agent: &str) -> AppResult<()> {
 /// unique per agent, so a seed that collides would fail the insert — and it can
 /// collide, because the seed runs on every boot and a user may rename another
 /// profile to `Default` and then demote it.
-fn unique_seed_name(conn: &Connection) -> AppResult<String> {
+fn unique_seed_name(conn: &Connection, agent: &str) -> AppResult<String> {
 	for suffix in 0..100 {
 		let name =
 			if suffix == 0 { SEEDED_NAME.to_string() } else { format!("{SEEDED_NAME} ({suffix})") };
 		let taken: bool = conn
 			.query_row(
 				"SELECT 1 FROM profiles WHERE agent = ?1 AND name = ?2",
-				params![CLAUDE, name],
+				params![agent, name],
 				|_| Ok(true),
 			)
 			.optional()?
@@ -371,6 +467,17 @@ pub fn create(conn: &Connection, input: &ProfileInput, now_ms: i64) -> AppResult
 	if name.is_empty() {
 		return Err(AppError::InvalidInput("a profile needs a name".into()));
 	}
+	// **Fixed at creation** (ADR-0061 § 5): there is no `set_agent`, because a
+	// profile's directory holds one CLI's credentials and store, and re-labelling
+	// it would point the other CLI at a directory that is not its own.
+	let agent = match input.agent.as_deref() {
+		None => CLAUDE,
+		Some(id) => {
+			crate::agents::descriptor(id)
+				.ok_or_else(|| AppError::InvalidInput(format!("unknown agent {id}")))?
+				.id
+		}
+	};
 	let dir = validate_dir(conn, &input.config_dir)?;
 	// Before the insert: a row pointing at a directory we could not create is a
 	// profile that fails at spawn instead of at the form.
@@ -380,7 +487,7 @@ pub fn create(conn: &Connection, input: &ProfileInput, now_ms: i64) -> AppResult
 	conn.execute(
 		"INSERT INTO profiles(id, agent, name, config_dir, is_default, created_at)
 		 VALUES (?1, ?2, ?3, ?4, 0, ?5)",
-		params![id, CLAUDE, name, dir.to_string_lossy(), now_ms],
+		params![id, agent, name, dir.to_string_lossy(), now_ms],
 	)
 	.map_err(name_or_dir_taken)?;
 	get(conn, &id)
@@ -607,7 +714,69 @@ mod tests {
 	}
 
 	fn input(name: &str, dir: &Path) -> ProfileInput {
-		ProfileInput { name: name.into(), config_dir: dir.to_string_lossy().into_owned() }
+		ProfileInput {
+			name: name.into(),
+			config_dir: dir.to_string_lossy().into_owned(),
+			agent: None,
+		}
+	}
+
+	#[test]
+	fn a_profile_is_created_for_one_agent_and_resolves_for_it_alone() {
+		// F30, ADR-0061 § 5: the picker's agent is written and never changes;
+		// a Codex spawn resolves Codex rows and a Claude spawn Claude's.
+		let (_tmp, db) = db();
+		let home = tempfile::tempdir().unwrap();
+		ensure_default(&db, home.path()).unwrap();
+		db.with(|conn| {
+			conn.execute(
+				"INSERT INTO projects(id, real_path, display_name, opened_at)
+				 VALUES ('p1', '/code/one', 'one', 0)",
+				[],
+			)?;
+			Ok(())
+		})
+		.unwrap();
+		let tmp = tempfile::TempDir::new().unwrap();
+		let codex = db
+			.with(|c| {
+				create(
+					c,
+					&ProfileInput {
+						name: "Codex work".into(),
+						config_dir: tmp.path().join("codex-work").to_string_lossy().into_owned(),
+						agent: Some("codex".into()),
+					},
+					1,
+				)
+			})
+			.unwrap();
+		assert_eq!(codex.agent, "codex");
+		db.with(|c| assign(c, "p1", Some(&codex.id))).unwrap();
+		assert_eq!(
+			db.with(|c| Ok(for_spawn(c, "codex", "p1", None))).unwrap().unwrap().id,
+			codex.id
+		);
+		// The Claude resolution never sees a Codex row.
+		assert_eq!(
+			db.with(|c| Ok(for_spawn(c, CLAUDE, "p1", None))).unwrap().unwrap().agent,
+			CLAUDE
+		);
+		// And an agent no release wrote is refused at the form, not defaulted.
+		let err = db
+			.with(|c| {
+				create(
+					c,
+					&ProfileInput {
+						name: "x".into(),
+						config_dir: tmp.path().join("x").to_string_lossy().into_owned(),
+						agent: Some("gemini".into()),
+					},
+					1,
+				)
+			})
+			.unwrap_err();
+		assert!(err.to_string().contains("unknown agent"), "{err}");
 	}
 
 	#[test]
@@ -696,7 +865,11 @@ mod tests {
 	fn a_relative_directory_is_refused() {
 		let (_tmp, db) = db();
 		let bad = db.with(|c| {
-			create(c, &ProfileInput { name: "Work".into(), config_dir: "some/where".into() }, 1)
+			create(
+				c,
+				&ProfileInput { name: "Work".into(), config_dir: "some/where".into(), agent: None },
+				1,
+			)
 		});
 		assert!(matches!(bad, Err(AppError::InvalidInput(_))));
 	}
@@ -780,23 +953,24 @@ mod tests {
 		.unwrap();
 
 		// 3. Nothing assigned: the default.
-		let resolved = db.with(|c| Ok(for_spawn(c, "p1", None))).unwrap().unwrap();
+		let resolved = db.with(|c| Ok(for_spawn(c, CLAUDE, "p1", None))).unwrap().unwrap();
 		assert_eq!(resolved.id, personal.id);
 
 		// 2. Assigned: a new session uses the project's profile.
 		db.with(|c| assign(c, "p1", Some(&work.id))).unwrap();
-		let resolved = db.with(|c| Ok(for_spawn(c, "p1", None))).unwrap().unwrap();
+		let resolved = db.with(|c| Ok(for_spawn(c, CLAUDE, "p1", None))).unwrap().unwrap();
 		assert_eq!(resolved.id, work.id);
 
 		// 1. **The session outranks the project**, which is the whole rule: `s1`'s
 		// transcript is in the personal store, so resuming it anywhere else finds
 		// nothing and silently starts a new conversation under an old name.
-		let resolved = db.with(|c| Ok(for_spawn(c, "p1", Some("s1")))).unwrap().unwrap();
+		let resolved = db.with(|c| Ok(for_spawn(c, CLAUDE, "p1", Some("s1")))).unwrap().unwrap();
 		assert_eq!(resolved.id, personal.id);
 
 		// A session the scan has never seen has no transcript to be anywhere, so it
 		// falls through to the project — which is where a brand-new session belongs.
-		let resolved = db.with(|c| Ok(for_spawn(c, "p1", Some("unknown")))).unwrap().unwrap();
+		let resolved =
+			db.with(|c| Ok(for_spawn(c, CLAUDE, "p1", Some("unknown")))).unwrap().unwrap();
 		assert_eq!(resolved.id, work.id);
 	}
 
@@ -835,7 +1009,10 @@ mod tests {
 		// identity at all.
 		db.with(|c| assign(c, "p1", None)).unwrap();
 		assert!(db.with(|c| assigned(c, "p1", CLAUDE)).unwrap().is_none());
-		assert_eq!(db.with(|c| Ok(for_spawn(c, "p1", None))).unwrap().unwrap().id, personal.id);
+		assert_eq!(
+			db.with(|c| Ok(for_spawn(c, CLAUDE, "p1", None))).unwrap().unwrap().id,
+			personal.id
+		);
 	}
 
 	/// Deleting a profile that a project points at is refused, which is the other
@@ -862,5 +1039,43 @@ mod tests {
 		assert!(matches!(db.with(|c| delete(c, &work.id)), Err(AppError::InvalidInput(_))));
 		db.with(|c| assign(c, "p1", None)).unwrap();
 		db.with(|c| delete(c, &work.id)).expect("deletable once nothing points at it");
+	}
+
+	#[test]
+	fn the_app_default_is_one_profile_across_agents() {
+		// F30: starring a Codex profile makes it Codex's default *and* Codex the
+		// agent an unassigned project runs; starring Claude's writes no row.
+		let (_tmp, db) = db();
+		let home = tempfile::tempdir().unwrap();
+		let claude = ensure_default(&db, &home.path().join("claude")).unwrap();
+		assert!(db.with(list).unwrap().iter().any(|p| p.id == claude.id && p.is_app_default));
+		let codex = db
+			.with(|c| {
+				create(
+					c,
+					&ProfileInput {
+						name: "Codex".into(),
+						// A sibling, not a child: `validate_dir` refuses a directory
+						// that overlaps another profile's.
+						config_dir: home.path().join("codex").to_string_lossy().into_owned(),
+						agent: Some("codex".into()),
+					},
+					1,
+				)
+			})
+			.unwrap();
+		let starred = db.with_mut(|c| set_app_default(c, &codex.id)).unwrap();
+		assert!(starred.is_default && starred.is_app_default);
+		assert_eq!(crate::services::settings::default_agent(&db), "codex");
+		let rows = db.with(list).unwrap();
+		assert_eq!(rows.iter().filter(|p| p.is_app_default).count(), 1);
+		assert!(rows.iter().any(|p| p.id == claude.id && p.is_default && !p.is_app_default));
+		db.with_mut(|c| set_app_default(c, &claude.id)).unwrap();
+		assert_eq!(crate::services::settings::default_agent(&db), CLAUDE);
+		assert_eq!(
+			db.with(|c| crate::services::settings::get(c, crate::models::SettingKey::AgentDefault))
+				.unwrap(),
+			None
+		);
 	}
 }

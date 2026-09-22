@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::db::Db;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::SettingKey;
 
 /// One setting's value, or `None` when no row exists.
@@ -48,15 +48,42 @@ pub fn set(conn: &Connection, key: SettingKey, value: Option<&str>) -> AppResult
 	Ok(())
 }
 
-/// The user's `claude` binary override, for the spawn path and the CLI probe.
+/// The user's binary override for one agent, for the spawn path and the CLI
+/// probe (F11, F30).
 ///
 /// **Swallows a read failure into `None`.** This sits in front of
-/// `find_claude_binary`, whose whole job is to answer "where is claude" without
-/// a database — so a settings table we cannot read means "nothing overridden",
-/// and the three-tier probe still spawns a session. Failing the spawn instead
-/// would turn a broken preference into a broken app.
+/// `find_agent_binary`, whose whole job is to answer "where is the binary"
+/// without a database — so a settings table we cannot read means "nothing
+/// overridden", and the three-tier probe still spawns a session. Failing the
+/// spawn instead would turn a broken preference into a broken app.
+pub fn binary_override(db: &Db, agent: &str) -> Option<PathBuf> {
+	db.with(|conn| get(conn, binary_key(agent)?)).ok().flatten().map(PathBuf::from)
+}
+
+/// Which `SettingKey` holds an agent's override — one variant per agent (F30).
+fn binary_key(agent: &str) -> AppResult<SettingKey> {
+	match agent {
+		crate::agents::CLAUDE => Ok(SettingKey::ClaudeBinaryPath),
+		crate::agents::CODEX => Ok(SettingKey::CodexBinaryPath),
+		other => Err(AppError::InvalidInput(format!("unknown agent {other}"))),
+	}
+}
+
+/// `binary_override` for Claude — the callers that predate F30.
 pub fn claude_binary_override(db: &Db) -> Option<PathBuf> {
-	db.with(|conn| get(conn, SettingKey::ClaudeBinaryPath)).ok().flatten().map(PathBuf::from)
+	binary_override(db, crate::agents::CLAUDE)
+}
+
+/// Which agent a project with no assigned profile runs (F30 § "Which agent a
+/// project runs", rule 3). An unset or unknown value is Claude: a value no
+/// release ever wrote is not a reason to refuse every new session.
+pub fn default_agent(db: &Db) -> &'static str {
+	let value = db.with(|conn| get(conn, SettingKey::AgentDefault)).ok().flatten();
+	value
+		.as_deref()
+		.and_then(crate::agents::descriptor)
+		.map(|d| d.id)
+		.unwrap_or_else(crate::agents::default_id)
 }
 
 #[cfg(test)]

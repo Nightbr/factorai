@@ -179,6 +179,9 @@ export interface SessionSummary {
 	 *  have been written anywhere, and a spawn falls through to the project's
 	 *  assignment. */
 	profileName: string | null;
+	/** Which agent wrote this transcript — the profile's agent (F30). What
+	 *  the session header's mark reads for a session that is not live. */
+	agent: AgentId;
 }
 
 export interface SessionPage {
@@ -256,7 +259,33 @@ export type TerminalId = string;
  * waiting for you" — and `running` was renamed `working` because its meaning
  * narrowed: a live PTY sitting at the prompt is `waiting_input` now.
  */
-export type TerminalStatus = 'working' | 'waiting_input' | 'stopped';
+export type TerminalStatus = 'working' | 'waiting_input' | 'stopped' | 'unknown';
+
+/**
+ * Which CLI a session runs (F30, ADR-0060). The value of every `agent` column.
+ * A union rather than a string for the reason `SettingKey` is one.
+ */
+export type AgentId = 'claude' | 'codex';
+
+/** What `terminal_spawn` hands back (F30): the PTY, and which agent Rust
+ *  resolved for it — from the launch override, the profile, or `agent.default`.
+ *  Returned rather than re-derived here so the header mark and the spawn can
+ *  never disagree. Mirrors `commands::terminal::Spawned`. */
+export interface Spawned {
+	id: TerminalId;
+	agent: AgentId | null;
+}
+
+/** `session:adopted` (F30, ADR-0062): a session that started under an id
+ *  factorai minted has been named by its agent. Emitted once per PTY; the
+ *  renderer re-keys the route, the tab, the pool and the store in one go.
+ *  Mirrors `services::terminal::SessionAdoptedEvent`. */
+export interface SessionAdoptedEvent {
+	id: TerminalId;
+	provisional: string;
+	adopted: string;
+	projectId: string;
+}
 
 /**
  * What a PTY *is*, which is not what it is doing. Mirrors
@@ -284,6 +313,8 @@ export interface TerminalStatusDto {
 	/** Where this terminal is running. A shell chip that outlives its process
 	 *  respawns here (F23). */
 	cwd: string;
+	/** Which agent runs in it (F30); null for a shell. */
+	agent: AgentId | null;
 }
 
 /**
@@ -330,6 +361,10 @@ export interface SpawnOpts {
 	 *  Only a routine fire sets it. Argv rather than a write into the PTY: a
 	 *  write races the CLI's startup and lands in a trust dialog when it loses. */
 	initialPrompt?: string;
+	/** The launch override (F30): the `+` menu named an agent other than the
+	 *  project's. Absent for every other caller; Rust then resolves the
+	 *  session's profile, the project's, `agent.default`, Claude — in that order. */
+	agent?: AgentId;
 }
 
 export interface ClaudeCliStatus {
@@ -351,7 +386,12 @@ export interface ClaudeCliStatus {
  * A union rather than a free string for the reason `GitRev` is one: a
  * misspelled key would otherwise read as "unset" with nothing to catch it.
  */
-export type SettingKey = 'claudeBinaryPath' | 'routinesCatchupHours' | 'routinesMaxConcurrent';
+export type SettingKey =
+	| 'claudeBinaryPath'
+	| 'codexBinaryPath'
+	| 'agentDefault'
+	| 'routinesCatchupHours'
+	| 'routinesMaxConcurrent';
 
 /**
  * Emitted from `CloseRequested` when quitting needs a confirmation — which is
@@ -986,14 +1026,16 @@ export interface RoutinesChangedEvent {
  *  profile stops at making the directory empty. */
 export interface Profile {
 	id: string;
-	/** Which agent this is an identity for. `'claude'` today; the column exists
-	 *  so a second agent is a row rather than a migration. */
-	agent: string;
+	/** Which agent this is an identity for (F25, F30). */
+	agent: AgentId;
 	name: string;
 	configDir: string;
 	/** Every project with no assignment for this agent spawns under it. Exactly
 	 *  one per agent, enforced by a partial unique index in migration 0017. */
 	isDefault: boolean;
+	/** **The** default (F30, ADR-0061): its agent's default and the agent an
+	 *  unassigned project runs. One across every agent; the star in Profiles. */
+	isAppDefault: boolean;
 	/** The directory is not on disk — unmounted, renamed, deleted. Not an error
 	 *  state: the scan skips such a profile rather than reaping its sessions, and
 	 *  the next spawn recreates the directory, where the CLI asking for a login is
@@ -1008,6 +1050,9 @@ export interface Profile {
 export interface ProfileInput {
 	name: string;
 	configDir: string;
+	/** Which agent the profile is for (F30, ADR-0061 § 5). Chosen in the form,
+	 *  fixed for life; absent means Claude. */
+	agent?: AgentId;
 }
 
 /** `profiles:changed` — the profile list is different, so re-read it (F25).

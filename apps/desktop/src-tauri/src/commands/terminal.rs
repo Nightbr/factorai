@@ -16,10 +16,17 @@ use crate::state::AppState;
 /// Takes the project's folder as well as its id, because "has this session been
 /// messaged" is answered by probing the transcript, and a uuid says nothing
 /// about where that is.
+///
+/// `agent` is the launch override (F30): the `+` menu naming an agent other
+/// than the project's. `None` resolves the project's agent.
 #[tauri::command]
-pub fn start_session(state: State<'_, AppState>, project_id: String) -> AppResult<String> {
+pub fn start_session(
+	state: State<'_, AppState>,
+	project_id: String,
+	agent: Option<String>,
+) -> AppResult<String> {
 	let folder = state.db.with(|conn| project_path(conn, &project_id))?;
-	Ok(state.terminals.next_session_id(&project_id, &folder))
+	state.terminals.next_session_id(&project_id, &folder, agent.as_deref())
 }
 
 /// Spawn the PTY for a session.
@@ -36,17 +43,32 @@ pub fn start_session(state: State<'_, AppState>, project_id: String) -> AppResul
 /// forks. The first spawn of a run can also wait on the login shell's `PATH`
 /// resolution, which has a five-second timeout — five seconds of a window that
 /// does not repaint.
+///
+/// **Returns the agent beside the id** (F30). Which agent a session runs is
+/// resolved here, from the profile and the settings, and the renderer's
+/// header mark should not re-derive that from a second copy of the rules.
 #[tauri::command]
-pub async fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<String> {
+pub async fn terminal_spawn(state: State<'_, AppState>, opts: SpawnOpts) -> AppResult<Spawned> {
 	let terminals = state.terminals.clone();
 	let routines = state.routines.clone();
 	off_main(move || {
 		let session_id = opts.session_id.clone();
 		let terminal_id = terminals.spawn(opts)?;
+		let agent = terminals.agent_of_terminal(&terminal_id);
 		routines.mark_started(&session_id, crate::epoch_ms());
-		Ok(terminal_id)
+		Ok(Spawned { id: terminal_id, agent })
 	})
 	.await
+}
+
+/// What `terminal_spawn` hands back. Mirrored as `Spawned` in `@factorai/types`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Spawned {
+	pub id: String,
+	/// `claude` or `codex`; `None` only for a PTY that is not an agent's, which
+	/// this command never spawns.
+	pub agent: Option<String>,
 }
 
 /// Open a shell in the project's footer (F23).

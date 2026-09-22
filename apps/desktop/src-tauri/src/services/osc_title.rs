@@ -59,6 +59,13 @@ impl TitleScanner {
 	/// or `None` when the chunk contained no complete title — in which case the
 	/// caller holds whatever state it already had. Last-wins because a chunk
 	/// can carry several frames of the spinner and only the newest is current.
+	/// The last complete title payload in `bytes`, as text, for a classifier
+	/// that is not Claude's (F30): Codex writes words rather than a glyph, and
+	/// its id rides in the same title (ADR-0062). Same carry handling as `push`.
+	pub fn push_payload(&mut self, bytes: &[u8]) -> Option<String> {
+		self.scan(bytes, |payload| Some(String::from_utf8_lossy(payload).into_owned()))
+	}
+
 	pub fn push(&mut self, bytes: &[u8]) -> Option<TerminalStatus> {
 		self.scan(bytes, classify)
 	}

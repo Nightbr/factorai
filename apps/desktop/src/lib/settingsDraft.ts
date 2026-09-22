@@ -20,7 +20,9 @@ export const SETTINGS_SECTIONS = [
 	// After Appearance because both are app-wide chrome you set once, and before
 	// the sections that are about the agent (F28).
 	'keyboard',
-	'claude',
+	// Was `claude` until F30 made it one card per agent; `?settings=claude`
+	// still resolves here — see `settingsSectionOf`.
+	'agents',
 	'profiles',
 	'editor',
 	'confirmations',
@@ -41,6 +43,14 @@ export function isSettingsSection(value: unknown): value is SettingsSection {
 	return typeof value === 'string' && SETTINGS_SECTIONS.includes(value as SettingsSection);
 }
 
+/** `?settings=` as a section, honouring the one alias: `claude` was the
+ *  section's name before F30 and every link that used it still opens the
+ *  agents cards rather than falling back to the first section. */
+export function settingsSectionOf(value: unknown): SettingsSection | undefined {
+	if (value === 'claude') return 'agents';
+	return isSettingsSection(value) ? value : undefined;
+}
+
 /**
  * Everything the modal edits: the renderer's preferences plus the one value
  * that lives in SQLite because Rust reads it.
@@ -50,6 +60,9 @@ export function isSettingsSection(value: unknown): value is SettingsSection {
  */
 export interface SettingsValues extends Prefs {
 	claudeBinary: string;
+	/** The same for `codex` (F30). One field per agent, like one `SettingKey`
+	 *  variant per agent. */
+	codexBinary: string;
 	/** Both are SQLite settings for the same reason the binary path is: **Rust**
 	 *  reads them — `RoutineRunner` does, on every tick (F22, ADR-0013). Held as
 	 *  the text of their fields, so a half-typed number is a draft rather than a
@@ -68,7 +81,8 @@ export interface SettingsValues extends Prefs {
  *  list per section, so a preference added to `SettingsValues` and not placed
  *  in a section is a type error rather than a row nobody can find. */
 export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
-	claudeBinary: 'claude',
+	claudeBinary: 'agents',
+	codexBinary: 'agents',
 	diffInline: 'editor',
 	frontmatterOpen: 'editor',
 	confirmCloseSession: 'confirmations',
@@ -146,8 +160,8 @@ function sameValue(
 	draft: SettingsValues,
 	key: keyof SettingsValues,
 ): boolean {
-	if (key === 'claudeBinary') {
-		return binaryOverride(saved.claudeBinary) === binaryOverride(draft.claudeBinary);
+	if (key === 'claudeBinary' || key === 'codexBinary') {
+		return binaryOverride(saved[key]) === binaryOverride(draft[key]);
 	}
 	// Normalised for the same reason: `6 ` and `6` are the same setting, and a
 	// cursor left in the wrong place must not enable Save.

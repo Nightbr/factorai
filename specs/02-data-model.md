@@ -293,7 +293,7 @@ intra-group ordinals that collide with whatever is there.
 | agent      | TEXT      | `'claude'` or `'codex'` (F30, chosen in the form). What "one default" is scoped by — there is no Claude profile on a Codex agent. Since ADR-0061 it is also what names a project's agent, through the one profile the project runs |
 | name       | TEXT      | unique per agent; the only place a profile is named is a list read by eye |
 | config_dir | TEXT      | absolute, **UNIQUE**                                              |
-| is_default | INTEGER   | exactly one per agent                                             |
+| is_default | INTEGER   | exactly one per agent. **Not stored:** `is_app_default` on the returned `Profile`, which is `is_default AND agent = agent.default` (F30) — the starred profile an unassigned project runs under |
 | created_at | INTEGER   | unix ms                                                           |
 
 F25 and [ADR-0036](adr/0036-a-profile-is-a-config-directory-passed-per-spawn.md).

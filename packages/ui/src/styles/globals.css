@@ -87,6 +87,10 @@
 	   read as the same kind of mark; `waiting` still wins over it, because
 	   "your move" is true wherever the session runs. */
 	--color-status-background: oklch(68% 0.16 255);
+	/* A fifth mark, drawn hollow (F30, DESIGN.md § Status Dot): a live PTY whose
+	   agent has told us nothing. `stopped`'s value on purpose — same weight,
+	   different shape. */
+	--color-status-unknown: oklch(55% 0.01 250);
 
 	/* Working activity indicator */
 	--animate-running-pulse: running-pulse 1.5s ease-in-out infinite;

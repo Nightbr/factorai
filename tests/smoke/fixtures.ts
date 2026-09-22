@@ -113,10 +113,14 @@ export interface TestFixture {
 	/** What the three-tier probe finds when nothing is overridden. Omit for a
 	 *  machine with no `claude` on it, which is the browser-only default. */
 	claudeCli?: ClaudeCliStatus;
+	/** The same for `codex` (F30). Omit for the single-agent UI. */
+	codexCli?: ClaudeCliStatus;
 	/** Paths that are a working `claude`, mapped to the version they report.
 	 *  Anything not listed validates as not installed — which is how a spec
 	 *  reaches the override field's inline error. */
 	claudeBinaries?: Record<string, string | null>;
+	/** The same for `codex` (F30). */
+	codexBinaries?: Record<string, string | null>;
 	/** What the `sops` probe finds (F27). Omit for a machine with no `sops` on
 	 *  it — the browser-only default, and the state the disabled Decrypt
 	 *  control exists for. */
@@ -321,6 +325,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		// every install starts as (F25 slice 3).
 		profileId: null,
 		profileName: null,
+		agent: 'claude',
 	};
 	const session: SessionSummary = {
 		id: 'session-uuid-001',
@@ -339,6 +344,7 @@ export function fixtureOneProjectOneSession(): TestFixture {
 		routineStartedAt: null,
 		pinned: false,
 		profileName: 'Default',
+		agent: 'claude',
 	};
 	return {
 		projects: [project],
@@ -1060,6 +1066,7 @@ export function fixtureFileTreeInTwoProjects(): TestFixture {
 		missing: false,
 		profileId: null,
 		profileName: null,
+		agent: 'claude',
 	};
 	const zuluRoot = zulu.realPath;
 	const zuluSession: SessionSummary = {

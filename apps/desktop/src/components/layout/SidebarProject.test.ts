@@ -31,6 +31,7 @@ function session(
 		routineStartedAt: null,
 		pinned,
 		profileName: null,
+		agent: 'claude',
 	};
 }
 

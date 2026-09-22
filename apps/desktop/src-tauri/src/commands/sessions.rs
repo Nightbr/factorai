@@ -58,7 +58,7 @@ pub fn list_sessions_in(
 		"SELECT s.id, d.project_id, COALESCE(s.title, ''), s.created_at, s.updated_at,
 		        s.turn_count, s.cwd, s.subagent_of, w.path, s.last_cwd, s.touched_paths,
 		        sr.routine_id, r.name, sr.created_at, pin.session_id IS NOT NULL,
-		        pr.name
+		        pr.name, pr.agent
 		 FROM sessions s
 		 JOIN discovered_projects d ON d.id = s.discovered_id
 		 -- Which identity wrote this transcript (F25 slice 3). Joined rather than
@@ -117,6 +117,7 @@ pub fn list_sessions_in(
 				routine_started_at: row.get(13)?,
 				pinned: row.get(14)?,
 				profile_name: row.get(15)?,
+				agent: row.get(16)?,
 			})
 		})?
 		.collect::<rusqlite::Result<Vec<_>>>()?;

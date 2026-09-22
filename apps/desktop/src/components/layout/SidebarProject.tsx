@@ -1,4 +1,4 @@
-import { ProjectMenu } from '@components/layout/ProjectMenu';
+import { NewSessionAgentMenu, ProjectMenu } from '@components/layout/ProjectMenu';
 import { DropLine } from '@components/layout/DropLine';
 import { DwellRing } from '@components/layout/DwellRing';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
@@ -423,6 +423,13 @@ export function SidebarProject({
 							>
 								<Plus />
 							</IconButton>
+							<NewSessionAgentMenu
+								project={project}
+								disabled={!canStart}
+								className={`transition-all focus-visible:opacity-100 ${
+									alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+								}`}
+							/>
 						</span>
 					</div>
 				</ContextMenuTrigger>

@@ -264,7 +264,7 @@ list_skills(project_id: String) -> Vec<SkillInfo>
 
 // terminal
 start_session(project_id: String) -> SessionId          // see "Session ids" below
-terminal_spawn(opts: SpawnOpts) -> TerminalId           // session_id, project_id, cwd?, cols, rows, initial_prompt?
+terminal_spawn(opts: SpawnOpts) -> Spawned              // session_id, project_id, cwd?, cols, rows, initial_prompt?, agent? → { id, agent } (F30)
 terminal_write(id: TerminalId, data: String) -> ()
 terminal_resize(id: TerminalId, cols: u16, rows: u16) -> ()
 terminal_kill(id: TerminalId) -> ()
@@ -414,6 +414,7 @@ validate_claude_binary(path: String) -> ClaudeCliStatus
 | `terminal:data`        | `{ id, bytes: base64 }`              | TerminalManager     |
 | `terminal:status`      | `{ id, status, lastActivity }`       | TerminalManager     |
 | `terminal:exit`        | `{ id, code, killed }`               | TerminalManager     |
+| `session:adopted`      | `{ id, provisional, adopted, projectId }` | TerminalManager — a Codex session took its agent's id (F30, ADR-0062) |
 | `session:worktree`     | `{ sessionId, path, branch }`        | IDE bridge (F21)    |
 | `routine:fire`         | `{ routineId, routineName, projectId, sessionId, prompt, cwd }` | RoutineRunner (F22) |
 | `routines:changed`     | `{ projectId }`                      | routines service (F22 slice 3) |

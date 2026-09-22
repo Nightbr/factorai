@@ -13,7 +13,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
@@ -25,10 +25,10 @@ use tauri::{AppHandle, Emitter};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::agents::claude;
+use crate::agents::{self, claude, codex, AgentDescriptor, IdSource};
 use crate::error::{AppError, AppResult};
+use crate::services::agent_cli::find_agent_binary;
 use crate::services::agent_tools::{self, AgentTools, AgentToolsServer};
-use crate::services::claude_cli::find_claude_binary;
 use crate::services::ide::protocol::{self, Mcp, Mention};
 use crate::services::ide::scope;
 use crate::services::ide::server::IdeServer;
@@ -81,6 +81,13 @@ pub enum TerminalStatus {
 	WaitingInput,
 	/// The process is gone.
 	Stopped,
+	/// The PTY is live and its agent has said nothing factorai can read (F30,
+	/// ADR-0060): a Codex session before its first title, or any agent with no
+	/// status source. A fourth status and **not a default** — `Working` stays
+	/// the launch state for Claude because its title answers within 300ms; this
+	/// is the honest answer when nothing will. Drawn hollow (DESIGN.md § Status
+	/// Dot), never counted by `working_count`.
+	Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -109,6 +116,12 @@ pub struct SpawnOpts {
 	/// and bracketed paste makes it a quoting problem as well.
 	#[serde(default)]
 	pub initial_prompt: Option<String>,
+	/// The launch override (F30 § "Which agent a project runs", rule 1): the
+	/// `+` menu picked an agent other than the project's. `None` — every caller
+	/// but that menu — resolves through `agent_of`: the session's own profile,
+	/// then the project's, then `agent.default`, then Claude.
+	#[serde(default)]
+	pub agent: Option<String>,
 }
 
 /// What the footer needs to open a shell (F23).
@@ -158,6 +171,9 @@ pub struct TerminalStatusDto {
 	/// Where this terminal is running. A shell chip that outlives its process
 	/// respawns here (F23).
 	pub cwd: String,
+	/// Which agent runs in it — `claude`, `codex` — and `None` for a shell
+	/// (F30). What the session header's agent mark reads after a reload.
+	pub agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -251,6 +267,19 @@ impl IdeSlot {
 	}
 }
 
+/// `session:adopted` (F30, ADR-0062): a session that started under an id
+/// factorai minted has been named by its agent. Emitted once per PTY, when
+/// the rollout carrying the title's thread prefix appears on disk; the
+/// renderer re-keys the route, the tab, the pool and the store in one go.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAdoptedEvent {
+	pub id: TerminalId,
+	pub provisional: String,
+	pub adopted: String,
+	pub project_id: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalExitEvent {
@@ -273,9 +302,15 @@ type DataCb = Arc<dyn Fn(TerminalDataEvent) + Send + Sync>;
 type StatusCb = Arc<dyn Fn(TerminalStatusEvent) + Send + Sync>;
 type ExitCb = Arc<dyn Fn(TerminalExitEvent) + Send + Sync>;
 type IdeOpenCb = Arc<dyn Fn(IdeOpenFileEvent) + Send + Sync>;
+type AdoptedCb = Arc<dyn Fn(SessionAdoptedEvent) + Send + Sync>;
 type IdeStatusCb = Arc<dyn Fn(IdeStatusEvent) + Send + Sync>;
-/// Asks for the user's configured `claude` path, once per spawn (F11).
-type BinaryOverrideCb = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
+/// Asks for the user's configured binary path for one agent, once per spawn
+/// (F11, F30). The argument is the agent id.
+type BinaryOverrideCb = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
+/// Which agent a spawn runs, given its project and — for a resume — its session
+/// (F30 § "Which agent a project runs"). Same shape and reason as
+/// `ProfileDirCb`: a row this module should not hold. `None` means Claude.
+type AgentCb = Arc<dyn Fn(&str, Option<&str>) -> Option<String> + Send + Sync>;
 /// Answers "where does this session's transcript say it was running?" — see
 /// `TerminalManager::session_cwd`.
 /// The directories a session is recorded as having run in, **newest first**.
@@ -304,7 +339,7 @@ type SessionKeyCb = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// profile even when the project has since been reassigned — otherwise
 /// `--resume` finds nothing and silently starts a fresh conversation. The
 /// ordering lives in `services::profiles::for_spawn`.
-type ProfileDirCb = Arc<dyn Fn(&str, Option<&str>) -> Option<PathBuf> + Send + Sync>;
+type ProfileDirCb = Arc<dyn Fn(&str, &str, Option<&str>) -> Option<PathBuf> + Send + Sync>;
 type WorktreeCb = Arc<dyn Fn(SessionWorktreeEvent) + Send + Sync>;
 
 /// Reading and writing which checkout a session is working in (F21).
@@ -378,6 +413,20 @@ struct PtyRequest {
 	rows: u16,
 	initial_prompt: Option<String>,
 	kind: TerminalKind,
+	/// Which agent this runs (F30); `None` for a shell, whose argv is `$SHELL`.
+	agent: Option<&'static AgentDescriptor>,
+}
+
+impl TerminalHandle {
+	/// The id this session answers to now: the agent's once adopted, else ours.
+	fn effective_id(&self) -> Option<String> {
+		self.adopted.lock().clone().or_else(|| self.session_id.clone())
+	}
+
+	/// Whether `id` names this session, before or after adoption.
+	fn is_session(&self, id: &str) -> bool {
+		self.session_id.as_deref() == Some(id) || self.adopted.lock().as_deref() == Some(id)
+	}
 }
 
 struct TerminalHandle {
@@ -393,6 +442,20 @@ struct TerminalHandle {
 	/// back after a renderer reload. Opaque here: never parsed, never validated,
 	/// `None` for an agent (ADR-0032).
 	client_key: Option<String>,
+	/// Which agent runs here (F30). Decides which title dialect the reader
+	/// parses and what `list` reports; `None` for a shell.
+	agent: Option<&'static AgentDescriptor>,
+	/// The id the agent gave this session, once adopted (ADR-0062). `None` for
+	/// Claude — which runs under the id we minted — and for a Codex session
+	/// before its first turn. Every lookup by session id answers to both.
+	adopted: Mutex<Option<String>>,
+	/// The thread-id prefix the title last carried, for the adoption probe.
+	thread_prefix: Mutex<Option<String>>,
+	/// The agent's store this session writes into: where the probe looks.
+	store_dir: PathBuf,
+	/// When the store was last probed; the spinner rewrites the title ten
+	/// times a second and a directory walk per rewrite would be silly.
+	last_probe: Mutex<Option<Instant>>,
 	master: Mutex<Box<dyn MasterPty + Send>>,
 	writer: Mutex<Box<dyn Write + Send>>,
 	/// A killer cloned from the child at spawn time. We deliberately do NOT
@@ -440,6 +503,10 @@ pub struct TerminalManager {
 	/// Claude's config dir, for locating session transcripts. Spawn decisions
 	/// read the filesystem rather than the index, so they can't go stale.
 	claude_dir: PathBuf,
+	/// Codex's ambient config directory (F30): `CODEX_HOME` or `~/.codex`. What
+	/// a Codex session runs under until Codex profiles land (roadmap 38 slice
+	/// 4), and what "no variable at all" compares against for that agent.
+	codex_dir: PathBuf,
 	/// Override for tests. None → resolve the binary at spawn time.
 	///
 	/// A test seam, deliberately *not* overloaded to carry the user's F11
@@ -456,6 +523,9 @@ pub struct TerminalManager {
 	/// `live_ids`, and for the same reason: the manager needs an answer from a
 	/// database it should not hold.
 	user_binary: Option<BinaryOverrideCb>,
+	/// Which agent a project's next session runs, read at **spawn time** (F30).
+	/// `None` — every test that does not wire it — means Claude.
+	agent_of: Option<AgentCb>,
 	/// The cwd the index recorded for a session, read at **spawn time**.
 	///
 	/// Same shape and same reason as `user_binary`: the manager needs an answer
@@ -485,6 +555,7 @@ pub struct TerminalManager {
 	ui: Arc<UiState>,
 	on_ide_open: IdeOpenCb,
 	on_ide_status: IdeStatusCb,
+	on_adopted: AdoptedCb,
 }
 
 impl TerminalManager {
@@ -494,16 +565,21 @@ impl TerminalManager {
 		let app_exit = app.clone();
 		let app_ide = app.clone();
 		let app_ide_status = app.clone();
+		let app_adopted = app.clone();
 		let app_worktree = app;
 		Self {
 			terminals: Arc::new(DashMap::new()),
 			claude_dir,
+			codex_dir: agents::ambient_dir(codex_desc()),
 			ui,
 			on_ide_open: Arc::new(move |e| {
 				let _ = app_ide.emit("ide:open-file", e);
 			}),
 			on_ide_status: Arc::new(move |e| {
 				let _ = app_ide_status.emit("ide:status", e);
+			}),
+			on_adopted: Arc::new(move |e| {
+				let _ = app_adopted.emit("session:adopted", e);
 			}),
 			on_data: Arc::new(move |e| {
 				let _ = app_data.emit("terminal:data", e);
@@ -516,6 +592,7 @@ impl TerminalManager {
 			}),
 			binary_override: None,
 			user_binary: None,
+			agent_of: None,
 			session_cwd: None,
 			session_key: None,
 			profile_dir: None,
@@ -539,8 +616,10 @@ impl TerminalManager {
 			on_status,
 			on_exit,
 			claude_dir,
+			codex_dir: agents::ambient_dir(codex_desc()),
 			binary_override: None,
 			user_binary: None,
+			agent_of: None,
 			session_cwd: None,
 			session_key: None,
 			profile_dir: None,
@@ -550,7 +629,15 @@ impl TerminalManager {
 			ui: Arc::new(UiState::default()),
 			on_ide_open: Arc::new(|_| {}),
 			on_ide_status: Arc::new(|_| {}),
+			on_adopted: Arc::new(|_| {}),
 		}
+	}
+
+	/// Watch adoptions. For tests only — production wires this to a Tauri
+	/// event in `for_app`.
+	#[cfg(test)]
+	pub fn set_adopted_cb(&mut self, cb: AdoptedCb) {
+		self.on_adopted = cb;
 	}
 
 	/// Where to read a session's recorded cwd from, per spawn. Wired to the
@@ -584,11 +671,19 @@ impl TerminalManager {
 	/// probed under another is the silent version of this feature breaking — the
 	/// probe misses, we claim an id Claude already knows, and the conversation is
 	/// replaced by an empty one.
-	fn config_dir_for(&self, project_id: &str, session_id: Option<&str>) -> PathBuf {
+	fn config_dir_for(
+		&self,
+		agent: &AgentDescriptor,
+		project_id: &str,
+		session_id: Option<&str>,
+	) -> PathBuf {
+		// Per agent (F30): a Codex profile is a `CODEX_HOME`, and a Codex session
+		// with no profile of its own — an install where no `codex` was found when
+		// the seed ran — falls back to that agent's ambient directory.
 		self.profile_dir
 			.as_ref()
-			.and_then(|cb| cb(project_id, session_id))
-			.unwrap_or_else(|| self.claude_dir.clone())
+			.and_then(|cb| cb(agent.id, project_id, session_id))
+			.unwrap_or_else(|| self.ambient_dir_for(agent).to_path_buf())
 	}
 
 	/// Where to read and write a session's checkout (F21). Wired to
@@ -610,6 +705,42 @@ impl TerminalManager {
 	pub fn with_user_binary(mut self, cb: BinaryOverrideCb) -> Self {
 		self.user_binary = Some(cb);
 		self
+	}
+
+	/// Which agent a project's next session runs (F30). Wired to
+	/// `services::profiles::agent_for_spawn` in `lib.rs`.
+	pub fn with_agent_of(mut self, cb: AgentCb) -> Self {
+		self.agent_of = Some(cb);
+		self
+	}
+
+	/// Resolve the descriptor a spawn runs under: the caller's override first,
+	/// then the wired resolver, then Claude. An id no release ever wrote is an
+	/// error rather than Claude — the caller believed something false.
+	fn resolve_agent(
+		&self,
+		requested: Option<&str>,
+		project_id: &str,
+		session_id: Option<&str>,
+	) -> AppResult<&'static AgentDescriptor> {
+		let id = match requested {
+			Some(id) => id.to_string(),
+			None => self
+				.agent_of
+				.as_ref()
+				.and_then(|cb| cb(project_id, session_id))
+				.unwrap_or_else(|| agents::default_id().to_string()),
+		};
+		agents::descriptor(&id).ok_or_else(|| AppError::InvalidInput(format!("unknown agent {id}")))
+	}
+
+	/// The directory an agent reads when no profile names another: what "no
+	/// variable at all" compares against in `spawn_inner` (F25, F30).
+	fn ambient_dir_for(&self, agent: &AgentDescriptor) -> &Path {
+		match agent.id {
+			agents::CODEX => &self.codex_dir,
+			_ => &self.claude_dir,
+		}
 	}
 
 	/// Override the binary the manager will spawn. For tests only.
@@ -650,7 +781,17 @@ impl TerminalManager {
 		// `filter_map` rather than a `kind` filter: a shell has no session id to
 		// contribute, so there is nothing to remember to exclude (ADR-0032).
 		// Pinning a phantom row against the reap is what this used to do wrong.
-		self.terminals.iter().filter_map(|e| e.value().session_id.clone()).collect()
+		//
+		// Both ids of an adopted session (ADR-0062): the row the indexer writes
+		// carries the agent's, the tab may still carry ours.
+		self.terminals
+			.iter()
+			.flat_map(|e| {
+				let h = e.value();
+				[h.session_id.clone(), h.adopted.lock().clone()]
+			})
+			.flatten()
+			.collect()
 	}
 
 	/// Hand files to one session's agent as `at_mentioned` notifications (F20).
@@ -664,11 +805,10 @@ impl TerminalManager {
 	/// human just made and is watching for, so "nothing happened" has to be
 	/// something they can see rather than a line in a log.
 	pub fn mention(&self, session_id: &str, mentions: &[Mention]) -> AppResult<()> {
-		let entry = self
-			.terminals
-			.iter()
-			.find(|e| e.value().session_id.as_deref() == Some(session_id))
-			.ok_or_else(|| AppError::NotFound(format!("session {session_id} is not running")))?;
+		let entry =
+			self.terminals.iter().find(|e| e.value().is_session(session_id)).ok_or_else(|| {
+				AppError::NotFound(format!("session {session_id} is not running"))
+			})?;
 		let handle = entry.value();
 
 		let Some(server) = handle.ide.server() else {
@@ -727,6 +867,11 @@ impl TerminalManager {
 		}
 	}
 
+	/// Which agent a terminal runs (F30); `None` for a shell or an unknown id.
+	pub fn agent_of_terminal(&self, id: &str) -> Option<String> {
+		self.terminals.get(id).and_then(|h| h.agent.map(|a| a.id.to_string()))
+	}
+
 	pub fn list(&self) -> Vec<TerminalStatusDto> {
 		self.terminals
 			.iter()
@@ -734,13 +879,14 @@ impl TerminalManager {
 				let h = entry.value();
 				TerminalStatusDto {
 					id: entry.key().clone(),
-					session_id: h.session_id.clone(),
+					session_id: h.effective_id(),
 					project_id: h.project_id.clone(),
 					status: *h.status.lock(),
 					last_activity: h.last_activity.load(Ordering::Relaxed),
 					kind: h.kind,
 					client_key: h.client_key.clone(),
 					cwd: h.cwd.to_string_lossy().into_owned(),
+					agent: h.agent.map(|a| a.id.to_string()),
 				}
 			})
 			.collect()
@@ -770,22 +916,38 @@ impl TerminalManager {
 	/// hands its id back on every "new session" click instead of minting a fresh
 	/// one. `resume_cwd` is `None` for a genuinely new, never-messaged session, so
 	/// the fallback is what still lets one be reused.
-	pub fn next_session_id(&self, project_id: &str, folder: &Path) -> String {
-		let claude_dir = self.config_dir_for(project_id, None);
+	///
+	/// **Per agent** (F30): a live, unmessaged Codex session is not the one a
+	/// "new Claude session" click asks for, so only handles running the same
+	/// agent are candidates. For an agent that names its own sessions
+	/// (ADR-0062) the returned id is *provisional* until adoption; an
+	/// unadopted live session is by definition unmessaged and is reused.
+	pub fn next_session_id(
+		&self,
+		project_id: &str,
+		folder: &Path,
+		agent: Option<&str>,
+	) -> AppResult<String> {
+		let agent = self.resolve_agent(agent, project_id, None)?;
+		let config_dir = self.config_dir_for(agent, project_id, None);
 		for entry in self.terminals.iter() {
 			let h = entry.value();
 			// A shell contributes no id here because it has none: it would
 			// otherwise be handed to a "new session" click, and `claude --resume`
 			// pointed at an id no transcript will ever exist for (ADR-0031).
 			let Some(session_id) = h.session_id.as_deref() else { continue };
-			if h.project_id != project_id {
+			if h.project_id != project_id || h.agent.map(|a| a.id) != Some(agent.id) {
 				continue;
 			}
-			if !self.is_messaged(session_id, folder, &claude_dir) {
-				return session_id.to_string();
+			// An adopted session has a transcript by definition (ADR-0062).
+			if h.adopted.lock().is_some() {
+				continue;
+			}
+			if !self.is_messaged(agent, session_id, folder, &config_dir) {
+				return Ok(session_id.to_string());
 			}
 		}
-		Uuid::new_v4().to_string()
+		Ok(Uuid::new_v4().to_string())
 	}
 
 	/// Whether a session has a transcript on disk — i.e. has been messaged.
@@ -798,7 +960,18 @@ impl TerminalManager {
 	/// cwd (nor its climbable ancestors) is available, but the key still names the
 	/// file. The three probes are the recorded cwd, the store key, and the passed
 	/// folder; any one hit means messaged.
-	fn is_messaged(&self, session_id: &str, folder: &Path, claude_dir: &Path) -> bool {
+	fn is_messaged(
+		&self,
+		agent: &AgentDescriptor,
+		session_id: &str,
+		folder: &Path,
+		claude_dir: &Path,
+	) -> bool {
+		// A session Codex named has a rollout under its store (ADR-0062); one it
+		// has not named yet has nothing on disk and is by definition unmessaged.
+		if agent.id_source == IdSource::Agent {
+			return codex::transcript_path(claude_dir, session_id).is_some();
+		}
 		if self.resume_cwd(session_id, claude_dir).is_some() {
 			return true;
 		}
@@ -1043,6 +1216,7 @@ impl TerminalManager {
 				rows: opts.rows,
 				initial_prompt: None,
 				kind: TerminalKind::Shell,
+				agent: None,
 			},
 			Some(vec![shell.to_string_lossy().into_owned()]),
 		)?;
@@ -1065,6 +1239,7 @@ impl TerminalManager {
 	/// its `$SHELL`, and this function is unreachable for one.
 	fn argv_for(
 		&self,
+		agent: &AgentDescriptor,
 		session_id: &str,
 		initial_prompt: Option<&str>,
 		cwd_path: &Path,
@@ -1074,11 +1249,23 @@ impl TerminalManager {
 		let bin = match &self.binary_override {
 			Some(p) => p.clone(),
 			None => {
-				let configured = self.user_binary.as_ref().and_then(|cb| cb());
-				find_claude_binary(configured.as_deref())?
+				let configured = self.user_binary.as_ref().and_then(|cb| cb(agent.id));
+				find_agent_binary(agent, configured.as_deref())?
 			}
 		};
 		let mut v = vec![bin.to_string_lossy().to_string()];
+		// **Codex takes no id for a new thread** (ADR-0062): it mints one, and
+		// the id is adopted from the title. An id with a rollout is a resume.
+		// factorai's tools ride in as `-c mcp_servers.factorai.*` (F30 § "Spawn").
+		if agent.id == agents::CODEX {
+			// A rollout under the store means Codex knows this id: resume it.
+			let resume = codex::transcript_path(claude_dir, session_id).map(|_| session_id);
+			let tools = tools.map(|t| codex::ToolsRegistration {
+				url: format!("http://127.0.0.1:{}/mcp", t.port()),
+			});
+			v.extend(codex::argv(resume, tools.as_ref(), initial_prompt));
+			return Ok(v);
+		}
 		// **factorai's own tools, registered by name** (ADR-0029). Inline JSON
 		// rather than a file, because the config dies with the session and a file
 		// would have to survive a `SIGKILL` to be cleaned up.
@@ -1108,6 +1295,8 @@ impl TerminalManager {
 		opts: SpawnOpts,
 		argv_override: Option<Vec<String>>,
 	) -> AppResult<TerminalId> {
+		let agent =
+			self.resolve_agent(opts.agent.as_deref(), &opts.project_id, Some(&opts.session_id))?;
 		self.spawn_inner(
 			PtyRequest {
 				session_id: Some(opts.session_id),
@@ -1118,6 +1307,7 @@ impl TerminalManager {
 				rows: opts.rows,
 				initial_prompt: opts.initial_prompt,
 				kind: TerminalKind::Agent,
+				agent: Some(agent),
 			},
 			argv_override,
 		)
@@ -1137,12 +1327,24 @@ impl TerminalManager {
 		argv_override: Option<Vec<String>>,
 	) -> AppResult<TerminalId> {
 		let kind = req.kind;
+		// A shell has no agent of its own; its footer follows the project's
+		// Claude identity (F25), which is what the config directory below is for.
+		let env_agent = req.agent.unwrap_or_else(claude_desc);
 		// **Which identity this runs as** (F25, ADR-0036), resolved once and used
 		// for all four things a config directory decides: the transcript probe
 		// below, the IDE lockfile, the id in argv, and the environment variable
 		// the CLI itself reads. Resolved from the project, so it is the same answer
 		// for the agent and for the shell in its footer.
-		let claude_dir = self.config_dir_for(&req.project_id, req.session_id.as_deref());
+		let claude_dir = self.config_dir_for(env_agent, &req.project_id, req.session_id.as_deref());
+		// **Codex refuses to start when `CODEX_HOME` does not exist** (F30 §
+		// "Spawn"), where Claude creates its directory on demand. An empty
+		// directory is what Codex expects on a first run; the login prompt it
+		// then shows is the correct outcome.
+		if env_agent.config_dir_must_exist {
+			std::fs::create_dir_all(&claude_dir).map_err(|e| {
+				AppError::Process(format!("could not create {}: {e}", claude_dir.display()))
+			})?;
+		}
 		// Resolved before argv, because the transcript probe that decides
 		// `--resume` vs `--session-id` is keyed by the folder Claude will run in.
 		//
@@ -1153,7 +1355,14 @@ impl TerminalManager {
 		let cwd_path = req
 			.session_id
 			.as_deref()
-			.and_then(|sid| self.resume_cwd(sid, &claude_dir))
+			.and_then(|sid| match env_agent.id {
+				// A Codex rollout records where it ran in its first line; the
+				// Claude probe below would look for a directory Codex never writes.
+				agents::CODEX => codex::transcript_path(&claude_dir, sid)
+					.and_then(|p| codex::read_meta(&p))
+					.map(|m| PathBuf::from(m.cwd)),
+				_ => self.resume_cwd(sid, &claude_dir),
+			})
 			.or_else(|| req.cwd.as_deref().map(PathBuf::from))
 			.or_else(dirs::home_dir)
 			.unwrap_or_else(|| PathBuf::from("/"));
@@ -1183,6 +1392,7 @@ impl TerminalManager {
 		let argv = match (argv_override, req.session_id.as_deref()) {
 			(Some(v), _) => v,
 			(None, Some(session_id)) => self.argv_for(
+				env_agent,
 				session_id,
 				req.initial_prompt.as_deref(),
 				&cwd_path,
@@ -1253,10 +1463,14 @@ impl TerminalManager {
 		// one is withheld so a `claude` started by hand is not silently bound to a
 		// bridge; this one is given so a `claude` started by hand in a project's
 		// own shell is the same account as the project's sessions.
-		if claude_dir == self.claude_dir {
-			cmd.env_remove("CLAUDE_CONFIG_DIR");
+		//
+		// **The variable is the agent's** (F30): `CLAUDE_CONFIG_DIR` for Claude
+		// and the shell, `CODEX_HOME` for Codex, compared against that agent's
+		// own ambient directory.
+		if claude_dir == self.ambient_dir_for(env_agent) {
+			cmd.env_remove(env_agent.config_dir_env);
 		} else {
-			cmd.env("CLAUDE_CONFIG_DIR", &claude_dir);
+			cmd.env(env_agent.config_dir_env, &claude_dir);
 		}
 
 		// **The IDE bridge (F20), and it must never be able to break a session.**
@@ -1277,6 +1491,9 @@ impl TerminalManager {
 			// environment, so a `claude` the user starts *by hand* in that shell
 			// is not silently bound to the project it was typed in.
 			None => IdeSlot::None,
+			// Claude's protocol, not an industry one (ADR-0017, ADR-0060): a Codex
+			// session gets no lockfile and no `CLAUDE_CODE_SSE_PORT`.
+			Some(_) if req.agent.map(|a| a.id) != Some(agents::CLAUDE) => IdeSlot::None,
 			Some(session_id) => match self.start_bridge(session_id, &cwd_path, &claude_dir) {
 				Ok(server) => {
 					cmd.env("CLAUDE_CODE_SSE_PORT", server.port().to_string());
@@ -1288,6 +1505,25 @@ impl TerminalManager {
 				}
 			},
 		};
+		// **The tool server's token, by environment for Codex** (F30 § "Spawn"):
+		// Codex reads `bearer_token_env_var` by name, so the token never sits in
+		// argv where `ps` would show it. Claude takes it inside `--mcp-config`.
+		match (&agent_tools, env_agent.id) {
+			(Some(tools), agents::CODEX) => {
+				cmd.env(codex::TOOLS_TOKEN_ENV, tools.token());
+			}
+			_ => {
+				cmd.env_remove(codex::TOOLS_TOKEN_ENV);
+			}
+		}
+
+		// **Withheld means absent, not inherited.** factorai itself may be
+		// running inside a Claude session — a developer's, a routine's — whose
+		// `CLAUDE_CODE_SSE_PORT` is in our environment; a shell or a Codex
+		// child must not pick that bridge up by accident any more than by design.
+		if !matches!(ide, IdeSlot::Running(_)) {
+			cmd.env_remove("CLAUDE_CODE_SSE_PORT");
+		}
 
 		let pty_system = native_pty_system();
 		let pair = pty_system
@@ -1321,6 +1557,11 @@ impl TerminalManager {
 			project_id: req.project_id.clone(),
 			kind,
 			client_key: req.client_key.clone(),
+			agent: req.agent,
+			adopted: Mutex::new(None),
+			thread_prefix: Mutex::new(None),
+			store_dir: claude_dir.clone(),
+			last_probe: Mutex::new(None),
 			master: Mutex::new(pair.master),
 			writer: Mutex::new(writer),
 			killer: Mutex::new(killer),
@@ -1332,7 +1573,15 @@ impl TerminalManager {
 			// A shell is never anything else: it has no status, and
 			// `working_count` skips it by kind rather than by value, so this
 			// records only that the process exists.
-			status: Mutex::new(TerminalStatus::Working),
+			//
+			// **An agent with no status source starts `Unknown`** (F30,
+			// ADR-0060): until roadmap 38 slice 3 reads Codex's title, nothing
+			// will ever say otherwise, and a dot that says working because it
+			// defaulted there is worse than no dot.
+			status: Mutex::new(match req.agent {
+				Some(a) if a.id != agents::CLAUDE => TerminalStatus::Unknown,
+				_ => TerminalStatus::Working,
+			}),
 			killed: AtomicBool::new(false),
 			last_activity: AtomicI64::new(now_ms()),
 			cwd: cwd_path.clone(),
@@ -1366,6 +1615,7 @@ impl TerminalManager {
 			handle.clone(),
 			self.on_data.clone(),
 			self.on_status.clone(),
+			self.on_adopted.clone(),
 			self.ui.clone(),
 		);
 		// Wait thread: owns the child and blocks on `wait()`; emits on_exit
@@ -1556,6 +1806,7 @@ fn spawn_reader(
 	handle: Arc<TerminalHandle>,
 	on_data: DataCb,
 	on_status: StatusCb,
+	on_adopted: AdoptedCb,
 	ui: Arc<UiState>,
 ) {
 	let buffer: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(FLUSH_BYTES)));
@@ -1586,10 +1837,25 @@ fn spawn_reader(
 						// nobody: its chip is labelled with the shell's name (F23
 						// as amended by F24), and classifying its titles would
 						// report the user's prompt as Claude working.
-						if handle_r.kind == TerminalKind::Agent {
-							if let Some(next) = titles.push(&tmp[..n]) {
-								set_status(&id_r, &handle_r, next, &on_status);
+						//
+						// Two dialects (F30): Claude's glyph, and Codex's words —
+						// which also carry the thread id the session is adopted
+						// from (ADR-0062).
+						match handle_r.agent.map(|a| a.id) {
+							Some(agents::CODEX) => {
+								if let Some(payload) = titles.push_payload(&tmp[..n]) {
+									if let Some(next) = codex::classify_title(&payload) {
+										set_status(&id_r, &handle_r, next, &on_status);
+									}
+									try_adopt(&id_r, &handle_r, &payload, &on_adopted);
+								}
 							}
+							Some(_) if handle_r.kind == TerminalKind::Agent => {
+								if let Some(next) = titles.push(&tmp[..n]) {
+									set_status(&id_r, &handle_r, next, &on_status);
+								}
+							}
+							_ => {}
 						}
 						buf_r.lock().extend_from_slice(&tmp[..n]);
 					}
@@ -1644,6 +1910,52 @@ fn spawn_reader(
 /// final chunk of buffered output can still be read after that; without this
 /// guard a trailing title would resurrect a dead session to `WaitingInput` and
 /// leave a dot on a terminal that no longer exists.
+/// How often the store is walked for a Codex session that has a thread prefix
+/// but no rollout yet: the file appears at the first turn, and the spinner
+/// rewrites the title ten times a second meanwhile.
+const ADOPT_PROBE_EVERY: Duration = Duration::from_millis(500);
+
+/// Adopt the agent's id for a session that started under ours (ADR-0062).
+///
+/// The Codex title carries a **prefix** of the thread id (the TUI truncates the
+/// item); the rollout named by that prefix, in this session's folder, holds the
+/// whole id in its filename. Until the first turn there is no file, so this is
+/// a probe on every title change, throttled, and a no-op once it has hit.
+fn try_adopt(id: &TerminalId, handle: &Arc<TerminalHandle>, payload: &str, on_adopted: &AdoptedCb) {
+	if handle.adopted.lock().is_some() {
+		return;
+	}
+	let Some(provisional) = handle.session_id.as_deref() else { return };
+	if let Some(prefix) = codex::thread_prefix_from_title(payload) {
+		*handle.thread_prefix.lock() = Some(prefix);
+	}
+	let Some(prefix) = handle.thread_prefix.lock().clone() else { return };
+	// A resume already runs under the agent's id: the title's prefix is a
+	// check, not an adoption.
+	if provisional.to_ascii_lowercase().starts_with(&prefix) {
+		return;
+	}
+	{
+		let mut last = handle.last_probe.lock();
+		if last.is_some_and(|t| t.elapsed() < ADOPT_PROBE_EVERY) {
+			return;
+		}
+		*last = Some(Instant::now());
+	}
+	let Some((adopted, path)) = codex::find_by_prefix(&handle.store_dir, &prefix, &handle.cwd)
+	else {
+		return;
+	};
+	*handle.adopted.lock() = Some(adopted.clone());
+	info!(%id, %provisional, %adopted, ?path, "session adopted its agent's id");
+	on_adopted(SessionAdoptedEvent {
+		id: id.clone(),
+		provisional: provisional.to_string(),
+		adopted,
+		project_id: handle.project_id.clone(),
+	});
+}
+
 fn set_status(
 	id: &TerminalId,
 	handle: &Arc<TerminalHandle>,
@@ -1730,6 +2042,16 @@ fn session_flag(claude_dir: &Path, folder: &Path, session_id: &str) -> &'static 
 	}
 }
 
+/// The registry's Claude entry. Infallible: the registry is a constant.
+fn claude_desc() -> &'static AgentDescriptor {
+	agents::descriptor(agents::CLAUDE).expect("claude is in the registry")
+}
+
+/// The registry's Codex entry.
+fn codex_desc() -> &'static AgentDescriptor {
+	agents::descriptor(agents::CODEX).expect("codex is in the registry")
+}
+
 fn now_ms() -> i64 {
 	std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
@@ -1797,6 +2119,7 @@ mod tests {
 			cols,
 			rows,
 			initial_prompt: None,
+			agent: None,
 		}
 	}
 
@@ -1921,7 +2244,8 @@ mod tests {
 		// The exit log is unused: this test polls for the marker rather than for
 		// the child's exit — see `read_back`.
 		let (mgr, data, _exit) = make_manager();
-		let mgr = mgr.with_profile_dir(Arc::new(move |_project, _session| Some(cfg.clone())));
+		let mgr =
+			mgr.with_profile_dir(Arc::new(move |_agent, _project, _session| Some(cfg.clone())));
 		let expected = format!("CFG[{}]", profile.path().to_string_lossy());
 
 		// Polls for the marker rather than for the exit event: a shell echoes the
@@ -2003,7 +2327,8 @@ mod tests {
 		// The resolver answers with the ambient directory, which is what the
 		// default profile resolves to on every machine that has not been
 		// configured otherwise.
-		let mgr = mgr.with_profile_dir(Arc::new(move |_project, _session| Some(cfg.clone())));
+		let mgr =
+			mgr.with_profile_dir(Arc::new(move |_agent, _project, _session| Some(cfg.clone())));
 
 		let id = mgr
 			.spawn_with_argv(
@@ -2188,6 +2513,7 @@ mod tests {
 			rows: 24,
 			initial_prompt: None,
 			kind: TerminalKind::Shell,
+			agent: None,
 		}
 	}
 
@@ -2202,6 +2528,7 @@ mod tests {
 			rows: 24,
 			initial_prompt: None,
 			kind: TerminalKind::Agent,
+			agent: Some(claude_desc()),
 		}
 	}
 
@@ -2241,7 +2568,7 @@ mod tests {
 		// `next_session_id` mints a fresh uuid when it finds nothing to reuse, so
 		// what is asserted is that the shell is not what it reused — and a shell
 		// has no id it *could* hand back.
-		let offered = mgr.next_session_id(project, Path::new("/tmp"));
+		let offered = mgr.next_session_id(project, Path::new("/tmp"), None).unwrap();
 		assert!(
 			mgr.list().iter().all(|t| t.session_id.as_deref() != Some(offered.as_str())),
 			"new session must never be handed a live terminal that is not an agent"
@@ -2589,7 +2916,8 @@ mod tests {
 
 		// The project root — where a "new session" click probes — holds no
 		// transcript for this session; only the worktree key does.
-		let offered = mgr.next_session_id(project, worktree.path().parent().unwrap());
+		let offered =
+			mgr.next_session_id(project, worktree.path().parent().unwrap(), None).unwrap();
 		assert_ne!(
 			offered, sid,
 			"a messaged worktree session must not be reused for a new session"
@@ -2632,6 +2960,7 @@ mod tests {
 		o.initial_prompt = Some("Triage the inbox".into());
 		let argv = mgr
 			.argv_for(
+				claude_desc(),
 				&o.session_id,
 				o.initial_prompt.as_deref(),
 				tmp.path(),
@@ -2646,15 +2975,112 @@ mod tests {
 
 		// An empty prompt is not an argument: it would be an empty first message.
 		assert_eq!(
-			mgr.argv_for(&o.session_id, Some(""), tmp.path(), Path::new(NO_STORE), None)
+			mgr.argv_for(
+				claude_desc(),
+				&o.session_id,
+				Some(""),
+				tmp.path(),
+				Path::new(NO_STORE),
+				None
+			)
+			.unwrap()
+			.len(),
+			3
+		);
+		assert_eq!(
+			mgr.argv_for(claude_desc(), &o.session_id, None, tmp.path(), Path::new(NO_STORE), None)
 				.unwrap()
 				.len(),
 			3
 		);
-		assert_eq!(
-			mgr.argv_for(&o.session_id, None, tmp.path(), Path::new(NO_STORE), None).unwrap().len(),
-			3
+	}
+
+	#[test]
+	fn a_codex_session_takes_no_id_and_forces_the_title_items() {
+		// ADR-0062: Codex mints its own id, so nothing in argv names one; F30 §
+		// "Spawn": the title is how status and adoption read the session.
+		let tmp = tempfile::TempDir::new().unwrap();
+		let (mut mgr, _data, _exit) = make_manager();
+		mgr.set_binary(PathBuf::from("/bin/echo"));
+		let o = opts(80, 24);
+		let argv = mgr
+			.argv_for(
+				codex_desc(),
+				&o.session_id,
+				Some("Triage the inbox"),
+				tmp.path(),
+				Path::new(NO_STORE),
+				None,
+			)
+			.expect("argv");
+		assert_eq!(argv[0], "/bin/echo");
+		assert!(!argv.iter().any(|a| a == "--session-id" || a == "--resume"), "{argv:?}");
+		assert!(!argv.iter().any(|a| a == &o.session_id), "{argv:?}");
+		let c = argv.iter().position(|a| a == "-c").expect("-c");
+		assert_eq!(argv[c + 1], codex::TITLE_ITEMS);
+		assert_eq!(argv.last().unwrap(), "Triage the inbox");
+	}
+
+	#[test]
+	fn a_codex_session_starts_unknown_and_is_listed_under_its_agent() {
+		// F30 § "Status": nothing reads Codex's title yet, so the honest launch
+		// state is `Unknown`, not the `Working` Claude's first title corrects.
+		let (mgr, _data, _exit) = make_manager();
+		let mut o = opts(80, 24);
+		o.agent = Some("codex".into());
+		let id = mgr
+			.spawn_with_argv(o.clone(), Some(vec!["/bin/sh".into(), "-c".into(), "sleep 5".into()]))
+			.expect("spawn");
+		let listed = mgr.list().into_iter().find(|t| t.id == id).expect("listed");
+		assert_eq!(listed.agent.as_deref(), Some("codex"));
+		assert_eq!(listed.status, TerminalStatus::Unknown);
+		assert_eq!(mgr.working_count(), 0, "unknown is not working");
+
+		// And a "new Claude session" click is not handed the Codex session's
+		// provisional id: `next_session_id` is per agent.
+		let folder = Path::new("/tmp");
+		let claude = mgr.next_session_id(&o.project_id, folder, Some("claude")).unwrap();
+		assert_ne!(claude, o.session_id);
+		let codex = mgr.next_session_id(&o.project_id, folder, Some("codex")).unwrap();
+		assert_eq!(codex, o.session_id, "an unadopted Codex session is reused");
+		mgr.kill(&id).unwrap();
+	}
+
+	#[test]
+	fn an_unknown_agent_is_refused_not_defaulted() {
+		let (mgr, _data, _exit) = make_manager();
+		let mut o = opts(80, 24);
+		o.agent = Some("gemini".into());
+		let err = mgr.spawn_with_argv(o, Some(vec!["/bin/true".into()])).expect_err("refused");
+		assert!(err.to_string().contains("unknown agent"), "{err}");
+	}
+
+	#[test]
+	fn a_codex_child_gets_no_claude_variables_and_an_ambient_codex_home_is_unset() {
+		// F30 § "Spawn": the variable is the agent's. Under the ambient
+		// directory it is removed, exactly as `CLAUDE_CONFIG_DIR` is for Claude;
+		// and Codex gets neither the IDE bridge port nor Claude's directory.
+		let tmp = tempfile::TempDir::new().unwrap();
+		let out = tmp.path().join("env.txt");
+		let (mgr, _data, exit) = make_manager();
+		let mut o = opts(80, 24);
+		o.agent = Some("codex".into());
+		o.cwd = Some(tmp.path().to_string_lossy().to_string());
+		let script = format!(
+			"printf 'CODEX[%s] CLAUDE[%s] SSE[%s]' \"${{CODEX_HOME:-}}\" \"${{CLAUDE_CONFIG_DIR:-}}\" \"${{CLAUDE_CODE_SSE_PORT:-}}\" > {}",
+			out.display()
 		);
+		std::env::set_var("CODEX_HOME", mgr.codex_dir.to_string_lossy().to_string());
+		let _id = mgr
+			.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), script]))
+			.expect("spawn");
+		let started = std::time::Instant::now();
+		while exit.lock().unwrap().is_empty() && started.elapsed() < Duration::from_secs(5) {
+			std::thread::sleep(Duration::from_millis(20));
+		}
+		std::env::remove_var("CODEX_HOME");
+		let seen = std::fs::read_to_string(&out).expect("the child wrote its environment");
+		assert_eq!(seen, "CODEX[] CLAUDE[] SSE[]");
 	}
 
 	#[test]
@@ -2672,6 +3098,7 @@ mod tests {
 
 		let argv = mgr
 			.argv_for(
+				claude_desc(),
 				&o.session_id,
 				o.initial_prompt.as_deref(),
 				tmp.path(),
@@ -2744,8 +3171,8 @@ mod tests {
 	fn next_session_id_mints_a_fresh_uuid_when_nothing_is_live() {
 		let tmp = tempfile::TempDir::new().unwrap();
 		let (mgr, _d, _e) = make_manager_in(tmp.path().to_path_buf());
-		let a = mgr.next_session_id("proj", Path::new("/tmp/proj"));
-		let b = mgr.next_session_id("proj", Path::new("/tmp/proj"));
+		let a = mgr.next_session_id("proj", Path::new("/tmp/proj"), None).unwrap();
+		let b = mgr.next_session_id("proj", Path::new("/tmp/proj"), None).unwrap();
 		assert_ne!(a, b, "each call with nothing to reuse is a new session");
 		assert_eq!(a.len(), 36, "expected a uuid, got {a}");
 	}
@@ -2761,9 +3188,12 @@ mod tests {
 			.unwrap();
 
 		// Live, never messaged → the click lands on it rather than a second claude.
-		assert_eq!(mgr.next_session_id("proj", Path::new("/tmp/proj")), session);
+		assert_eq!(mgr.next_session_id("proj", Path::new("/tmp/proj"), None).unwrap(), session);
 		// A different project must not borrow it.
-		assert_ne!(mgr.next_session_id("elsewhere", Path::new("/tmp/elsewhere")), session);
+		assert_ne!(
+			mgr.next_session_id("elsewhere", Path::new("/tmp/elsewhere"), None).unwrap(),
+			session
+		);
 		mgr.kill_all();
 	}
 
@@ -2779,7 +3209,7 @@ mod tests {
 			.unwrap();
 
 		// It has real content, so "new session" must not hijack it.
-		assert_ne!(mgr.next_session_id("proj", Path::new("/tmp/proj")), session);
+		assert_ne!(mgr.next_session_id("proj", Path::new("/tmp/proj"), None).unwrap(), session);
 		mgr.kill_all();
 	}
 

@@ -27,6 +27,7 @@ function session(id: string, subagentOf: string | null = null): SessionSummary {
 		routineStartedAt: null,
 		pinned: false,
 		profileName: null,
+		agent: 'claude',
 	};
 }
 

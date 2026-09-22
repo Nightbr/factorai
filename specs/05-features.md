@@ -6612,24 +6612,36 @@ and fourth will land on. Three ADRs carry the decisions:
 retired from the roadmap's vocabulary in the same commit.
 
 **Every Codex fact below was read at source tag `rust-v0.155.1` and in the
-installed `codex-cli 0.155.1` binary on 2026-09-22, not observed on disk**: no
-Codex session had ever run on the machine this was written on. Each fact is
-tagged **[source]** or **[unverified]**. The first slice of the roadmap entry is
-to log in, run three sessions, and turn every [unverified] into a fixture under
-`tests/fixtures/codex/` or a correction to this text. The parser is written
-against the fixtures, not against this section.
+installed `codex-cli 0.155.1` binary on 2026-09-22**, and the ones marked
+**[checked]** were then confirmed against real rollouts the same day — one is
+`tests/fixtures/codex/`, sanitised, and the title sequence of one turn is in
+`agents/codex.rs`'s tests. Two facts came back **different from the source
+reading**, and the text below says so where it matters: new threads default to
+`history_mode: "paginated"`, and the `thread-id` title item is truncated. What
+is still **[unverified]** is named as such.
 
 ### What the human sees
 
 - **Settings → Agents** replaces the Claude section. One card per agent
   factorai knows — Claude Code, Codex — each with the detected binary and
   version, the override field, and the same validate-on-blur / Save-re-checks
-  rules the Claude section had (§ F11). Above the cards, when two or more
-  agents are installed, a **Default agent** choice. It is what a project with
-  no assigned profile runs.
-- **A profile belongs to an agent, chosen when it is created.** The Profiles
-  section's form gains an agent picker, absent while only one agent is
-  installed. The list groups profiles by agent when two are installed.
+  rules the Claude section had (§ F11). **Binaries only**: which agent a
+  project runs is a property of its profile, and lives with the profiles.
+  *(Amended 2026-09-22 on user feedback: the first cut put a "Default agent"
+  radio here; it moved.)*
+- **A profile belongs to an agent, chosen when it is created and never
+  changed.** The Profiles section's form gains an agent picker, absent while
+  only one agent is installed. Once two agents have profiles the list is
+  **grouped per agent**, each group headed by the agent's mark and name, so a
+  row's badge can say plainly `Default`; with one agent the list is what it
+  always was.
+- **One profile is *the* default, starred.** Each agent keeps its own default
+  (the launch override needs one), and exactly one of those is the **app
+  default**: the profile a project with no assignment runs under, whichever
+  agent's. The star and its row action *Use for new projects* appear only once
+  two agents have profiles; with one agent every default is the app default
+  and the star would say nothing. Starring writes `agent.default` and the
+  agent's `is_default` in one transaction (`set_app_default_profile`).
 - **A project runs one profile, and that profile's agent is the project's
   agent** (ADR-0061). `Profile ▸` in the project menu lists every installed
   agent's profiles and moving the tick is how a project changes agent.
@@ -6659,7 +6671,8 @@ Resolution for a new session, in order (ADR-0061 § Decision):
 
 1. The launch override, when the menu was used: that agent, its default profile.
 2. The project's assigned profile: its agent, that profile.
-3. The `agent.default` setting: that agent, its default profile.
+3. The `agent.default` setting — written by the star in Profiles — that
+   agent, its default profile.
 4. No setting: `claude`. A fresh install runs Claude.
 
 A **resumed** session runs under the profile of its own `discovered_projects`
@@ -6725,11 +6738,12 @@ Codex never raises its own "different directory" prompt [source:
 
 - **`-c` is a dotted TOML override** that parses arrays and inline tables
   [source: `utils/cli/src/config_override.rs`], so no file is written into
-  `CODEX_HOME` (ADR-0004, ADR-0039). **That an HTTP MCP server can be defined
-  wholly from `-c` is [unverified]**; the docs show `-c` only toggling an
-  existing server. If it cannot, the fallback is `codex mcp add` into the
-  *profile's* `config.toml` at profile creation, which is a write into the
-  store and needs its own ADR before it ships.
+  `CODEX_HOME` (ADR-0004, ADR-0039). The binary carries `bearer_token_env_var`,
+  `http_headers` and `streamable_http` for `mcp_servers.<name>` [checked in
+  the binary]; that a server defined **wholly** from `-c` connects is verified
+  in the app rather than in a fixture. If it cannot, the fallback is `codex mcp
+  add` into the *profile's* `config.toml` at profile creation, which is a write
+  into the store and needs its own ADR before it ships.
 - **`--strict-mcp-config` has no Codex equivalent and none is wanted**: `-c`
   merges over the user's `config.toml`, so their own servers survive.
 - **factorai owns the title of a Codex session it runs.** `tui.terminal_title`
@@ -6760,29 +6774,31 @@ the first fixture session, not assumed.
 
 ### A new Codex session, and the id it gets
 
-ADR-0062 in full. In this section's terms: `+` mints a provisional uuid and
-routes to it; the PTY starts `codex` with the title items above; the first OSC-0
-title containing a uuid after ` | ` is the adoption; `session:adopted` rebinds
-route, tab, pool and store once. The fallback watcher matches a new rollout by
-`session_meta.cwd` and a `timestamp` after the spawn, after 10 s without a
-title. A Codex session that exits before either wrote nothing and is not
-remembered.
+ADR-0062 as amended. `+` mints a provisional uuid and routes to it; the PTY
+starts `codex` with the title items above; from its first title the TUI writes
+`Ready | <prefix>...` — **a prefix**: the `thread-id` item is truncated to 29
+characters plus an ellipsis **[checked]**. The prefix is known before the first
+message, but the id is complete only in the rollout's filename, and the rollout
+appears at the first turn **[checked]**. So the adoption is: remember the
+prefix from the title; on every title change while unadopted, at most twice a
+second, look for a rollout under the store whose id starts with the prefix and
+whose `session_meta.cwd` is this session's folder; the first hit is the id.
+`session:adopted` then rebinds route, tab, pool and store once. A Codex
+session that exits before its first turn wrote nothing and is not remembered.
 
-**[source]** The rollout file does not exist at spawn: `RolloutRecorder`
-defers creation until the first flush with pending items, which for a new
-thread is the first user turn (`rollout/src/recorder.rs`,
-`core/src/session/mod.rs`). **[source]** The `thread-id` title item exists and
-renders the thread uuid (`tui/src/bottom_pane/title_setup.rs`). **[unverified]**
-That it renders before the first message — the thread exists in memory from
-startup, so it should; the first fixture session settles it, and if it does
-not, the fallback is the primary path and this text changes.
+The prefix is what answers ADR-0008's "two sessions in one folder" objection:
+each PTY carries its own, so two provisional sessions never claim one file.
 
 ### Status
 
 The `run-state` title item renders one of `Starting`, `Working`, `Thinking`,
 `Waiting`, `Ready`, and the whole title becomes `[ ! ] Action Required`
 (blinking with `[ . ] Action Required`) when Codex needs the human [source:
-`tui/src/chatwidget/status_surfaces.rs`]. The mapping:
+`tui/src/chatwidget/status_surfaces.rs`]. **[checked]** One real turn wrote
+`Ready`, `Ready | <prefix>...`, `Starting | …`, `Ready | …`, `Working | … ⠴`
+(a braille spinner trails the id while a task runs and for a while after),
+then `Ready | … ⠙` and finally `Ready | <prefix>...`. The first word before
+` | ` is what is matched; the spinner and the id cannot vote. The mapping:
 
 | title contains | `SessionStatus` |
 |---|---|
@@ -6799,9 +6815,9 @@ full turn, as `osc_title.rs`'s tests do for Claude.
 
 `unknown` is a fourth status, not a default. It is drawn as the hollow
 `status-unknown` dot (DESIGN.md § Status Dot) everywhere a dot is drawn, with
-the title *live, status unknown*. A Claude session never shows it: Claude's
-parser answers from the first title. The blue `background` treatment applies
-to `working` only, as before.
+the title *live, status unknown*. A Codex session shows it only between spawn
+and its first title, which is under a second; a Claude session never does. The
+blue `background` treatment applies to `working` only, as before.
 
 ### Discovery
 
@@ -6854,10 +6870,16 @@ A rollout line is `{"timestamp": "…", "ordinal": n?, "type": "<kind>",
 - **Messages are read from `response_item` only.** In legacy history mode Codex
   also persists `event_msg` `UserMessage` / `AgentMessage` lines [source:
   `rollout/src/policy.rs`]; indexing both would double every message in FTS.
-  In paginated mode those events are not written, and `response_item` is
-  written in both, which is why it is the one read. **[unverified]**: the wire
-  spelling of the `type` values other than `session_meta` (snake_case is the
-  serde convention in the crate; the fixtures confirm each one).
+  **[checked]** A new thread in 0.155.1 is `history_mode: "paginated"` (the
+  source reading said legacy), where those events are not written and the
+  `event_msg` kinds are `task_started`, `item_completed`, `token_count`,
+  `turn_aborted`, `task_complete`, `thread_settings_applied`; `response_item`
+  is written in both modes, which is why it is the one read. Wire spellings are
+  snake_case; a user message's blocks are `input_text`, an assistant's
+  `output_text`. **Two user-role lines are Codex's context, not the person's**,
+  and are dropped from titles and search: the `# AGENTS.md instructions for …`
+  injection and the `<environment_context>` block that opens every thread.
+  Developer-role messages are dropped too.
 - **`sessions.id` is the uuid in the filename**, which is also
   `session_meta.id`. The filename's timestamp is Codex's local clock at
   creation and is not stored; `created_at` comes from `session_meta.timestamp`
@@ -6871,12 +6893,15 @@ A rollout line is `{"timestamp": "…", "ordinal": n?, "type": "<kind>",
   (PERF-03) works unchanged. A **fork** writes a new file with
   `forked_from_id`; it is a new session that happens to share history, and it
   is indexed as one.
-- **Title.** `custom` when `$CODEX_HOME/session_index.jsonl` — append-only
+- **Title.** `ai` when `$CODEX_HOME/session_index.jsonl` — append-only
   `{"id","thread_name","updated_at"}`, newest line wins [source:
-  `rollout/src/session_index.rs`] — names the thread; `derived` from the first
-  user message otherwise; the id as the last resort. `ai` is not produced:
-  Codex's auto-title lands in `state_5.sqlite`, which is not read. The index
-  file is small and read whole on each scan of that profile.
+  `rollout/src/session_index.rs`] — names the thread: **[checked]** Codex
+  writes its own auto-title there after the first turn (`Reply with pong` for
+  the fixture), so that file is Codex's title, not the user's. `derived` from
+  the first user message that is not injected context otherwise; the id as the
+  last resort. `custom` is not produced today: a name the user sets in Codex
+  lands in the same file and is indistinguishable from the auto-title. The
+  index file is small and read whole on each scan of that profile.
 - **Sub-agents.** `session_meta.parent_thread_id` set, or `source: subagent`,
   → `subagent_of`. Rendered as F-Sub-agent transcripts are today.
 
@@ -6890,8 +6915,10 @@ A rollout line is `{"timestamp": "…", "ordinal": n?, "type": "<kind>",
   agent)`. Column set unchanged; the triggers stay.
 - `sessions.transcript_path TEXT NULL`.
 - `routines.agent TEXT NULL` — NULL inherits the project's agent at fire time.
-- `settings`: `agent.default` (`claude` | `codex`; no row means `claude`) and
-  `codex.binary` beside `claude.binary`. `SettingKey` grows two variants,
+- `settings`: `agent.default` (`claude` | `codex`; no row means `claude`,
+  and starring a Claude profile deletes the row rather than writing it) and
+  `codex.binary` beside `claude.binary`. `Profile.is_app_default` is computed
+  from it on every `list_profiles`, never stored on the row. `SettingKey` grows two variants,
   `AgentDefault` and `CodexBinaryPath`, one per key, because the column name is
   what an operator sees in `sqlite3` and a parameterised key would make the
   closed enum a string.
@@ -6903,16 +6930,16 @@ All in migration 0022, `0022_agents.sql`.
 Replaces § F11's Claude section; `?settings=claude` keeps working as an alias
 for `?settings=agents` so existing links do not fall back to the first section.
 
-- **One card per agent in the registry**, in registry order. Each card: the
-  agent's name and mark; *Detected: `<path>` — `<version>`*, or *Not found*, or
-  *Found, but it reported no version*; the override field with the detected
+- **One card per agent in the registry**, in registry order, **collapsed by
+  default**: the header carries the agent's mark and name, the version and an
+  `ACTIVE` / `NOT DETECTED` badge, which is the answer you opened the section
+  for. Expanded (click, or Enter on the focused header; open by default when an
+  override is set) it shows *Detected: `<path>` — `<version>`*, or *Not found*,
+  or *Found, but it reported no version*; the override field with the detected
   path as placeholder (never prefilled — F11's trap, unchanged); the F11
   blur/Save rules verbatim, parameterised on the agent. `check_agent_cli(agent)`
   and `validate_agent_binary(agent, path)` replace the two Claude-named
   commands; the Claude names stay as thin aliases for one release.
-- **Default agent**, a radio above the cards, **shown only when two or more
-  agents are found**. Writes `agent.default`. Its help line: *What a project
-  runs when it has no profile assigned. A project's profile overrides it.*
 - **An agent that is not found** keeps its card, greyed, with the override
   field live — pointing factorai at a binary the probe missed is the reason the
   field exists. Its profiles stay listed in Profiles with *agent not found*

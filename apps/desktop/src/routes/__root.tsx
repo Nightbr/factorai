@@ -1,4 +1,5 @@
-import { createRootRoute, Outlet, useParams } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { createRootRoute, Outlet, useParams, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { QuitConfirm } from '@components/dialog/QuitConfirm';
 import { AppShell } from '@components/layout/AppShell';
@@ -13,10 +14,12 @@ import { useWatchedOpenFile } from '@hooks/useWatchedOpenFile';
 import { useSettingsModal } from '@hooks/useSettingsModal';
 import { useViewerStore } from '@store/viewerStore';
 import { showErrorNotice } from '@lib/errorNotice';
-import { isSettingsSection, type SettingsSection } from '@lib/settingsDraft';
+import { settingsSectionOf, type SettingsSection } from '@lib/settingsDraft';
 import { cmd, events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
 import { useShellStore } from '@store/shellStore';
+import { rebindTerminal } from '@components/terminal/Terminal';
+import { queryKeys } from '@lib/queryKeys';
 import { useTerminalStore } from '@store/terminalStore';
 
 function RootLayout() {
@@ -233,6 +236,35 @@ function RootLayout() {
 		};
 	}, []);
 
+	// **A session took its agent's id** (F30, ADR-0062). One event, one rebind:
+	// the pooled xterm, every store record, and — when it is the session on
+	// screen — the URL, replaced rather than pushed so Back does not land on an
+	// id that no longer names anything.
+	const router = useRouter();
+	const queryClient = useQueryClient();
+	useEffect(() => {
+		let un: (() => void) | undefined;
+		events
+			.onSessionAdopted((e) => {
+				rebindTerminal(e.provisional, e.adopted);
+				useTerminalStore.getState().rebindSession(e.provisional, e.adopted);
+				const here = router.state.location.pathname;
+				if (here.endsWith(`/sessions/${e.provisional}`)) {
+					void router.navigate({
+						to: '/projects/$projectId/sessions/$sessionId',
+						params: { projectId: e.projectId, sessionId: e.adopted },
+						search: (prev) => prev,
+						replace: true,
+					});
+				}
+				void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(e.projectId) });
+			})
+			.then((fn) => {
+				un = fn;
+			});
+		return () => un?.();
+	}, [router, queryClient]);
+
 	return (
 		<>
 			<AppShell>
@@ -283,7 +315,7 @@ export const rootRoute = createRootRoute({
 		diff: isDiffMode(search.diff) ? search.diff : undefined,
 		line: parsePosition(search.line),
 		col: parsePosition(search.col),
-		settings: isSettingsSection(search.settings) ? search.settings : undefined,
+		settings: settingsSectionOf(search.settings),
 	}),
 	// **`file` and `diff` survive a navigation** (F7). They are the viewer's
 	// state, and the viewer is app-level: switching session, starting a new one

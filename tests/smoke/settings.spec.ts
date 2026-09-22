@@ -23,11 +23,13 @@ test.describe('settings', () => {
 
 		const modal = page.getByTestId('settings-modal');
 		await expect(modal).toBeVisible();
-		// Opens on Claude, which reports the detected binary — `check_claude_cli`'s
-		// first consumer since M0.
+		// Opens on Agents, whose Claude card is collapsed to its badge and version
+		// and, expanded, reports the detected binary (F11, F30).
+		await expect(modal.getByTestId('settings-agent-claude-badge')).toHaveText(/active/i);
+		await modal.getByTestId('settings-agent-claude-toggle').click();
 		await expect(modal.getByText('/opt/homebrew/bin/claude')).toBeVisible();
 		// The state is in the URL, which is what gives deep links and back-closes.
-		await expect(page).toHaveURL(/[?&]settings=claude/);
+		await expect(page).toHaveURL(/[?&]settings=agents/);
 
 		// Esc dismisses, silently — it is a deliberate gesture that already means
 		// "back out".

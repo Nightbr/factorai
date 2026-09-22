@@ -2,7 +2,13 @@ import type { Project } from '@factorai/types';
 import {
 	Button,
 	ContextMenuContent,
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+	IconButton,
 	ContextMenuItem,
+	ContextMenuLabel,
 	ContextMenuSeparator,
 	ContextMenuSub,
 	ContextMenuSubContent,
@@ -15,14 +21,25 @@ import {
 	DialogTitle,
 } from '@factorai/ui';
 import { liveSessionsIn, useRemoveProject } from '@hooks/useRemoveProject';
+import { useInstalledAgents } from '@hooks/useInstalledAgents';
 import { useStartSession } from '@hooks/useStartSession';
+import { AgentMark } from '@components/layout/AgentMark';
+import { AGENTS, agentName } from '@lib/agents';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, openExternally } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { AlertTriangle, ClockFading, FolderOpen, IdCard, Plus, Trash2 } from 'lucide-react';
-import { type ReactNode, useMemo, useState } from 'react';
+import {
+	AlertTriangle,
+	ChevronDown,
+	ClockFading,
+	FolderOpen,
+	IdCard,
+	Plus,
+	Trash2,
+} from 'lucide-react';
+import { Fragment, type ReactNode, useMemo, useState } from 'react';
 
 /**
  * What right-clicking a project offers, in both places a project is drawn.
@@ -80,6 +97,7 @@ export function ProjectMenu({ project, arrange }: { project: Project; arrange?: 
 					<Plus />
 					New session
 				</ContextMenuItem>
+				<NewSessionWithSubmenu project={project} />
 				<ContextMenuItem
 					data-testid={`new-routine-${project.id}`}
 					onSelect={() =>
@@ -189,41 +207,151 @@ function ProfileSubmenu({ project }: { project: Project }) {
 	// and a submenu whose only entry is the one already in force is a dead end.
 	if (rows.length < 2) return null;
 
+	// **Which agent the project will run** (F30, ADR-0061) is the profile's, so
+	// every entry carries its agent's mark: the assigned one on the trigger, the
+	// app default's on "Default profile", and each row's own. Grouped per agent
+	// once two agents have profiles, in registry order.
+	const appDefault = rows.find((p) => p.isAppDefault) ?? rows.find((p) => p.isDefault);
+	const assigned = rows.find((p) => p.id === project.profileId);
+	const inForce = assigned ?? appDefault;
+	const groups = AGENTS.map((a) => [a.id, rows.filter((p) => p.agent === a.id)] as const).filter(
+		([, list]) => list.length > 0,
+	);
+
 	return (
 		<ContextMenuSub>
 			<ContextMenuSubTrigger data-testid={`project-profile-${project.id}`}>
 				<IdCard />
 				Profile
-				<span className="ml-auto pl-2 text-muted-foreground text-xs">
+				<span className="ml-auto flex items-center gap-1.5 pl-2 text-muted-foreground text-xs">
+					{inForce && <AgentMark agent={inForce.agent} className="size-3" aria-hidden />}
 					{project.profileName ?? 'Default'}
 				</span>
 			</ContextMenuSubTrigger>
-			<ContextMenuSubContent className="w-56">
+			<ContextMenuSubContent className="w-60">
 				<ContextMenuItem
 					data-testid={`project-profile-default-${project.id}`}
 					disabled={project.profileId === null}
 					onSelect={() => assign.mutate(null)}
 				>
+					{appDefault && <AgentMark agent={appDefault.agent} aria-hidden />}
 					Default profile
+					{appDefault && (
+						<span className="ml-auto pl-2 text-muted-foreground text-xs">{appDefault.name}</span>
+					)}
 				</ContextMenuItem>
-				<ContextMenuSeparator />
-				{rows.map((profile) => (
-					<ContextMenuItem
-						key={profile.id}
-						data-testid={`project-profile-${project.id}-${profile.id}`}
-						disabled={profile.id === project.profileId}
-						onSelect={() => assign.mutate(profile.id)}
-					>
-						{profile.name}
-						{profile.isDefault && (
-							<span className="ml-auto pl-2 text-muted-foreground text-xs">default</span>
+				{groups.map(([agent, list]) => (
+					<Fragment key={agent}>
+						<ContextMenuSeparator />
+						{groups.length > 1 && (
+							<ContextMenuLabel className="flex items-center gap-1.5 text-muted-foreground text-xs">
+								<AgentMark agent={agent} className="size-3" aria-hidden />
+								{agentName(agent)}
+							</ContextMenuLabel>
 						)}
-					</ContextMenuItem>
+						{list.map((profile) => (
+							<ContextMenuItem
+								key={profile.id}
+								data-testid={`project-profile-${project.id}-${profile.id}`}
+								disabled={profile.id === project.profileId}
+								onSelect={() => assign.mutate(profile.id)}
+							>
+								<AgentMark agent={profile.agent} aria-hidden />
+								{profile.name}
+								{profile.isDefault && (
+									<span className="ml-auto pl-2 text-muted-foreground text-xs">default</span>
+								)}
+							</ContextMenuItem>
+						))}
+					</Fragment>
 				))}
 				<p className="px-2 pt-1.5 pb-1 text-muted-foreground text-xs">
 					Applies to new sessions. A running session keeps the profile it started under.
 				</p>
 			</ContextMenuSubContent>
 		</ContextMenuSub>
+	);
+}
+
+/**
+ * `New session with ▸` — the launch override (F30 § "What the human sees").
+ *
+ * Absent while only one agent is installed, the same rule `Profile ▸`
+ * follows: a submenu whose only entry is the agent already in force is a dead
+ * end. Lists every installed agent rather than "the others", because the menu
+ * cannot know the project's agent without the resolver Rust holds, and one
+ * extra entry that does what `New session` does is cheaper than a wrong guess.
+ */
+function NewSessionWithSubmenu({ project }: { project: Project }) {
+	const startSession = useStartSession();
+	const installed = useInstalledAgents();
+	if (installed.length < 2) return null;
+	return (
+		<ContextMenuSub>
+			<ContextMenuSubTrigger
+				disabled={project.missing}
+				data-testid={`new-session-with-${project.id}`}
+			>
+				<Plus />
+				New session with
+			</ContextMenuSubTrigger>
+			<ContextMenuSubContent className="w-44">
+				{installed.map((agent) => (
+					<ContextMenuItem
+						key={agent}
+						data-testid={`new-session-with-${project.id}-${agent}`}
+						onSelect={() => void startSession(project.id, agent)}
+					>
+						<AgentMark agent={agent} aria-hidden />
+						{agentName(agent)}
+					</ContextMenuItem>
+				))}
+			</ContextMenuSubContent>
+		</ContextMenuSub>
+	);
+}
+
+/**
+ * The chevron beside the sidebar's `+` (F30): a dropdown naming each installed
+ * agent. Renders nothing while only one agent is installed, so today's sidebar
+ * is byte-identical for a single-agent machine.
+ */
+export function NewSessionAgentMenu({
+	project,
+	disabled,
+	className,
+}: {
+	project: Project;
+	disabled: boolean;
+	className?: string;
+}) {
+	const startSession = useStartSession();
+	const installed = useInstalledAgents();
+	if (installed.length < 2) return null;
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<IconButton
+					className={className}
+					aria-label={`New session in ${project.displayName} with…`}
+					data-testid={`new-session-agent-${project.id}`}
+					disabled={disabled}
+				>
+					<ChevronDown />
+				</IconButton>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-44">
+				{installed.map((agent) => (
+					<DropdownMenuItem
+						key={agent}
+						data-testid={`new-session-agent-${project.id}-${agent}`}
+						onSelect={() => void startSession(project.id, agent)}
+					>
+						<AgentMark agent={agent} aria-hidden />
+						{agentName(agent)}
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

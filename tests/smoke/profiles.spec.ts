@@ -81,6 +81,8 @@ test.describe('profiles', () => {
 					name: 'Personal',
 					configDir: '/home/mock/.claude',
 					isDefault: true,
+
+					isAppDefault: true,
 					missing: false,
 					createdAt: 0,
 				},
@@ -90,6 +92,8 @@ test.describe('profiles', () => {
 					name: 'Work',
 					configDir: '/home/mock/.claude-work',
 					isDefault: false,
+
+					isAppDefault: false,
 					missing: false,
 					createdAt: 0,
 				},

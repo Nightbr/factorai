@@ -1,6 +1,8 @@
 # ADR-0062 — A session id the agent mints is adopted from its title
 
-**Date.** 2026-09-22
+**Date.** 2026-09-22, amended the same day once a real session had been
+observed: the title carries a **prefix** of the id, not the whole id, so the
+title names the thread and the store completes it — see § Decision 3.
 **Status.** Accepted. Amends
 [ADR-0008](0008-factorai-assigns-new-session-ids.md), which stays in force for
 Claude Code and for every agent that accepts an id at launch; this ADR is the
@@ -48,11 +50,18 @@ which is what makes the two-sessions problem vanish: the title parser
    pool key, the tab and the status dot all key on it from t=0, so nothing in
    the renderer is special-cased for "no id yet". No `sessions` row is written
    for it: a row is written when a transcript exists, and none does.
-3. **The agent's id is read from the terminal title.** For Codex the spawn
-   passes `-c 'tui.terminal_title=["run-state","thread-id"]'`; the TUI writes
-   `ESC ] 0 ; <state> | <uuid> BEL` from startup, and the same OSC-0 parser that
-   feeds status (ADR-0015) yields the uuid. The first title carrying a uuid is
-   the adoption event.
+3. **The agent's id is read from the terminal title and completed from the
+   store.** For Codex the spawn passes
+   `-c 'tui.terminal_title=["run-state","thread-id"]'`; the TUI writes
+   `ESC ] 0 ; <state> | <prefix>... BEL` from startup, where `<prefix>` is the
+   first 29 characters of the thread uuid — the item is truncated (observed
+   2026-09-22, not in the source reading). Twenty-four hex digits are enough to
+   pick one rollout out of a store, and the rollout's filename carries the
+   whole id. So the adoption is: the prefix from the title, then, on each title
+   change while unadopted and at most twice a second, the rollout under the
+   session's store whose id starts with the prefix and whose first line names
+   the session's folder. It appears at the first user turn, which is when the
+   adoption happens.
 4. **Adoption is one atomic rebind, emitted once.** `TerminalManager` records
    `provisional → adopted` on the handle, emits `session:adopted { provisional,
    adopted, projectId }`, and from then on answers to both ids for the life of
@@ -60,11 +69,12 @@ which is what makes the two-sessions problem vanish: the title parser
    `history.replace`s the route in one store transaction. The provisional id
    is remembered for the session's lifetime so a stale URL still lands on the
    tab.
-5. **The store watcher is the fallback, not the source.** If no title carrying
-   a uuid has arrived within a bound (F30 says 10 s) and a rollout appears with
-   `cwd` = the spawn folder and a `timestamp` after the spawn, it is adopted
-   the same way. If the process exits before either, the tab closes and nothing
-   is written — an unnamed Codex session that never spoke never existed.
+5. **The prefix is what makes the store probe safe.** ADR-0008's objection to
+   watching the store — two sessions in one folder are indistinguishable — is
+   answered by each PTY carrying its own prefix; the folder is a second check,
+   not the key. If the process exits before its first turn, the tab closes and
+   nothing is written — an unnamed Codex session that never spoke never
+   existed.
 6. **Resume never adopts.** A resume passes the adopted id to `codex resume
    <id>`; the title's uuid is checked against it, and a mismatch is logged and
    ignored rather than rebinding a session the user opened by id.

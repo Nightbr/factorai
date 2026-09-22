@@ -186,6 +186,9 @@ pub struct SessionSummary {
 	/// there is nothing to have been written anywhere, and a spawn falls through
 	/// to the project's assignment.
 	pub profile_name: Option<String>,
+	/// Which agent wrote this transcript — the profile's agent (F30). What the
+	/// session header's mark reads for a session that is not live.
+	pub agent: String,
 	/// Whether the user pinned this session to the top of its project's list
 	/// (F2, migration 0015).
 	///
@@ -369,7 +372,7 @@ pub struct FileContents {
 
 /// What the viewer needs to know about `sops` before it offers to use it.
 ///
-/// Shaped like [`crate::services::claude_cli::ClaudeCliStatus`] and for the
+/// Shaped like [`crate::services::agent_cli::ClaudeCliStatus`] and for the
 /// same reason: "the binary resolved" and "the binary answered `--version`" are
 /// different facts, and folding the second into the first lets a version probe
 /// veto an install that works. The extra field here is [`Self::too_old`],
@@ -793,13 +796,19 @@ pub struct GitCommitDetail {
 pub struct Profile {
 	/// uuid v4. Not derived from the directory — see migration 0017.
 	pub id: String,
-	/// Which agent this is an identity for. `'claude'` today.
+	/// Which agent this is an identity for: `claude` or `codex` (F30). Chosen
+	/// at creation, never changed.
 	pub agent: String,
 	pub name: String,
 	pub config_dir: String,
 	/// Every project with no assignment for this agent spawns under it. Exactly
 	/// one per agent, enforced by a partial unique index.
 	pub is_default: bool,
+	/// **The** default (F30, ADR-0061): its agent's default *and* the agent
+	/// `agent.default` names, so a project with no profile at all runs under
+	/// it. Exactly one across every agent; computed from the setting, never
+	/// stored on the row.
+	pub is_app_default: bool,
 	/// The directory is not on disk. Computed per query rather than stored: the
 	/// list is short, it is read only when Settings is open, and a stored flag
 	/// would need a scan to clear it after a remount.
@@ -819,6 +828,11 @@ pub struct Profile {
 pub struct ProfileInput {
 	pub name: String,
 	pub config_dir: String,
+	/// Which agent this is an identity for (F30, ADR-0061 § 5): chosen in the
+	/// form, fixed for the profile's life. Absent means Claude — the renderer
+	/// that predates the picker, and every test fixture.
+	#[serde(default)]
+	pub agent: Option<String>,
 }
 
 /// A setting Rust reads, keyed by a mirrored union rather than a free string
@@ -834,8 +848,14 @@ pub struct ProfileInput {
 #[serde(rename_all = "camelCase")]
 pub enum SettingKey {
 	/// Absolute path to the `claude` binary. Unset → the three-tier probe in
-	/// `services::claude_cli` decides.
+	/// `services::agent_cli` decides.
 	ClaudeBinaryPath,
+	/// The same for `codex` (F30). One variant per agent rather than a
+	/// parameterised key: the column name is what an operator sees in `sqlite3`.
+	CodexBinaryPath,
+	/// Which agent a project with no assigned profile runs (F30, ADR-0061):
+	/// `claude` or `codex`. Unset → `claude`.
+	AgentDefault,
 	/// How many hours late a routine may still run when factorai was closed at
 	/// its scheduled time (F22). The app-wide default; a routine's own
 	/// `catchup_hours` overrides it, and `0` means "never run late".
@@ -856,6 +876,8 @@ impl SettingKey {
 	pub fn column(self) -> &'static str {
 		match self {
 			SettingKey::ClaudeBinaryPath => "claude.binary",
+			SettingKey::CodexBinaryPath => "codex.binary",
+			SettingKey::AgentDefault => "agent.default",
 			SettingKey::RoutinesCatchupHours => "routines.catchup_hours",
 			SettingKey::RoutinesMaxConcurrent => "routines.max_concurrent",
 		}

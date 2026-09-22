@@ -1,4 +1,4 @@
-import type { Profile, Project } from '@factorai/types';
+import type { AgentId, Profile, Project } from '@factorai/types';
 import {
 	Button,
 	Checkbox,
@@ -9,11 +9,19 @@ import {
 	IconButton,
 	InlineEdit,
 	Input,
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
 } from '@factorai/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, MoreHorizontal, Plus, TriangleAlert, X } from 'lucide-react';
+import { Check, ChevronDown, MoreHorizontal, Plus, Star, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { formatError } from '@lib/errors';
+import { useInstalledAgents } from '@hooks/useInstalledAgents';
+import { AgentMark } from '@components/layout/AgentMark';
+import { AGENTS, agentName } from '@lib/agents';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, pickFolder } from '@lib/tauri';
 
@@ -81,6 +89,11 @@ export function ProfilesSection() {
 		onSuccess: () => void refresh(),
 		onError: (e) => setFailure(formatError(e)),
 	});
+	const makeAppDefault = useMutation({
+		mutationFn: (id: string) => cmd.setAppDefaultProfile(id),
+		onSuccess: refresh,
+		onError: (e) => setFailure(formatError(e)),
+	});
 	const remove = useMutation({
 		mutationFn: (id: string) => cmd.deleteProfile(id),
 		onSuccess: () => {
@@ -91,13 +104,20 @@ export function ProfilesSection() {
 	});
 
 	const rows = profiles.data ?? [];
+	// How many agents have a profile here: the per-agent labels and the star
+	// appear only once there are two (F30).
+	const agentsWithProfiles = new Set(rows.map((p) => p.agent)).size;
+	// Registry order, agents with no profile omitted.
+	const groups = AGENTS.map((a) => [a.id, rows.filter((p) => p.agent === a.id)] as const).filter(
+		([, list]) => list.length > 0,
+	);
 
 	return (
-		<div className="space-y-2">
+		<div className="space-y-4">
 			<div className="flex items-baseline justify-between gap-2">
 				<p className="text-muted-foreground text-xs">
-					Each profile is a separate Claude login, kept apart by its own config directory. Projects
-					with no profile of their own use the default.
+					Each profile is a separate login for one agent, kept apart by its own config directory.
+					Projects with no profile of their own use the starred default.
 				</p>
 				<Button
 					size="sm"
@@ -114,164 +134,6 @@ export function ProfilesSection() {
 				</Button>
 			</div>
 
-			{profiles.isPending ? (
-				<p className="py-4 text-center text-muted-foreground text-sm">Loading…</p>
-			) : (
-				<ul className="divide-y divide-border" data-testid="profiles-list">
-					{rows.map((profile) => (
-						<li key={profile.id} data-testid={`profile-row-${profile.id}`} className="py-2">
-							<div className="flex items-center gap-2">
-								<div className="min-w-0 flex-1">
-									{renaming === profile.id ? (
-										<InlineEdit
-											value={profile.name}
-											aria-label="Profile name"
-											data-testid="profile-rename"
-											onCommit={(name) => rename.mutate({ id: profile.id, name })}
-											onCancel={() => setRenaming(null)}
-										/>
-									) : (
-										<p className="flex items-center gap-1.5 truncate text-sm">
-											{profile.name}
-											{profile.isDefault && (
-												<span
-													data-testid={`profile-default-${profile.id}`}
-													className="rounded bg-secondary px-1 py-px text-muted-foreground text-xs uppercase tracking-wide"
-												>
-													Default
-												</span>
-											)}
-										</p>
-									)}
-									<p className="flex items-center gap-1 truncate font-mono text-muted-foreground text-xs">
-										{/* The agent is shown even though `claude` is the only value
-									    today: it is what the row is an identity *for*, and a
-									    column that appears later reorganises the table. */}
-										<span className="uppercase tracking-wide">{profile.agent}</span>
-										<span aria-hidden>·</span>
-										<span className="truncate">{profile.configDir}</span>
-									</p>
-									{profile.missing && (
-										// Not an error state: the scan skips this profile rather than
-										// reaping its sessions, and the next spawn recreates the
-										// directory — where the CLI asking for a login is the correct
-										// outcome. Said out loud because "you are logged out" with no
-										// reason given is the confusing version of that.
-										<p
-											data-testid={`profile-missing-${profile.id}`}
-											className="flex items-center gap-1 text-muted-foreground text-xs"
-										>
-											<TriangleAlert className="size-3 shrink-0" />
-											That directory is not there. It will be created empty on the next session, and
-											Claude will ask you to log in.
-										</p>
-									)}
-								</div>
-
-								{confirmingDelete === profile.id ? (
-									// Two steps in the row rather than a dialog on top of a dialog.
-									// The write removes a row and nothing on disk, so what needs
-									// confirming is the click, not the consequence.
-									<div className="flex shrink-0 items-center gap-1">
-										<span className="text-muted-foreground text-xs">Delete?</span>
-										<Button size="sm" variant="outline" onClick={() => setConfirmingDelete(null)}>
-											Cancel
-										</Button>
-										<Button
-											size="sm"
-											variant="destructive"
-											data-testid="profile-delete-confirm"
-											disabled={remove.isPending}
-											onClick={() => remove.mutate(profile.id)}
-										>
-											Delete
-										</Button>
-									</div>
-								) : (
-									<>
-										{/* The projects on this profile, folded away. Open by default
-										    would make a three-profile list a wall of checkboxes, and
-										    the usual visit here is about the profiles themselves. */}
-										<IconButton
-											size="md"
-											aria-label={`Projects on ${profile.name}`}
-											title="Projects on this profile"
-											data-testid={`profile-projects-${profile.id}`}
-											onClick={() => setAssigning(assigning === profile.id ? null : profile.id)}
-										>
-											<ChevronDown
-												className={
-													assigning === profile.id
-														? 'rotate-180 transition-transform'
-														: 'transition-transform'
-												}
-											/>
-										</IconButton>
-										<DropdownMenu>
-											<DropdownMenuTrigger asChild>
-												<IconButton
-													size="md"
-													aria-label={`Actions for ${profile.name}`}
-													data-testid={`profile-menu-${profile.id}`}
-												>
-													<MoreHorizontal />
-												</IconButton>
-											</DropdownMenuTrigger>
-											<DropdownMenuContent align="end">
-												<DropdownMenuItem
-													onSelect={() => {
-														setFailure(null);
-														setRenaming(profile.id);
-													}}
-												>
-													Rename
-												</DropdownMenuItem>
-												<DropdownMenuItem
-													disabled={profile.isDefault}
-													data-testid={`profile-make-default-${profile.id}`}
-													onSelect={() => {
-														setFailure(null);
-														makeDefault.mutate(profile.id);
-													}}
-												>
-													Make default
-												</DropdownMenuItem>
-												{/* Disabled rather than hidden on the default, so the reason
-										    is where the action would have been. Deleting it would
-										    leave every unassigned project with no identity to spawn
-										    under. */}
-												<DropdownMenuItem
-													variant="destructive"
-													disabled={profile.isDefault}
-													data-testid={`profile-delete-${profile.id}`}
-													onSelect={() => {
-														setFailure(null);
-														setConfirmingDelete(profile.id);
-													}}
-												>
-													Delete
-												</DropdownMenuItem>
-											</DropdownMenuContent>
-										</DropdownMenu>
-									</>
-								)}
-							</div>
-
-							{assigning === profile.id && (
-								<ProjectPicker
-									profile={profile}
-									projects={projects.data ?? []}
-									pending={assign.isPending}
-									onToggle={(projectId, on) =>
-										assign.mutate({ projectId, profileId: on ? profile.id : null })
-									}
-								/>
-							)}
-						</li>
-					))}
-				</ul>
-			)}
-
 			{creating && (
 				<CreateProfile
 					existing={rows}
@@ -282,6 +144,207 @@ export function ProfilesSection() {
 					}}
 					onFailure={setFailure}
 				/>
+			)}
+
+			{profiles.isPending ? (
+				<p className="py-4 text-center text-muted-foreground text-sm">Loading…</p>
+			) : (
+				<div className="space-y-4" data-testid="profiles-list">
+					{groups.map(([agent, list]) => (
+						<section key={agent} data-testid={`profiles-group-${agent}`}>
+							{/* One group per agent (F30), headed by the agent's mark and name, so
+					    a row's badge can say plainly "Default". With one agent the header
+					    is dropped and the list is what it always was. */}
+							{agentsWithProfiles > 1 && (
+								<h3 className="mb-1 flex items-center gap-1.5 text-muted-foreground text-xs uppercase tracking-wide">
+									<AgentMark agent={agent} className="size-3" aria-hidden />
+									{agentName(agent)}
+								</h3>
+							)}
+							<ul className="divide-y divide-border">
+								{list.map((profile) => (
+									<li key={profile.id} data-testid={`profile-row-${profile.id}`} className="py-2">
+										<div className="flex items-center gap-2">
+											<div className="min-w-0 flex-1">
+												{renaming === profile.id ? (
+													<InlineEdit
+														value={profile.name}
+														aria-label="Profile name"
+														data-testid="profile-rename"
+														onCommit={(name) => rename.mutate({ id: profile.id, name })}
+														onCancel={() => setRenaming(null)}
+													/>
+												) : (
+													<p className="flex items-center gap-1.5 truncate text-sm">
+														{profile.name}
+														{profile.isDefault && (
+															<span
+																data-testid={`profile-default-${profile.id}`}
+																className="rounded bg-secondary px-1 py-px text-muted-foreground text-xs uppercase tracking-wide"
+															>
+																{/* Plain "Default": the group header says which agent's, and
+																 *the* default across agents is the star. */}
+																Default
+															</span>
+														)}
+														{/* **The** default (F30, ADR-0061): the one profile an unassigned
+											    project runs under, whichever agent's. Drawn only when there
+											    is more than one agent to choose from — with one, every
+											    default is the app default and the star says nothing. */}
+														{profile.isAppDefault && agentsWithProfiles > 1 && (
+															<Star
+																data-testid={`profile-app-default-${profile.id}`}
+																className="size-3 shrink-0 fill-primary text-primary"
+																aria-label="Used for new projects"
+															/>
+														)}
+													</p>
+												)}
+												<p className="flex min-w-0 items-center gap-1 font-mono text-muted-foreground text-xs">
+													{/* The agent the row is an identity *for* (F30) is the group
+										    header above; the row carries only its directory. */}
+													<span className="truncate">{profile.configDir}</span>
+												</p>
+												{profile.missing && (
+													// Not an error state: the scan skips this profile rather than
+													// reaping its sessions, and the next spawn recreates the
+													// directory — where the CLI asking for a login is the correct
+													// outcome. Said out loud because "you are logged out" with no
+													// reason given is the confusing version of that.
+													<p
+														data-testid={`profile-missing-${profile.id}`}
+														className="flex items-center gap-1 text-muted-foreground text-xs"
+													>
+														<TriangleAlert className="size-3 shrink-0" />
+														That directory is not there. It will be created empty on the next
+														session, and Claude will ask you to log in.
+													</p>
+												)}
+											</div>
+
+											{confirmingDelete === profile.id ? (
+												// Two steps in the row rather than a dialog on top of a dialog.
+												// The write removes a row and nothing on disk, so what needs
+												// confirming is the click, not the consequence.
+												<div className="flex shrink-0 items-center gap-1">
+													<span className="text-muted-foreground text-xs">Delete?</span>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={() => setConfirmingDelete(null)}
+													>
+														Cancel
+													</Button>
+													<Button
+														size="sm"
+														variant="destructive"
+														data-testid="profile-delete-confirm"
+														disabled={remove.isPending}
+														onClick={() => remove.mutate(profile.id)}
+													>
+														Delete
+													</Button>
+												</div>
+											) : (
+												<>
+													{/* The projects on this profile, folded away. Open by default
+										    would make a three-profile list a wall of checkboxes, and
+										    the usual visit here is about the profiles themselves. */}
+													<IconButton
+														size="md"
+														aria-label={`Projects on ${profile.name}`}
+														title="Projects on this profile"
+														data-testid={`profile-projects-${profile.id}`}
+														onClick={() =>
+															setAssigning(assigning === profile.id ? null : profile.id)
+														}
+													>
+														<ChevronDown
+															className={
+																assigning === profile.id
+																	? 'rotate-180 transition-transform'
+																	: 'transition-transform'
+															}
+														/>
+													</IconButton>
+													<DropdownMenu>
+														<DropdownMenuTrigger asChild>
+															<IconButton
+																size="md"
+																aria-label={`Actions for ${profile.name}`}
+																data-testid={`profile-menu-${profile.id}`}
+															>
+																<MoreHorizontal />
+															</IconButton>
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end">
+															<DropdownMenuItem
+																onSelect={() => {
+																	setFailure(null);
+																	setRenaming(profile.id);
+																}}
+															>
+																Rename
+															</DropdownMenuItem>
+															<DropdownMenuItem
+																disabled={profile.isDefault}
+																data-testid={`profile-make-default-${profile.id}`}
+																onSelect={() => {
+																	setFailure(null);
+																	makeDefault.mutate(profile.id);
+																}}
+															>
+																Make default
+															</DropdownMenuItem>
+															{agentsWithProfiles > 1 && (
+																<DropdownMenuItem
+																	disabled={profile.isAppDefault}
+																	data-testid={`profile-app-default-action-${profile.id}`}
+																	onSelect={() => {
+																		setFailure(null);
+																		makeAppDefault.mutate(profile.id);
+																	}}
+																>
+																	Use for new projects
+																</DropdownMenuItem>
+															)}
+															{/* Disabled rather than hidden on the default, so the reason
+										    is where the action would have been. Deleting it would
+										    leave every unassigned project with no identity to spawn
+										    under. */}
+															<DropdownMenuItem
+																variant="destructive"
+																disabled={profile.isDefault}
+																data-testid={`profile-delete-${profile.id}`}
+																onSelect={() => {
+																	setFailure(null);
+																	setConfirmingDelete(profile.id);
+																}}
+															>
+																Delete
+															</DropdownMenuItem>
+														</DropdownMenuContent>
+													</DropdownMenu>
+												</>
+											)}
+										</div>
+
+										{assigning === profile.id && (
+											<ProjectPicker
+												profile={profile}
+												projects={projects.data ?? []}
+												pending={assign.isPending}
+												onToggle={(projectId, on) =>
+													assign.mutate({ projectId, profileId: on ? profile.id : null })
+												}
+											/>
+										)}
+									</li>
+								))}
+							</ul>
+						</section>
+					))}
+				</div>
 			)}
 
 			{failure && (
@@ -386,6 +449,13 @@ function CreateProfile({ existing, onCancel, onCreated, onFailure }: CreateProfi
 	const [dir, setDir] = useState('');
 	const [dirEdited, setDirEdited] = useState(false);
 	const [saving, setSaving] = useState(false);
+	// **Which agent, chosen here and fixed for life** (F30, ADR-0061 § 5). A
+	// profile's directory holds one CLI's credentials and store, so there is no
+	// later "change agent"; the picker is absent while only one agent is
+	// installed, when the choice would be a label wearing a control.
+	const installed = useInstalledAgents();
+	const [agent, setAgent] = useState<AgentId>('claude');
+	const chosen: AgentId = installed.includes(agent) ? agent : (installed[0] ?? 'claude');
 
 	// Asked of Rust rather than built here: the answer starts at `$HOME`, which
 	// the renderer has no honest way to know.
@@ -423,7 +493,7 @@ function CreateProfile({ existing, onCancel, onCreated, onFailure }: CreateProfi
 		onFailure(null);
 		setSaving(true);
 		try {
-			await cmd.createProfile({ name: name.trim(), configDir: dir.trim() });
+			await cmd.createProfile({ name: name.trim(), configDir: dir.trim(), agent: chosen });
 			onCreated();
 		} catch (e) {
 			onFailure(formatError(e));
@@ -443,6 +513,28 @@ function CreateProfile({ existing, onCancel, onCreated, onFailure }: CreateProfi
 				if (ready) void submit();
 			}}
 		>
+			{installed.length >= 2 && (
+				<div className="flex items-center gap-2">
+					<label className="w-20 shrink-0 text-muted-foreground text-xs" htmlFor="profile-agent">
+						Agent
+					</label>
+					<Select value={chosen} onValueChange={(v) => setAgent(v as AgentId)}>
+						<SelectTrigger id="profile-agent" data-testid="profile-agent" className="w-44">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{installed.map((id) => (
+								<SelectItem key={id} value={id} data-testid={`profile-agent-${id}`}>
+									<span className="flex items-center gap-1.5">
+										<AgentMark agent={id} className="size-3" aria-hidden />
+										{agentName(id)}
+									</span>
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+			)}
 			<div className="flex items-center gap-2">
 				<label className="w-20 shrink-0 text-muted-foreground text-xs" htmlFor="profile-name">
 					Name

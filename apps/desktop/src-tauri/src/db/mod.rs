@@ -88,6 +88,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
 	// reached, and which source the title came from (PERF-03). Two `ADD COLUMN`s,
 	// so not standalone.
 	("0021_incremental_index", include_str!("migrations/0021_incremental_index.sql")),
+	("0022_transcript_path", include_str!("migrations/0022_transcript_path.sql")),
 ];
 
 /// Migrations that need the connection to themselves, with foreign keys off.

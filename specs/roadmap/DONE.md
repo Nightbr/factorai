@@ -3,6 +3,41 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Codex sessions have status, titles, search and factorai's tools** — 2026-09-22, the same
+  day as slice 2, after the first real session showed what was missing. Roadmap 38 slices 3, 5 and
+  the tools half of 6. Two facts from the source reading were wrong on disk and the spec says so:
+  a new thread is `history_mode: "paginated"`, and the `thread-id` title item is **truncated** —
+  so a Codex session starts under a provisional id, remembers the 29-character prefix from its
+  title, and adopts the rollout whose name completes it when the first turn lands
+  (ADR-0062 amended; `session:adopted` re-keys route, tab, pool and store in one move). Status
+  reads the `run-state` word (`Ready` is waiting, `Working` and Codex's own `Waiting` are
+  working). `agents/codex.rs` discovers folders from every rollout's `cwd`, reads rollouts as the
+  indexer's own events, drops the two injected user turns (`# AGENTS.md instructions`,
+  `<environment_context>`), and takes Codex's auto-title from `session_index.jsonl` as the `ai`
+  kind; `sessions.transcript_path` (migration 0022) is where delete finds the file. Tools ride in
+  as `-c mcp_servers.factorai.url` with the bearer token in `FACTORAI_MCP_TOKEN`.
+
+  **Found on the way.** A nested `db.with` inside another `with` waits on the writer forever —
+  an integration test hung for ten minutes before that was read off the code. The sanitised
+  fixture had the scratch path inside Codex's skill roots, two levels deeper than the `cwd`
+  replacement reached; grep the fixture for the user's name before committing it.
+
+- **Codex CLI is spawnable behind one agent seam** — 2026-09-22. Roadmap 38 slice 2, plus the
+  profile half of slice 4. `agents::registry()` holds two descriptors (ADR-0060); `agent_cli`
+  probes either binary; Settings → Agents is one card per agent, binaries only; a profile is
+  created *for* an agent and keeps it, with a star in Profiles for the one app default an
+  unassigned project runs under (`agent.default`, ADR-0061); the `+` chevron and `New session
+  with ▸` start the other agent; a Codex session runs bare `codex -c
+  tui.terminal_title=[…]` under `CODEX_HOME`, gets no IDE bridge and no tool server, and shows
+  the hollow `status-unknown` dot until slice 3 reads its title. `terminal_spawn` now returns
+  `{ id, agent }` so the header mark never re-derives the resolution.
+
+  **Found on the way.** A child of a factorai that is itself running inside a Claude session
+  inherits `CLAUDE_CODE_SSE_PORT`; a Codex or shell child now has it removed rather than merely
+  not set. Vitest had no `unplugin-icons` compiler, so the first component test importing a
+  `~icons/*` mark failed to load the whole file — `vitest.config.ts` runs the same plugin now.
+  Codex refuses to start when `CODEX_HOME` does not exist, so the spawn creates it first.
+
 - **Video and audio play in the released Linux app, and a dead renderer comes back** —
   2026-09-22. F7's media viewer shipped in 0.47.0 and froze the app on the first video, which is
   two faults wearing one coat.

@@ -1260,23 +1260,27 @@ Slices, in order; each is its own commit series against `main` and each moves he
       or a correction — in particular: `thread-id` in the title before the first message, the wire
       spelling of every `type`, an HTTP MCP server defined wholly by `-c`, and whether a trashed
       rollout upsets the resume picker. No app code.
-- [ ] **2. The seam and the Agents section.** `agents::registry()`, the four traits, Claude moved
-      onto them with no behaviour change; `find_agent_binary`; Settings → Agents with one card per
-      agent and `codex.binary`; `?settings=claude` aliased. Codex is *spawnable* at the end of this
-      slice: `+` menu, provisional id, `CODEX_HOME` created before spawn, kill-on-quit measured
-      against `ps`. No status, no index.
-- [ ] **3. Status and adoption.** The Codex `Status` parser from the fixture title log; the
-      `status-unknown` dot; `session:adopted` and the one-shot rebind; the store-watcher fallback.
-      Resume of an adopted session.
-- [ ] **4. One profile per project.** Migration 0022's index change, the agent picker in the
-      profile form, `Profile ▸` grouped by agent, `agent.default`, the Codex default profile seeded
-      on first sight of a binary.
-- [ ] **5. Discovery, transcripts, search.** `agents/codex.rs` discovery by `session_meta.cwd`,
-      the rollout reader from the fixtures, `sessions.transcript_path`, titles from
-      `session_index.jsonl`, sub-agents by `parent_thread_id`, FTS rows. Delete via trash.
-- [ ] **6. Routines and tools.** `routines.agent`, the form's select, `-c mcp_servers.factorai.*`
-      at spawn (or the ADR for writing into the profile's `config.toml`, if slice 1 found `-c`
-      cannot define a server).
+- [x] **2. The seam and the Agents section** — shipped 2026-09-22, `DONE.md`. Also carried
+      the parts of slice 4 that did not need the migration: the agent picker on the profile
+      form, per-agent profile resolution and `CODEX_HOME`, the Codex default profile seeded on
+      first sight of a binary, and the **app default star** in Profiles that writes
+      `agent.default`. Two feedback rounds moved the default-agent choice out of the Agents cards
+      (binaries only) and into Profiles, and gave both agents their vendor marks.
+- [x] **3. Status and adoption** — shipped 2026-09-22, `DONE.md`. The `run-state` word drives
+      the dot; the truncated `thread-id` prefix plus the rollout that appears at the first turn is
+      the adoption (ADR-0062 amended). Slice 1's fixture came with it: one real thread, sanitised,
+      under `tests/fixtures/codex/`, and the title sequence of one turn as test literals.
+- [ ] **4. One profile per project.** What slice 2 left of it: migration 0022's index change
+      (`UNIQUE (project_id)`), `Profile ▸` grouped by agent, and `set_project_profile` clearing
+      one row rather than every agent's.
+- [x] **5. Discovery, transcripts, search** — shipped 2026-09-22, `DONE.md`. Discovery by
+      `session_meta.cwd`, the rollout reader mapped onto the indexer's events,
+      `sessions.transcript_path`, Codex's auto-title from `session_index.jsonl` as `ai`, FTS rows,
+      delete via the recorded path. Left: sub-agents by `parent_thread_id`, a `custom` title kind
+      (Codex's index does not tell a user's rename from its own name).
+- [x] **6. Tools** — shipped 2026-09-22 with slice 3: `-c mcp_servers.factorai.url` plus
+      `bearer_token_env_var` at spawn, the token in the environment. **Left of slice 6:**
+      `routines.agent` and the routine form's select.
 - [ ] **7. The rest.** Gemini CLI, OpenCode, Cursor, each as one `Agent` value against the settled
       seam, each starting with its own slice 1. The seam is reopened only for a fifth capability,
       by a new ADR.

@@ -44,6 +44,9 @@ import type {
 	UiSnapshot,
 	SidebarOrder,
 	SidebarRow,
+	AgentId,
+	SessionAdoptedEvent,
+	Spawned,
 } from '@factorai/types';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { type UnlistenFn, listen as tauriListen } from '@tauri-apps/api/event';
@@ -268,15 +271,16 @@ export const cmd = {
 	 *  empty string: unset is what sends the binary lookup back to its probe. */
 	setSetting: (key: SettingKey, value: string | null) =>
 		invoke<void>('set_setting', { key, value }),
-	/** Where `claude` is and what version it reports, **honouring the override**
-	 *  — so this and the spawn path can never name different binaries. */
-	checkClaudeCli: () => invoke<ClaudeCliStatus>('check_claude_cli'),
+	/** Where an agent's binary is and what version it reports, **honouring the
+	 *  override** — so this and the spawn path can never name different binaries
+	 *  (F11, F30). */
+	checkAgentCli: (agent: AgentId) => invoke<ClaudeCliStatus>('check_agent_cli', { agent }),
 	/** Probe one path as if it were the override, without saving it — what the
 	 *  settings page's override field validates with on blur. No fallback to the
 	 *  probe, so a typo comes back `installed: false` instead of showing a tick
 	 *  beside a path that does not work. */
-	validateClaudeBinary: (path: string) =>
-		invoke<ClaudeCliStatus>('validate_claude_binary', { path }),
+	validateAgentBinary: (agent: AgentId, path: string) =>
+		invoke<ClaudeCliStatus>('validate_agent_binary', { agent, path }),
 	/** Every Claude profile, default first (F25). */
 	listProfiles: () => invoke<Profile[]>('list_profiles'),
 	/** Create one, making its config directory if it is missing and leaving it
@@ -286,6 +290,9 @@ export const cmd = {
 	renameProfile: (id: string, name: string) => invoke<Profile>('rename_profile', { id, name }),
 	/** Promote a profile to its agent's default, demoting the previous one.
 	 *  **Applies to new sessions**: the config directory is read at spawn. */
+	/** Make a profile the app default (F30): its agent's default, and its
+	 *  agent the one a project with no profile runs. */
+	setAppDefaultProfile: (id: string) => invoke<Profile>('set_app_default_profile', { id }),
 	setDefaultProfile: (id: string) => invoke<Profile>('set_default_profile', { id }),
 	/** Delete one. Removes the row and **nothing on disk** — the credentials and
 	 *  transcripts under its directory stay — and refuses while it is the
@@ -328,8 +335,9 @@ export const cmd = {
 	routinePendingFires: () => invoke<RoutineFireEvent[]>('routine_pending_fires'),
 	/** The session id to open for a "new session" in this project — a fresh
 	 *  uuid, or a live one that has never been messaged. See ADR-0008. */
-	startSession: (projectId: string) => invoke<string>('start_session', { projectId }),
-	terminalSpawn: (opts: SpawnOpts) => invoke<TerminalId>('terminal_spawn', { opts }),
+	startSession: (projectId: string, agent?: AgentId) =>
+		invoke<string>('start_session', { projectId, agent }),
+	terminalSpawn: (opts: SpawnOpts) => invoke<Spawned>('terminal_spawn', { opts }),
 	terminalWrite: (id: TerminalId, data: string) => invoke<void>('terminal_write', { id, data }),
 	terminalResize: (id: TerminalId, cols: number, rows: number) =>
 		invoke<void>('terminal_resize', { id, cols, rows }),
@@ -594,6 +602,9 @@ export const events = {
 	 *  this. The renderer's own mutations invalidate optimistically already. */
 	onProfilesChanged: (cb: (p: ProfilesChangedEvent) => void) =>
 		listen<ProfilesChangedEvent>('profiles:changed', cb),
+	/** A session took its agent's id (F30, ADR-0062). */
+	onSessionAdopted: (cb: (p: SessionAdoptedEvent) => void) =>
+		listen<SessionAdoptedEvent>('session:adopted', cb),
 };
 
 // ── Mocks for browser-only dev (pnpm vite:dev without tauri) ───────────────
@@ -709,11 +720,16 @@ interface TestFixture {
 	/** What the three-tier probe finds when nothing is overridden. Absent means
 	 *  no `claude` on this machine, which is the honest browser-only answer. */
 	claudeCli?: ClaudeCliStatus;
+	/** The same for `codex` (F30). Absent means not installed, which hides the
+	 *  launch menu and the default-agent choice — the single-agent UI. */
+	codexCli?: ClaudeCliStatus;
 	/** Paths that are a working `claude`, mapped to the version they report — a
 	 *  null version being the "found it, couldn't run --version" state. Anything
 	 *  not listed validates as not installed, which is how a test reaches the
 	 *  bad-path branch of the override field. */
 	claudeBinaries?: Record<string, string | null>;
+	/** The same for `codex` (F30). */
+	codexBinaries?: Record<string, string | null>;
 	/** What the `sops` probe finds (F27). Absent means no `sops` on this
 	 *  machine, which is the honest browser-only answer and the state the
 	 *  disabled Decrypt control exists for. */
@@ -750,11 +766,16 @@ function testFixture(): TestFixture | undefined {
 /** What the two Claude-CLI commands answer for one path, from the fixture's
  *  `claudeBinaries` map. An unlisted path is not an install — that is the branch
  *  the settings page's inline error hangs off. */
-function claudeStatusFor(path: string, fx: TestFixture | undefined): ClaudeCliStatus {
-	if (!path || !fx?.claudeBinaries || !(path in fx.claudeBinaries)) {
+function agentStatusFor(
+	agent: AgentId,
+	path: string,
+	fx: TestFixture | undefined,
+): ClaudeCliStatus {
+	const known = agent === 'codex' ? fx?.codexBinaries : fx?.claudeBinaries;
+	if (!path || !known || !(path in known)) {
 		return { installed: false, binaryPath: null, version: null };
 	}
-	return { installed: true, binaryPath: path, version: fx.claudeBinaries[path] ?? null };
+	return { installed: true, binaryPath: path, version: known[path] ?? null };
 }
 
 /** The profile every install has: one default, on the boot directory. What
@@ -767,6 +788,7 @@ function seededDefaultProfile(): Profile {
 		name: 'Default',
 		configDir: '/home/mock/.claude',
 		isDefault: true,
+		isAppDefault: true,
 		missing: false,
 		createdAt: 0,
 	};
@@ -1262,10 +1284,11 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			}
 			const created: Profile = {
 				id: `profile-${list.length + 1}`,
-				agent: 'claude',
+				agent: input.agent ?? 'claude',
 				name: input.name.trim(),
 				configDir: input.configDir.trim(),
 				isDefault: false,
+				isAppDefault: false,
 				missing: false,
 				createdAt: Date.now(),
 			};
@@ -1286,7 +1309,26 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// One default per agent, the same invariant the partial unique index
 			// holds in Rust — so a mock that promoted without demoting would let a
 			// test pass on a state the real table cannot be in.
-			const updated = list.map((p) => ({ ...p, isDefault: p.id === id }));
+			const agent = list.find((p) => p.id === id)?.agent;
+			const updated = list.map((p) =>
+				p.agent === agent
+					? { ...p, isDefault: p.id === id, isAppDefault: p.id === id && p.isAppDefault }
+					: p,
+			);
+			if (fx) fx.profiles = updated;
+			return updated.find((p) => p.id === id) as unknown as T;
+		}
+		case 'set_app_default_profile': {
+			const id = String(args?.id ?? '');
+			const list = fx?.profiles ?? [seededDefaultProfile()];
+			const agent = list.find((p) => p.id === id)?.agent;
+			// One app default across agents, one default per agent — the two
+			// invariants `set_app_default` holds in one transaction.
+			const updated = list.map((p) => ({
+				...p,
+				isDefault: p.agent === agent ? p.id === id : p.isDefault,
+				isAppDefault: p.id === id,
+			}));
 			if (fx) fx.profiles = updated;
 			return updated.find((p) => p.id === id) as unknown as T;
 		}
@@ -1316,6 +1358,7 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 								...p,
 								profileId: profile?.id ?? null,
 								profileName: profile?.name ?? null,
+								agent: 'claude',
 							}
 						: p,
 				);
@@ -1431,27 +1474,40 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			}
 			return undefined as unknown as T;
 		}
-		case 'check_claude_cli': {
+		case 'check_agent_cli': {
 			// Honours the override exactly as the real command does, so a fixture
 			// that sets one sees the settings page report it.
-			const override = fx?.settings?.claudeBinaryPath;
-			if (override) return claudeStatusFor(override, fx) as unknown as T;
-			return (fx?.claudeCli ?? {
+			const agent = args?.agent === 'codex' ? 'codex' : 'claude';
+			const override =
+				agent === 'codex' ? fx?.settings?.codexBinaryPath : fx?.settings?.claudeBinaryPath;
+			if (override) return agentStatusFor(agent, override, fx) as unknown as T;
+			const detected = agent === 'codex' ? fx?.codexCli : fx?.claudeCli;
+			return (detected ?? {
 				installed: false,
 				binaryPath: null,
 				version: null,
 			}) as unknown as T;
 		}
-		case 'validate_claude_binary':
-			return claudeStatusFor(String(args?.path ?? ''), fx) as unknown as T;
+		case 'validate_agent_binary':
+			return agentStatusFor(
+				args?.agent === 'codex' ? 'codex' : 'claude',
+				String(args?.path ?? ''),
+				fx,
+			) as unknown as T;
 		case 'start_session':
 			// The real command may hand back a live never-messaged session instead
 			// of a fresh id (it probes the transcript on disk). The mock always
 			// returns the same id — simulating the reuse rule here would only
 			// assert the mock, and the renderer's path is identical either way.
 			return (fx?.newSessionId ?? '00000000-0000-4000-8000-000000000000') as unknown as T;
-		case 'terminal_spawn':
-			return (fx?.terminalSpawnId ?? 'mock-terminal-id') as unknown as T;
+		case 'terminal_spawn': {
+			// The agent Rust would resolve: the launch override, else Claude — the
+			// mock has no profiles table to consult and no `agent.default` reader.
+			const opts = args?.opts as SpawnOpts | undefined;
+			const agent: AgentId =
+				opts?.agent ?? (fx?.settings?.agentDefault === 'codex' ? 'codex' : 'claude');
+			return { id: fx?.terminalSpawnId ?? 'mock-terminal-id', agent } as unknown as T;
+		}
 		case 'shell_spawn':
 			// Distinct per spawn unless a fixture pins one: two panes of one chip
 			// (F24) each have a PTY, and a store keyed by terminal id would fold

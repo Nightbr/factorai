@@ -1,4 +1,4 @@
-import type { TerminalId, TerminalStatus, TerminalStatusDto } from '@factorai/types';
+import type { AgentId, TerminalId, TerminalStatus, TerminalStatusDto } from '@factorai/types';
 import { usePrefsStore } from '@store/prefsStore';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -10,6 +10,9 @@ export interface LiveTerminal {
 	terminalId: TerminalId;
 	projectId: string;
 	status: TerminalStatus;
+	/** Which agent runs it (F30), as Rust resolved it at spawn or reported it
+	 *  on reload. Undefined only for an entry attached before the answer. */
+	agent?: AgentId | null;
 }
 
 /** The checkout a session's agent signalled, and that checkout's branch (F21).
@@ -104,8 +107,19 @@ interface TerminalState {
 		sessionId: string,
 		terminalId: TerminalId,
 		projectId: string,
-		options?: { openTab?: boolean },
+		options?: { openTab?: boolean; agent?: AgentId | null },
 	) => void;
+	/** The launch override for a session about to be spawned (F30): written by
+	 *  `useStartSession` before it navigates, read once by `Terminal`'s spawn.
+	 *  Not persisted — it describes one click, not a session. */
+	launchAgent: Record<string, AgentId>;
+	setLaunchAgent: (sessionId: string, agent: AgentId) => void;
+	takeLaunchAgent: (sessionId: string) => AgentId | undefined;
+	/** A session took its agent's id (F30, ADR-0062): every record keyed by
+	 *  the provisional id moves to the adopted one, in one store transaction —
+	 *  the live PTY, the tab, the launch override, the routine origin, the
+	 *  checkout, the restart epoch. A no-op when nothing is keyed by `from`. */
+	rebindSession: (from: string, to: string) => void;
 	/** Which routine started a session, for the origin icon (F22).
 	 *
 	 *  Not persisted, like `bySession`: the durable copy is `session_routines`
@@ -196,7 +210,7 @@ function withTab(tabs: OpenTab[], sessionId: string, projectId: string): OpenTab
 
 export const useTerminalStore = create<TerminalState>()(
 	persist(
-		(set) => ({
+		(set, get) => ({
 			bySession: {},
 			tabs: [],
 			routineBySession: {},
@@ -253,10 +267,51 @@ export const useTerminalStore = create<TerminalState>()(
 				set((s) => ({
 					bySession: {
 						...s.bySession,
-						[sessionId]: { terminalId, projectId, status: 'working' },
+						// **`unknown` for an agent with no status source** (F30): Rust
+						// seeds a Codex PTY `unknown` and Claude's `working`, and the
+						// first `terminal:status` event corrects either. Seeding
+						// `working` here for Codex would paint a green dot nothing
+						// will ever confirm.
+						[sessionId]: {
+							terminalId,
+							projectId,
+							status: options?.agent === 'codex' ? 'unknown' : 'working',
+							agent: options?.agent,
+						},
 					},
 					tabs: options?.openTab === false ? s.tabs : withTab(s.tabs, sessionId, projectId),
 				})),
+
+			launchAgent: {},
+			rebindSession: (from, to) =>
+				set((s) => {
+					if (from === to) return s;
+					const move = <T>(map: Record<string, T>): Record<string, T> => {
+						if (!(from in map)) return map;
+						const { [from]: moved, ...rest } = map;
+						return moved === undefined ? rest : { ...rest, [to]: moved };
+					};
+					return {
+						bySession: move(s.bySession),
+						launchAgent: move(s.launchAgent),
+						routineBySession: move(s.routineBySession),
+						worktreeBySession: move(s.worktreeBySession),
+						restartEpoch: move(s.restartEpoch),
+						tabs: s.tabs.map((t) => (t.sessionId === from ? { ...t, sessionId: to } : t)),
+					};
+				}),
+			setLaunchAgent: (sessionId, agent) =>
+				set((s) => ({ launchAgent: { ...s.launchAgent, [sessionId]: agent } })),
+			takeLaunchAgent: (sessionId) => {
+				const agent = get().launchAgent[sessionId];
+				if (agent) {
+					set((s) => {
+						const { [sessionId]: _taken, ...rest } = s.launchAgent;
+						return { launchAgent: rest };
+					});
+				}
+				return agent;
+			},
 
 			setRoutineOrigin: (sessionId, routineId, routineName, startedAt) =>
 				set((s) => {
@@ -292,6 +347,7 @@ export const useTerminalStore = create<TerminalState>()(
 							terminalId: t.id,
 							projectId: t.projectId,
 							status: t.status,
+							agent: t.agent,
 						};
 					}
 					// **Adopting opens no tabs — changed by F22.** It used to

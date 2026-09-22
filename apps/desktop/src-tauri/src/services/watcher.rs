@@ -110,6 +110,17 @@ pub fn spawn(indexer: Arc<Indexer>, control: Arc<Control>) {
 							if path.extension().is_none_or(|e| e != "jsonl") {
 								continue;
 							}
+							// A Codex root is a `sessions/` tree: the file itself is the
+							// unit, and its first line says which folder it belongs to.
+							if let Some((root, profile_id)) = watched
+								.iter()
+								.find(|(root, _)| path.starts_with(root) && is_codex_root(root))
+							{
+								if let Err(e) = indexer.scan_codex_file(profile_id, path) {
+									warn!(path = ?path, root = ?root, error = %e, "codex reindex failed");
+								}
+								continue;
+							}
 							let Some((root, dir)) = watched
 								.keys()
 								.filter(|root| path.starts_with(root))
@@ -173,9 +184,20 @@ fn reconcile<W: notify::Watcher>(
 	watched: &mut HashMap<PathBuf, String>,
 ) -> Reconciled {
 	let mut outcome = Reconciled::default();
+	// Each agent's store layout (F30 § "Discovery"): Claude's `projects/`,
+	// Codex's `sessions/` — recursive, because `YYYY/MM/DD/` appear on their own.
 	let wanted: HashMap<PathBuf, String> = profiles::all(indexer.db())
 		.into_iter()
-		.map(|p| (PathBuf::from(&p.config_dir).join("projects"), p.id))
+		.filter_map(|p| {
+			let root = match p.agent.as_str() {
+				crate::agents::CLAUDE => PathBuf::from(&p.config_dir).join("projects"),
+				crate::agents::CODEX => {
+					PathBuf::from(&p.config_dir).join(crate::agents::codex::SESSIONS_SUBDIR)
+				}
+				_ => return None,
+			};
+			Some((root, p.id))
+		})
 		.collect();
 
 	for (root, _) in watched.clone() {
@@ -231,6 +253,12 @@ struct Reconciled {
 	pending: bool,
 }
 
+/// Whether a watched root is a Codex `sessions/` tree rather than a Claude
+/// `projects/` directory (F30).
+fn is_codex_root(root: &std::path::Path) -> bool {
+	root.file_name().and_then(|n| n.to_str()) == Some(crate::agents::codex::SESSIONS_SUBDIR)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -257,6 +285,7 @@ mod tests {
 					&ProfileInput {
 						name: "Work".into(),
 						config_dir: config_dir.to_string_lossy().into_owned(),
+						agent: None,
 					},
 					0,
 				)

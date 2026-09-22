@@ -131,7 +131,7 @@ pub fn run() {
 			// before it deletes the row of a session whose transcript is gone.
 			// The binary override is read per spawn, out of the `settings` table
 			// (F11) — so editing it changes the next session without touching the
-			// ones already running, and `claude_cli` keeps no database of its own.
+			// ones already running, and `agent_cli` keeps no database of its own.
 			let settings_db = db.clone();
 			// The recorded cwd is read per spawn for the same reason and out of the
 			// same database: a session's transcript lives under the folder Claude
@@ -139,9 +139,17 @@ pub fn run() {
 			// conversation. See `TerminalManager::resume_cwd`.
 			let session_db = db.clone();
 			let terminals = TerminalManager::for_app(app.handle().clone(), cd.clone(), ui.clone())
-				.with_user_binary(Arc::new(move || {
-					services::settings::claude_binary_override(&settings_db)
+				.with_user_binary(Arc::new(move |agent| {
+					services::settings::binary_override(&settings_db, agent)
 				}))
+				// Which agent a project's next session runs (F30). Read per spawn
+				// for the same reason as the profile below.
+				.with_agent_of({
+					let db = db.clone();
+					Arc::new(move |project_id, session_id| {
+						services::profiles::agent_for_spawn(&db, project_id, session_id)
+					})
+				})
 				.with_session_cwd(Arc::new(move |session_id| {
 					services::sessions::recorded_cwds(&session_db, session_id)
 				}))
@@ -155,8 +163,8 @@ pub fn run() {
 				// session without touching the ones already running.
 				.with_profile_dir({
 					let db = db.clone();
-					Arc::new(move |project_id, session_id| {
-						services::profiles::config_dir_for_spawn(&db, project_id, session_id)
+					Arc::new(move |agent, project_id, session_id| {
+						services::profiles::config_dir_for_spawn(&db, agent, project_id, session_id)
 					})
 				})
 				// Which checkout each session is working in (F21). Written by the
@@ -352,6 +360,7 @@ pub fn run() {
 			commands::profiles::create_profile,
 			commands::profiles::rename_profile,
 			commands::profiles::set_default_profile,
+			commands::profiles::set_app_default_profile,
 			commands::profiles::delete_profile,
 			commands::profiles::set_project_profile,
 			commands::profiles::suggest_profile_dir,
@@ -406,6 +415,8 @@ pub fn run() {
 			commands::settings::set_setting,
 			commands::settings::check_claude_cli,
 			commands::settings::validate_claude_binary,
+			commands::settings::check_agent_cli,
+			commands::settings::validate_agent_binary,
 			commands::terminal::start_session,
 			commands::terminal::terminal_spawn,
 			commands::terminal::terminal_write,

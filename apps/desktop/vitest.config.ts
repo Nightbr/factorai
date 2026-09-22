@@ -1,7 +1,12 @@
 import { resolve } from 'node:path';
+import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+	// The same compiler `vite.config.ts` runs, so a test that imports a component
+	// drawing a `~icons/<collection>/<name>` mark — `AgentMark` under the sidebar
+	// (F30) — resolves it instead of failing to load the whole file.
+	plugins: [Icons({ compiler: 'jsx', jsx: 'react' })],
 	test: {
 		include: ['src/**/*.test.ts'],
 		environment: 'node',

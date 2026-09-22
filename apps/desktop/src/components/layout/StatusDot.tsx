@@ -5,12 +5,18 @@ const COLOR: Record<TerminalStatus, string> = {
 	working: 'bg-status-working',
 	waiting_input: 'bg-status-waiting',
 	stopped: 'bg-status-stopped',
+	// **Hollow, not filled** (DESIGN.md § Status Dot, F30): a live PTY whose
+	// agent has said nothing factorai can read. `stopped`'s grey because it is
+	// the same "nothing to act on" weight; a ring because the one fact it
+	// carries is the opposite of stopped — something is running.
+	unknown: 'border border-status-unknown bg-transparent',
 };
 
 const LABEL: Record<TerminalStatus, string> = {
 	working: 'Working',
 	waiting_input: 'Waiting for input',
 	stopped: 'Stopped',
+	unknown: 'Live, status unknown',
 };
 
 /**

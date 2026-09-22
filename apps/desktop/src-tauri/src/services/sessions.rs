@@ -226,9 +226,9 @@ pub fn delete(
 	session_id: &str,
 	is_live: bool,
 ) -> AppResult<Option<String>> {
-	let (key, project_id, subagent_of) = db.with(|conn| {
+	let (key, project_id, subagent_of, recorded_path) = db.with(|conn| {
 		conn.query_row(
-			"SELECT d.key, d.project_id, s.subagent_of
+			"SELECT d.key, d.project_id, s.subagent_of, s.transcript_path
 			 FROM sessions s
 			 JOIN discovered_projects d ON d.id = s.discovered_id
 			 WHERE s.id = ?1",
@@ -238,6 +238,7 @@ pub fn delete(
 					row.get::<_, String>(0)?,
 					row.get::<_, Option<String>>(1)?,
 					row.get::<_, Option<String>>(2)?,
+					row.get::<_, Option<String>>(3)?,
 				))
 			},
 		)
@@ -266,7 +267,12 @@ pub fn delete(
 		)));
 	}
 
-	let transcript = claude::transcript_path_by_key(claude_dir, &key, session_id);
+	// **The recorded path first** (F30, migration 0022): a Codex rollout lives
+	// under a date directory nothing but the indexer knows; Claude's path is
+	// derivable and its rows carry NULL here.
+	let transcript = recorded_path
+		.map(PathBuf::from)
+		.unwrap_or_else(|| claude::transcript_path_by_key(claude_dir, &key, session_id));
 	// The sub-agent directory, `<store dir>/<id>/`, taken whole — Claude Code
 	// nests `subagents/agent-*.jsonl` inside it. Absent for most sessions, since
 	// nothing spawned an agent, which is why it is a separate optional move

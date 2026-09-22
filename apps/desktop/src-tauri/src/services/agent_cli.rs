@@ -1,12 +1,13 @@
-//! Locating the `claude` CLI binary on disk.
+//! Locating an agent's CLI binary on disk — `claude`, `codex` (F30).
 //!
 //! Three-tier discovery — see specs/annex-A-cli-agent-patterns.md § A.1 for
-//! the rationale.
+//! the rationale. Parameterised on the [`AgentDescriptor`]'s `binary_name`;
+//! the tiers and the candidate list are the same shape for every agent.
 //!
 //! Order of attempts:
 //!   0. The user's override, when the caller passes one (F11).
-//!   1. `which claude` in the inherited process PATH.
-//!   2. `$SHELL -lc 'command -v claude'` (then /bin/zsh, /bin/bash) — handles
+//!   1. `which <name>` in the inherited process PATH.
+//!   2. `$SHELL -lc 'command -v <name>'` (then /bin/zsh, /bin/bash) — handles
 //!      macOS GUI launches that don't inherit a terminal PATH.
 //!   3. Probe a list of common install locations.
 //!
@@ -28,8 +29,12 @@ use std::time::Duration;
 use serde::Serialize;
 use tracing::{debug, warn};
 
+use crate::agents::{self, AgentDescriptor};
 use crate::error::{AppError, AppResult};
 
+/// What the Agents section shows for one agent (F11, F30). The name still says
+/// Claude because `@factorai/types` mirrors it under that name; it describes
+/// any agent's binary.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeCliStatus {
@@ -38,40 +43,52 @@ pub struct ClaudeCliStatus {
 	pub version: Option<String>,
 }
 
-/// Locate the `claude` binary. Returns the first hit from any tier.
+/// Locate an agent's binary. Returns the first hit from any tier.
 ///
 /// `override_path` is the user's setting (F11). When present it is the answer —
 /// **no fallback to the probe**, because a typo that silently resolved to
 /// whatever the tiers found would show a working version beside a path that
 /// does not work, which is the opposite of validating before you depend on it.
-pub fn find_claude_binary(override_path: Option<&Path>) -> AppResult<PathBuf> {
+pub fn find_agent_binary(
+	agent: &AgentDescriptor,
+	override_path: Option<&Path>,
+) -> AppResult<PathBuf> {
+	let name = agent.binary_name;
 	if let Some(p) = override_path {
 		if p.is_file() {
-			debug!(?p, "using the configured claude binary");
+			debug!(?p, name, "using the configured binary");
 			return Ok(p.to_path_buf());
 		}
-		return Err(AppError::NotFound(format!("no claude binary at {}", p.display())));
+		return Err(AppError::NotFound(format!("no {name} binary at {}", p.display())));
 	}
-	if let Some(p) = find_on_path() {
-		debug!(?p, "found claude via PATH");
+	if let Some(p) = find_on_path(name) {
+		debug!(?p, name, "found via PATH");
 		return Ok(p);
 	}
-	if let Some(p) = find_in_user_shell() {
-		debug!(?p, "found claude via login shell");
+	if let Some(p) = find_in_user_shell(name) {
+		debug!(?p, name, "found via login shell");
 		return Ok(p);
 	}
-	if let Some(p) = probe_known_candidates() {
-		debug!(?p, "found claude via candidate probe");
+	if let Some(p) = probe_known_candidates(name) {
+		debug!(?p, name, "found via candidate probe");
 		return Ok(p);
 	}
-	Err(AppError::NotFound("claude CLI not found".into()))
+	Err(AppError::NotFound(format!("{name} CLI not found")))
 }
 
-/// Check whether `claude` is installed. Doesn't error — returns a status the
-/// frontend can use to drive an onboarding banner or the settings page's
-/// read-only Claude row.
+/// `find_agent_binary` for Claude — the callers that predate F30.
+pub fn find_claude_binary(override_path: Option<&Path>) -> AppResult<PathBuf> {
+	find_agent_binary(claude(), override_path)
+}
+
+fn claude() -> &'static AgentDescriptor {
+	agents::descriptor(agents::CLAUDE).expect("claude is in the registry")
+}
+
+/// Check whether an agent is installed. Doesn't error — returns a status the
+/// frontend can use to drive the Agents section's read-only row.
 ///
-/// `override_path` is passed straight through to `find_claude_binary`, so what
+/// `override_path` is passed straight through to `find_agent_binary`, so what
 /// this reports and what a session spawns are the same binary.
 ///
 /// **`installed` means the binary resolved, not that `--version` answered.** A
@@ -79,8 +96,8 @@ pub fn find_claude_binary(override_path: Option<&Path>) -> AppResult<PathBuf> {
 /// broken install, a `--version` that hangs — and it is the caller's to
 /// present. Folding it into `installed: false` would let a version probe veto a
 /// binary that spawns sessions perfectly well.
-pub fn check_cli(override_path: Option<&Path>) -> ClaudeCliStatus {
-	match find_claude_binary(override_path) {
+pub fn check_agent_cli(agent: &AgentDescriptor, override_path: Option<&Path>) -> ClaudeCliStatus {
+	match find_agent_binary(agent, override_path) {
 		Ok(p) => {
 			let version = version_for(&p);
 			ClaudeCliStatus {
@@ -93,16 +110,22 @@ pub fn check_cli(override_path: Option<&Path>) -> ClaudeCliStatus {
 	}
 }
 
-fn find_on_path() -> Option<PathBuf> {
-	run_lookup("which", &["claude"])
+/// `check_agent_cli` for Claude — the callers that predate F30.
+#[cfg(test)]
+pub fn check_cli(override_path: Option<&Path>) -> ClaudeCliStatus {
+	check_agent_cli(claude(), override_path)
 }
 
-fn find_in_user_shell() -> Option<PathBuf> {
+fn find_on_path(name: &str) -> Option<PathBuf> {
+	run_lookup("which", &[name])
+}
+
+fn find_in_user_shell(name: &str) -> Option<PathBuf> {
 	for shell in user_shell_candidates() {
 		if !shell.exists() {
 			continue;
 		}
-		if let Some(p) = ask_shell(&shell) {
+		if let Some(p) = ask_shell(&shell, name) {
 			return Some(p);
 		}
 	}
@@ -121,8 +144,8 @@ fn user_shell_candidates() -> Vec<PathBuf> {
 	shells
 }
 
-fn ask_shell(shell: &Path) -> Option<PathBuf> {
-	let output = Command::new(shell).arg("-lc").arg("command -v claude").output().ok()?;
+fn ask_shell(shell: &Path, name: &str) -> Option<PathBuf> {
+	let output = Command::new(shell).arg("-lc").arg(format!("command -v {name}")).output().ok()?;
 	if !output.status.success() {
 		return None;
 	}
@@ -153,27 +176,31 @@ fn first_existing(stdout: &str) -> Option<PathBuf> {
 	None
 }
 
-fn probe_known_candidates() -> Option<PathBuf> {
-	candidate_paths().into_iter().find(|p| p.exists())
+fn probe_known_candidates(name: &str) -> Option<PathBuf> {
+	candidate_paths(name).into_iter().find(|p| p.exists())
 }
 
-fn candidate_paths() -> Vec<PathBuf> {
+/// Where an install lands when it is not on `PATH`. The same list for every
+/// agent, plus the one place Claude's own installer uses; `~/.claude/local/`
+/// holds only `claude`, and a `codex` there would be someone's mistake.
+fn candidate_paths(name: &str) -> Vec<PathBuf> {
 	let mut out = Vec::new();
 	if let Some(home) = dirs::home_dir() {
 		out.extend([
-			home.join(".local/bin/claude"),
-			home.join(".claude/local/claude"),
-			home.join(".local/share/mise/shims/claude"),
-			home.join(".asdf/shims/claude"),
-			home.join(".npm-global/bin/claude"),
-			home.join(".npm/bin/claude"),
-			home.join(".linuxbrew/bin/claude"),
+			home.join(".local/bin").join(name),
+			home.join(".claude/local").join(name),
+			home.join(".local/share/mise/shims").join(name),
+			home.join(".asdf/shims").join(name),
+			home.join(".npm-global/bin").join(name),
+			home.join(".npm/bin").join(name),
+			home.join(".local/share/pnpm").join(name),
+			home.join(".linuxbrew/bin").join(name),
 		]);
-		// nvm-managed installs: glob ~/.nvm/versions/node/*/bin/claude
+		// nvm-managed installs: glob ~/.nvm/versions/node/*/bin/<name>
 		if let Ok(entries) = std::fs::read_dir(home.join(".nvm/versions/node")) {
 			let mut nvm: Vec<PathBuf> = entries
 				.filter_map(Result::ok)
-				.map(|e| e.path().join("bin").join("claude"))
+				.map(|e| e.path().join("bin").join(name))
 				.filter(|p| p.exists())
 				.collect();
 			// Sort so the highest version (lexicographic) wins.
@@ -183,21 +210,22 @@ fn candidate_paths() -> Vec<PathBuf> {
 		}
 	}
 	out.extend([
-		PathBuf::from("/opt/homebrew/bin/claude"),
-		PathBuf::from("/usr/local/bin/claude"),
-		PathBuf::from("/home/linuxbrew/.linuxbrew/bin/claude"),
+		PathBuf::from("/opt/homebrew/bin").join(name),
+		PathBuf::from("/usr/local/bin").join(name),
+		PathBuf::from("/home/linuxbrew/.linuxbrew/bin").join(name),
 	]);
 	out
 }
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Best-effort version lookup. Runs `claude --version` with a real 2-second
+/// Best-effort version lookup. Runs `<bin> --version` with a real 2-second
 /// timeout, not `Command::output()`'s unbounded wait — a wrapper script or a
 /// first-run self-check can hang the child on stdio it never had, and this is
 /// reachable synchronously from a Tauri command, so it must not depend on the
 /// binary behaving. Returns the first whitespace-separated token that looks
-/// like a semver (e.g. "0.2.34" out of "claude 0.2.34 (build abc)").
+/// like a semver (e.g. "0.2.34" out of "claude 0.2.34 (build abc)", "0.155.1"
+/// out of "codex-cli 0.155.1").
 fn version_for(bin: &Path) -> Option<String> {
 	let mut child = Command::new(bin)
 		.arg("--version")
@@ -205,7 +233,7 @@ fn version_for(bin: &Path) -> Option<String> {
 		.stdout(Stdio::piped())
 		.stderr(Stdio::null())
 		.spawn()
-		.map_err(|e| warn!(error = %e, "claude --version failed"))
+		.map_err(|e| warn!(error = %e, bin = %bin.display(), "--version failed"))
 		.ok()?;
 
 	// Reading on this thread would be the hang the timeout exists to prevent —
@@ -229,7 +257,7 @@ fn version_for(bin: &Path) -> Option<String> {
 	}
 
 	let out = received
-		.map_err(|_| warn!(bin = %bin.display(), "claude --version did not answer in time"))
+		.map_err(|_| warn!(bin = %bin.display(), "--version did not answer in time"))
 		.ok()?;
 	let s = String::from_utf8_lossy(&out);
 	for tok in s.split_whitespace() {
@@ -301,10 +329,24 @@ mod tests {
 
 	#[test]
 	fn candidate_paths_includes_known_locations() {
-		let paths = candidate_paths();
+		let paths = candidate_paths("claude");
 		// At minimum the absolute paths show up regardless of HOME.
 		assert!(paths.iter().any(|p| p == &PathBuf::from("/opt/homebrew/bin/claude")));
 		assert!(paths.iter().any(|p| p == &PathBuf::from("/usr/local/bin/claude")));
+	}
+
+	#[test]
+	fn candidate_paths_are_named_after_the_agent() {
+		let paths = candidate_paths("codex");
+		assert!(paths.iter().any(|p| p == &PathBuf::from("/usr/local/bin/codex")));
+		assert!(paths.iter().all(|p| p.file_name().unwrap() == "codex"));
+	}
+
+	#[test]
+	fn a_codex_version_line_parses() {
+		let tmp = tempfile::TempDir::new().unwrap();
+		let bin = fake_claude(tmp.path(), "printf 'codex-cli 0.155.1\\n'");
+		assert_eq!(version_for(&bin), Some("0.155.1".to_string()));
 	}
 
 	#[test]

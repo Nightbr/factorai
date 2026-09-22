@@ -12,7 +12,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { type RefObject, useRef, useState } from 'react';
 import { AboutSection } from '@components/settings/AboutSection';
-import { type BinaryProbe, ClaudeSection } from '@components/settings/ClaudeSection';
+import {
+	AgentsSection,
+	BINARY_KEY,
+	type BinaryProbe,
+	SETTING_KEY,
+} from '@components/settings/AgentsSection';
 import { KeyboardSection } from '@components/settings/KeyboardSection';
 import { ProfilesSection } from '@components/settings/ProfilesSection';
 import { formatError } from '@lib/errors';
@@ -28,11 +33,13 @@ import {
 } from '@lib/settingsDraft';
 import { cmd } from '@lib/tauri';
 import { currentPrefs, type Prefs, usePrefsStore } from '@store/prefsStore';
+import type { AgentId } from '@factorai/types';
+import { AGENTS } from '@lib/agents';
 
 const SECTION_LABELS: Record<SettingsSection, string> = {
 	appearance: 'Appearance',
 	keyboard: 'Keyboard',
-	claude: 'Claude',
+	agents: 'Agents',
 	profiles: 'Profiles',
 	editor: 'Editor',
 	confirmations: 'Confirmations',
@@ -79,6 +86,7 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 		queryKey: queryKeys.setting('claudeBinaryPath'),
 		queryFn: async () => ({
 			claudeBinary: (await cmd.getSetting('claudeBinaryPath')) ?? '',
+			codexBinary: (await cmd.getSetting('codexBinaryPath')) ?? '',
 			routinesCatchupHours: (await cmd.getSetting('routinesCatchupHours')) ?? '',
 			routinesMaxConcurrent: (await cmd.getSetting('routinesMaxConcurrent')) ?? '',
 		}),
@@ -99,7 +107,7 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 			<DialogContent
 				data-testid="settings-modal"
 				hideClose
-				className="flex h-[26rem] w-[42rem] max-w-[92vw] flex-col gap-0 overflow-hidden p-0"
+				className="flex h-[32rem] max-h-[88vh] w-[52rem] max-w-[92vw] flex-col gap-0 overflow-hidden p-0"
 				// **Click-outside does nothing while dirty.** It is the one dismissal
 				// you trigger by accident, reaching for the terminal behind the modal —
 				// unlike Esc and Cancel, which are deliberate and discard in silence.
@@ -132,6 +140,7 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 						savedSqlite={
 							sqlite.data ?? {
 								claudeBinary: '',
+								codexBinary: '',
 								routinesCatchupHours: '',
 								routinesMaxConcurrent: '',
 							}
@@ -150,7 +159,7 @@ interface SettingsFormProps {
 	onClose: () => void;
 	savedSqlite: Pick<
 		SettingsValues,
-		'claudeBinary' | 'routinesCatchupHours' | 'routinesMaxConcurrent'
+		'claudeBinary' | 'codexBinary' | 'routinesCatchupHours' | 'routinesMaxConcurrent'
 	>;
 	/** Where the shell reads "is there an edit" from, for its click-outside
 	 *  guard. The form is the only thing that knows. */
@@ -164,7 +173,9 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 	// next time it opens rather than moving under an open draft.
 	const [saved] = useState<SettingsValues>(() => ({ ...currentPrefs(), ...savedSqlite }));
 	const [draft, setDraft] = useState<SettingsValues>(saved);
-	const [probe, setProbe] = useState<BinaryProbe | null>(null);
+	// One probe per agent (F30): a bad Codex path must not block Save because
+	// of a Claude answer, and vice versa.
+	const [probes, setProbes] = useState<Partial<Record<AgentId, BinaryProbe | null>>>({});
 	const [saving, setSaving] = useState(false);
 	const [failure, setFailure] = useState<string | null>(null);
 	const applyPrefs = usePrefsStore((s) => s.applyPrefs);
@@ -177,8 +188,10 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 	// point of validating before you depend on something is not writing it. A
 	// path nobody has blurred yet is *unknown* rather than bad, so Save checks it
 	// itself below instead of greying out over something you cannot see.
-	const knownBad =
-		probe && !probe.status.installed && probe.path === binaryOverride(draft.claudeBinary);
+	const knownBad = AGENTS.some(({ id }) => {
+		const probe = probes[id];
+		return probe && !probe.status.installed && probe.path === binaryOverride(draft[BINARY_KEY[id]]);
+	});
 	const canSave = dirty.length > 0 && !knownBad && !saving;
 
 	function set<K extends keyof SettingsValues>(key: K, value: SettingsValues[K]) {
@@ -190,15 +203,21 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 		setSaving(true);
 		setFailure(null);
 		try {
-			const path = binaryOverride(draft.claudeBinary);
-			// Validate a path that has never been blurred — clicking Save straight
-			// after typing must not write a path we have not checked.
-			if (path && path !== binaryOverride(saved.claudeBinary)) {
-				const status = probe?.path === path ? probe.status : await cmd.validateClaudeBinary(path);
-				setProbe({ path, status });
-				if (!status.installed) {
-					setFailure('Nothing runnable at that path.');
-					return;
+			const paths: Partial<Record<AgentId, string | null>> = {};
+			for (const { id, name } of AGENTS) {
+				const path = binaryOverride(draft[BINARY_KEY[id]]);
+				paths[id] = path;
+				// Validate a path that has never been blurred — clicking Save straight
+				// after typing must not write a path we have not checked.
+				if (path && path !== binaryOverride(saved[BINARY_KEY[id]])) {
+					const probe = probes[id];
+					const status =
+						probe?.path === path ? probe.status : await cmd.validateAgentBinary(id, path);
+					setProbes((prev) => ({ ...prev, [id]: { path, status } }));
+					if (!status.installed) {
+						setFailure(`Nothing runnable at that path for ${name}.`);
+						return;
+					}
 				}
 			}
 			// **SQLite first.** The fallible store gates the infallible one, so a
@@ -206,10 +225,13 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 			// reason attached — rather than a half-apply where the renderer's
 			// preferences took and the Rust-readable one didn't, with no way to tell
 			// which (F11).
-			if (path !== binaryOverride(saved.claudeBinary)) {
-				await cmd.setSetting('claudeBinaryPath', path);
-				// What `claude` resolves to now depends on it.
-				await queryClient.invalidateQueries({ queryKey: queryKeys.claudeCli() });
+			for (const { id } of AGENTS) {
+				const path = paths[id] ?? null;
+				if (path !== binaryOverride(saved[BINARY_KEY[id]])) {
+					await cmd.setSetting(SETTING_KEY[id], path);
+					// What the binary resolves to now depends on it.
+					await queryClient.invalidateQueries({ queryKey: queryKeys.agentCli(id) });
+				}
 			}
 			// The two the routine runner reads (F22). Written the same way and in
 			// the same transaction-shaped order: SQLite first, preferences after.
@@ -222,7 +244,8 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 				await cmd.setSetting('routinesMaxConcurrent', concurrent);
 			}
 			queryClient.setQueryData(queryKeys.setting('claudeBinaryPath'), {
-				claudeBinary: path ?? '',
+				claudeBinary: paths.claude ?? '',
+				codexBinary: paths.codex ?? '',
 				routinesCatchupHours: catchup ?? '',
 				routinesMaxConcurrent: concurrent ?? '',
 			});
@@ -271,12 +294,12 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 				</nav>
 
 				<div className="min-w-0 flex-1 overflow-y-auto px-5 py-3">
-					{section === 'claude' && (
-						<ClaudeSection
-							value={draft.claudeBinary}
-							onChange={(next) => set('claudeBinary', next)}
-							probe={probe}
-							onProbed={setProbe}
+					{section === 'agents' && (
+						<AgentsSection
+							values={{ claude: draft.claudeBinary, codex: draft.codexBinary }}
+							onChange={(agent, next) => set(BINARY_KEY[agent], next)}
+							probes={probes}
+							onProbed={(agent, probe) => setProbes((prev) => ({ ...prev, [agent]: probe }))}
 						/>
 					)}
 
@@ -464,6 +487,7 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 function prefsOf(values: SettingsValues): Prefs {
 	const {
 		claudeBinary: _binary,
+		codexBinary: _codex,
 		routinesCatchupHours: _catchup,
 		routinesMaxConcurrent: _concurrent,
 		...prefs
