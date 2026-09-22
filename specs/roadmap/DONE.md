@@ -3,6 +3,16 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Codex reaches factorai's tools, and the search list says which agent** — 2026-09-22. A
+  Codex session in the app reported no factorai tools; the trace said otherwise. Codex's MCP
+  client connected, initialised and listed the four tools against the app's live server (replayed
+  with the session's own token), and an isolated Codex turn asked to *use the factorai MCP server
+  to list the routines* called `mcp__factorai__listRoutines` and returned them. Codex keeps MCP
+  tools behind its own tool search, so a vague question gets a vague no; the guide says to name
+  the server. Search hits now carry the session's agent and draw its mark
+  (`SearchHit.agent`, joined through the profile). The `codex debug`-less way to read Codex's
+  side: its `logs_2.sqlite` under `CODEX_HOME`, table `logs`, column `feedback_log_body`.
+
 - **Codex sessions have status, titles, search and factorai's tools** — 2026-09-22, the same
   day as slice 2, after the first real session showed what was missing. Roadmap 38 slices 3, 5 and
   the tools half of 6. Two facts from the source reading were wrong on disk and the spec says so:

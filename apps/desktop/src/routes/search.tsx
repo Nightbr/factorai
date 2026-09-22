@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { AgentMark } from '@components/layout/AgentMark';
 import { ProjectIcon } from '@components/layout/ProjectIcon';
 import { Input } from '@factorai/ui';
 import { cmd } from '@lib/tauri';
@@ -117,6 +118,10 @@ function SearchView() {
 									>
 										{h.projectName}
 									</span>
+									{/* Which agent's conversation (F30): the same mark the
+									    session header carries, so a hit is scanned the way the
+									    header is. */}
+									<AgentMark agent={h.agent} className="size-3 text-muted-foreground" aria-hidden />
 									<span className="min-w-0 flex-1 truncate font-medium text-sm">
 										{h.title || h.sessionId}
 									</span>

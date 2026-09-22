@@ -244,6 +244,8 @@ export interface SearchHit {
 	title: string;
 	role: string;
 	snippet: string;
+	/** Which agent wrote the session (F30), for the mark beside the title. */
+	agent: AgentId;
 }
 
 // ── Terminal ────────────────────────────────────────────────────────────────

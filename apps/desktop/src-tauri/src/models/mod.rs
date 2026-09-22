@@ -214,6 +214,9 @@ pub struct SearchHit {
 	pub title: String,
 	pub role: String,
 	pub snippet: String,
+	/// Which agent wrote the session (F30): the profile's agent, for the mark
+	/// beside the title.
+	pub agent: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

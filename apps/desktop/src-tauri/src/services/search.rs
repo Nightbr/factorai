@@ -66,11 +66,12 @@ pub fn search(
 	let select = "SELECT messages.session_id, discovered_projects.project_id, \
 		projects.display_name, projects.real_path, \
 		COALESCE(sessions.title, ''), messages.role, \
-		snippet(messages_fts, 1, '', '', '…', 16) \
+		snippet(messages_fts, 1, '', '', '…', 16), COALESCE(profiles.agent, 'claude') \
 		FROM messages_fts \
 		JOIN messages ON messages.id = messages_fts.rowid \
 		JOIN sessions ON sessions.id = messages.session_id \
 		JOIN discovered_projects ON discovered_projects.id = sessions.discovered_id \
+		LEFT JOIN profiles ON profiles.id = discovered_projects.profile_id \
 		JOIN projects ON projects.id = discovered_projects.project_id \
 		WHERE messages_fts MATCH ?1 AND discovered_projects.project_id IS NOT NULL";
 
@@ -83,6 +84,7 @@ pub fn search(
 			title: row.get(4)?,
 			role: row.get(5)?,
 			snippet: row.get(6)?,
+			agent: row.get(7)?,
 		})
 	};
 
@@ -122,7 +124,8 @@ mod tests {
 		let conn = Connection::open_in_memory().unwrap();
 		conn.execute_batch(
 			"CREATE TABLE projects (id TEXT PRIMARY KEY, real_path TEXT, display_name TEXT);
-			 CREATE TABLE discovered_projects (id INTEGER PRIMARY KEY, project_id TEXT);
+			 CREATE TABLE discovered_projects (id INTEGER PRIMARY KEY, project_id TEXT, profile_id TEXT);
+			 CREATE TABLE profiles (id TEXT PRIMARY KEY, agent TEXT);
 			 CREATE TABLE sessions (id TEXT PRIMARY KEY, discovered_id INTEGER, title TEXT);
 			 CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL,
 				role TEXT NOT NULL, body TEXT NOT NULL);

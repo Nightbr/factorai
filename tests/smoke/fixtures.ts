@@ -1173,6 +1173,7 @@ export function fixtureWithSearchHits(): TestFixture {
 			title: 'Refactor the auth middleware',
 			role: 'user',
 			snippet: 'please refactor the auth middleware to use jwt …',
+			agent: 'claude',
 		},
 	];
 	return { ...base, searchHits };

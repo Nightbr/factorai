@@ -56,3 +56,8 @@ you are watching the address bar.
 Both agents get factorai's own tools over MCP, registered at launch: an agent in either CLI can
 list, create and update the project's [routines](routines). Codex receives the registration as a
 launch-time override, so nothing is written into `~/.codex`.
+
+One difference in how the two find them. Claude Code lists MCP tools up front. Codex keeps them
+behind its own tool search, and a vague question ("do you see tools for factorai?") can get a
+vague no. Name the server or the tool — "use the factorai MCP server to list the routines" — and
+Codex finds and calls it.
