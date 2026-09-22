@@ -20,6 +20,7 @@ colors:
   status-waiting: "oklch(81.3% 0.165 75)"
   status-stopped: "oklch(55% 0.01 250)"
   status-background: "oklch(68% 0.16 255)"
+  status-unknown: "oklch(55% 0.01 250)"
   lane-0: "oklch(70% 0.15 255)"
   lane-1: "oklch(72% 0.16 145)"
   lane-2: "oklch(68% 0.19 25)"
@@ -637,6 +638,16 @@ agent session.
 
 An 8px round mark in `working` green, `waiting` amber, or `stopped` grey, with
 the state's name as its title.
+
+**A fifth mark, `unknown`: hollow, `status-unknown` grey, 1px ring, no fill.**
+For a session whose PTY is live but whose agent has told us nothing — a Codex
+session before its first title, or any agent with no status capability (F30,
+ADR-0060). It shares `stopped`'s hue and lightness because it is the same
+"nothing to act on" weight, and it is hollow because the one fact it carries is
+the opposite of stopped: something is running. Its title is *live, status
+unknown*. It is never a default a filled dot falls back to: a dot that says
+`working` because nothing said otherwise is worse than no dot, and this mark is
+how a truthful "we don't know" is drawn without inventing a state.
 
 **A fourth colour, and not a fourth state: `background` blue** — `working` for a
 session running with **no tab**, which today means a routine's until somebody

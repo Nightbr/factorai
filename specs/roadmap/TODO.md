@@ -1236,67 +1236,55 @@ four things it cost that the design did not predict. What follows is the remaind
       if it is still unobserved in a month, say so here rather than leaving it looking
       load-bearing.
 
-## 38. More harnesses — Codex, Gemini CLI, OpenCode, Cursor, behind one seam
+## 38. More agents — Codex first, then Gemini CLI, OpenCode and Cursor, behind one seam
 
-**User ask, 2026-08-24.** factorai spawns, resumes, indexes and watches exactly one CLI. The ask
-is the general version: a harness abstraction, a default harness in settings, and per-harness
-configuration — so the ADE is about agent sessions rather than about `claude` sessions.
+**User ask, 2026-08-24; specified 2026-09-22** as [F30](../05-features.md) with
+[ADR-0060](../adr/0060-an-agent-is-four-capabilities-each-of-which-may-be-absent.md) (the seam:
+four optional capabilities), [ADR-0061](../adr/0061-a-project-runs-one-profile-and-that-profile-names-its-agent.md)
+(a project runs one profile, whose agent is the project's agent) and
+[ADR-0062](../adr/0062-a-session-id-the-agent-mints-is-adopted-from-its-title.md) (Codex's id
+is adopted from the terminal title). The word is **agent**, not harness: `agent` is the column,
+the constant and the module.
 
-**Half the seam already exists, and it is the cheap half.** `agents/mod.rs` is the discovery
-source layer, `discovered_projects.agent` is a column with `DEFAULT 'claude'` written so a second
-agent is an INSERT and not a migration, and `sessions` inherits the agent through
-`discovered_id`. That module also states, deliberately, that there is **no `trait AgentStore`**,
-because a trait with one implementor is a guess about the second one's shape. This item is where
-that guess stops being necessary — so the trait gets written here, from a real second implementor,
-and the note in `agents/mod.rs` gets replaced rather than quietly contradicted.
+**Every Codex fact in F30 was read from source (`rust-v0.155.1`) and the installed binary, not
+from disk** — Codex had never run on the machine it was specified on. Slice 1 exists to change
+that before a line of parser is written.
 
-**The expensive half is everything that is Claude-shaped and does not know it.** Each of these is
-a separate decision, and none of them are the same size:
+Slices, in order; each is its own commit series against `main` and each moves here when it lands:
 
-- **Spawn and resume.** `services/terminal.rs` calls `find_claude_binary` and then
-  `session_flag`, which picks `--resume` or `--session-id` by whether a transcript exists
-  (ADR-0008). No other harness is obliged to have either verb, and one that has neither can still
-  be launched — it just cannot be *resumed*, which is a capability the UI has to be able to render
-  as absent instead of broken.
-- **Transcripts.** `services/jsonl.rs`, the indexer and the FTS5 rows all read Claude's JSONL
-  under `~/.claude/projects/<encoded-path>/`. Every other harness has its own location, its own
-  record shape and its own idea of what a turn is. **Verify each one on disk before writing a
-  parser for it** — this is a research task first and a build task second, and it is the part most
-  likely to be wrong if taken from documentation.
-- **Status.** ADR-0015 derives `working` / `waiting_input` from the glyph Claude writes into the
-  terminal title. A harness that sets no title, or a different one, yields nothing — so decide
-  what an unknown status *looks* like, because a dot that says `working` because it defaulted
-  there is worse than no dot.
-- **The IDE bridge.** ADR-0017 writes one lockfile into `~/.claude/ide/` and speaks the dialect
-  CLI 2.1.235 speaks, with `ideName: "factorai"`. That is Claude's protocol, not an industry one.
-  The bridge stays Claude-only until a second harness's protocol has been observed end to end;
-  advertising it generally before then would be inventing an interoperability we have not tested.
-- **Settings.** `SettingKey` has exactly one variant today (`ClaudeBinaryPath` → `claude.binary`).
-  A default-harness choice plus a binary override *per* harness is either one variant per harness
-  or a parameterised key; pick which before the second harness lands, because the column name is
-  what an operator sees in `sqlite3` and the convention is set by migration `0001`.
-- **The UI.** Launching a session becomes a choice — a default from settings, overridable at
-  launch — and a session row has to say which harness it is. F11 grows an Agents section. The
-  quit guard and kill-on-quit are unaffected: a PTY is a PTY.
+- [ ] **1. Fixtures.** Log in to Codex, run three sessions in a scratch folder (one fresh, one
+      resumed with a second turn, one with a tool call and an approval), rename one thread, archive
+      one, trash one rollout by hand and reopen `codex resume`. Record the OSC-0 title sequence of
+      one full turn through a PTY. Land the rollouts, `session_index.jsonl` and the title log under
+      `tests/fixtures/codex/`, and turn every **[unverified]** in F30 into **[source]**, a fixture,
+      or a correction — in particular: `thread-id` in the title before the first message, the wire
+      spelling of every `type`, an HTTP MCP server defined wholly by `-c`, and whether a trashed
+      rollout upsets the resume picker. No app code.
+- [ ] **2. The seam and the Agents section.** `agents::registry()`, the four traits, Claude moved
+      onto them with no behaviour change; `find_agent_binary`; Settings → Agents with one card per
+      agent and `codex.binary`; `?settings=claude` aliased. Codex is *spawnable* at the end of this
+      slice: `+` menu, provisional id, `CODEX_HOME` created before spawn, kill-on-quit measured
+      against `ps`. No status, no index.
+- [ ] **3. Status and adoption.** The Codex `Status` parser from the fixture title log; the
+      `status-unknown` dot; `session:adopted` and the one-shot rebind; the store-watcher fallback.
+      Resume of an adopted session.
+- [ ] **4. One profile per project.** Migration 0022's index change, the agent picker in the
+      profile form, `Profile ▸` grouped by agent, `agent.default`, the Codex default profile seeded
+      on first sight of a binary.
+- [ ] **5. Discovery, transcripts, search.** `agents/codex.rs` discovery by `session_meta.cwd`,
+      the rollout reader from the fixtures, `sessions.transcript_path`, titles from
+      `session_index.jsonl`, sub-agents by `parent_thread_id`, FTS rows. Delete via trash.
+- [ ] **6. Routines and tools.** `routines.agent`, the form's select, `-c mcp_servers.factorai.*`
+      at spawn (or the ADR for writing into the profile's `config.toml`, if slice 1 found `-c`
+      cannot define a server).
+- [ ] **7. The rest.** Gemini CLI, OpenCode, Cursor, each as one `Agent` value against the settled
+      seam, each starting with its own slice 1. The seam is reopened only for a fifth capability,
+      by a new ADR.
 
-**Do one second harness end to end before generalising to four.** A trait derived from one
-implementor is a guess; from two it is a fact; from four written simultaneously it is a rewrite
-with three untested branches. Codex is the natural first, because
-`annex-A-cli-agent-patterns.md` § A.1 already carries the shape of its CLI probe and notes exactly
-this progression, and ADR-0011 already thought about what a codex session means for
-a project's identity.
-
-**And grade the capabilities, rather than requiring all of them.** A harness that can only be
-*spawned* — launch it in a PTY, no transcript indexing, no status, no bridge — is already worth
-having, and is a small slice. Browse, search and status then degrade per harness instead of
-blocking the whole item on the hardest parser.
-
-- [ ] An ADR for the seam (§ 5, cross-cutting pattern): discovery, spawn descriptor, transcript
-      reader, status source — four capabilities, each independently optional, and what the UI does
-      for each one a harness lacks.
-- [ ] Codex end to end, or as far as its capabilities go, with the trait falling out of it.
-- [ ] `SettingKey` growth plus F11's Agents section: default harness, per-harness binary override.
-- [ ] Then Gemini CLI, OpenCode and Cursor, each as its own slice against the settled seam.
+**Still true from the original entry, and now where it belongs:** the IDE bridge (ADR-0017) stays
+Claude-only until a second protocol has been observed end to end; `agents/mod.rs`'s "no
+`trait AgentStore`" note is replaced in slice 2, not contradicted; the quit guard and kill-on-quit
+are unaffected because a PTY is a PTY.
 
 ## 40. Pull requests and merge requests — GitHub and GitLab, from inside factorai
 

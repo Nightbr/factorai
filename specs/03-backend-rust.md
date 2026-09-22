@@ -752,6 +752,15 @@ backstop so we never leak children on crashes. **No orphan zombies, ever.**
 factorai names its own sessions — see ADR-0008 for why. Two consequences for
 this module.
 
+*Scoped 2026-09-22 (F30): everything in this section is Claude's `Spawn`
+capability, `IdSource::Ours`. Codex takes no id at launch; its sessions start
+under a provisional id and adopt the uuid Codex writes into the terminal title —
+[ADR-0062](adr/0062-a-session-id-the-agent-mints-is-adopted-from-its-title.md),
+F30 § "A new Codex session, and the id it gets". `SpawnOpts` gains
+`agent: Option<AgentId>` for the launch override, and `start_session` returns
+`{ id, provisional }`. `session_flag` is unreachable for a Codex spawn and a
+test asserts its argv never carries `--session-id` or `--resume`.*
+
 **`SpawnOpts` carries `{ session_id, project_id, cwd?, cols, rows,
 initial_prompt? }`.** There is no `resume_session_id` and no mode flag: the
 caller supplies the id, and `session_flag()` decides how it reaches the CLI by
@@ -810,6 +819,14 @@ per-project button fires on projects whose session list was never fetched, and
 because the filesystem can't lag the way the index can.
 
 ### `find_claude_binary()` — three-tier discovery
+
+*Generalised 2026-09-22 (F30 § "Spawn"): `find_agent_binary(descriptor,
+override)` takes the binary name and the candidate list from the agent's
+descriptor ([ADR-0060](adr/0060-an-agent-is-four-capabilities-each-of-which-may-be-absent.md));
+`find_claude_binary` is that call with Claude's descriptor. The three tiers
+below are unchanged. `check_claude_cli` / `validate_claude_binary` become
+`check_agent_cli(agent)` / `validate_agent_binary(agent, path)`, the Claude
+names kept as aliases for one release.*
 
 Three tiers because no single one is sufficient: the inherited `PATH` misses
 GUI launches, a login shell misses nothing but is slow and can fail, and a

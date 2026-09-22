@@ -290,7 +290,7 @@ intra-group ordinals that collide with whatever is there.
 | col        | type      | notes                                                            |
 | ---------- | --------- | ---------------------------------------------------------------- |
 | id         | TEXT PK   | uuid v4. Not derived from the directory, so a profile can be renamed and re-pointed without orphaning what is assigned to it |
-| agent      | TEXT      | `'claude'`. What "one default" and "one per project" are scoped by — there is no Claude profile on a Codex agent |
+| agent      | TEXT      | `'claude'` or `'codex'` (F30, chosen in the form). What "one default" is scoped by — there is no Claude profile on a Codex agent. Since ADR-0061 it is also what names a project's agent, through the one profile the project runs |
 | name       | TEXT      | unique per agent; the only place a profile is named is a list read by eye |
 | config_dir | TEXT      | absolute, **UNIQUE**                                              |
 | is_default | INTEGER   | exactly one per agent                                             |
@@ -366,17 +366,19 @@ untouched on disk.
 | agent       | TEXT    | denormalized from `profiles`, so the unique index below is an index |
 | assigned_at | INTEGER | unix ms                                                       |
 
-`PRIMARY KEY (project_id, profile_id)` plus `UNIQUE (project_id, agent)`. F25
-slice 3. **No row means that agent's default profile**, so an install that has
-never assigned anything writes nothing here — the same shape
-`routines.catchup_hours` uses for "inherit the app-wide setting".
+`PRIMARY KEY (project_id, profile_id)` plus **`UNIQUE (project_id)`** (migration
+0022, [ADR-0061](adr/0061-a-project-runs-one-profile-and-that-profile-names-its-agent.md);
+it was `UNIQUE (project_id, agent)` from F25 slice 3 until F30). **No row means
+the default agent's default profile**, so an install that has never assigned
+anything writes nothing here — the same shape `routines.catchup_hours` uses for
+"inherit the app-wide setting".
 
-The denormalized `agent` is there because a project may be on one Claude profile
-*and*, when a second agent lands, one Codex profile — which is "one row per
-(project, agent)", and SQLite cannot build a unique index across the join that
-would otherwise supply it. Two `BEFORE` triggers abort a write whose `agent`
-disagrees with the profile's, rather than silently correcting it: a mismatch means
-the caller believed something false about what it was assigning.
+A project runs **one** profile, and that profile's `agent` is the project's
+agent. The denormalized `agent` used to exist for a per-agent unique index; it
+stays because the resolution query reads it without a join and because the two
+`BEFORE` triggers still abort a write whose `agent` disagrees with the
+profile's, rather than silently correcting it: a mismatch means the caller
+believed something false about what it was assigning.
 
 `ON DELETE CASCADE` on `profile_id` is the constraint the service layer
 deliberately does **not** rely on. `services::profiles::delete` refuses while any
@@ -388,7 +390,8 @@ identity.
 
 | col            | type       | notes                                                            |
 | -------------- | ---------- | ---------------------------------------------------------------- |
-| id             | TEXT PK    | session UUID (= filename minus `.jsonl`)                         |
+| id             | TEXT PK    | session UUID. Claude: the filename minus `.jsonl`. Codex: the uuid at the end of `rollout-<ts>-<uuid>.jsonl`, which is also `session_meta.id` (F30) |
+| transcript_path | TEXT      | where the transcript is, for an agent whose path is not derivable from the id and the folder (F30, migration 0022). NULL for Claude, whose path is `<store>/projects/<encoded cwd>/<id>.jsonl`; written by the indexer for Codex. `Transcripts::locate` reads it first and derives second |
 | discovered_id  | INTEGER FK | `discovered_projects(id) ON DELETE CASCADE`                      |
 | title          | TEXT       | from `/rename` event, else first user message excerpt            |
 | created_at     | INTEGER    | from first event timestamp                                       |
@@ -481,7 +484,7 @@ nothing else — it exists so a migration runs once.
 
 | col   | type    | notes                                        |
 | ----- | ------- | -------------------------------------------- |
-| key   | TEXT PK | dotted namespace, e.g. `claude.binary`       |
+| key   | TEXT PK | dotted namespace: `claude.binary`, `codex.binary`, `agent.default`, `routines.catchup_hours`, `routines.max_concurrent`. One `SettingKey` variant per key, never a parameterised one (F30 § "Storage") |
 | value | TEXT    | the value itself; **no row means unset**     |
 
 For things that need ACID and queries — and, since F11, **specifically for the
@@ -575,6 +578,7 @@ and conflating the two is how a resume becomes a new conversation — see F21 §
 | prompt         | TEXT    | the session's first message, passed as argv                  |
 | enabled        | INTEGER | 0/1 — stops future fires; never touches a running session    |
 | catchup_hours  | INTEGER | NULL means "use the app-wide default" from `settings`        |
+| agent          | TEXT    | `'claude'` / `'codex'`, or NULL to inherit the project's agent at fire time (F30, migration 0022). The form's select, default *Project's agent* |
 | last_fire_at   | INTEGER | the last occurrence **consumed** — run or skipped            |
 | last_run_at    | INTEGER | epoch ms, written **when the session starts**                |
 | last_session_id| TEXT    | the session the last fire produced; no FK, see below         |
