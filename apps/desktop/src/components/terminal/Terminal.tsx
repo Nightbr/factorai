@@ -518,6 +518,12 @@ export function rebindTerminal(from: string, to: string): void {
 	if (!entry || from === to) return;
 	pool.delete(from);
 	pool.set(to, entry);
+	// **Keystrokes follow the id too.** `terminalId` is a closure over the
+	// session id the terminal was created for, read on every `onData` and
+	// `onResize`; with the store re-keyed to `to`, a lookup by `from` answers
+	// `undefined` and every key after the first turn is silently dropped — which
+	// is how a Codex approval prompt sat unanswerable on 2026-09-22.
+	entry.terminalId = () => agentTerminalId(to);
 	const inFlight = spawnInFlight.get(from);
 	if (inFlight) {
 		spawnInFlight.delete(from);

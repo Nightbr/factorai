@@ -6783,7 +6783,10 @@ appears at the first turn **[checked]**. So the adoption is: remember the
 prefix from the title; on every title change while unadopted, at most twice a
 second, look for a rollout under the store whose id starts with the prefix and
 whose `session_meta.cwd` is this session's folder; the first hit is the id.
-`session:adopted` then rebinds route, tab, pool and store once. A Codex
+`session:adopted` then rebinds route, tab, pool and store once — **including
+the pooled terminal's keystroke target**, which is a lookup by session id read
+on every key; left on the provisional id it answers nothing and every key after
+the first turn is dropped (found 2026-09-22 on an approval prompt). A Codex
 session that exits before its first turn wrote nothing and is not remembered.
 
 The prefix is what answers ADR-0008's "two sessions in one folder" objection:
