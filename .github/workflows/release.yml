@@ -144,7 +144,36 @@ jobs:
             libssl-dev \
             build-essential \
             patchelf \
-            file
+            file \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav \
+            gstreamer1.0-tools
+
+      # The AppImage bundles its own WebKit and therefore its own
+      # `libgstreamer-1.0.so.0`, which relocates its plugin search to the
+      # directory it was loaded from — so the system plugins the host has
+      # installed become unreachable from inside the bundle (ADR-0058).
+      # `bundleMediaFramework` copies the runner's plugins in to replace them,
+      # unfiltered and without checking that there are any: with the packages
+      # above missing it copies an empty directory and ships a bundle exactly
+      # as broken as one built without the flag. So the runner is the bill of
+      # materials, and this is the assertion that it is stocked.
+      - name: Assert the media plugins the AppImage will bundle are present
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          set -euo pipefail
+          missing=()
+          for element in appsink autoaudiosink qtdemux matroskademux mpegtsdemux \
+                         avdec_h264 vp9dec mpegaudioparse; do
+            gst-inspect-1.0 "$element" >/dev/null 2>&1 || missing+=("$element")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::GStreamer elements missing on the runner, so the AppImage would ship without them: ${missing[*]}"
+            exit 1
+          fi
+          test -x /usr/lib/"$(uname -m)"-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner
 
       - uses: pnpm/action-setup@v4
         # Version comes from `packageManager` in package.json.

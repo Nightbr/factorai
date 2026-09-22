@@ -51,3 +51,25 @@ personal repositories, `~/` paths, session titles naming both. Use the
 `app-screenshot` skill, which owns that checklist along with
 `VITE_FACTORAI_SCREENSHOT=1`, `scripts/qa/doc-shot.sh` and
 `scripts/qa/redact.py`.
+
+# What this loop cannot catch: the bundle
+
+`scripts/qa/launch.sh` runs `pnpm dev`, which links the binary against the
+host's libraries. The AppImage links against its own — it carries WebKit, and
+therefore a `libgstreamer-1.0.so.0` that relocates its plugin search into the
+mount. A whole class of failure lives only there, and 0.47.0 shipped one: every
+GStreamer element missing, so opening a video killed the web process and froze
+the window (ADR-0058).
+
+So for anything that touches a bundled library — media playback, fonts, GIO
+modules, the pixbuf loaders — QA the artifact, not the dev build:
+
+```bash
+pnpm --filter @factorai/desktop tauri build --bundles appimage
+./apps/desktop/src-tauri/target/release/bundle/appimage/factorai_*_amd64.AppImage
+```
+
+The tell is in the journal rather than the terminal, because the web process
+logs there: `journalctl --user --since "5 min ago" | grep -iE 'gstreamer|WebKitWebProces'`.
+A line reading `GStreamer element <name> not found` is a broken bundle whatever
+the window is doing.

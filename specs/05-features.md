@@ -1305,9 +1305,20 @@ preview binary file", which is a true sentence about the wrong problem.
   binary card's own **Open in default app**, and the footer stays — the file's
   facts are still true. This is not hypothetical and it is not uniform:
   **Matroska does not demux in WKWebView at all**, so a `.mkv` that plays on
-  Linux gets this card on macOS, and WebKitGTK plays it only with the right
-  GStreamer plugins installed. There is no transcoding fallback — ADR-0056's
+  Linux gets this card on macOS. There is no transcoding fallback — ADR-0056's
   consequences cover what that would have cost.
+- **On Linux the decoders ship with the app**
+  ([ADR-0058](adr/0058-the-appimage-carries-its-own-gstreamer-plugins.md)).
+  WebKitGTK decodes through GStreamer, the AppImage carries its own WebKit and
+  therefore its own `libgstreamer`, and that library relocates its plugin search
+  to the directory it was loaded from — so the host's plugins are unreachable
+  from inside the bundle and *every* element goes missing, not some. WebKit does
+  not survive that: it connects a signal to the `NULL` factory and the web
+  process dies, which is a frozen window rather than the card above. So the
+  bundle carries the plugins (`bundleMediaFramework`), and the release workflow
+  asserts the elements exist on the runner before building, because the plugin
+  copies whatever that machine has and checks nothing. **What plays is pinned at
+  release time**, not read from the user's system.
 - **Expanding does not mean two players.** `ViewerPane` and `FileViewerModal`
   are both mounted while the modal is open, each rendering its own `FileView`,
   which is invisible for text and two decoders for media. Each host names itself
