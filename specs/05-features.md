@@ -6898,17 +6898,22 @@ A rollout line is `{"timestamp": "…", "ordinal": n?, "type": "<kind>",
   is indexed as one.
 - **Title.** `ai` when `$CODEX_HOME/session_index.jsonl` — append-only
   `{"id","thread_name","updated_at"}`, newest line wins [source:
-  `rollout/src/session_index.rs`] — names the thread: **[checked]** Codex
-  writes its own auto-title there after the first turn (`Reply with pong` for
-  the fixture), so that file is Codex's title, not the user's. `derived` from
+  `rollout/src/session_index.rs`] — names the thread: **[checked]** the fixture
+  has Codex's auto-title there (`Reply with pong`). An index entry is not
+  guaranteed: factorai-launched Codex 0.155.1 sessions observed later on
+  2026-09-22 had none after multiple turns, and their `state_5.sqlite`
+  `threads.title` matched `first_user_message`, so it offered no better
+  generated title. `derived` from
   the first user message that is not injected context otherwise; the id as the
   last resort. `custom` is not produced today: a name the user sets in Codex
   lands in the same file and is indistinguishable from the auto-title. The
   index file is small and read whole on each scan of that profile. Codex's
-  `<image name=[Image #…] path="…">` attachment markers are removed from both
+  `<image name=[Image #…] path="…">` attachment wrappers, their `</image>`
+  closing tags, and the adjacent `[Image #…]` labels are removed from both
   that thread name and the first-message fallback before choosing a display
-  title. The user's words after an image supply the name; a marker-only name
-  falls through to the first message with words, then the id.
+  title. The user's words after an image supply the name; an image-only name
+  falls through to the first message with words, then the id. A label used in
+  ordinary prose is kept.
 - **Sub-agents.** `session_meta.parent_thread_id` set, or `source: subagent`,
   → `subagent_of`. Rendered as F-Sub-agent transcripts are today.
 

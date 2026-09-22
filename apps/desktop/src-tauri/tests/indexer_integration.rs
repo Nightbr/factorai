@@ -884,7 +884,7 @@ fn a_row_from_an_older_parser_is_reparsed_exactly_once() {
 		// current, so the next scan skips it and the backfill terminates. The
 		// literal tracks `indexer::PARSE_VERSION`, which is private: a test crate
 		// asserting on it by name would make the constant part of the API.
-		assert_eq!(version, 4);
+		assert_eq!(version, 5);
 		Ok(())
 	})
 	.expect("read version");
@@ -1301,12 +1301,14 @@ fn a_codex_image_title_uses_the_users_words_and_tracks_index_only_renames() {
 	assert_eq!(title(), ("Reply with pong".into(), "ai".into()));
 
 	set_name(
-		"<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\">\nFix the session title",
+		"<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\"> </image> [Image #1] Fix the session title",
 	);
 	idx.full_scan().expect("scan after image title");
 	assert_eq!(title(), ("Fix the session title".into(), "ai".into()));
 
-	set_name("<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\">");
+	set_name(
+		"<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\"> </image> [Image #1]",
+	);
 	idx.full_scan().expect("scan after marker-only title");
 	assert_eq!(title(), ("Reply with exactly the word: pong".into(), "derived".into()));
 }

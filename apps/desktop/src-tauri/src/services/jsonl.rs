@@ -392,15 +392,34 @@ pub fn title_display(text: &str) -> Option<String> {
 	(!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
-/// Codex writes a pasted image as an inline attachment marker before the
-/// user's words (specs/05-features.md § F30). It is metadata, not a title.
-/// Leave incomplete markers alone so a partial or literal message is not lost.
+/// Codex flattens a pasted image to an opening marker, a closing tag, and an
+/// adjacent image label before the user's words (specs/05-features.md § F30).
+/// Leave incomplete markers and labels in ordinary prose alone.
 pub fn strip_image_markers(text: &str) -> String {
 	let mut out = text.to_owned();
 	let mut removed = false;
 	while let Some(start) = out.find("<image name=") {
-		let Some(end) = out[start..].find('>') else { break };
-		out.replace_range(start..start + end + 1, "");
+		let Some(open_end) = out[start..].find('>').map(|offset| start + offset + 1) else {
+			break;
+		};
+		let label = out[start + "<image name=".len()..open_end - 1]
+			.split_once(" path=")
+			.map(|(name, _)| name.to_owned())
+			.filter(|name| name.starts_with("[Image #") && name.ends_with(']'));
+		let mut end = open_end;
+		if let Some(close_start) = out[open_end..].find("</image>").map(|offset| open_end + offset)
+		{
+			if out[open_end..close_start].trim().is_empty() {
+				end = close_start + "</image>".len();
+				if let Some(label) = label {
+					let rest = out[end..].trim_start();
+					if rest.starts_with(&label) {
+						end = out.len() - rest.len() + label.len();
+					}
+				}
+			}
+		}
+		out.replace_range(start..end, " ");
 		removed = true;
 	}
 	if removed {
@@ -627,16 +646,25 @@ mod tests {
 	fn title_display_skips_codex_image_marker() {
 		let marker = "<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\">";
 		assert_eq!(
+			title_display(&format!("{marker} </image> [Image #1] Fix the session title"))
+				.as_deref(),
+			Some("Fix the session title")
+		);
+		assert_eq!(title_display(&format!("{marker} </image> [Image #1]")), None);
+		assert_eq!(
 			title_display(&format!("{marker}\nFix the session title")).as_deref(),
 			Some("Fix the session title")
 		);
-		assert_eq!(title_display(marker), None);
 		assert_eq!(
 			title_display(
 				"Explain this <image name=[Image #2] path=\"/tmp/second.png\"> screenshot"
 			)
 			.as_deref(),
 			Some("Explain this screenshot")
+		);
+		assert_eq!(
+			title_display("Why does [Image #1] appear? ").as_deref(),
+			Some("Why does [Image #1] appear?")
 		);
 	}
 

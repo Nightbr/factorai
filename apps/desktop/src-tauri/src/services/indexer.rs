@@ -33,7 +33,8 @@ use crate::services::jsonl::{
 ///     (specs/02-data-model.md § "Persistence implications").
 /// 4 — Codex image attachment markers are omitted from thread names and
 ///     first-message titles (specs/05-features.md § F30).
-const PARSE_VERSION: i64 = 4;
+/// 5 — The closing tag and adjacent image label are omitted too.
+const PARSE_VERSION: i64 = 5;
 
 /// How many recent paths a session keeps. See migration 0010 for why a list at
 /// all, and why the number is not doing any selecting.
