@@ -153,7 +153,7 @@ export const cmd = {
 	readPdf: (path: string, maxBytes?: number | null) =>
 		invoke<PdfContents>('read_pdf', { path, maxBytes }),
 	/** Decide whether a file can be played and grant the webview permission to
-	 *  fetch it (F7, ADR-0056). Rejects anything whose bytes are positively
+	 *  fetch it (F7, ADR-0057). Rejects anything whose bytes are positively
 	 *  something else — a picture, a PDF, an archive, text — which is the
 	 *  binary-card fallback; an unrecognised *container* is not a rejection,
 	 *  because the element's demuxer is better than ours.

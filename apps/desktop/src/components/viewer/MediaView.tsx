@@ -62,7 +62,7 @@ const GONE = 'The file could not be read — it may have been moved or deleted.'
  * would flash an error card over a view that is already unmounting.
  *
  * **The element's code alone cannot tell a missing file from an unplayable
- * one.** A file that has gone since the probe makes the asset protocol answer
+ * one.** A file that has gone since the probe makes the media server answer
  * `404`, and the element calls an unusable response `SRC_NOT_SUPPORTED` — the
  * same code it reports for a container it cannot demux. Blaming the codec for a
  * deleted file is exactly the wrong sentence in an app where an agent moves
@@ -71,7 +71,7 @@ const GONE = 'The file could not be read — it may have been moved or deleted.'
  * itself could not be made, and the codec reading stands.
  *
  * `NETWORK` needs no status. It is a stream that died after starting, which
- * over a local protocol means the file went away mid-read.
+ * over a loopback socket means the file went away mid-read.
  *
  * Everything left is the webview declining the container, and naming it is what
  * helps, because this failure is platform-shaped rather than file-shaped
@@ -95,9 +95,9 @@ export function mediaErrorMessage(
  * What the transport says about a source the element just refused — the status
  * of a one-byte range request, or `null` if even asking failed.
  *
- * One byte rather than a `HEAD`, because a range is what the protocol is built
- * to answer and what it has already been answering; a `HEAD` is a shape neither
- * the asset protocol nor the smoke lane's intercept is written for.
+ * One byte rather than a `HEAD`, because a range is what the server is built to
+ * answer and what it has already been answering; a `HEAD` is a shape neither the
+ * media server nor the smoke lane's intercept is written for.
  */
 async function transportStatus(src: string): Promise<number | null> {
 	try {
@@ -134,13 +134,12 @@ interface MediaMeta {
 
 /**
  * One video or audio file, played (F7,
- * [ADR-0056](../../../../specs/adr/0056-the-asset-protocol-carries-media-one-file-at-a-time.md)).
+ * [ADR-0057](../../../../specs/adr/0057-media-is-served-over-loopback-http-not-a-custom-protocol.md)).
  *
  * **The bytes never come through this component.** `probe_media` answers with a
- * verdict, a canonical path and a size, and the element fetches the file itself
- * over the asset protocol in whatever ranges it wants — which is the whole
- * reason media does not take `ImageView`'s base64 road. Nothing here holds a
- * frame.
+ * verdict, a URL and a size, and the element fetches the file itself from the
+ * loopback media server in whatever ranges it wants — which is the whole reason
+ * media does not take `ImageView`'s base64 road. Nothing here holds a frame.
  *
  * **Native controls, deliberately.** Transport, scrubbing, volume, buffering and
  * fullscreen are the webview's own and are correct on both platforms, at the
@@ -160,8 +159,8 @@ export function MediaView({ path }: { path: string }) {
 	const probeQ = useQuery({
 		queryKey: queryKeys.media(path),
 		// Reopening re-probes, and not only to re-read the facts: the answer
-		// carries the asset-protocol grant, so a cached probe is a cached
-		// permission.
+		// carries the URL the file was published at, so a cached probe is a
+		// cached permission.
 		queryFn: () => cmd.probeMedia(path),
 		...REREAD_ON_OPEN,
 		retry: false,

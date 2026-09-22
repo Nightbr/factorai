@@ -96,8 +96,8 @@ interface FileViewProps {
  *
  * Media is the third, and the one that could never have been anything else: a
  * recording is larger than any cap worth having and the element wants ranges
- * rather than the file, so it streams over the asset protocol and nothing but
- * the verdict crosses the bridge (ADR-0056). `iconKeyFor`'s `video` and `audio`
+ * rather than the file, so it streams from a loopback server and nothing but
+ * the verdict crosses the bridge (ADR-0057). `iconKeyFor`'s `video` and `audio`
  * keys are the same reuse `image` is — the viewer and the tree's icon cannot
  * disagree about what a file is.
  *

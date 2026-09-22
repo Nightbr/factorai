@@ -230,7 +230,7 @@ interface ViewerState {
 	focusRequest: string | null;
 	/**
 	 * Where a media file's playback was when its player handed over, keyed by
-	 * path (F7, ADR-0056).
+	 * path (F7, ADR-0057).
 	 *
 	 * The pane and the expanded modal are **both mounted** while the modal is
 	 * open, each rendering its own `FileView`. That is invisible for text and

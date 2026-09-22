@@ -290,7 +290,7 @@ pub fn read_pdf(path: &str, max_bytes: Option<usize>) -> AppResult<PdfContents> 
 }
 
 /// Extensions the viewer hands to a media element, with the element to mount
-/// and the type to assume when the bytes name none (F7, ADR-0056).
+/// and the type to assume when the bytes name none (F7, ADR-0057).
 ///
 /// **`ts` is deliberately absent.** It is TypeScript here and in every project
 /// this app is pointed at; MPEG-TS video spells itself `m2ts` or `mts` often
@@ -439,10 +439,10 @@ fn media_mismatch(bytes: &[u8]) -> Option<&'static str> {
 }
 
 /// Whether this file can be handed to a media element, and what to call it
-/// (F7, [ADR-0056](../../../../specs/adr/0056-the-asset-protocol-carries-media-one-file-at-a-time.md)).
+/// (F7, [ADR-0057](../../../../specs/adr/0057-media-is-served-over-loopback-http-not-a-custom-protocol.md)).
 ///
 /// **Reads the first 512 bytes and no more.** This is the one preview command
-/// that never carries the file: a video is streamed over the asset protocol in
+/// that never carries the file: a video is streamed from the media server in
 /// the ranges the element asks for, so there is no cap here to refuse against
 /// and no base64 to pay for. A 2GB recording costs one `stat` and one short
 /// read.
@@ -1407,7 +1407,7 @@ sops:
 		assert_eq!(read.contents, "a");
 	}
 
-	// ---- probe_media (F7, ADR-0056) ------------------------------------------
+	// ---- probe_media (F7, ADR-0057) ------------------------------------------
 
 	/// An ISO-BMFF header: a `ftyp` box with the `isom` brand, padded past the
 	/// point the sniffer reads. The NUL in the box length is what keeps it out

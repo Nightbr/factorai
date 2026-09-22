@@ -2,11 +2,11 @@ import { type Page, expect, test } from '@playwright/test';
 import { fixtureWithFileTree, installMockBridge } from './fixtures';
 
 /**
- * Video and audio in the file viewer (F7, ADR-0056).
+ * Video and audio in the file viewer (F7, ADR-0057).
  *
  * These run against real media: the fixtures under `fixtures/media/` are a
  * genuine H.264 clip, a VP9 clip and an MP3, served over a route intercept that
- * answers ranges the way the asset protocol does. Chromium actually decodes
+ * answers ranges the way the media server does. Chromium actually decodes
  * them, so a `<video>` that mounts but never plays fails here.
  *
  * **What they cannot prove is that a `.mkv` plays.** Chromium will not demux

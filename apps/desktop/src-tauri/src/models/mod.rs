@@ -449,10 +449,10 @@ pub enum MediaKind {
 	Audio,
 }
 
-/// One playable file, and the permission to fetch it (F7, ADR-0056).
+/// One playable file, and the permission to fetch it (F7, ADR-0057).
 ///
 /// Carries no bytes at all, which is what separates it from [`ImageContents`]
-/// and [`PdfContents`]. A video is streamed over the asset protocol in ranges
+/// and [`PdfContents`]. A video is streamed from the media server in ranges
 /// the media element asks for, so the only thing that has to cross the IPC
 /// bridge is the verdict — is this media, what is it, how big — plus the
 /// canonical path the renderer turns into a URL.

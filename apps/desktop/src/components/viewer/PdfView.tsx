@@ -29,8 +29,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * One PDF, rendered (specs/05-features.md F7, ADR-0018).
  *
  * The bytes arrive base64 through `read_pdf` for the reason `ImageView` gives
- * for `read_image`: the asset protocol wants a static path scope and these
- * paths are "whatever project you opened".
+ * for `read_image`: a document is read whole anyway, so the command boundary
+ * costs an encoding overhead and buys one way into the filesystem instead of
+ * two. Media is the one preview that could not take this road (ADR-0057).
  *
  * pdf.js does the parsing, in a worker, and we own the canvas: pages are
  * measured up front so the scroll container reserves the right space, and only

@@ -140,12 +140,12 @@ function basename(path: string): string {
  * diff would offer to save one into the other.
  */
 export function DiffView({ path, mode, sides = null }: DiffViewProps) {
-	// **Media is played, not compared** (F7, ADR-0056), and only where the file
+	// **Media is played, not compared** (F7, ADR-0057), and only where the file
 	// on disk is one of the sides. `diffEditsWorktree` is already the answer to
 	// that question: `unstaged` and `head` put the worktree on the right, while
 	// `staged` compares against the index and a commit range and F18's supplied
-	// `sides` compare two git objects — and an object has no path for the asset
-	// protocol to serve, so those keep the binary message below.
+	// `sides` compare two git objects — and an object has no path for the media
+	// server to serve, so those keep the binary message below.
 	//
 	// Intercepted here rather than inside, so none of the edit-buffer machinery
 	// mounts for a file it could never write.

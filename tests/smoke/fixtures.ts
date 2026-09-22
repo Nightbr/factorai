@@ -84,7 +84,7 @@ export interface TestFixture {
 	/** Images keyed by absolute path (F7 viewer). An image-looking path that
 	 *  isn't listed rejects, which is how the binary-card fallback is reached. */
 	images?: Record<string, ImageContents>;
-	/** Media probes keyed by absolute path (F7 viewer, ADR-0056). Same rule as
+	/** Media probes keyed by absolute path (F7 viewer, ADR-0057). Same rule as
 	 *  `images`: an unlisted media path rejects and reaches the binary card.
 	 *  The bytes are not here — `probe_media` never carries any — and the file
 	 *  the element fetches is served by `serveMediaFixtures` below. */
@@ -174,7 +174,7 @@ const MEDIA_TYPES: Record<string, string> = {
 
 /**
  * Serve the committed media fixtures to the `<video>` / `<audio>` element
- * (F7, ADR-0056).
+ * (F7, ADR-0057).
  *
  * **A route intercept rather than a file the dev server hosts.** `public/` is
  * copied verbatim into the shipped `.app` and `.AppImage`, so a fixture placed
@@ -184,9 +184,9 @@ const MEDIA_TYPES: Record<string, string> = {
  *
  * **It answers ranges**, because Chromium's media element asks for them and a
  * flat `200` makes it give up on a file it could otherwise play. That is the
- * same `206` / `Content-Range` contract Tauri's asset protocol implements for
- * the real thing, which is what keeps the fixture honest about the shape of
- * what it stands in for.
+ * same `206` / `Content-Range` contract the media server implements for the
+ * real thing, which is what keeps the fixture honest about the shape of what it
+ * stands in for.
  *
  * A path the directory does not have is fulfilled as a 404, which is how a spec
  * reaches the element's error card without committing a deliberately broken
@@ -768,7 +768,7 @@ const LOCKED_PDF =
 /** One media probe. No bytes, because `probe_media` carries none — the file the
  *  element fetches is whatever `serveMediaFixtures` finds under the same
  *  basename in `fixtures/media/`. `path` is the canonical one the renderer must
- *  ask for (ADR-0056); in a fixture it is simply the path itself. */
+ *  ask for (ADR-0057); in a fixture it is simply the path itself. */
 function media(path: string, kind: MediaProbe['kind'], mime: string, size: number): MediaProbe {
 	// In the app this is a loopback URL the media server minted; here it is a
 	// path `serveMediaFixtures` answers, which is the same contract from the

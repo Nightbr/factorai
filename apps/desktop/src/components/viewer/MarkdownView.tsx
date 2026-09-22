@@ -253,7 +253,7 @@ export const MarkdownView = memo(function MarkdownView({
  * broken image no matter how correct the markdown is. So local images go
  * through the same commands the image viewer uses and arrive as a `data:` URL,
  * which is also the reason there is no second route into the filesystem here
- * (see F7's "base64 through a command, not the asset protocol").
+ * (see F7's "base64 through a command").
  *
  * A remote `src` is left alone — that one the webview can fetch, and a badge in
  * a README is the common case.
