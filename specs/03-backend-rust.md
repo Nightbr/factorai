@@ -31,6 +31,8 @@ commands/
                       #   every text file editable through write_file
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
   sops.rs             # sops_status — is there a `sops` we can drive (F27)
+  webview.rs          # webview_crash_notice — why this renderer is a fresh one
+                      #   (F17, ADR-0059)
 agents/
   mod.rs              # Discovered, display_name_for_path — the store-agnostic bits
   claude.rs           # Claude's directory encoding, transcript paths, discovery
@@ -50,6 +52,10 @@ services/
                       #   `sops` binary is (F27)
   file_watch.rs       # FileWatch — the one watch on the file the viewer has
                       #   open (F7), replaced on open and dropped on close
+  webview_health.rs   # reload the view when its web process dies, rate-limited,
+                      #   and keep the one sentence the reader is owed
+                      #   (F17, ADR-0059). Linux only — wry surfaces no macOS
+                      #   equivalent
   reveal.rs           # show a path in the desktop's file manager with the
                       #   file selected — `open -R` / FileManager1 (ADR-0033)
   child_env.rs        # the env diff a spawned child gets — PATH, the AppImage
@@ -334,6 +340,13 @@ path_kinds(paths: Vec<String>) -> Vec<PathKind>                       // file | 
 // stopped anything.
 watch_file(path: String) -> ()
 unwatch_file(path: String) -> bool
+// Why this renderer is a fresh one (F17, ADR-0059). `Some(sentence)` when the
+// last web process crashed and the view was reloaded under the reader, `None`
+// otherwise — which is every boot but those. **Asked, not emitted**: at the
+// moment of the crash there is no renderer to receive an event, and one emitted
+// after the reload races the listener being registered. Cleared as it is
+// answered, so asking on every boot is safe.
+webview_crash_notice() -> Option<String>
 // Whether `sops` can be driven at all (F27), for the viewer's Decrypt control:
 // found on the child PATH, what version it reports, and whether that is under
 // the 3.9 floor. Asked before the control is pressed, so a missing or too-old

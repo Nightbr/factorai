@@ -348,6 +348,11 @@ export const cmd = {
 	 *  chip (F23 as amended by F24). One value per app, asked once at boot. */
 	shellName: () => invoke<string>('shell_name'),
 	appQuitConfirmed: () => invoke<void>('app_quit_confirmed'),
+	/** One sentence if this renderer is running because the last one crashed and
+	 *  was reloaded under the reader (F7, ADR-0059), and `null` otherwise — which
+	 *  is what almost every boot gets. Asked once on mount; the backend clears it
+	 *  as it answers, so asking again is safe and says nothing. */
+	webviewCrashNotice: () => invoke<string | null>('webview_crash_notice'),
 };
 
 /**
@@ -1463,6 +1468,10 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			return undefined as unknown as T;
 		case 'terminal_list':
 			return [] as unknown as T;
+		// A browser has no web process of ours to lose, so there is never
+		// anything to report (ADR-0059).
+		case 'webview_crash_notice':
+			return null as unknown as T;
 		default:
 			throw new Error(`mockInvoke: unknown command "${name}"`);
 	}

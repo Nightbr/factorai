@@ -72,6 +72,14 @@ trash = { version = "5.2.6", default-features = false }
 # name, cleaning it up on every early return, and getting the rename right.
 tempfile = "3"
 
+# WebKitGTK's `web-process-terminated`, which is the only warning we get that
+# the renderer has died (ADR-0059). The same version wry already builds — the
+# `WebView` handle `with_webview` hands us is that crate's type, so a different
+# major would not unify. Linux only: `WKWebView`'s equivalent is a delegate
+# method wry does not surface.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0.2"
+
 [dev-dependencies]
 regex = "1.13.1"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }

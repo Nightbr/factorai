@@ -259,6 +259,16 @@ pub fn run() {
 			// asks for a reconcile rather than the watcher polling the table (F25).
 			let watch = Arc::new(watcher::Control::default());
 
+			// The renderer runs in a process of its own and can die without taking
+			// ours with it, which leaves a window that is on screen, accepting
+			// clicks and completely dead (ADR-0059). The handler that reloads it
+			// is installed here, and what it records is drained by the renderer on
+			// its next boot — so both ends need the same handle.
+			let webview_health = Arc::new(services::webview_health::Health::default());
+			if let Some(window) = app.get_webview_window("main") {
+				services::webview_health::install(&window, webview_health.clone());
+			}
+
 			app.manage(AppState {
 				db,
 				indexer: indexer.clone(),
@@ -270,6 +280,7 @@ pub fn run() {
 				watch: watch.clone(),
 				file_watch: Arc::new(services::file_watch::FileWatch::new()),
 				media: Arc::new(std::sync::OnceLock::new()),
+				webview_health,
 			});
 
 			spawn_initial_scan(indexer.clone());
@@ -405,6 +416,7 @@ pub fn run() {
 			commands::terminal::shell_kill_for_project,
 			commands::terminal::shell_name,
 			commands::terminal::app_quit_confirmed,
+			commands::webview::webview_crash_notice,
 		])
 		.run(tauri::generate_context!())
 		.expect("error while running factorai");

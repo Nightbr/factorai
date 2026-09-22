@@ -111,6 +111,34 @@ test.describe('media viewer', () => {
 		await expect(viewer.getByTestId('media-facts')).toContainText('video/mp4');
 	});
 
+	test('@smoke a webview with no decoders says so instead of mounting a player', async ({
+		page,
+	}) => {
+		// **The failure that froze the app, standing in for a bundle that cannot
+		// be built here** (ADR-0058, ADR-0059). A WebKitGTK with no GStreamer
+		// plugins answers `''` for every type and then *kills its own process*
+		// when handed a `<video>` — there is no error event, so the element must
+		// never be mounted at all. Chromium always has decoders, so the only way
+		// to reach that state in this lane is to take `canPlayType` away.
+		await page.addInitScript(() => {
+			HTMLMediaElement.prototype.canPlayType = () => '';
+		});
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+
+		const viewer = await openFile(page, 'clip.mp4');
+
+		const card = viewer.getByTestId('media-error');
+		await expect(card).toBeVisible();
+		await expect(card).toContainText("can't play media");
+		await expect(card.getByRole('button', { name: 'Open in default app' })).toBeVisible();
+		// The element is what kills the process, so the assertion that matters is
+		// that it is not there.
+		await expect(viewer.getByTestId('media-element')).toHaveCount(0);
+		// The footer still carries the file's facts — they are true either way.
+		await expect(viewer.getByTestId('media-facts')).toContainText('video/mp4');
+	});
+
 	test('@smoke expanding hands playback over rather than doubling it', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');

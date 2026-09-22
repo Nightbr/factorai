@@ -3,6 +3,28 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Video and audio play in the released Linux app, and a dead renderer comes back** —
+  2026-09-22. F7's media viewer shipped in 0.47.0 and froze the app on the first video, which is
+  two faults wearing one coat.
+
+  **The AppImage carried a GStreamer with no plugins**
+  ([ADR-0058](../adr/0058-the-appimage-carries-its-own-gstreamer-plugins.md)). `linuxdeploy`
+  bundles WebKit and therefore its `libgstreamer-1.0.so.0`, which since 1.18 finds its plugin
+  directory by `dladdr()` on itself — inside the bundle that is the mount, and there was nothing
+  there. Every element missing, not some. `bundleMediaFramework` puts the plugins where that
+  search already looks, and `release.yml` installs them on the runner and asserts they exist
+  before building, because the bundler copies whatever the host has and checks nothing.
+
+  **A missing element does not fail, it kills the web process**
+  ([ADR-0059](../adr/0059-a-dead-web-process-is-reloaded-not-left-on-screen.md)) — WebKit
+  connects a signal to a `NULL` factory and the page's process goes, leaving a window that is on
+  screen, accepting clicks and completely dead. So `MediaView` now asks `canPlayType` for five
+  canary types and draws a card rather than a player when *all* of them come back empty (a check
+  on the webview, never on the file — `.mkv` answers empty and plays anyway), and
+  `services/webview_health.rs` reloads the view on `web-process-terminated`, at most three times
+  a minute, telling the reader on the next boot that their sessions survived and their scroll
+  position did not.
+
 - **The launch film — `seq 03` to `seq 05`, captured for a feed** — 2026-09-21.
   `assets/brand/factorai-hero.mp4` (1080x1080, 60fps, 10.1s, silent) and a VP9 sibling for a
   page embed, produced by `scripts/capture-hero-video.mjs`: a headed Chromium plays the built

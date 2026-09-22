@@ -1039,6 +1039,7 @@ dependencies = [
  "trash",
  "tungstenite",
  "uuid",
+ "webkit2gtk",
 ]
 
 [[package]]

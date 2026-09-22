@@ -2,6 +2,7 @@ import { BinaryCard, Centered, errorText } from '@components/viewer/chrome';
 import type { MediaProbe } from '@factorai/types';
 import { Button, IconButton } from '@factorai/ui';
 import { formatBytes } from '@lib/format';
+import { mediaStackIsMissing } from '@lib/mediaSupport';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, openExternally } from '@lib/tauri';
 import { REREAD_ON_OPEN } from '@lib/viewerQuery';
@@ -53,6 +54,16 @@ export function containerName(mime: string): string {
 }
 
 const GONE = 'The file could not be read — it may have been moved or deleted.';
+
+/**
+ * What the reader is told when the webview has no decoders at all (ADR-0059).
+ *
+ * Says it is the app rather than the file, because it is: every other media
+ * file would fail the same way, and sending someone off to re-encode a working
+ * `.mp4` would be the wrong afternoon.
+ */
+const NO_MEDIA_STACK =
+	"This build can't play media — its video support is missing. Open the file in another app to play it.";
 
 /**
  * The sentence for a media element that gave up, or `null` to keep playing.
@@ -174,6 +185,11 @@ export function MediaView({ path }: { path: string }) {
 	}
 
 	const probe = probeQ.data;
+	// **Asked before the element is mounted, not after it fails** (ADR-0059). A
+	// webview with no decoders does not report an error when handed a `<video>`
+	// — it dies, taking the window with it. There is no `error` event to wait
+	// for, so this is the one check that has to happen first.
+	const stackMissing = mediaStackIsMissing();
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
@@ -181,7 +197,9 @@ export function MediaView({ path }: { path: string }) {
 				data-testid="media-stage"
 				className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/30 p-4"
 			>
-				{failure ? (
+				{stackMissing ? (
+					<MediaFailureCard path={path} message={NO_MEDIA_STACK} />
+				) : failure ? (
 					<MediaFailureCard path={path} message={failure} />
 				) : (
 					<MediaElement

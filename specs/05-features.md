@@ -1307,6 +1307,16 @@ preview binary file", which is a true sentence about the wrong problem.
   **Matroska does not demux in WKWebView at all**, so a `.mkv` that plays on
   Linux gets this card on macOS. There is no transcoding fallback — ADR-0056's
   consequences cover what that would have cost.
+- **A webview with no decoders at all never gets an element**
+  ([ADR-0059](adr/0059-a-dead-web-process-is-reloaded-not-left-on-screen.md)).
+  That state does not produce an error to show — it *kills the web process*, so
+  there is no `error` event and the card above never renders. `MediaView`
+  therefore asks first: `canPlayType` for five types any working build
+  recognises, and only if **all** of them answer empty does it draw the card
+  instead of the player, with a sentence blaming the build rather than the file.
+  **A check on the webview, never on the file** — `.mkv` answers empty on a
+  healthy WebKitGTK and plays anyway, so a per-file version of this would ground
+  the one format the card above exists for.
 - **On Linux the decoders ship with the app**
   ([ADR-0058](adr/0058-the-appimage-carries-its-own-gstreamer-plugins.md)).
   WebKitGTK decodes through GStreamer, the AppImage carries its own WebKit and
@@ -3076,6 +3086,34 @@ the design:
   stale in exactly the situation this handles.
 - **Anything else, nothing rendered → full-screen.** Only here is replacing the
   document right: there is nothing to preserve and no other way to say anything.
+
+### The process-level half (added 2026-09-22, [ADR-0059](adr/0059-a-dead-web-process-is-reloaded-not-left-on-screen.md))
+
+Under both halves above sits a failure neither can see: **the web process
+itself dying.** WebKit runs the page in a process of its own, and when it goes,
+no boundary catches it and no handler fires — there is nothing left to run
+them. Ours is untouched, so the window stays on screen, on top, accepting
+clicks, painting the last frame the dead process left. That is what a user
+reported as "opening a video file is completely freezing the app"; it was a
+`WEBKIT_WEB_PROCESS_CRASHED` from a missing GStreamer element (ADR-0058).
+
+- **The view is reloaded**, by `services/webview_health.rs` on WebKitGTK's
+  `web-process-terminated`. Not media-specific: an out-of-memory renderer ends
+  the same way. **At most three reloads in sixty seconds** — a page that
+  crashes *while loading* would otherwise flicker forever, and a dead window a
+  human can close beats one they cannot.
+- **What survives is every session.** The PTYs, the IDE bridges and the
+  database are ours, and `terminal_list` re-adopts them on boot — the same
+  promise the crash screen's Reload already makes. What is lost is the
+  renderer's own state: the open file, the scroll position, the front tab.
+- **The reader is told, and told on boot.** `webview_crash_notice` is *asked*
+  rather than emitted: at the moment of the crash there is no renderer to emit
+  to, and an emit after the reload races the listener being registered. The
+  sentence leads with what survived. It surfaces through `lib/errorNotice`,
+  which is the one path that does not assume React is working.
+- **Linux only.** `WKWebView` reports the same thing through a delegate method
+  wry does not surface; the command exists on macOS and always answers nothing,
+  which is one shape for the renderer rather than two.
 
 `lib/errorNotice` is explicitly a **stopgap**, and item 7 should delete it: once
 `@factorai/ui` has a toast and `AppError` has a routing story, a mounted app

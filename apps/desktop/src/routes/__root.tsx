@@ -12,6 +12,7 @@ import { useSessionsSync } from '@hooks/useSessionsSync';
 import { useWatchedOpenFile } from '@hooks/useWatchedOpenFile';
 import { useSettingsModal } from '@hooks/useSettingsModal';
 import { useViewerStore } from '@store/viewerStore';
+import { showErrorNotice } from '@lib/errorNotice';
 import { isSettingsSection, type SettingsSection } from '@lib/settingsDraft';
 import { cmd, events } from '@lib/tauri';
 import { useIndexerStore } from '@store/indexerStore';
@@ -97,6 +98,28 @@ function RootLayout() {
 			.shellName()
 			.then((name) => useShellStore.getState().setShellName(name))
 			.catch((e) => console.error('shell_name failed', e));
+	}, []);
+
+	// **Why am I a fresh renderer?** (F7, ADR-0059.) A web process that dies
+	// takes the window's contents with it and leaves ours untouched, so Rust
+	// reloads the view — and the reader, who did nothing but open a file, sees
+	// the app throw away their scroll position for no stated reason. This is
+	// where the reason arrives: a boot-time *ask*, because at the moment of the
+	// crash there is no renderer to emit to, and after the reload an emit would
+	// race this component registering its listeners.
+	//
+	// `showErrorNotice` rather than a component, for the reason that file gives:
+	// it is the one surface that works regardless of what else is broken, and
+	// this notice exists precisely because something was.
+	useEffect(() => {
+		void cmd
+			.webviewCrashNotice()
+			.then((notice) => {
+				if (notice) showErrorNotice(notice);
+			})
+			// A notice we could not fetch is not worth a notice of its own — the
+			// app is up, which is the thing the reader can see for themselves.
+			.catch(() => undefined);
 	}, []);
 
 	// **Tell the backend what is on screen** (F20). The IDE bridge answers two

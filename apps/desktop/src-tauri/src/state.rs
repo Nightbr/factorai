@@ -8,6 +8,7 @@ use crate::services::indexer::Indexer;
 use crate::services::media_server::MediaServer;
 use crate::services::routines::Runner as RoutineRunner;
 use crate::services::terminal::TerminalManager;
+use crate::services::webview_health::Health;
 
 /// Application state shared across Tauri commands. Constructed in
 /// `setup()`.
@@ -35,4 +36,8 @@ pub struct AppState {
 	/// ADR-0057). Started on the first `probe_media` and not before: an app that
 	/// never opens a video never opens a socket.
 	pub media: Arc<OnceLock<MediaServer>>,
+	/// What the window's own web process has done to us (F7, ADR-0059). Filled
+	/// by the crash handler installed in `setup()` and drained by the renderer on
+	/// boot, which is the only pair of things that ever touch it.
+	pub webview_health: Arc<Health>,
 }
