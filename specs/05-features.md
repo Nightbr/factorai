@@ -6904,7 +6904,11 @@ A rollout line is `{"timestamp": "…", "ordinal": n?, "type": "<kind>",
   the first user message that is not injected context otherwise; the id as the
   last resort. `custom` is not produced today: a name the user sets in Codex
   lands in the same file and is indistinguishable from the auto-title. The
-  index file is small and read whole on each scan of that profile.
+  index file is small and read whole on each scan of that profile. Codex's
+  `<image name=[Image #…] path="…">` attachment markers are removed from both
+  that thread name and the first-message fallback before choosing a display
+  title. The user's words after an image supply the name; a marker-only name
+  falls through to the first message with words, then the id.
 - **Sub-agents.** `session_meta.parent_thread_id` set, or `source: subagent`,
   → `subagent_of`. Rendered as F-Sub-agent transcripts are today.
 

@@ -387,9 +387,27 @@ pub fn title_display(text: &str) -> Option<String> {
 	{
 		return Some(format!("/{msg}"));
 	}
-	let stripped = strip_context_tags(text);
+	let stripped = strip_image_markers(&strip_context_tags(text));
 	let trimmed = stripped.trim();
 	(!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+/// Codex writes a pasted image as an inline attachment marker before the
+/// user's words (specs/05-features.md § F30). It is metadata, not a title.
+/// Leave incomplete markers alone so a partial or literal message is not lost.
+pub fn strip_image_markers(text: &str) -> String {
+	let mut out = text.to_owned();
+	let mut removed = false;
+	while let Some(start) = out.find("<image name=") {
+		let Some(end) = out[start..].find('>') else { break };
+		out.replace_range(start..start + end + 1, "");
+		removed = true;
+	}
+	if removed {
+		out.split_whitespace().collect::<Vec<_>>().join(" ")
+	} else {
+		out
+	}
 }
 
 /// The context-marker blocks Claude Code injects around a user message — the
@@ -603,6 +621,23 @@ mod tests {
 	fn title_display_leaves_plain_prose_alone() {
 		let prose = "how should a <bash-input> tag look in the title?";
 		assert_eq!(title_display(prose).as_deref(), Some(prose));
+	}
+
+	#[test]
+	fn title_display_skips_codex_image_marker() {
+		let marker = "<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\">";
+		assert_eq!(
+			title_display(&format!("{marker}\nFix the session title")).as_deref(),
+			Some("Fix the session title")
+		);
+		assert_eq!(title_display(marker), None);
+		assert_eq!(
+			title_display(
+				"Explain this <image name=[Image #2] path=\"/tmp/second.png\"> screenshot"
+			)
+			.as_deref(),
+			Some("Explain this screenshot")
+		);
 	}
 
 	// Real Claude events that the strict v1 parser was rejecting.

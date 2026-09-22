@@ -304,9 +304,10 @@ pub fn thread_names(codex_dir: &Path) -> HashMap<String, String> {
 	let Ok(file) = File::open(codex_dir.join(INDEX_FILE)) else { return out };
 	for line in BufReader::new(file).lines().map_while(Result::ok) {
 		let Ok(e) = serde_json::from_str::<Entry>(line.trim()) else { continue };
-		match e.thread_name.filter(|n| !n.trim().is_empty()) {
+		let name = e.thread_name.map(|n| crate::services::jsonl::strip_image_markers(&n));
+		match name.filter(|n| !n.trim().is_empty()) {
 			Some(name) => {
-				out.insert(e.id.to_ascii_lowercase(), name);
+				out.insert(e.id.to_ascii_lowercase(), name.trim().to_string());
 			}
 			None => {
 				out.remove(&e.id.to_ascii_lowercase());

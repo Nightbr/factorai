@@ -31,7 +31,9 @@ use crate::services::jsonl::{
 ///     injected context (the local-command caveat, `<system-reminder>`, the IDE
 ///     note) is skipped in favour of the first user message that carried intent
 ///     (specs/02-data-model.md § "Persistence implications").
-const PARSE_VERSION: i64 = 3;
+/// 4 — Codex image attachment markers are omitted from thread names and
+///     first-message titles (specs/05-features.md § F30).
+const PARSE_VERSION: i64 = 4;
 
 /// How many recent paths a session keeps. See migration 0010 for why a list at
 /// all, and why the number is not doing any selecting.
@@ -694,8 +696,19 @@ impl Indexer {
 		// turned out to contain. That is what the version stamp buys over 0008's
 		// `last_cwd IS NULL` test, which would never converge for a session that
 		// legitimately has nothing to find.
+		// Codex stores names outside the rollout. A rename can change that file
+		// without touching the transcript, so the file stat alone cannot skip it
+		// (specs/05-features.md § F30).
+		let codex_name_changed = source.agent == crate::agents::CODEX
+			&& cached.as_ref().is_some_and(|c| match source.names.get(&session_id) {
+				Some(name) => c.kind() != TitleKind::Ai || c.title != name.as_str(),
+				None => c.kind() == TitleKind::Ai,
+			});
 		if let Some(c) = &cached {
-			if (c.mtime, c.size) == (mtime_ms, size) && c.parse_version >= PARSE_VERSION {
+			if (c.mtime, c.size) == (mtime_ms, size)
+				&& c.parse_version >= PARSE_VERSION
+				&& !codex_name_changed
+			{
 				return Ok(None);
 			}
 		}
@@ -706,7 +719,8 @@ impl Indexer {
 		// `title_kind` and so cannot say what a tail title would be beating, the
 		// file shrank, or nothing has been indexed yet.
 		let mut resume = cached.as_ref().filter(|c| {
-			c.parse_version >= PARSE_VERSION
+			!codex_name_changed
+				&& c.parse_version >= PARSE_VERSION
 				&& c.title_kind.is_some()
 				&& c.indexed_bytes > 0
 				&& size >= c.indexed_bytes

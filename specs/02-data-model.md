@@ -201,6 +201,10 @@ renderer is the only place that cares about block shape, and TS handles
        user's words and is stripped. Any prose left in the same message titles
        the session; a message that was only context is skipped so the next user
        message is used instead.
+     - **Codex image attachment markers** such as
+       `<image name=[Image #1] path="/tmp/codex-clipboard-…png">` are removed
+       from display titles. Words after the image can title the session; an
+       image-only message lets the next user message supply the title.
      The raw text still feeds FTS unchanged.
   4. session UUID's first 8 chars (last-resort)
 - **`cwd`** is the first non-null `cwd` we see. Used to resolve the

@@ -884,7 +884,7 @@ fn a_row_from_an_older_parser_is_reparsed_exactly_once() {
 		// current, so the next scan skips it and the backfill terminates. The
 		// literal tracks `indexer::PARSE_VERSION`, which is private: a test crate
 		// asserting on it by name would make the constant part of the API.
-		assert_eq!(version, 3);
+		assert_eq!(version, 4);
 		Ok(())
 	})
 	.expect("read version");
@@ -1273,4 +1273,40 @@ fn a_codex_store_is_discovered_and_its_thread_indexed_with_codexs_own_name() {
 	}
 	idx.full_scan().expect("scan after delete");
 	assert_eq!(counts(&db, &session_id), (0, 0));
+}
+
+#[test]
+fn a_codex_image_title_uses_the_users_words_and_tracks_index_only_renames() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (idx, _) = make_indexer(db.clone(), tmp.path().join(".claude"));
+	let (codex_dir, _, session_id) = fixture_codex_store(tmp.path(), &db);
+	let index_path = codex_dir.join("session_index.jsonl");
+	let title = || -> (String, String) {
+		db.with(|conn| {
+			Ok(conn.query_row(
+				"SELECT title, title_kind FROM sessions WHERE id = ?1",
+				params![session_id],
+				|row| Ok((row.get(0)?, row.get(1)?)),
+			)?)
+		})
+		.expect("session title")
+	};
+	let set_name = |name: &str| {
+		let entry = serde_json::json!({"id": session_id, "thread_name": name});
+		std::fs::write(&index_path, format!("{entry}\n")).expect("write thread index");
+	};
+
+	idx.full_scan().expect("initial scan");
+	assert_eq!(title(), ("Reply with pong".into(), "ai".into()));
+
+	set_name(
+		"<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\">\nFix the session title",
+	);
+	idx.full_scan().expect("scan after image title");
+	assert_eq!(title(), ("Fix the session title".into(), "ai".into()));
+
+	set_name("<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\">");
+	idx.full_scan().expect("scan after marker-only title");
+	assert_eq!(title(), ("Reply with exactly the word: pong".into(), "derived".into()));
 }
