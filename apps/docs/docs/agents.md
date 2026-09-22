@@ -40,10 +40,12 @@ Search covers both stores. The session header shows the agent's mark.
 | Session title | your `/rename`, else Claude's own, else the first prompt | Codex's own thread name, else the first prompt |
 | Status | the title glyph | the title's run state |
 | New session id | assigned by factorai before the process starts | Codex's, adopted at the first turn |
-| IDE bridge (open file, add to context) | yes | not yet |
+| Add to agent context | yes, into the composer | yes, as a new turn (`codex queue`), once the thread has had its first message |
+| Viewer follows the files the agent reads | yes | not yet |
 
-That last row is honest rather than a plan: the bridge speaks Claude Code's protocol, and Codex
-has no equivalent to speak to yet.
+That last row is honest rather than a plan: it rides on Claude Code's editor protocol, and Codex
+has no equivalent to speak to yet. For Codex, "Add to agent context" queues a message into the
+running thread; if the thread is idle, Codex answers it right away.
 
 A Codex session begins under an id factorai minted and takes Codex's own the moment the first
 turn lands. The tab, the URL and the terminal move over in one step; you will not notice unless

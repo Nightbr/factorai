@@ -87,6 +87,45 @@ pub fn argv(
 	v
 }
 
+/// The argv, after the binary, that queues one user message into a running
+/// thread: `codex queue --thread <id> --message <text>` (F30 § "Add to agent
+/// context"). Observed 2026-09-22: delivered into a live TUI, and when the
+/// thread is idle it starts a turn at once — the message lands as a user turn
+/// verbatim, so it is written as one.
+pub fn queue_argv(thread_id: &str, message: &str) -> Vec<String> {
+	vec![
+		"queue".into(),
+		"--thread".into(),
+		thread_id.to_string(),
+		"--message".into(),
+		message.to_string(),
+	]
+}
+
+/// The user turn that "Add to agent context" becomes for Codex: one
+/// `@path#Lstart-end` per mention, the path relative to the session's folder
+/// when it is inside it, absolute otherwise. Claude's bridge adds the same
+/// mention to the composer without sending; Codex has no such channel, so the
+/// turn says what it is rather than reading as a question.
+pub fn mention_message(cwd: &Path, mentions: &[(PathBuf, Option<(u32, u32)>)]) -> String {
+	let mut lines: Vec<String> = mentions
+		.iter()
+		.map(|(path, range)| {
+			let shown = path.strip_prefix(cwd).unwrap_or(path).to_string_lossy().into_owned();
+			match range {
+				Some((start, end)) if start == end => format!("@{shown}#L{start}"),
+				Some((start, end)) => format!("@{shown}#L{start}-{end}"),
+				None => format!("@{shown}"),
+			}
+		})
+		.collect();
+	lines.insert(
+		0,
+		"Added to your context from the file panel — no action needed unless asked:".to_string(),
+	);
+	lines.join("\n")
+}
+
 // ---------------------------------------------------------------------------
 // Status and adoption, from the title
 // ---------------------------------------------------------------------------
@@ -475,6 +514,25 @@ mod tests {
 			&r#"mcp_servers.factorai.bearer_token_env_var="FACTORAI_MCP_TOKEN""#.to_string()
 		));
 		assert!(!v.iter().any(|a| a.contains("Bearer")), "the token never goes in argv");
+	}
+
+	#[test]
+	fn a_mention_becomes_one_user_turn_with_at_paths_relative_to_the_folder() {
+		let cwd = Path::new("/home/alice/code/pong");
+		let msg = mention_message(
+			cwd,
+			&[
+				(PathBuf::from("/home/alice/code/pong/src/main.rs"), Some((10, 20))),
+				(PathBuf::from("/home/alice/code/pong/README.md"), None),
+				(PathBuf::from("/home/alice/other/x.ts"), Some((3, 3))),
+			],
+		);
+		let lines: Vec<&str> = msg.lines().collect();
+		assert!(lines[0].starts_with("Added to your context"));
+		assert_eq!(lines[1], "@src/main.rs#L10-20");
+		assert_eq!(lines[2], "@README.md");
+		assert_eq!(lines[3], "@/home/alice/other/x.ts#L3");
+		assert_eq!(queue_argv("abc", "hi"), vec!["queue", "--thread", "abc", "--message", "hi"]);
 	}
 
 	#[test]

@@ -811,6 +811,33 @@ impl TerminalManager {
 			})?;
 		let handle = entry.value();
 
+		// **Codex has no editor bridge; it has a queue** (F30 § "Add to agent
+		// context"). The mention becomes one user turn, delivered by `codex queue`
+		// into the running thread — which needs the thread's own id, so a session
+		// Codex has not named yet (no first turn, ADR-0062) cannot take one.
+		if handle.agent.map(|a| a.id) == Some(agents::CODEX) {
+			let Some(thread) = handle.adopted.lock().clone() else {
+				return Err(AppError::InvalidInput(
+					"Codex has not named this session yet — send it a first message, then add context".into(),
+				));
+			};
+			let mut roots = vec![handle.cwd.clone()];
+			roots.extend(crate::services::git::worktree_paths(&handle.cwd.to_string_lossy()));
+			let resolved: Vec<(PathBuf, Option<(u32, u32)>)> = mentions
+				.iter()
+				.map(|m| {
+					let path = scope::resolve_within_any(&roots, &m.path)?;
+					let range = match (m.line_start, m.line_end) {
+						(Some(a), Some(b)) => Some((a, b)),
+						_ => None,
+					};
+					Ok((path, range))
+				})
+				.collect::<AppResult<_>>()?;
+			let message = codex::mention_message(&handle.cwd, &resolved);
+			return self.codex_queue(handle, &thread, &message);
+		}
+
 		let Some(server) = handle.ide.server() else {
 			return Err(AppError::InvalidInput(
 				"this session has no editor bridge, so there is nothing to send to".into(),
@@ -831,6 +858,38 @@ impl TerminalManager {
 		for mention in mentions {
 			let path = scope::resolve_within_any(&roots, &mention.path)?;
 			server.notify(protocol::at_mentioned(&path, mention));
+		}
+		Ok(())
+	}
+
+	/// Run `codex queue` against a live thread, under the session's own store
+	/// (F30 § "Add to agent context"). Synchronous and short: the CLI hands the
+	/// message to the running TUI and exits; a failure is the CLI's own words.
+	fn codex_queue(&self, handle: &TerminalHandle, thread: &str, message: &str) -> AppResult<()> {
+		let codex = codex_desc();
+		let bin = match &self.binary_override {
+			Some(p) => p.clone(),
+			None => {
+				let configured = self.user_binary.as_ref().and_then(|cb| cb(codex.id));
+				find_agent_binary(codex, configured.as_deref())?
+			}
+		};
+		let mut cmd = std::process::Command::new(bin);
+		cmd.args(codex::queue_argv(thread, message))
+			.current_dir(&handle.cwd)
+			.stdin(std::process::Stdio::null());
+		// The same store the session runs under, spelled the same way: the
+		// ambient directory is "no variable", a profile's is the variable.
+		if handle.store_dir == *self.ambient_dir_for(codex) {
+			cmd.env_remove(codex.config_dir_env);
+		} else {
+			cmd.env(codex.config_dir_env, &handle.store_dir);
+		}
+		let out = cmd.output().map_err(|e| AppError::Process(format!("codex queue: {e}")))?;
+		if !out.status.success() {
+			let err = String::from_utf8_lossy(&out.stderr);
+			let line = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+			return Err(AppError::Process(format!("codex queue failed: {line}")));
 		}
 		Ok(())
 	}
@@ -3043,6 +3102,26 @@ mod tests {
 		assert_ne!(claude, o.session_id);
 		let codex = mgr.next_session_id(&o.project_id, folder, Some("codex")).unwrap();
 		assert_eq!(codex, o.session_id, "an unadopted Codex session is reused");
+		mgr.kill(&id).unwrap();
+	}
+
+	#[test]
+	fn a_mention_into_an_unnamed_codex_session_is_refused_with_the_reason() {
+		// F30 § "Add to agent context": `codex queue` needs the thread's own id,
+		// which a session has only after its first turn (ADR-0062).
+		let (mgr, _data, _exit) = make_manager();
+		let mut o = opts(80, 24);
+		o.agent = Some("codex".into());
+		let id = mgr
+			.spawn_with_argv(o.clone(), Some(vec!["/bin/sh".into(), "-c".into(), "sleep 5".into()]))
+			.expect("spawn");
+		let err = mgr
+			.mention(
+				&o.session_id,
+				&[Mention { path: "README.md".into(), line_start: None, line_end: None }],
+			)
+			.expect_err("refused");
+		assert!(err.to_string().contains("not named this session yet"), "{err}");
 		mgr.kill(&id).unwrap();
 	}
 

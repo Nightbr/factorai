@@ -6968,13 +6968,35 @@ tolerates it — the fixture step trashes one session and opens `codex resume`
 afterwards. If it does not, the fallback is `codex archive <id>` plus a trash of
 the archived file, and this section changes.
 
-### The IDE bridge
+### The IDE bridge, and what Codex gets instead
 
-Claude-only, deliberately (ADR-0060 § "What is deliberately not a
-capability"). A Codex session has no `openFile` push and no *Add to agent
-context*; the context-menu item is hidden for a Codex session rather than
-shown and failing. `codex` has no lockfile protocol to write into, so nothing
-is written into `CODEX_HOME` at all.
+The bridge is Claude-only, deliberately (ADR-0060 § "What is deliberately not
+a capability"): `codex` has no lockfile protocol, no `ide` server role and no
+`at_mentioned`, so nothing is written into `CODEX_HOME` and no
+`CLAUDE_CODE_SSE_PORT` reaches it. Checked in the 0.155.1 binary on
+2026-09-22. Of the bridge's two directions, one has a Codex substitute and
+one does not:
+
+**Add to agent context — yes, through `codex queue`.** Codex takes a user
+message into a running thread from outside: `codex queue --thread <id>
+--message <text>`. **[checked]** Delivered into a live TUI; when the thread is
+idle it starts a turn at once, and the text lands verbatim as a user turn.
+So `ide_mention` on a Codex session runs that command, under the session's own
+`CODEX_HOME` and in its folder, with one message: an intro line and one
+`@path#Lstart-end` per mention, the path relative to the session's folder when
+it is inside it. Two things differ from Claude and the spec says so: the
+thread's own id is required, so a session Codex has not named yet (before its
+first turn, ADR-0062) refuses with *Codex has not named this session yet —
+send it a first message, then add context*; and a mention is a **turn**, not a
+composer insert — Codex answers it, which is why the message says no action is
+needed unless asked. Paths are scope-checked against the session's checkouts
+exactly as the bridge's are.
+
+**`openFile` — no.** Claude's CLI calls it when Claude reads a file; nothing in
+Codex fires on a read. Two substitutes are recorded in roadmap item 38 and not
+built: an `openFile` tool on factorai's own MCP server (a model decision, not a
+follow), and tailing the session's rollout for `custom_tool_call` paths (a
+follow, about a second late). The `/ide` status badge stays Claude-only.
 
 ### Edge cases
 

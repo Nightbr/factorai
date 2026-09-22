@@ -1281,6 +1281,14 @@ Slices, in order; each is its own commit series against `main` and each moves he
 - [x] **6. Tools** — shipped 2026-09-22 with slice 3: `-c mcp_servers.factorai.url` plus
       `bearer_token_env_var` at spawn, the token in the environment. **Left of slice 6:**
       `routines.agent` and the routine form's select.
+- [x] **Add to agent context for Codex** — shipped 2026-09-22 through `codex queue --thread
+      --message` (F30 § "The IDE bridge, and what Codex gets instead"); needs the adopted id, so
+      it works from the first turn on, and it is a turn rather than a composer insert.
+- [ ] **The other half of the bridge for Codex**, two substitutes, neither built: an `openFile`
+      tool on factorai's own MCP server (the model opens a file for you — a decision, not a
+      follow), and a live tail of the session's rollout for `custom_tool_call` paths (the viewer
+      follows the agent, about a second late). Each is its own F30 section before code; the
+      app-server protocol stays out until it drops its experimental label (ADR-0060).
 - [ ] **7. The rest.** Gemini CLI, OpenCode, Cursor, each as one `Agent` value against the settled
       seam, each starting with its own slice 1. The seam is reopened only for a fifth capability,
       by a new ADR.
