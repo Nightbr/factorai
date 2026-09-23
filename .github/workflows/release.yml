@@ -595,7 +595,11 @@ jobs:
   point-alpha:
     name: Point the alpha channel at it
     needs: [publish]
-    if: inputs.channel == 'alpha'
+    # `always()` for the reason `publish` carries one: `installer` is skipped on
+    # an alpha, and a skip anywhere upstream skips this job too unless it names
+    # the result it actually depends on. v0.49.0-alpha.1 published with no
+    # pointer because of exactly that.
+    if: always() && needs.publish.result == 'success' && inputs.channel == 'alpha'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
