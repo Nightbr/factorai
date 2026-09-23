@@ -168,13 +168,19 @@ contract and F14 / F11 / F17 / F29 in `05-features.md` carry the app side.
 
 **Still open — each needs the workflows to run once on GitHub, which no local gate can do:**
 
-- [ ] **The first alpha.** Watch `alpha.yml` after the next app-affecting push: `plan` picks
-      `0.49.0-alpha.1`, the release is a prerelease, and `alpha-channel/latest.json` exists and
-      lists both platforms.
+- [x] **The first alpha.** `v0.49.0-alpha.1` published itself on 2026-09-23 as a prerelease
+      with both platforms in its manifest — and **without** the `alpha-channel` pointer: the
+      pointer job inherited the Windows installer's skip. Fixed the same hour (`always()` plus
+      the result it depends on); `v0.49.0-alpha.2` created the pointer and it serves both
+      platforms.
 - [ ] **Alpha to alpha on a real install.** Set a local install to Alpha, let the next alpha
       land, and see it update. Until then `check_update` is verified by types and review only.
-- [ ] **The first promote, `0.49.0`.** Existing installs (on `0.48.2`) should see it as a normal
-      update; the bump commit should say `0.50.0`; nothing should be pruned yet.
+- [x] **The first promote, `0.49.0`.** Promoted from `v0.49.0-alpha.2` on 2026-09-23: Latest,
+      all five assets including the `.exe`, `/releases/latest/download/latest.json` says `0.49.0`,
+      the bump commit took `main` to `0.50.0` with the first `CHANGELOG.md` entry, and nothing
+      was pruned.
+- [ ] **A `0.48.2` install picks up `0.49.0`.** The manifest is right; seeing an existing
+      install update through it is still owed.
 - [ ] **The macOS smoke pass** has still never happened — that is item 8, not this item, and this
       item does not pretend to close it.
 
