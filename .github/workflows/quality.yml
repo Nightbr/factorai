@@ -4,9 +4,11 @@ name: Quality
 #
 # Local runs are still the real gate — this is the net under them, for the day
 # there are PRs and for the case where someone pushes to main without running
-# anything. It deliberately does NOT gate the release: `release.yml` is
-# tag-driven and says in its own header that tagging an unverified commit ships
-# an unverified build. Tag a commit this workflow has passed.
+# anything. **It is also the release gate** (ADR-0064): `alpha.yml` builds an
+# alpha only when this workflow succeeds on a push to main, and `promote.yml`
+# refuses an alpha whose commit has no successful run here. Renaming this
+# workflow breaks both — `alpha.yml` names it in `workflow_run`, `promote.yml`
+# queries `quality.yml` by file name.
 #
 # **No e2e here on purpose.** Playwright needs a browser download and a dev
 # server, and the suite is ~70s and growing; it belongs in a lane that can be

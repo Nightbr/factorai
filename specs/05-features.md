@@ -2274,17 +2274,25 @@ late**, they are not skipped. Both are text fields normalised on save the way th
 binary override is: a value that is not a whole number in range is treated as
 unset rather than written, because a cap of `NaN` reaches the scheduler.
 
-**About.** The ninth section, added 2026-09-16 and **last in the nav**: the mark,
+**Advanced.** Added 2026-09-23, directly above About, with one row: the **update
+channel**, a `Select` of Stable and Alpha (F14, ADR-0064). A SQLite setting,
+because the update check that reads it runs in Rust; stable is written as *no row*,
+so switching back leaves the table as it was. Its description changes with the
+choice — alpha says it builds from every green commit on `main`, stable says
+leaving alpha never downgrades and you move at the next stable release. Saving a
+change runs a check at once outside a dev build.
+
+**About.** The tenth section, added 2026-09-16 and **last in the nav**: the mark,
 the name, the build this copy came from, the licence and the people in it. It is
 the second section that edits nothing — Profiles is the other — so it can never
 be dirty and never shows a dot, and it is last because a table of contents puts
 the thing that sets nothing at the bottom. See F29.
 
-**Appearance and Advanced are dropped until they have content.** This heading read
-"three, not four" until Sessions arrived, and the count is not the point — having
-content is. Appearance would hold theme, which is deferred to its own roadmap item
-(below); Advanced would hold item 31's release channel, which does not exist yet.
-An empty section reads as a bug.
+**A section is dropped until it has content.** This heading read "three, not
+four" until Sessions arrived, and the count is not the point — having content is.
+Appearance arrived with the clock setting and Advanced with the update channel;
+theme, which is deferred to its own roadmap item (below), will join Appearance. An
+empty section reads as a bug.
 
 **Theme is not here, and that is a scope decision rather than an omission.**
 Nothing in the app sets `data-theme` today, so the light palette in
@@ -2303,9 +2311,9 @@ Advanced section.
 ### Backend
 
 `get_setting` / `set_setting`, keyed by a **mirrored `SettingKey` union** — see
-[`03-backend-rust.md`](./03-backend-rust.md) § `settings`. Three keys: the claude
-binary path, and F22's `routines.catchup_hours` and `routines.max_concurrent`.
-Item 31's channel is the fourth.
+[`03-backend-rust.md`](./03-backend-rust.md) § `settings`. The keys: the claude
+and codex binary paths, the default agent, F22's `routines.catchup_hours` and
+`routines.max_concurrent`, and F14's `updates.channel` (ADR-0064).
 
 The override is read by **`find_claude_binary(override)`** rather than
 `TerminalManager`'s existing `binary_override` field. That field is documented for
@@ -2670,16 +2678,39 @@ days beside running agents, so launch-only would rarely fire. One install per
 run: once a version is staged, further checks would re-download the same
 release.
 
-**Backend.** `tauri-plugin-updater` against
-`https://github.com/Nightbr/factorai/releases/latest/download/latest.json`,
-with signatures verified against the public key in `tauri.conf.json`.
+**Channels** ([ADR-0064](adr/0064-alpha-builds-itself-and-stable-is-a-promoted-alpha.md),
+2026-09-23). Two, and one build serves either — the channel is a preference, not a
+separate artefact:
+
+| Channel | Manifest | What ships there |
+|---|---|---|
+| **Stable** (default) | `releases/latest/download/latest.json` | an alpha promoted by hand (`promote.yml`), rebuilt from the same commit |
+| **Alpha** | `releases/download/alpha-channel/latest.json` | every commit Quality passes on `main`, as a `vX.Y.Z-alpha.N` prerelease |
+
+The setting is `updateChannel` (`updates.channel`), in **Settings › Advanced**
+(F11); unset or unknown is stable. Saving a change checks straight away rather than
+waiting for the poll. **Leaving alpha never downgrades**: the comparator is the
+plugin's default `update > current`, so a `0.50.0-alpha.2` install set to stable
+finds nothing until `0.50.0` ships, and the setting's description says so. A
+downgrade would meet a database an older build cannot read — migrations only go
+forward. About (F29) names the channel, and the crash report (F17) carries it.
+
+**Backend.** The check is a Rust command, `check_update`, because the plugin's JS
+`check()` cannot be given an endpoint and a channel is exactly a choice of
+endpoint. It reads the setting, points `updater_builder()` at that channel's
+manifest, and puts the `Update` it finds in the webview's resource table under the
+plugin's own type; the renderer wraps the id in the plugin's JS `Update`, so
+download, signature verification against the public key in `tauri.conf.json`, and
+install are still the plugin's. It answers `{ channel, update }` — `update` null
+when that channel has nothing newer. `tauri.conf.json` still names the stable URL,
+which is what an install that predates channels polls.
 `tauri-plugin-process` provides `relaunch()`. Both are imported **lazily** and
 behind `isTauri()`, so browser-only dev and Playwright never load them and the
 hook is simply inert there.
 
 **Edge cases.**
 - **Development builds never check.** `pnpm dev` runs an unpackaged binary
-  whose version trails every release, so without a guard the updater finds an
+  whose version (`0.49.0`, the next stable) sorts below that stable's alphas, so without a guard the updater finds an
   update on every launch, downloads the bundle, and offers to restart the
   developer into a release build of the code they are currently editing.
 - Offline, or the endpoint is unreachable → stays silent. The app works, it's
@@ -3139,8 +3170,10 @@ information exists. Three actions:
   whole body first, and § "No telemetry" is untouched. The body carries the
   message, the component stack, the app version (a Vite `define` from
   `package.json`, so the crash path does not depend on the Tauri bridge still
-  working) and the user agent — enough to tell a WebKitGTK bug from a macOS
-  one.
+  working), the **update channel** (read from `updaterStore`, where the last
+  check left it — `unknown` when none ran, as in every dev build; ADR-0064) and
+  the user agent — enough to tell a WebKitGTK bug from a macOS one, and an alpha
+  from a stable.
 - **Copy details** — the same report to the clipboard.
 
 **The URL must be percent-encoded, and that is load-bearing rather than
@@ -6505,11 +6538,17 @@ Then, as ordinary `SettingRow`-shaped rows:
 | Row | Value |
 |---|---|
 | Version | `0.3.0`, and the whole line is the copy control |
+| Channel | `Stable` or `Alpha`, as stored (F14, ADR-0064) |
 | Build | the short SHA and the build date |
 | Licence | `MIT licence` linking to `LICENSE`, `© 2026 Titouan BENOIT` |
 | Contributors | `N contributors`, expanding in place to the logins |
 | Repository | `Open on GitHub` |
 | Updates | the same control the sidebar footer has (F14) |
+
+**The Channel row reads the setting, not the last check**, because About is where
+somebody looks straight after switching. An alpha build set to stable says so in
+the row's description — *moves to stable with the next stable release; nothing
+downgrades* — so the switch does not read as one that did nothing.
 
 **Clicking the version line copies the build line** — `factorai 0.3.0 (a6ac769),
 built 2026-09-16` — and the row says `Copied` for a moment. No separate button:
@@ -6547,8 +6586,8 @@ a file rather than three more Vite defines.
   the licence line already names him, and a list repeating him is a duplicate.
   The app itself never talks to github.com.
 - **A missing or unparseable file is the dev state**, not an error. The version
-  falls back to `__APP_VERSION__` — which already says `0.1.0 (untagged dev
-  build)` when nobody tagged the build — Build reads *Built locally — no release
+  falls back to `__APP_VERSION__` — which already says `0.49.0-dev` (the next
+  stable, plus `-dev`) when no release workflow built it — Build reads *Built locally — no release
   metadata*, and **the contributors row does not render at all**. Every local
   build takes this path, so it is the branch that gets exercised daily.
 

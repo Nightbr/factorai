@@ -412,6 +412,7 @@ pub fn run() {
 			commands::sessions::clear_session_worktree,
 			commands::sessions::set_session_worktree,
 			commands::settings::get_setting,
+			commands::updates::check_update,
 			commands::settings::set_setting,
 			commands::settings::check_claude_cli,
 			commands::settings::validate_claude_binary,

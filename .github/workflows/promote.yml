@@ -1,0 +1,171 @@
+name: Promote
+
+# Stable is a promoted alpha, and this is the only way to make one (ADR-0064).
+#
+#   gh workflow run promote                              # the newest alpha
+#   gh workflow run promote -f alpha=v0.49.0-alpha.3     # a specific one
+#   gh workflow run promote -f headline="Two channels."  # a line above the notes
+#
+# Dispatching it is the human decision; everything after is checked, not
+# remembered. The alpha's commit must have passed Quality and its stable
+# version must not exist yet. Then `release.yml` tags `v0.49.0` on **that same
+# commit** and rebuilds it — the version is compiled into the binary, so the
+# alpha's bytes cannot be reused — and publishes it as Latest after the
+# ADR-0014 asset check.
+#
+# After the release: `CHANGELOG.md` gains the notes, main moves to the next
+# minor in one `chore: bump` commit, and alphas older than the previous cycle
+# are deleted with their tags. **That deletion is permanent and public**
+# (ADR-0064 consequence 3). No soak time is enforced; the summary reports the
+# alpha's age and how many commits it adds, and the person dispatching reads it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      alpha:
+        description: 'The alpha to promote, e.g. v0.49.0-alpha.3. Empty for the newest.'
+        required: false
+        type: string
+      headline:
+        description: 'Optional paragraph placed above the generated notes.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Check the alpha
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      sha: ${{ steps.plan.outputs.sha }}
+      notes: ${{ steps.plan.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Plan
+        id: plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through the environment, never interpolated into the script: both
+          # are free text typed into a form.
+          INPUT_ALPHA: ${{ inputs.alpha }}
+          HEADLINE: ${{ inputs.headline }}
+        run: |
+          set -euo pipefail
+          cli() { node scripts/release/cli.mjs "$@"; }
+          fail() { echo "::error::$1"; exit 1; }
+
+          ALPHA="${INPUT_ALPHA:-$(cli newest alpha)}"
+          [ -n "$ALPHA" ] || fail "There is no alpha to promote."
+          VERSION="$(cli base "$ALPHA")" || fail "$ALPHA is not an alpha tag."
+          git rev-parse -q --verify "refs/tags/$ALPHA" >/dev/null || fail "$ALPHA does not exist."
+          SHA="$(git rev-list -n 1 "$ALPHA")"
+
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            fail "v$VERSION already exists. Promote an alpha of the current cycle."
+          fi
+
+          # The gate item 31a asked for: this exact commit, a successful Quality
+          # run. Not "main is green" — main may have moved on.
+          GREEN="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/runs?head_sha=$SHA&status=success&per_page=1" --jq '.total_count')"
+          [ "$GREEN" -gt 0 ] || fail "$ALPHA ($SHA) has no successful Quality run."
+
+          PREVIOUS="$(cli newest stable)"
+          {
+            echo "version=$VERSION"
+            echo "sha=$SHA"
+            echo "notes<<FACTORAI_NOTES_EOF"
+            cli notes "${PREVIOUS:--}" "$SHA" "$HEADLINE"
+            echo "FACTORAI_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          PUBLISHED="$(gh release view "$ALPHA" --json publishedAt --jq '.publishedAt' 2>/dev/null || echo '')"
+          AGE="unknown"
+          if [ -n "$PUBLISHED" ]; then
+            HOURS=$(( ( $(date -u +%s) - $(date -u -d "$PUBLISHED" +%s) ) / 3600 ))
+            AGE="${HOURS}h"
+          fi
+          COMMITS="$(git rev-list --count "${PREVIOUS:+$PREVIOUS..}$SHA")"
+          {
+            echo "### Promoting $ALPHA to v$VERSION"
+            echo ""
+            echo "- commit: \`$SHA\` (Quality: green)"
+            echo "- alpha age: $AGE"
+            echo "- commits since ${PREVIOUS:-the beginning}: $COMMITS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Release
+    needs: plan
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      sha: ${{ needs.plan.outputs.sha }}
+      channel: stable
+      notes: ${{ needs.plan.outputs.notes }}
+    secrets: inherit
+
+  finish:
+    name: Bump main, write the changelog, prune alphas
+    needs: [plan, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Pushed with GITHUB_TOKEN, so it starts no Quality run and no alpha by
+      # itself (ADR-0064 consequence 4). The next real push does both.
+      - name: Commit the bump and the changelog
+        shell: bash
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          NOTES: ${{ needs.plan.outputs.notes }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/notes.md"
+          NEXT="$(node scripts/release/cli.mjs bump-after "$VERSION" "$RUNNER_TEMP/notes.md")"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CHANGELOG.md apps/desktop/package.json apps/desktop/src-tauri/tauri.conf.json \
+            apps/desktop/src-tauri/Cargo.toml Cargo.lock
+          git commit -m "chore: bump to $NEXT" -m "v$VERSION shipped as stable; main now builds $NEXT alphas (ADR-0064)."
+          # One retry over a push that raced this job: the bump touches only
+          # the version fields and the changelog, so a rebase onto someone
+          # else's commit is conflict-free unless they bumped by hand.
+          git push origin HEAD:main || { git pull --rebase origin main && git push origin HEAD:main; }
+          echo "main bumped to $NEXT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prune old alphas
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          for TAG in $(node scripts/release/cli.mjs prune "$VERSION"); do
+            # A release with its tag, or a tag whose release is already gone.
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes \
+              || git push origin ":refs/tags/$TAG"
+            echo "pruned $TAG" >> "$GITHUB_STEP_SUMMARY"
+          done

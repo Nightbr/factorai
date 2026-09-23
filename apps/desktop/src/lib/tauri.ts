@@ -38,6 +38,7 @@ import type {
 	SpawnOpts,
 	TerminalDataEvent,
 	TerminalExitEvent,
+	UpdateCheck,
 	TerminalId,
 	TerminalStatusDto,
 	TerminalStatusEvent,
@@ -271,6 +272,9 @@ export const cmd = {
 	 *  empty string: unset is what sends the binary lookup back to its probe. */
 	setSetting: (key: SettingKey, value: string | null) =>
 		invoke<void>('set_setting', { key, value }),
+	/** Look for an update on the channel the setting names (F14, ADR-0064).
+	 *  Never called outside Tauri — `useUpdater` consults the fixture there. */
+	checkUpdate: () => invoke<UpdateCheck>('check_update'),
 	/** Where an agent's binary is and what version it reports, **honouring the
 	 *  override** — so this and the spawn path can never name different binaries
 	 *  (F11, F30). */

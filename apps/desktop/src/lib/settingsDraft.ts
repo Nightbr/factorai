@@ -1,5 +1,6 @@
 import { type ShortcutAction, SHORTCUT_SPECS, mergeKeymap } from '@lib/keymap';
 import type { Prefs } from '@store/prefsStore';
+import type { UpdateChannel } from '@factorai/types';
 
 /**
  * The settings modal's draft, and what is different about it (F11).
@@ -13,8 +14,8 @@ import type { Prefs } from '@store/prefsStore';
 
 /** The nav, in order. **Appearance arrived 2026-08-29 with the clock setting**,
  *  which is what the "absent until it has content" rule was waiting for; theme
- *  joins it when item 32 lands. Advanced (release channel) is still absent for
- *  the same reason: an empty section reads as a bug. */
+ *  joins it when item 32 lands. **Advanced arrived 2026-09-23 with the update
+ *  channel** (ADR-0064), for the same reason. */
 export const SETTINGS_SECTIONS = [
 	'appearance',
 	// After Appearance because both are app-wide chrome you set once, and before
@@ -28,6 +29,9 @@ export const SETTINGS_SECTIONS = [
 	'confirmations',
 	'sessions',
 	'routines',
+	// After everything about daily use and before About: the update channel is
+	// set once, if ever, and About is where its effect is read.
+	'advanced',
 	// **Last, and it edits nothing** (F29). Like `profiles` it holds no value in
 	// `SettingsValues`, so it is absent from `SECTION_FOR`, can never be dirty
 	// and never shows a dot — and a table of contents puts the section that sets
@@ -69,6 +73,21 @@ export interface SettingsValues extends Prefs {
 	 *  parse failure, and normalised on the way out. */
 	routinesCatchupHours: string;
 	routinesMaxConcurrent: string;
+	/** The update channel (F14, ADR-0064). SQLite for the same reason: the
+	 *  update check runs in Rust and reads it there. */
+	updateChannel: UpdateChannel;
+}
+
+/** A stored channel as a channel: anything but `alpha` is stable, the rule
+ *  Rust's `Channel::parse` applies to the same row. */
+export function channelOf(value: string | null | undefined): UpdateChannel {
+	return value === 'alpha' ? 'alpha' : 'stable';
+}
+
+/** The row to write for a channel: stable is the absence of one, so an install
+ *  that switches back leaves the table as it was before it ever switched. */
+export function channelSetting(channel: UpdateChannel): string | null {
+	return channel === 'alpha' ? 'alpha' : null;
 }
 
 /** **`profiles` holds no value in `SettingsValues`, deliberately.** It is the one
@@ -90,6 +109,7 @@ export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
 	restoreTabs: 'sessions',
 	routinesCatchupHours: 'routines',
 	routinesMaxConcurrent: 'routines',
+	updateChannel: 'advanced',
 	clock24: 'appearance',
 	keymapOverrides: 'keyboard',
 };

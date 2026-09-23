@@ -5,6 +5,11 @@ import {
 	DialogTitle,
 	IconButton,
 	Input,
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
 	SettingRow,
 	Switch,
 } from '@factorai/ui';
@@ -24,6 +29,8 @@ import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
 import {
 	binaryOverride,
+	channelOf,
+	channelSetting,
 	dirtySections,
 	SETTINGS_SECTIONS,
 	CATCHUP,
@@ -33,7 +40,8 @@ import {
 } from '@lib/settingsDraft';
 import { cmd } from '@lib/tauri';
 import { currentPrefs, type Prefs, usePrefsStore } from '@store/prefsStore';
-import type { AgentId } from '@factorai/types';
+import { useUpdater } from '@hooks/useUpdater';
+import type { AgentId, UpdateChannel } from '@factorai/types';
 import { AGENTS } from '@lib/agents';
 
 const SECTION_LABELS: Record<SettingsSection, string> = {
@@ -45,6 +53,7 @@ const SECTION_LABELS: Record<SettingsSection, string> = {
 	confirmations: 'Confirmations',
 	sessions: 'Sessions',
 	routines: 'Routines',
+	advanced: 'Advanced',
 	about: 'About',
 };
 
@@ -89,6 +98,7 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 			codexBinary: (await cmd.getSetting('codexBinaryPath')) ?? '',
 			routinesCatchupHours: (await cmd.getSetting('routinesCatchupHours')) ?? '',
 			routinesMaxConcurrent: (await cmd.getSetting('routinesMaxConcurrent')) ?? '',
+			updateChannel: channelOf(await cmd.getSetting('updateChannel')),
 		}),
 		staleTime: Number.POSITIVE_INFINITY,
 		retry: false,
@@ -143,6 +153,7 @@ export function SettingsModal({ section, onSection, onClose }: SettingsModalProp
 								codexBinary: '',
 								routinesCatchupHours: '',
 								routinesMaxConcurrent: '',
+								updateChannel: 'stable',
 							}
 						}
 						dirtyRef={dirtyRef}
@@ -159,7 +170,11 @@ interface SettingsFormProps {
 	onClose: () => void;
 	savedSqlite: Pick<
 		SettingsValues,
-		'claudeBinary' | 'codexBinary' | 'routinesCatchupHours' | 'routinesMaxConcurrent'
+		| 'claudeBinary'
+		| 'codexBinary'
+		| 'routinesCatchupHours'
+		| 'routinesMaxConcurrent'
+		| 'updateChannel'
 	>;
 	/** Where the shell reads "is there an edit" from, for its click-outside
 	 *  guard. The form is the only thing that knows. */
@@ -180,6 +195,7 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 	const [failure, setFailure] = useState<string | null>(null);
 	const applyPrefs = usePrefsStore((s) => s.applyPrefs);
 	const queryClient = useQueryClient();
+	const { checkNow } = useUpdater();
 
 	const dirty = dirtySections(saved, draft);
 	dirtyRef.current = dirty.length > 0;
@@ -243,13 +259,25 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 			if (concurrent !== CONCURRENT(saved.routinesMaxConcurrent)) {
 				await cmd.setSetting('routinesMaxConcurrent', concurrent);
 			}
+			// The channel the updater polls (ADR-0064). Checked straight away once
+			// saved, so switching to alpha finds the newest alpha now rather than
+			// in up to six hours — and the dev build's updater, which never runs,
+			// stays off here too.
+			const channelChanged = draft.updateChannel !== saved.updateChannel;
+			if (channelChanged) {
+				await cmd.setSetting('updateChannel', channelSetting(draft.updateChannel));
+				// About reads the channel under its own key.
+				queryClient.setQueryData(queryKeys.setting('updateChannel'), draft.updateChannel);
+			}
 			queryClient.setQueryData(queryKeys.setting('claudeBinaryPath'), {
 				claudeBinary: paths.claude ?? '',
 				codexBinary: paths.codex ?? '',
 				routinesCatchupHours: catchup ?? '',
 				routinesMaxConcurrent: concurrent ?? '',
+				updateChannel: draft.updateChannel,
 			});
 			applyPrefs(prefsOf(draft));
+			if (channelChanged && !import.meta.env.DEV) checkNow();
 			onClose();
 		} catch (e) {
 			setFailure(formatError(e));
@@ -439,6 +467,40 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 						</div>
 					)}
 
+					{section === 'advanced' && (
+						<div className="divide-y divide-border">
+							<SettingRow
+								label="Update channel"
+								htmlFor="settings-update-channel"
+								description={
+									draft.updateChannel === 'alpha'
+										? 'Alpha builds from every commit that passes the checks on main, often several a day. Expect rough edges.'
+										: 'Stable is promoted from an alpha by hand. Leaving alpha never downgrades: you move to stable with the next stable release.'
+								}
+							>
+								<Select
+									value={draft.updateChannel}
+									onValueChange={(v) => set('updateChannel', channelOf(v))}
+								>
+									<SelectTrigger
+										id="settings-update-channel"
+										data-testid="settings-update-channel"
+										className="w-32"
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{CHANNELS.map(({ id, label }) => (
+											<SelectItem key={id} value={id} data-testid={`settings-update-channel-${id}`}>
+												{label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</SettingRow>
+						</div>
+					)}
+
 					{section === 'sessions' && (
 						<div className="divide-y divide-border">
 							<SettingRow
@@ -482,7 +544,13 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 	);
 }
 
-/** The draft minus the values that aren't renderer preferences — the three
+/** The channel picker's options, stable first because it is the default. */
+const CHANNELS: readonly { id: UpdateChannel; label: string }[] = [
+	{ id: 'stable', label: 'Stable' },
+	{ id: 'alpha', label: 'Alpha' },
+];
+
+/** The draft minus the values that aren't renderer preferences — the ones
  *  that live in SQLite because Rust reads them. */
 function prefsOf(values: SettingsValues): Prefs {
 	const {
@@ -490,6 +558,7 @@ function prefsOf(values: SettingsValues): Prefs {
 		codexBinary: _codex,
 		routinesCatchupHours: _catchup,
 		routinesMaxConcurrent: _concurrent,
+		updateChannel: _channel,
 		...prefs
 	} = values;
 	return prefs;

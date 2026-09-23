@@ -8,7 +8,10 @@
 
 	"workspaces": {
 		".": {
-			"entry": ["package.json"]
+			"entry": ["package.json"],
+			// The GitHub CLI, preinstalled on every hosted runner and called from
+			// the release workflows. Not a package anything could list.
+			"ignoreBinaries": ["gh"]
 		},
 		"apps/desktop": {
 			// Colocated tests are **entry points, not ignored**. This is the

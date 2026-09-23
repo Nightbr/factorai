@@ -102,7 +102,7 @@ export async function fetchBuildInfo(): Promise<BuildInfo | null> {
 
 /**
  * The version the pane shows: the release's, or the build-time define — which
- * already says `0.1.0 (untagged dev build)` when nobody tagged this, and is the
+ * already says `0.49.0-dev` when no release workflow built this, and is the
  * one the crash screen reports (`vite.config.ts`).
  */
 export function displayVersion(info: BuildInfo | null): string {

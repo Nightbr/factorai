@@ -11,15 +11,13 @@ import { pdfjsAssets } from './vite/pdfjsAssets';
 // `getVersion()` call because the crash path must not depend on the Tauri
 // bridge still working. Declared in src/vite-env.d.ts.
 //
-// **The version in this repo is deliberately never bumped.** The tag is the
-// only source of truth: `release.yml`'s "Set version from tag" rewrites
-// `package.json` before `beforeBuildCommand` runs, so a release build reads the
-// real version here. Which means the untouched placeholder is precisely the
-// signal for "nobody tagged this" — so say so, rather than letting every dev
-// crash report claim to be 0.1.0.
-const PLACEHOLDER = '0.1.0';
-const APP_VERSION =
-	pkg.version === PLACEHOLDER ? `${PLACEHOLDER} (untagged dev build)` : pkg.version;
+// **The repo holds the next stable version** (ADR-0064), and the release
+// workflow rewrites it to the exact version it is building — `0.49.0-alpha.3`,
+// or `0.49.0` on promote — before `beforeBuildCommand` runs, setting
+// `FACTORAI_RELEASE` as it does. Anything built without that is not a release
+// and says so: `0.49.0-dev` names the stable it is heading for without
+// claiming to be it.
+const APP_VERSION = process.env.FACTORAI_RELEASE ? pkg.version : `${pkg.version}-dev`;
 
 export default defineConfig({
 	define: {

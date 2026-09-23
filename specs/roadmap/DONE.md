@@ -3,6 +3,19 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Alpha and stable, and a release process with nothing left to remember** — 2026-09-23.
+  Roadmap 31, built but not yet run on GitHub (the entry keeps the three live checks).
+  ADR-0064: `alpha.yml` builds a `vX.Y.Z-alpha.N` prerelease from each commit Quality passes on
+  `main` and points the `alpha-channel` release's `latest.json` at it; `promote.yml` rebuilds a
+  green alpha's commit as stable, publishes it as Latest, writes `CHANGELOG.md`, bumps `main` to
+  the next minor and prunes old alphas; a hand-pushed `v*` tag fails in `release-guard.yml`.
+  `release.yml` is now the reusable build both call, ADR-0014's asset check intact. The repo
+  holds the next stable (`0.49.0`, dev builds `0.49.0-dev`). In the app the update check moved
+  to a Rust `check_update` that picks the endpoint and hands the plugin's own `Update` back, the
+  channel is Settings › Advanced (stable when unset, never a downgrade), and About and the crash
+  report name it. Release notes and the version arithmetic are `scripts/release/lib.mjs`, under
+  `node --test` in `pnpm test`.
+
 - **The site counts page views with Umami** — 2026-09-22. `factorai.build` loads Umami
   Cloud's tracker from its own origin as `/js/site.js`: a plugin in
   `apps/docs/docusaurus.config.ts` fetches `cloud.umami.is/script.js` in `postBuild`, so

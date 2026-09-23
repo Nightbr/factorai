@@ -31,6 +31,7 @@ commands/
                       #   every text file editable through write_file
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
   sops.rs             # sops_status — is there a `sops` we can drive (F27)
+  updates.rs          # check_update — the channel's manifest (F14, ADR-0064)
   webview.rs          # webview_crash_notice — why this renderer is a fresh one
                       #   (F17, ADR-0059)
 agents/
@@ -403,6 +404,11 @@ set_setting(key: SettingKey, value: Option<String>) -> ()
 // Probe one path as if it were the binary override, without saving it — what
 // the settings page's override field validates with on blur.
 validate_claude_binary(path: String) -> ClaudeCliStatus
+
+// updates (F14, ADR-0064). Checks the channel the `updateChannel` setting names
+// and hands back the plugin's own `Update` resource id, so download and install
+// stay the plugin's commands. `update` is None when nothing is newer.
+check_update() -> UpdateCheck { channel: "stable" | "alpha", update: Option<UpdateMetadata> }
 ```
 
 ## Tauri events (Rust → JS only)
@@ -1422,6 +1428,7 @@ Keys, as of F11:
 | `claudeBinaryPath` | `claude.binary` | `find_claude_binary` | Absolute path. Unset → the three-tier probe |
 | `routinesCatchupHours` | `routines.catchup_hours` | `RoutineRunner` | App-wide catch-up default (F22); a routine may override it in its own row |
 | `routinesMaxConcurrent` | `routines.max_concurrent` | `RoutineRunner` | How many routine sessions may start at once; the rest queue |
+| `updateChannel` | `updates.channel` | `check_update` | `alpha`, or unset for stable (F14, ADR-0064). Anything else reads as stable |
 
 **The serde name and the row key differ on purpose.** The dotted namespace is
 what this table was created with and what an operator sees in `sqlite3`; the

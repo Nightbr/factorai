@@ -47,10 +47,32 @@ test.describe('settings', () => {
 
 		// A section nobody has built is not a section: the param is validated on
 		// the root route exactly as `?file=`'s diff mode is. `appearance` was the
-		// example until 2026-08-29, when the clock setting gave it content —
-		// `advanced` is the one still waiting for item 31's release channel.
-		await page.goto('/?settings=advanced');
+		// example until 2026-08-29 and `advanced` until 2026-09-23, when each got
+		// its content.
+		await page.goto('/?settings=network');
 		await expect(page.getByTestId('settings-modal')).toHaveCount(0);
+	});
+
+	test('@smoke the update channel saves under Advanced and About names it', async ({ page }) => {
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		// Unset is stable (ADR-0064), and About says so before anything is chosen.
+		await page.goto('/?settings=about');
+		await expect(page.getByTestId('settings-about-channel')).toHaveText('Stable');
+
+		await page.getByTestId('settings-nav-advanced').click();
+		const channel = page.getByTestId('settings-update-channel');
+		await expect(channel).toHaveText(/Stable/);
+		await channel.click();
+		await page.getByTestId('settings-update-channel-alpha').click();
+		await expect(page.getByTestId('settings-dirty-advanced')).toBeVisible();
+		await page.getByTestId('settings-save').click();
+		await expect(page.getByTestId('settings-modal')).toHaveCount(0);
+
+		// Reopened in place rather than by URL: a navigation reloads the mock
+		// bridge's fixture, and the setting was written into this page's copy.
+		await page.getByTestId('open-settings').click();
+		await page.getByTestId('settings-nav-about').click();
+		await expect(page.getByTestId('settings-about-channel')).toHaveText('Alpha');
 	});
 
 	test('@smoke Save persists and Cancel discards', async ({ page }) => {

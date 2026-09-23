@@ -7,6 +7,7 @@ function ctx(over: Partial<CrashContext> = {}): CrashContext {
 		message: "Cannot read properties of undefined (reading 'status')",
 		componentStack: '\n    at SessionHeader (session.tsx:118)\n    at Shell\n',
 		version: '0.1.0',
+		channel: 'alpha',
 		userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15',
 		...over,
 	};
@@ -18,7 +19,12 @@ describe('crashReport', () => {
 		expect(body).toContain('TypeError: Cannot read properties of undefined');
 		expect(body).toContain('at SessionHeader (session.tsx:118)');
 		expect(body).toContain('factorai 0.1.0');
+		expect(body).toContain('channel: alpha');
 		expect(body).toContain('AppleWebKit');
+	});
+
+	it('names the channel as unknown when no update check ran', () => {
+		expect(crashReport(ctx({ channel: null }))).toContain('channel: unknown');
 	});
 
 	it('says so rather than leaving a blank block when React gave no stack', () => {

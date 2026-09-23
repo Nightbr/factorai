@@ -54,12 +54,14 @@ and pretending they already agree would hide the decision.
 | pnpm scope     | `@factorai/*`                  |
 | Rust crate     | `factorai` (lib `factorai_lib`)|
 
-**The version fields in the repo all say `0.1.0` and that is not drift.** The
-git tag is the single source of truth: `release.yml` rewrites
-`apps/desktop/package.json`, `tauri.conf.json` and `src-tauri/Cargo.toml` from
-`$GITHUB_REF_NAME` at build time and commits nothing back. There is no bump
-commit to forget and no way for a tag to disagree with a file. Read the version
-off the tags — `git tag --sort=-v:refname | head -1` — not off the tree.
+**The version fields in the repo hold the next stable** (ADR-0064, 2026-09-23;
+until then they sat at a `0.1.0` placeholder). `apps/desktop/package.json`,
+`tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock` say e.g. `0.49.0`; an
+alpha build is stamped `0.49.0-alpha.N` by `release.yml` without committing it,
+a dev build calls itself `0.49.0-dev`, and promoting `0.49.0` to stable commits
+the bump to `0.50.0`. Nobody bumps by hand and nobody tags by hand: alphas
+build themselves from green `main`, stable goes through `promote.yml`, and a
+hand-pushed `v*` tag is refused. The released versions are on the tags.
 
 ## MVP scope (in)
 

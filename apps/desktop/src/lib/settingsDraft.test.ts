@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	binaryOverride,
 	CATCHUP,
+	channelOf,
+	channelSetting,
 	CONCURRENT,
 	dirtySections,
 	isDirty,
@@ -17,6 +19,7 @@ const SAVED: SettingsValues = {
 	codexBinary: '',
 	routinesCatchupHours: '',
 	routinesMaxConcurrent: '',
+	updateChannel: 'stable',
 	clock24: true,
 	diffInline: false,
 	confirmCloseSession: true,
@@ -36,15 +39,15 @@ describe('isSettingsSection', () => {
 		// the agents cards rather than falling back to the first section.
 		expect(settingsSectionOf('claude')).toBe('agents');
 		expect(settingsSectionOf('agents')).toBe('agents');
-		expect(settingsSectionOf('advanced')).toBeUndefined();
+		expect(settingsSectionOf('network')).toBeUndefined();
 		expect(isSettingsSection('claude')).toBe(false);
 	});
 
 	it('rejects a hand-edited URL asking for something else', () => {
-		// `appearance` used to be the example here, because it was the section
-		// that did not exist yet. It does now (the clock setting), so the example
-		// moves to one that still doesn't.
-		expect(isSettingsSection('advanced')).toBe(false);
+		// `appearance`, then `advanced`, used to be the example here, because
+		// each was the section that did not exist yet. Both do now, so the
+		// example moves to one that still doesn't.
+		expect(isSettingsSection('network')).toBe(false);
 		expect(isSettingsSection('')).toBe(false);
 		expect(isSettingsSection(undefined)).toBe(false);
 		expect(isSettingsSection(3)).toBe(false);
@@ -79,6 +82,7 @@ describe('dirtySections', () => {
 			else if (key === 'routinesCatchupHours') draft.routinesCatchupHours = '12';
 			else if (key === 'routinesMaxConcurrent') draft.routinesMaxConcurrent = '4';
 			else if (key === 'keymapOverrides') draft.keymapOverrides = { openSettings: null };
+			else if (key === 'updateChannel') draft.updateChannel = 'alpha';
 			else draft[key] = !SAVED[key];
 			expect(dirtySections(SAVED, draft)).toEqual([SECTION_FOR[key]]);
 		}
@@ -163,5 +167,18 @@ describe('the keyboard section', () => {
 	it('is clean when an override only restates the default', () => {
 		const draft: SettingsValues = { ...SAVED, keymapOverrides: { openSettings: 'Mod+,' } };
 		expect(isDirty(SAVED, draft)).toBe(false);
+	});
+});
+
+describe('update channel', () => {
+	it('reads anything but alpha as stable, as Rust does', () => {
+		expect(channelOf('alpha')).toBe('alpha');
+		expect(channelOf(null)).toBe('stable');
+		expect(channelOf('nightly')).toBe('stable');
+	});
+
+	it('writes stable as no row at all', () => {
+		expect(channelSetting('stable')).toBeNull();
+		expect(channelSetting('alpha')).toBe('alpha');
 	});
 });

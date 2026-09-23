@@ -1,0 +1,30 @@
+name: Release guard
+
+# A hand-pushed `v*` tag used to be a release. It no longer is (ADR-0064):
+# stable releases go through `promote.yml`, alphas build themselves. The
+# workflows create their tags with GITHUB_TOKEN, which triggers no workflow, so
+# every tag push that reaches this file came from a person — and fails here,
+# red and loud, rather than building or publishing anything.
+#
+# The tag itself is left alone. Deleting it is the person's call:
+#   git push origin :refs/tags/<tag> && git tag -d <tag>
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  refuse:
+    name: Refuse a hand-pushed release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "::error::$TAG was pushed by hand and will not be released. Stable releases go through the promote workflow (gh workflow run promote); alphas build themselves from green main. See ADR-0064."
+          exit 1

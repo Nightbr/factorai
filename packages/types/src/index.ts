@@ -393,7 +393,36 @@ export type SettingKey =
 	| 'codexBinaryPath'
 	| 'agentDefault'
 	| 'routinesCatchupHours'
-	| 'routinesMaxConcurrent';
+	| 'routinesMaxConcurrent'
+	| 'updateChannel';
+
+/**
+ * The update channel an install follows (F14, ADR-0064). Stored under
+ * `updateChannel`; unset or unknown reads as `stable`.
+ */
+export type UpdateChannel = 'stable' | 'alpha';
+
+/**
+ * What `check_update` found, field for field what the updater plugin's JS
+ * `Update` constructor takes. `rid` is the plugin's own resource, so download
+ * and install stay the plugin's commands. Mirrors Rust `UpdateMetadata`.
+ */
+export interface UpdateMetadata {
+	rid: number;
+	currentVersion: string;
+	version: string;
+	date?: string;
+	body?: string;
+	rawJson: Record<string, unknown>;
+}
+
+/** One `check_update` answer. Mirrors Rust `UpdateCheck`. */
+export interface UpdateCheck {
+	/** The channel that was asked. */
+	channel: UpdateChannel;
+	/** Null when that channel has nothing newer than this build. */
+	update: UpdateMetadata | null;
+}
 
 /**
  * Emitted from `CloseRequested` when quitting needs a confirmation — which is

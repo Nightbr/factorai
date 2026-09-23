@@ -867,6 +867,10 @@ pub enum SettingKey {
 	/// order and run late — ten projects firing at `:00` must not become ten
 	/// `claude` processes.
 	RoutinesMaxConcurrent,
+	/// Which update channel the updater polls (F14, ADR-0064): `stable` or
+	/// `alpha`. Unset → `stable`. Rust reads it because the check runs there —
+	/// the plugin's JS `check()` cannot be given an endpoint.
+	UpdateChannel,
 }
 
 impl SettingKey {
@@ -883,6 +887,7 @@ impl SettingKey {
 			SettingKey::AgentDefault => "agent.default",
 			SettingKey::RoutinesCatchupHours => "routines.catchup_hours",
 			SettingKey::RoutinesMaxConcurrent => "routines.max_concurrent",
+			SettingKey::UpdateChannel => "updates.channel",
 		}
 	}
 }

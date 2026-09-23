@@ -98,8 +98,10 @@ reads as dead, and following that advice deletes the export and breaks the test.
 
 **CI runs all of this except `e2e`** — `.github/workflows/quality.yml`, on every
 PR and every push to `main`. It is the net under the local gate, not a
-replacement for it: `release.yml` is tag-driven and runs no tests at all, so
-tag a commit this workflow has passed. In place of e2e's incidental coverage it
+replacement for it — and since ADR-0064 it is also the release gate: an alpha
+builds only from a commit Quality passed on `main` (`alpha.yml` runs on its
+`workflow_run`), and `promote.yml` refuses an alpha whose commit has no green
+Quality run. In place of e2e's incidental coverage it
 builds the renderer (`vite:build`), which catches a bundler-visible break that
 `tsc` doesn't. If you add a check here, add it there.
 

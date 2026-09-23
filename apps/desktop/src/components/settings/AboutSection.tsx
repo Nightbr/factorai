@@ -8,7 +8,8 @@ import { updateLabel, useUpdater } from '@hooks/useUpdater';
 import { buildLine, displayVersion, fetchBuildInfo, formatBuildDate } from '@lib/buildInfo';
 import { needsQuitConfirm } from '@lib/quitConfirm';
 import { queryKeys } from '@lib/queryKeys';
-import { copyText, openExternally } from '@lib/tauri';
+import { channelOf } from '@lib/settingsDraft';
+import { cmd, copyText, openExternally } from '@lib/tauri';
 import { useTerminalStore } from '@store/terminalStore';
 
 /** The repository, which is where every link in this section goes. One
@@ -54,6 +55,20 @@ export function AboutSection() {
 	// would be the pane misreporting the one fact it exists to report.
 	const pending = buildInfo.isPending;
 
+	// The channel as stored, not as the last check saw it: About is also where
+	// somebody looks straight after switching, before any check has run. Its
+	// own key, because the settings modal's query bundles several rows.
+	const channel = useQuery({
+		queryKey: queryKeys.setting('updateChannel'),
+		queryFn: async () => channelOf(await cmd.getSetting('updateChannel')),
+		retry: false,
+	});
+	const version = displayVersion(info);
+	// An alpha build told to follow stable stays where it is until stable
+	// overtakes it (ADR-0064 consequence 1); saying so here is what stops that
+	// reading as a switch that did nothing.
+	const waitingForStable = channel.data === 'stable' && version.includes('-alpha.');
+
 	async function copyBuildLine() {
 		try {
 			await copyText(buildLine(info));
@@ -94,13 +109,26 @@ export function AboutSection() {
 						className="flex items-center gap-2 text-sm transition-colors hover:text-foreground"
 						onClick={copyBuildLine}
 					>
-						<span>{pending ? '…' : displayVersion(info)}</span>
+						<span>{pending ? '…' : version}</span>
 						{copied && (
 							<span className="text-primary text-xs">
 								{copied === 'yes' ? 'Copied' : 'Copy failed'}
 							</span>
 						)}
 					</button>
+				</SettingRow>
+
+				<SettingRow
+					label="Channel"
+					description={
+						waitingForStable
+							? 'This alpha build moves to stable with the next stable release. Nothing downgrades.'
+							: 'Which releases this install updates to. Change it under Advanced.'
+					}
+				>
+					<span data-testid="settings-about-channel" className="text-sm">
+						{channel.data === 'alpha' ? 'Alpha' : channel.data === 'stable' ? 'Stable' : '…'}
+					</span>
 				</SettingRow>
 
 				<SettingRow

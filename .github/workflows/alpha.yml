@@ -1,0 +1,108 @@
+name: Alpha
+
+# An alpha builds itself from every commit Quality passes on main (ADR-0064).
+# No tag, no person: the gate is Quality having succeeded on this exact commit,
+# which is also what closes roadmap item 31a's "nothing enforces tag a commit
+# Quality has passed".
+#
+# **Debounced by construction, not by a timer.** Quality cancels its own
+# superseded runs on main, so a burst of pushes produces one green run for the
+# newest commit. This workflow's concurrency group then runs one alpha at a time
+# and keeps only the newest waiting — a push landing mid-build becomes one
+# follow-up build, not a queue.
+#
+# Skipped, green, when there is nothing worth an 80MB download: the commit is
+# already an alpha, the push only moved specs/, apps/docs/ or prose since the
+# last alpha, or main still holds a version that has already shipped as stable
+# (a Quality run that finished after a promote's bump commit landed).
+
+on:
+  workflow_run:
+    workflows: [Quality]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: alpha
+  # Never cancel a release build half-way — a partially uploaded draft is worse
+  # than a slow one. A newer run waiting replaces an older one waiting.
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Decide whether this commit is an alpha
+    # A pull request's Quality run is not main's, even when its branch is
+    # called main in a fork.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      version: ${{ steps.plan.outputs.version }}
+      notes: ${{ steps.plan.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          # Tags and history: the alpha number is counted from tags and the
+          # notes are read from the log.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Plan
+        id: plan
+        shell: bash
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          cli() { node scripts/release/cli.mjs "$@"; }
+          skip() {
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "No alpha: $1" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+
+          if git tag --points-at "$SHA" | grep -q -- '-alpha\.'; then
+            skip "$SHA is already $(git tag --points-at "$SHA" | grep -- '-alpha\.' | head -1)."
+          fi
+
+          BASE="$(cli repo-version)"
+          if git rev-parse -q --verify "refs/tags/v$BASE" >/dev/null; then
+            skip "v$BASE has already shipped as stable; the bump commit's successor builds the next alpha."
+          fi
+
+          PREVIOUS="$(cli newest alpha)"
+          if [ "$(cli touches-app "$PREVIOUS" "$SHA")" != "true" ]; then
+            skip "nothing since $PREVIOUS touches the app (only specs/, apps/docs/ or *.md)."
+          fi
+
+          VERSION="$(cli next-alpha)"
+          # The first alpha has no alpha before it; its notes run from the
+          # last stable rather than from the first commit in the repository.
+          SINCE="${PREVIOUS:-$(cli newest stable)}"
+          {
+            echo "build=true"
+            echo "version=$VERSION"
+            echo "notes<<FACTORAI_NOTES_EOF"
+            cli notes "${SINCE:--}" "$SHA"
+            echo "FACTORAI_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building v$VERSION from $SHA (previous alpha: ${PREVIOUS:-none})." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Release
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      sha: ${{ github.event.workflow_run.head_sha }}
+      channel: alpha
+      notes: ${{ needs.plan.outputs.notes }}
+    secrets: inherit

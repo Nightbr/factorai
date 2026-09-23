@@ -1,20 +1,21 @@
 name: Release
 
-# Tag-driven, and the tag is the only source of truth for the version: the
-# three version fields in the repo stay at whatever they say and are rewritten
-# from the tag at build time (see "Set version from tag" below). No bump commit
-# to forget, no chance of a tag disagreeing with a file.
+# The build-and-publish half of a release, called by `alpha.yml` (an alpha,
+# after Quality passes on main) and by `promote.yml` (a stable, promoted from
+# an alpha). **Nobody runs this by hand and no tag push reaches it** — a
+# hand-pushed `v*` tag is refused by `release-guard.yml` instead (ADR-0064,
+# which supersedes ADR-0014's trigger and keeps its gate).
 #
-#   git tag v0.2.0 && git push origin v0.2.0
+# The caller computes the version and hands it in; this workflow tags the
+# commit, rewrites the version fields to match (`scripts/release/cli.mjs
+# set-version`), builds, and publishes. The repo's own fields hold the *next
+# stable* (`0.49.0`), so an alpha build is the one place `0.49.0-alpha.3`
+# exists. Nothing is committed back from here.
 #
-# The release is created as a DRAFT so a half-finished matrix can never publish a
-# release missing one platform's assets, and **the `publish` job at the end flips
-# it live once the matrix is green** (2026-08-18, while factorai is alpha). What
-# changed is who holds the gate, not whether there is one: `needs: build` means a
-# failed platform skips publication entirely, and the job re-counts the assets
-# and re-reads `latest.json` before it publishes. See ADR-0014, which amends
-# ADR-0010's consequence 2 — that ADR leans on "drafts until published by hand"
-# as the thing gating a rollout, and this replaces the hand with the check.
+# The release is created as a DRAFT so a half-finished matrix can never publish
+# a release missing one platform's assets, and the `publish` job at the end
+# flips it live once the matrix is green and a check has re-counted the assets
+# and re-read `latest.json` (ADR-0014, 2026-08-18).
 #
 # **The check is not decoration.** The failure this guards against is silent: on
 # v0.10.1 both matrix jobs reported success and produced a release whose
@@ -26,55 +27,86 @@ name: Release
 # id** (fixed 2026-08-17). It used to be created by whichever matrix job got
 # there first, with the other finding it and joining — which is a race, and on
 # v0.10.1 both jobs lost it: two draft releases for one tag, Linux's assets in
-# one and macOS's in the other. Each also carried its own `latest.json`, so
-# neither manifest listed both platforms and the app would have seen a
-# single-platform release. The failure is silent — both jobs report success, and
-# `gh release view <tag>` shows whichever draft it happens to pick, complete on
-# its own terms.
+# one and macOS's in the other.
 #
-# Note this workflow does NOT run the test gate. Tagging an unverified commit
-# ships an unverified build; the check list is the gate, and it runs locally.
+# **The two channels differ in four places, and only four** (ADR-0064): an alpha
+# is marked prerelease, builds no Windows bootstrapper, is never Latest, and
+# after publishing copies its `latest.json` into the `alpha-channel` pointer
+# release — which is what alpha installs poll, because GitHub's
+# `/releases/latest` skips prereleases and stable installs poll that.
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      version:
+        description: 'The exact version to build, without the v: 0.49.0-alpha.3 or 0.49.0'
+        required: true
+        type: string
+      sha:
+        description: 'The commit to tag and build'
+        required: true
+        type: string
+      channel:
+        description: 'alpha or stable'
+        required: true
+        type: string
+      notes:
+        description: 'The release body, from scripts/release/cli.mjs notes'
+        required: true
+        type: string
 
 permissions:
   contents: write
-
-concurrency:
-  group: release-${{ github.ref }}
-  # Never cancel a release build half-way — a partially uploaded draft is worse
-  # than a slow one.
-  cancel-in-progress: false
 
 jobs:
   # Exactly one draft, before any platform builds. Every asset and both halves
   # of `latest.json` then land in the same release, because there is only one to
   # land in.
   create-release:
-    name: Create the draft release
+    name: Tag and create the draft release
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.draft.outputs.result }}
     steps:
       - uses: actions/github-script@v7
         id: draft
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ inputs.sha }}
+          CHANNEL: ${{ inputs.channel }}
+          NOTES: ${{ inputs.notes }}
         with:
           # `result-encoding: string` because the id is consumed as a workflow
           # output, and the default JSON encoding would quote it.
           result-encoding: string
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
+            const { owner, repo } = context.repo;
+            const { VERSION, SHA, CHANNEL, NOTES } = process.env;
+            const tag = `v${VERSION}`;
+
+            // The tag first, on the exact commit the caller verified. Created
+            // with GITHUB_TOKEN, so it triggers no workflow — which is what
+            // lets release-guard.yml treat every tag push it sees as a person.
+            // A re-run finds its own tag; a tag on any *other* commit is a
+            // collision this job must not paper over.
+            try {
+              const { data: ref } = await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+              if (ref.object.sha !== SHA) {
+                core.setFailed(`${tag} already points at ${ref.object.sha}, not ${SHA}.`);
+                return '';
+              }
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${tag}`, sha: SHA });
+              core.info(`tagged ${tag} at ${SHA}`);
+            }
+
             // Reuse rather than create if a draft for this tag already exists:
             // re-running this job must not produce the second draft the whole
-            // job exists to prevent. Note draft releases are NOT returned by
-            // the releases/tags/{tag} endpoint, so this has to list and match.
+            // job exists to prevent. Draft releases are NOT returned by the
+            // releases/tags/{tag} endpoint, so this has to list and match.
             const { data: releases } = await github.rest.repos.listReleases({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100,
+              owner, repo, per_page: 100,
             });
             const existing = releases.find((r) => r.tag_name === tag);
             if (existing) {
@@ -82,14 +114,15 @@ jobs:
               return existing.id;
             }
             const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner, repo,
               tag_name: tag,
               name: `factorai ${tag}`,
+              body: NOTES,
               draft: true,
-              // NOT a prerelease, despite 0.x — see the note on the build job.
-              prerelease: false,
-              generate_release_notes: true,
+              // Honest now (ADR-0064): an alpha is a prerelease, and stays off
+              // /releases/latest because of it. A stable is not one, which is
+              // what keeps it the release /releases/latest resolves to.
+              prerelease: CHANNEL === 'alpha',
             });
             core.info(`created release ${data.id} for ${tag}`);
             return data.id;
@@ -130,6 +163,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-24.04'
@@ -197,33 +232,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set version from tag
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Building $VERSION from $GITHUB_REF_NAME"
-          # Node rather than sed: BSD and GNU sed disagree about -i, and this
-          # runs on both macOS and Linux. Nothing is committed back.
-          node -e '
-            const fs = require("fs");
-            const v = process.argv[1];
-            for (const f of ["apps/desktop/package.json", "apps/desktop/src-tauri/tauri.conf.json"]) {
-              const json = JSON.parse(fs.readFileSync(f, "utf8"));
-              json.version = v;
-              fs.writeFileSync(f, `${JSON.stringify(json, null, "\t")}\n`);
-            }
-            const cargo = "apps/desktop/src-tauri/Cargo.toml";
-            const before = fs.readFileSync(cargo, "utf8");
-            // Test the pattern rather than comparing before/after: when the tag
-            // matches the version already committed, the rewrite is a legitimate
-            // no-op, and an equality check would call that a missing version line.
-            const line = /^version = ".*"$/m;
-            if (!line.test(before)) throw new Error("Cargo.toml has no [package] version line");
-            fs.writeFileSync(cargo, before.replace(line, `version = "${v}"`));
-          ' "$VERSION"
+      # Nothing is committed back: the repo keeps the next stable, and only this
+      # build is stamped with the exact version (ADR-0064).
+      - name: Set the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/release/cli.mjs set-version "$VERSION"
 
       # What the About pane reads (F29). After the rewrite above, so the version
-      # it records is the tag's, and before the frontend build, because Vite
+      # it records is the build's, and before the frontend build, because Vite
       # copies `public/` into `dist/` as it runs. Gitignored and never committed:
       # a build without this file is a build that did not come from here, and the
       # app says so rather than inventing a date (ADR-0049).
@@ -234,6 +251,9 @@ jobs:
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Not GITHUB_SHA: under workflow_run and workflow_dispatch that is
+          # main's head, not the commit being built.
+          FACTORAI_COMMIT: ${{ inputs.sha }}
         run: node scripts/write-build-info.mjs
 
       # Apple code signing, macOS only. The certificate is **self-signed**, not
@@ -349,6 +369,9 @@ jobs:
           # The key is generated without a passphrase; the CLI still wants the
           # variable present or it prompts and hangs the job.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+          # What tells `vite.config.ts` this is a release, so the bundle's
+          # version define is the one set above rather than `<next>-dev`.
+          FACTORAI_RELEASE: '1'
         with:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
@@ -357,11 +380,8 @@ jobs:
           # `releaseDraft` / `prerelease` / `generateReleaseNotes` are creation
           # inputs and deliberately absent: with `releaseId` set they have
           # nothing to do, and leaving them would suggest this step still
-          # decides those things. `create-release` owns them now, including the
-          # "not a prerelease despite 0.x" rule — GitHub's /releases/latest,
-          # which the updater resolves through, skips prereleases entirely, so
-          # marking them would leave every installed app polling a 404 forever.
-          # The `publish` job is what un-drafts this, after checking the matrix
+          # decides those things. `create-release` owns them now, including
+          # which channel's releases are prereleases (ADR-0064). The `publish` job is what un-drafts this, after checking the matrix
           # actually produced both platforms' assets.
           releaseId: ${{ needs.create-release.outputs.release_id }}
           # latest.json is the manifest the app polls (F14, ADR-0010). Both jobs
@@ -397,22 +417,28 @@ jobs:
   installer:
     name: Windows (WSL 2) installer
     needs: [create-release, build]
+    # Stable only (ADR-0064): a Windows user who wants alpha installs stable and
+    # switches channel, since the installed app is the Linux AppImage and polls
+    # the Linux manifest like any other.
+    if: inputs.channel == 'stable'
     runs-on: ubuntu-24.04
+    env:
+      TAG: v${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
 
       - name: Install NSIS
         run: |
           sudo apt-get update
           sudo apt-get install -y nsis
 
-      # Repeated from `build` rather than shared: jobs do not inherit a working
-      # tree, and the tag is the only source of truth for the version here as
-      # everywhere else. Kept deliberately simple — this job rewrites nothing on
-      # disk, it just needs the number.
-      - name: Read the version from the tag
+      - name: Read the version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: echo "VERSION=$INPUT_VERSION" >> "$GITHUB_ENV"
 
       # The name the Linux job's bundler produced. Asserted rather than assumed:
       # a bundler rename would otherwise ship an installer whose download 404s
@@ -424,14 +450,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          NAME="$(gh release view "$GITHUB_REF_NAME" --json assets \
+          NAME="$(gh release view "$TAG" --json assets \
             --jq '.assets[].name | select(endswith(".AppImage"))' | head -1)"
           if [ -z "$NAME" ]; then
-            echo "::error::no .AppImage asset on $GITHUB_REF_NAME — the Linux build must land first"
+            echo "::error::no .AppImage asset on $TAG — the Linux build must land first"
             exit 1
           fi
           echo "Found $NAME"
-          echo "APPIMAGE_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${NAME}" >> "$GITHUB_ENV"
+          echo "APPIMAGE_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${NAME}" >> "$GITHUB_ENV"
 
       - name: Build the installer
         working-directory: apps/desktop/installer
@@ -445,7 +471,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "$TAG" \
             "apps/desktop/installer/factorai-setup-${VERSION}.exe" --clobber
 
   # Flip the draft live. Separate job rather than a step on `build`, because
@@ -465,13 +491,24 @@ jobs:
     # is the same silent failure v0.10.1's one-platform manifest was. Safe to
     # block on because this job builds on Linux and compiles nothing.
     needs: [create-release, build, installer]
+    # `installer` is skipped for an alpha, and a skipped need skips this job
+    # too unless it says otherwise — so it says exactly which results count.
+    if: >-
+      always() &&
+      needs.create-release.result == 'success' &&
+      needs.build.result == 'success' &&
+      (needs.installer.result == 'success' ||
+        (inputs.channel == 'alpha' && needs.installer.result == 'skipped'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
+        env:
+          CHANNEL: ${{ inputs.channel }}
         with:
           script: |
             const release_id = Number('${{ needs.create-release.outputs.release_id }}');
             const { owner, repo } = context.repo;
+            const alpha = process.env.CHANNEL === 'alpha';
 
             const { data: assets } = await github.rest.repos.listReleaseAssets({
               owner, repo, release_id, per_page: 100,
@@ -482,18 +519,19 @@ jobs:
             // The second half of the gate, and the half that catches what green
             // matrix jobs do not say. Each platform's installer plus the manifest
             // the app polls — checked by suffix rather than exact name, because
-            // the version is in most of them and the tag is not this job's
+            // the version is in most of them and the version is not this job's
             // business.
             const required = [
               ['a macOS installer', (n) => n.endsWith('.dmg')],
               ['a macOS updater bundle', (n) => n.endsWith('.app.tar.gz')],
               ['a Linux installer', (n) => n.endsWith('.AppImage')],
-              // The Windows bootstrapper (ADR-0044). Note there is deliberately
-              // no matching `latest.json` platform check below: the installed app
-              // on Windows *is* the Linux AppImage, and `tauri-plugin-updater`
-              // resolves its key from the compile-time target triple, so it looks
-              // up `linux-x86_64` and could never read a windows entry.
-              ['the Windows installer', (n) => n.endsWith('.exe')],
+              // The Windows bootstrapper (ADR-0044), stable only (ADR-0064).
+              // Note there is deliberately no matching `latest.json` platform
+              // check below: the installed app on Windows *is* the Linux
+              // AppImage, and `tauri-plugin-updater` resolves its key from the
+              // compile-time target triple, so it looks up `linux-x86_64` and
+              // could never read a windows entry.
+              ...(alpha ? [] : [['the Windows installer', (n) => n.endsWith('.exe')]]),
               ['the updater manifest', (n) => n === 'latest.json'],
             ];
             const missing = required.filter(([, match]) => !names.some(match)).map(([what]) => what);
@@ -535,11 +573,49 @@ jobs:
               return;
             }
 
-            // Still not a prerelease, and this is load-bearing rather than
-            // inherited: GitHub's /releases/latest skips prereleases, and that
-            // endpoint is what the updater resolves through (ADR-0010). Marking
-            // an alpha as a prerelease would leave every installed copy polling a
-            // 404 — which is why "alpha" here changes who publishes, not how the
-            // release is labelled.
-            await github.rest.repos.updateRelease({ owner, repo, release_id, draft: false });
+            // A stable is made Latest explicitly rather than by GitHub's date
+            // heuristic, because /releases/latest is what every stable install
+            // polls (ADR-0010). An alpha is a prerelease and can never be it.
+            await github.rest.repos.updateRelease({
+              owner, repo, release_id,
+              draft: false,
+              make_latest: alpha ? 'false' : 'true',
+            });
             core.info(`published release ${release_id}`);
+
+  # Point the alpha channel at the release just published (ADR-0064). A fixed
+  # release, tagged `alpha-channel`, whose one asset is a copy of the newest
+  # alpha's `latest.json` — the manifest's URLs still point into that alpha's
+  # own release, so nothing else is copied. After `publish` on purpose: an
+  # alpha that failed its check must never become what alpha installs see.
+  #
+  # The pointer is itself a prerelease so it can never become Latest. Between
+  # the delete and the upload the file is briefly absent; an install polling in
+  # that second gets an error the updater logs and retries six hours later.
+  point-alpha:
+    name: Point the alpha channel at it
+    needs: [publish]
+    if: inputs.channel == 'alpha'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: v${{ inputs.version }}
+      SHA: ${{ inputs.sha }}
+      POINTER: alpha-channel
+    steps:
+      - name: Replace the pointer's latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --clobber
+          # The pointer release and its tag are created once, on the first
+          # alpha. The tag never moves; only the asset does.
+          if ! gh release view "$POINTER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$POINTER" --repo "$GITHUB_REPOSITORY" \
+              --target "$SHA" --prerelease --latest=false \
+              --title "Alpha channel" \
+              --notes "The update manifest alpha installs poll (ADR-0064). Not a release: its only asset points at the newest alpha."
+          fi
+          gh release upload "$POINTER" latest.json --repo "$GITHUB_REPOSITORY" --clobber
+          echo "alpha-channel now serves $TAG" >> "$GITHUB_STEP_SUMMARY"

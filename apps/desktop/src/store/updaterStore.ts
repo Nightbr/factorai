@@ -1,3 +1,4 @@
+import type { UpdateChannel } from '@factorai/types';
 import { create } from 'zustand';
 
 /**
@@ -38,16 +39,23 @@ interface UpdaterState {
 	 *  component so both doors — the footer badge and the About row — open the
 	 *  one `RestartConfirm` with ADR-0020's sentence in it. */
 	confirming: boolean;
+	/** The channel the last check asked (ADR-0064), or null before one ran —
+	 *  which is every dev build, where the updater never runs. Read by About
+	 *  and by the crash screen, which must not call the bridge to learn it. */
+	channel: UpdateChannel | null;
 	setState: (state: UpdatePhase) => void;
 	setInstalled: (installed: boolean) => void;
 	setConfirming: (confirming: boolean) => void;
+	setChannel: (channel: UpdateChannel) => void;
 }
 
 export const useUpdaterStore = create<UpdaterState>((set) => ({
 	state: { phase: 'idle' },
 	installed: false,
 	confirming: false,
+	channel: null,
 	setState: (state) => set({ state }),
 	setInstalled: (installed) => set({ installed }),
 	setConfirming: (confirming) => set({ confirming }),
+	setChannel: (channel) => set({ channel }),
 }));

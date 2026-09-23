@@ -7,8 +7,8 @@
  * absence of the file is what tells the app it is not a release build — which a
  * define cannot express without inventing a date for a build nobody tagged.
  *
- * Run from `release.yml` after "Set version from tag" and before the frontend
- * build, so the version here is the tag's. Vite copies `public/` into `dist/`
+ * Run from `release.yml` after "Set the version" and before the frontend
+ * build, so the version here is the build's. Vite copies `public/` into `dist/`
  * and Tauri serves `dist/` from inside the bundle.
  *
  *   node scripts/write-build-info.mjs
@@ -17,6 +17,9 @@
  *   GITHUB_TOKEN   optional. Without it the contributor fetch is skipped rather
  *                  than failing — an unauthenticated call is rate-limited per
  *                  IP, and a shared runner IP is exactly where that bites.
+ *   FACTORAI_COMMIT optional, the commit being built. `release.yml` sets it,
+ *                  because under `workflow_run` and `workflow_dispatch`
+ *                  GITHUB_SHA is main's head rather than that commit.
  *   GITHUB_SHA     optional, the commit. Falls back to `git rev-parse`.
  */
 
@@ -37,13 +40,15 @@ const AUTHOR_LOGINS = new Set(['nightbr']);
 
 function version() {
 	// The renderer's own version define reads this same file, and `release.yml`
-	// rewrites it from the tag before either of us looks (ADR-0049).
+	// rewrites it to the build's version before either of us looks (ADR-0049,
+	// ADR-0064).
 	const pkg = JSON.parse(readFileSync(resolve(ROOT, 'apps/desktop/package.json'), 'utf8'));
 	return pkg.version;
 }
 
 function commit() {
-	if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
+	const sha = process.env.FACTORAI_COMMIT || process.env.GITHUB_SHA;
+	if (sha) return sha.slice(0, 7);
 	try {
 		return execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], {
 			cwd: ROOT,

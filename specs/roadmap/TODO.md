@@ -47,7 +47,8 @@ stranger finds. Five workstreams, in the order they should be built, each an ite
    here waits on a third party.
 2. **[Item 31](#31-two-channels-and-a-release-process-with-nothing-left-to-remember) — alpha and stable, and a release process with nothing left to remember.**
    Strangers on the update path make "the pipeline is trustworthy" a release criterion rather
-   than housekeeping. The channel mechanism is open, including a manifest hosted on the site.
+   than housekeeping. **Built 2026-09-23 (ADR-0064)**: alpha builds itself from green `main`
+   through a pointer release, stable is a promoted alpha. What is left is its first real run.
 3. **[Item 59](#59-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Items 54 and 55 are its
    first two known findings and sit directly under it.
 4. **[Item 39](#39-the-site--the-guides-content-now-that-the-build-carries-it) — the site: one Docusaurus build on GitHub Pages.** The build, the
@@ -138,117 +139,47 @@ certificate is issued and a release is notarized under it.
 
 ## 31. Two channels, and a release process with nothing left to remember
 
-**Release-blocking.** A public first release means strangers on the update path, so the two things
-this item holds — a pipeline that cannot ship a half-built release, and an **alpha** channel
-beside **stable** — stop being housekeeping. The tag-driven pipeline is the incumbent and the
-answer is **open**: a moving `alpha` tag, a manifest hosted on the Pages site items 39 and 56 are
-building, or something else entirely. Decide it here and write the ADR.
+**Release-blocking. Decided and built 2026-09-23 —
+[ADR-0064](../adr/0064-alpha-builds-itself-and-stable-is-a-promoted-alpha.md); what is left is
+watching it run for real.** The design came out of an interview the same day; the ADR is the
+contract and F14 / F11 / F17 / F29 in `05-features.md` carry the app side.
 
-**User ask, 2026-08-17**, immediately after cutting v0.9.0 by hand. Two halves: make the existing
-process leave nothing to remember, and add an **alpha** channel beside **production** that builds
-often and on its own.
+**What landed.**
 
-Written from having just done it end to end, so the gaps below are observed rather than imagined.
+- **Alpha builds itself** (`alpha.yml`): on every successful Quality run for a push to `main`,
+  debounced by Quality's own `cancel-in-progress` and alpha's concurrency group, skipped when
+  only `specs/`, `apps/docs/` or `*.md` moved. A real prerelease, `vX.Y.Z-alpha.N`, macOS and
+  Linux only.
+- **The alpha channel is a pointer release**, `alpha-channel`, whose one asset is the newest
+  alpha's `latest.json`. Stable stays at `/releases/latest`, so every existing install keeps
+  working.
+- **Stable is a promoted alpha** (`gh workflow run promote`): the alpha's commit must have a
+  green Quality run, it is tagged and rebuilt with the stable version, published as Latest
+  after ADR-0014's check, then `CHANGELOG.md` and the next-minor bump land in one commit and
+  alphas older than the previous cycle are pruned.
+- **A hand-pushed `v*` tag fails** in `release-guard.yml` and publishes nothing.
+- **The repo holds the next stable** (`0.49.0`); dev builds say `0.49.0-dev`. The placeholder
+  special case in `vite.config.ts` is gone.
+- **Notes come from `feat:` / `fix:` subjects** (`scripts/release/`, tested with `node --test`
+  under `pnpm test`), with an optional headline on promote.
+- **In the app**: `check_update` runs in Rust against the channel's endpoint and hands the
+  plugin's own `Update` back; Settings › Advanced has the channel; About and the crash report
+  name it. Leaving alpha never downgrades.
 
-**Item 36 is the distribution half and is deliberately separate**: a Homebrew cask, plus the step
-that bumps it after `publish`. It belongs beside this item rather than inside it — this one is about
-the pipeline being trustworthy, that one is about macOS staying unsigned.
+**Still open — each needs the workflows to run once on GitHub, which no local gate can do:**
 
-### 31a. What the current process actually leaves to a human
+- [ ] **The first alpha.** Watch `alpha.yml` after the next app-affecting push: `plan` picks
+      `0.49.0-alpha.1`, the release is a prerelease, and `alpha-channel/latest.json` exists and
+      lists both platforms.
+- [ ] **Alpha to alpha on a real install.** Set a local install to Alpha, let the next alpha
+      land, and see it update. Until then `check_update` is verified by types and review only.
+- [ ] **The first promote, `0.49.0`.** Existing installs (on `0.48.2`) should see it as a normal
+      update; the bump commit should say `0.50.0`; nothing should be pruned yet.
+- [ ] **The macOS smoke pass** has still never happened — that is item 8, not this item, and this
+      item does not pretend to close it.
 
-The pipeline works — `release.yml` is tag-driven, rewrites the three version fields from the tag,
-and drafts a release with signed bundles plus `latest.json`. What it does not do is anything about
-the steps *around* it:
-
-**Two of these are closed and are in [`DONE.md`](./DONE.md)**: the matrix race that put each
-platform's assets in a different draft (one `create-release` job before the matrix, 2026-08-17),
-and automatic publication with the missing-platform guard kept
-([ADR-0014](../adr/0014-alpha-releases-publish-themselves.md), 2026-08-18). The cost of
-the second is that no person sees a release before the world does, which promotes the first
-bullet below from tidy-up to the next real gap.
-
-- [ ] **Nothing enforces "tag a commit Quality has passed".** `release.yml` says so in its own
-      header and `quality.yml` says it "deliberately does NOT gate the release". So the guarantee
-      is a human remembering to look — cutting v0.9.0 meant polling `gh run list` and waiting
-      before tagging. A tag push should **verify the commit has a green Quality run and fail loudly
-      if not**, rather than building an unverified commit and finding out later.
-- [ ] **The version fields are never bumped, and something in the repo now reads them.** All three
-      sit at `0.1.0`; the tag rewrites them at build time. `release.yml` argues for that
-      deliberately — "no bump commit to forget, no chance of a tag disagreeing with a file" — and
-      that reasoning still holds. **But the cost landed the same day it was written about**: the
-      crash screen (F17) reads the version through a Vite `define`, so every dev build claimed to
-      be `0.1.0` until it was taught to say `(untagged dev build)`. Decide it properly rather than
-      per-consumer: either the tag stays the only truth and *anything* reading the version handles
-      the placeholder, or a real bump lands (with the "forgot to bump" failure automated away).
-      **The user asked for the bump**, so the burden is now on the tag-only scheme to justify
-      itself.
-- [ ] **There is no `CHANGELOG.md`.** `DONE.md` is the de facto source and the GitHub release body
-      is hand-written after the fact each time — `generateReleaseNotes: true` produces notes that
-      then get replaced. Either derive the notes from `DONE.md` or keep a changelog; writing them
-      twice is the current state.
-- [ ] **`gh release edit --notes-file` reports a stale `untagged-…` URL** on a draft. Harmless, but
-      it looks like it edited the wrong thing; worth a note wherever this gets written down so the
-      next person doesn't chase it.
-- [ ] **The macOS smoke pass has still never happened** — that is item 8, not this item, but a
-      release process that has never once been exercised on one of its two target platforms is the
-      real gap and this item should not pretend to close it.
-
-### 31b. Channels — and the constraint that decides the whole design
-
-**⛔ The obvious implementation is broken, and it is written down in `release.yml` already.** The
-action sets `prerelease: false` *deliberately*, because GitHub's `/releases/latest` — which the
-updater endpoint resolves through — **skips prereleases entirely**. So "mark alpha releases as
-prerelease" would leave every alpha user polling a 404 forever. Alpha cannot live at
-`/releases/latest/download/latest.json`. That is the first thing to solve, not a detail.
-
-Plausible answers, to be chosen rather than assumed:
-
-- a **moving `alpha` tag** with a fixed asset URL (`/releases/download/alpha/latest.json`), which
-  sidesteps `latest` entirely and lets alpha releases be marked prerelease honestly;
-- a manifest hosted outside releases, decoupling the channel from GitHub's release semantics —
-  **cheaper than it was**, because items 39 and 58 are standing up a Pages deployment anyway, so
-  `factorai.<domain>/updates/{alpha,stable}.json` costs a file in that build rather than a new
-  piece of infrastructure. Its cost is that the site's deploy becomes part of the release path,
-  which is exactly the kind of coupling to decide deliberately rather than discover.
-
-**Verified about Tauri's updater (2026-08-17, v2 docs) so nobody designs against the wrong model:**
-
-- There is **no built-in channel concept**. The endpoint's dynamic variables are exactly
-  `{{current_version}}`, `{{target}}` and `{{arch}}` — there is no `{{channel}}`.
-- Endpoints can be set **at runtime** via `updater_builder().endpoints(...)`, and the docs give
-  channel-switching as the example use. **This is the good news and it should shape the design:**
-  one build can serve both channels, with the channel a *preference* rather than a separate
-  artifact. That avoids two build matrices and two download pages.
-- Default comparison is `update.version > current`. So **leaving alpha for production is a
-  downgrade and will not happen by itself** — it needs `version_comparator` overridden, or the user
-  reinstalling. Decide what "switch back to stable" means before shipping the switch.
-
-Consequences to settle:
-
-**Where the channel lives was settled 2026-08-17 and unblocked when item 4 shipped**: it is a
-`get_setting`/`set_setting` customer, so it is a second `SettingKey` variant, a match arm and one
-`SettingRow` in F11's first **Advanced** section. Everything else here needs no UI at all.
-
-- [ ] **Alpha versioning.** The manifest `version` must be valid SemVer. `0.9.1-alpha.3` sorts
-      correctly above `0.9.0`; a date-based scheme needs checking against the comparator, not
-      assumed. Whatever is picked has to keep alpha ahead of production without ever overtaking the
-      *next* production release.
-- [ ] **"Builds more often and automatically" — how often?** Every push to `main` is the literal
-      reading and means a ~12-minute two-platform build per commit (seven commits landed today
-      alone). A nightly cron that skips when nothing changed is far cheaper and probably what is
-      actually wanted. Decide, and state it, because this is the line item that costs CI minutes.
-- [ ] **Does alpha gate on Quality?** It should — an automatic channel that ships red commits is
-      worse than no channel. Same mechanism as 31a's first bullet.
-- [ ] **The app should say which channel it is on.** An alpha build that looks identical to a
-      production one produces bug reports nobody can place. There are three homes for it now and
-      they are not alternatives: the `DEV` pill in `TopBar` is the precedent for the marker, the
-      crash report (F17) already carries the version and should carry the channel, and the
-      **About section (F29, item 57, shipped 2026-09-16)** is where a user looks when asked which
-      build they are on — its version line is the copy control.
-
-**Not in scope, deliberately:** macOS code signing / notarisation. It is a real gap (the `.dmg` is
-unsigned and Gatekeeper blocks it until quarantine is cleared) but it is an Apple-account problem,
-not a process one, and folding it in here would stall everything else.
+**Deliberately not here:** macOS signing and notarisation (item 51), the Homebrew bump (item 36,
+which hooks in at the end of `promote.yml`), hotfix branches (ADR-0064 consequence 2).
 
 ## 59. Performance — one audit, measured, then the fixes it names
 
@@ -462,7 +393,7 @@ there are none and a fabricated one is the fastest way to lose the reader this p
       **Plus a geometry test for `MetalMark.tsx`** (ADR-0052), the second hand-mirror of the
       master, which needs the same guard `geometry.ts` has.
 
-**Not in scope:** a blog, a changelog page (item 31 owes the changelog question), pricing, or a
+**Not in scope:** a blog, a changelog page (`CHANGELOG.md` exists since item 31, ADR-0064; rendering it on the site is not this item), pricing, or a
 newsletter. One page, one job.
 
 ## 61. Real screenshots in the guide, from a fabricated workspace
@@ -563,8 +494,9 @@ nothing because the linker already ad-hoc signs on Apple Silicon.
 
 - [ ] A tap repo — `Nightbr/homebrew-factorai` — holding `Casks/factorai.rb`: version, the
       universal `.dmg`'s URL, its sha256.
-- [ ] A job in `release.yml` **after `publish`**, bumping the cask from the published asset. It has
-      to be after, because the sha256 is of the artifact that was actually uploaded, and it has to
+- [ ] A job in `promote.yml` **after `release`**, bumping the cask from the published stable's
+      asset — stable only, since alphas are prereleases the cask must never point at (ADR-0064).
+      It has to be after, because the sha256 is of the artifact that was actually uploaded, and it has to
       be idempotent, because re-running a release job is normal here (see item 31 and the `v0.10.1`
       post-mortem in `release.yml`'s header).
 - [ ] **`auto_updates true` in the cask.** Not cosmetic: factorai replaces its own bundle in place

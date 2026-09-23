@@ -22,6 +22,10 @@ export interface CrashContext {
 	componentStack: string | null;
 	/** The app version, from the build. */
 	version: string;
+	/** The update channel the last check asked (ADR-0064), or null when no
+	 *  check ran — a dev build, or a crash before the first one. Read from
+	 *  `updaterStore`, never from the bridge, which may be what broke. */
+	channel: string | null;
 	/** `navigator.userAgent` — tells a WebKitGTK bug from a macOS one. */
 	userAgent: string;
 }
@@ -51,6 +55,7 @@ export function crashReport(ctx: CrashContext): string {
 		'**Environment**',
 		'',
 		`- factorai ${ctx.version}`,
+		`- channel: ${ctx.channel ?? 'unknown'}`,
 		`- ${ctx.userAgent}`,
 	].join('\n');
 }

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { isTauri, mockStagedUpdate, recordMockCall } from '@lib/tauri';
+import { cmd, isTauri, mockStagedUpdate, recordMockCall } from '@lib/tauri';
 import { type UpdatePhase, useUpdaterStore } from '@store/updaterStore';
 
 /** How often to look for a new release while the app is open.
@@ -32,7 +32,7 @@ const UP_TO_DATE_MS = 4000;
  * fixture instead.
  */
 async function check(manual = false): Promise<void> {
-	const { installed, setInstalled, setState } = useUpdaterStore.getState();
+	const { installed, setInstalled, setState, setChannel } = useUpdaterStore.getState();
 	if (installed) return;
 	if (manual) setState({ phase: 'checking' });
 	if (!isTauri()) {
@@ -48,20 +48,25 @@ async function check(manual = false): Promise<void> {
 		return;
 	}
 	// Inside a real webview — but never in a dev build. `pnpm dev` runs an
-	// unpackaged binary whose version (0.1.0 in tauri.conf) trails every
-	// release, so the updater finds an "update" on each launch, downloads
+	// unpackaged binary whose version (the next stable's, in tauri.conf) sorts
+	// below that stable's own alphas, so the updater finds an "update" on each launch, downloads
 	// ~80MB, and offers to restart the developer into a release build of the
 	// code they are editing. Checked *after* the browser-only branch above:
 	// the Playwright lane is also a dev build, and its fixture-driven badge
 	// must keep working.
 	if (import.meta.env.DEV) return;
 	try {
-		const { check: checkForUpdate } = await import('@tauri-apps/plugin-updater');
-		const update = await checkForUpdate();
-		if (!update) {
+		// The check is Rust's, because only Rust can point the updater at the
+		// channel's endpoint; what comes back is the plugin's own resource, so
+		// the download and install below are the plugin's as before (ADR-0064).
+		const { Update } = await import('@tauri-apps/plugin-updater');
+		const found = await cmd.checkUpdate();
+		setChannel(found.channel);
+		if (!found.update) {
 			if (manual) setState({ phase: 'upToDate' });
 			return;
 		}
+		const update = new Update(found.update);
 
 		setInstalled(true);
 		setState({ phase: 'downloading', version: update.version });

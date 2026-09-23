@@ -3,6 +3,7 @@ import { Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { type CrashContext, crashReport, issueUrl } from '@lib/crashReport';
 import { copyText, openExternally } from '@lib/tauri';
+import { useUpdaterStore } from '@store/updaterStore';
 
 interface ErrorBoundaryProps {
 	children: ReactNode;
@@ -72,6 +73,7 @@ function CrashScreen({ error, componentStack }: CrashScreenProps) {
 		message: error.message,
 		componentStack,
 		version: __APP_VERSION__,
+		channel: useUpdaterStore.getState().channel,
 		userAgent: navigator.userAgent,
 	};
 
