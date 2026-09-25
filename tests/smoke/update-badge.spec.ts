@@ -27,6 +27,48 @@ test.describe('update badge', () => {
 		await expect(check).toHaveText('Check for updates', { timeout: 6000 });
 	});
 
+	test('@smoke a check you asked for says why it failed', async ({ page }) => {
+		// ADR-0065: the one toast the updater raises for a lookup is for a check
+		// somebody is waiting on. The launch check fails the same way here and
+		// must stay quiet — offline is not news every six hours.
+		await installMockBridge(page, {
+			...fixtureOneProjectOneSession(),
+			updateFails: { message: 'Process: update check: error sending request' },
+		});
+		await page.goto('/');
+		const check = page.getByTestId('update-check');
+		await expect(check).toHaveText('Check for updates');
+		await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
+
+		await check.click();
+		const toast = page.locator('[data-sonner-toast]');
+		await expect(toast).toHaveCount(1);
+		await expect(toast).toContainText('Could not check for updates');
+		await expect(toast).toContainText('error sending request');
+		// A second failed check replaces it rather than stacking a copy.
+		await check.click();
+		await expect(toast).toHaveCount(1);
+		// And it closes: sonner positions its close button off the card when
+		// unstyled, so a visible, clickable one is the primitive's own fix (ADR-0065).
+		await toast.getByRole('button', { name: 'Close toast' }).click();
+		await expect(toast).toHaveCount(0);
+	});
+
+	test('@smoke an update that was found and could not install says so unasked', async ({
+		page,
+	}) => {
+		// The 2026-09-25 alpha pointer: the launch check found the update, the
+		// download 404'd, and nothing on screen changed.
+		await installMockBridge(page, {
+			...fixtureOneProjectOneSession(),
+			updateFails: { message: 'Process: download failed: 404', version: '0.50.0-alpha.2' },
+		});
+		await page.goto('/');
+		const toast = page.locator('[data-sonner-toast]');
+		await expect(toast).toContainText('Could not install 0.50.0-alpha.2');
+		await expect(toast).toContainText('404');
+	});
+
 	test('@smoke shows the staged version and restarts when nothing is running', async ({ page }) => {
 		await installMockBridge(page, { ...fixtureOneProjectOneSession(), updateReady: '0.2.0' });
 		await page.goto('/');

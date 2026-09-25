@@ -3,6 +3,16 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **A toast primitive, and update failures say so** — 2026-09-25. Roadmap 7's first
+  checkbox and ADR-0065: `Toaster` and `toast` in `@factorai/ui`, on sonner, unstyled and
+  dressed in the palette's tokens, mounted once by `AppShell`. The updater raises one for a
+  check you asked for that fails and for an update found and then not installed; a background
+  lookup that fails stays quiet. Asked for the day the alpha pointer 404'd every download and
+  the only trace was the console. The failure text also stopped reading `[object Object]`: the
+  check rejects with an `AppError`, which `String(e)` could not format. Three smoke tests,
+  including one that clicks the close button, because sonner positions it off the card when
+  unstyled.
+
 - **Dragging a panel edge stops re-rendering the app** — 2026-09-25. PERF-30 in
   `specs/10-performance.md`, found from a user report that resizing the viewer felt slow; the
   audit had never timed a drag. Five things rode every frame of it: a fresh `onOpenPath` arrow in

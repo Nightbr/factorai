@@ -2611,6 +2611,15 @@ before settling back. Only a staged version earns the accent:
 
 > `⟳ Update ready`
 
+**A failure is said out loud when someone is waiting on it** (ADR-0065): a
+check you asked for that fails raises *Could not check for updates*, and an
+update that was found and then could not be downloaded or installed raises
+*Could not install X.Y.Z* whether or not anyone asked — both as an error toast
+carrying the reason, one at a time (a repeat replaces the one showing). A
+background lookup that fails stays silent and retries on the next poll; the
+label falls back to "Check for updates" either way. Added 2026-09-25, after
+the alpha pointer 404'd every download for a day and nothing on screen said so.
+
 **The label was shortened — decided 2026-08-17, and actually in the code on
 2026-08-18.** That gap is the point of this paragraph now: this text described the
 short label as done, `UpdateBadge.tsx` had not been touched since 2026-08-14, and
@@ -3716,8 +3725,13 @@ bindings register at whoever owns the focus (ADR-0046).
 - Tauri commands return tagged `AppError`. The bridge wrapper rethrows
   with the tag; UI shows a toast for transient errors and an inline
   message for view-specific failures.
-- `toast` component lives in `@factorai/ui` (add for MVP; not present in
-  factorai-v0's current set).
+- **`Toaster` and `toast` live in `@factorai/ui`** (ADR-0065): sonner,
+  unstyled and dressed in the palette's tokens, bottom-right, one `Toaster`
+  mounted by `AppShell`. `toast.error(title, { description })` is the call,
+  from a component or from plain code. Its first customer is F14's update
+  failures; routing every transient `AppError` through it is roadmap item 7's
+  remainder, and `lib/errorNotice` stays until then as the path that works when
+  React does not.
 
 ### Telemetry
 

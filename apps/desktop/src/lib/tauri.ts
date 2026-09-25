@@ -551,6 +551,10 @@ export function mockStagedUpdate(): string | null {
 	return testFixture()?.updateReady ?? null;
 }
 
+export function mockUpdateFailure(): { message: string; version?: string } | null {
+	return testFixture()?.updateFails ?? null;
+}
+
 /** Record a call the mock bridge can't perform, so tests can assert it was
  *  attempted. `relaunch()` is the only one so far. */
 export function recordMockCall(name: string): void {
@@ -706,6 +710,10 @@ interface TestFixture {
 	 *  The real updater is a Tauri plugin and inert in the browser, so this is
 	 *  the only way to reach the `ready` state from a test. */
 	updateReady?: string;
+	/** Make the update check fail, for the F14 failure toast. `version` set
+	 *  means an update was found and its install failed; absent, the lookup
+	 *  itself did. */
+	updateFails?: { message: string; version?: string };
 	/** Path the folder picker returns for "Add project" (F1). Absent means the
 	 *  picker was cancelled — a native dialog can't be driven from a test. */
 	folderPick?: string;

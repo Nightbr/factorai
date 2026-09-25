@@ -627,11 +627,13 @@ like a window once the OS frame goes away.
 
 ## 7. M5 — error UX: a toast primitive, empty states, indexing feedback
 
-- [ ] **`toast` does not exist in `@factorai/ui`** — the package ships 14 primitives and no
-      toast/sonner. `05-features.md` § "Error UX" assumes one. Add it there (not in app code),
-      following the shadcn-style convention the rest of the package uses.
+- [x] **A toast in `@factorai/ui`** — landed 2026-09-25 (ADR-0065): sonner, dressed in the
+      palette's tokens, one `Toaster` in `AppShell`. Its first customer is F14's update
+      failures (`DONE.md`).
 - [ ] Route transient `AppError`s to a toast and view-specific failures to inline messages, per
       the tagged-union contract in `03-backend-rust.md` § "Errors".
+      Then a mounted app's window-level errors go through the toast too, and `lib/errorNotice`
+      shrinks to the crash-time fallback it is the only answer for.
 - [ ] Empty states: no `~/.claude/projects/` (F1 — one-line explainer plus a link to install
       Claude Code), project with no sessions (F6 already offers `New session` here), empty search.
 - [ ] Friendlier indexing UI on top of the `indexer:progress` events the sidebar already

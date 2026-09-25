@@ -335,8 +335,8 @@ glows on resting surfaces. A panel is above the ground because it is two points
 lighter and separated by a 1px line.
 
 Shadows exist only where a surface genuinely floats above the app rather than
-being part of it: the dialog, the popover, the dropdown and context menus, and
-the card primitive. They are a statement that the surface is temporary, not a
+being part of it: the dialog, the popover, the dropdown and context menus, the
+toast, and the card primitive. They are a statement that the surface is temporary, not a
 decoration.
 
 ### Shadow Vocabulary

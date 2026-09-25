@@ -1,3 +1,4 @@
+import { Toaster } from '@factorai/ui';
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { FileTreePanel } from '@components/files/FileTreePanel';
@@ -283,6 +284,9 @@ export function AppShell({ children }: AppShellProps) {
 			{/* Portalled, so it stacks over whatever asked for it — including the
 			    settings modal, when About is the door (F29). */}
 			<RestartConfirm />
+			{/* The one place a toast appears (ADR-0065). Here rather than at the
+			    root so it is only ever mounted with the app around it. */}
+			<Toaster />
 		</div>
 	);
 }

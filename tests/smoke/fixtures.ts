@@ -103,6 +103,9 @@ export interface TestFixture {
 	gitCommits?: Record<string, GitCommitDetail>;
 	/** Version to report as downloaded and staged, for the F14 update badge. */
 	updateReady?: string;
+	/** Make the update check fail (F14's failure toast); `version` set means the
+	 *  update was found and its install failed. */
+	updateFails?: { message: string; version?: string };
 	/** Path the folder picker returns for "Add project" (F1). Omit to have the
 	 *  picker behave as if it were cancelled — a native dialog can't be driven
 	 *  from a test, so this is the only way through that flow. */

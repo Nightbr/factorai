@@ -1,5 +1,7 @@
+import { toast } from '@factorai/ui';
 import { useEffect } from 'react';
-import { cmd, isTauri, mockStagedUpdate, recordMockCall } from '@lib/tauri';
+import { formatError } from '@lib/errors';
+import { cmd, isTauri, mockStagedUpdate, mockUpdateFailure, recordMockCall } from '@lib/tauri';
 import { type UpdatePhase, useUpdaterStore } from '@store/updaterStore';
 
 /** How often to look for a new release while the app is open.
@@ -38,6 +40,11 @@ async function check(manual = false): Promise<void> {
 	if (!isTauri()) {
 		// Browser-only dev and the Playwright lane: the plugin isn't there to
 		// talk to, so the badge is driven from the fixture instead.
+		const failure = mockUpdateFailure();
+		if (failure) {
+			reportFailure(failure.message, manual, failure.version ?? null);
+			return;
+		}
 		const staged = mockStagedUpdate();
 		if (staged) {
 			setInstalled(true);
@@ -55,18 +62,21 @@ async function check(manual = false): Promise<void> {
 	// the Playwright lane is also a dev build, and its fixture-driven badge
 	// must keep working.
 	if (import.meta.env.DEV) return;
+	/** Whether the failure below was the lookup or the install — see the toast. */
+	let found: string | null = null;
 	try {
 		// The check is Rust's, because only Rust can point the updater at the
 		// channel's endpoint; what comes back is the plugin's own resource, so
 		// the download and install below are the plugin's as before (ADR-0064).
 		const { Update } = await import('@tauri-apps/plugin-updater');
-		const found = await cmd.checkUpdate();
-		setChannel(found.channel);
-		if (!found.update) {
+		const answer = await cmd.checkUpdate();
+		setChannel(answer.channel);
+		if (!answer.update) {
 			if (manual) setState({ phase: 'upToDate' });
 			return;
 		}
-		const update = new Update(found.update);
+		const update = new Update(answer.update);
+		found = update.version;
 
 		setInstalled(true);
 		setState({ phase: 'downloading', version: update.version });
@@ -76,10 +86,33 @@ async function check(manual = false): Promise<void> {
 		setState({ phase: 'ready', version: update.version });
 	} catch (e) {
 		// An update that can't be fetched is not worth a modal: the app works,
-		// it's just not the newest. Surfaced quietly, logged for diagnosis.
-		setInstalled(false);
-		setState({ phase: 'error', message: e instanceof Error ? e.message : String(e) });
+		// it's just not the newest. Logged for diagnosis, toasted only when
+		// someone is waiting on it (see `reportFailure`).
 		console.error('update check failed', e);
+		// `formatError`, not `String(e)`: the check rejects with an `AppError`,
+		// which is a plain object and would read `[object Object]`.
+		reportFailure(formatError(e), manual, found);
+	}
+}
+
+/** The one way a failed check or install is reported, from either branch. */
+function reportFailure(message: string, manual: boolean, found: string | null): void {
+	const { setInstalled, setState } = useUpdaterStore.getState();
+	setInstalled(false);
+	setState({ phase: 'error', message });
+	// **Said out loud when someone is waiting on it** (F14, ADR-0065): a
+	// check you asked for, or an update that was found and then could not be
+	// installed. A background lookup that fails — offline, a GitHub blip —
+	// stays quiet and retries on the next poll, because a toast every six
+	// hours while on a train is noise. The alpha pointer that 404'd every
+	// download on 2026-09-25 was the second kind and said nothing at all.
+	if (manual || found) {
+		toast.error(found ? `Could not install ${found}` : 'Could not check for updates', {
+			id: 'update-failed',
+			description: message,
+			closeButton: true,
+			duration: 10_000,
+		});
 	}
 }
 
