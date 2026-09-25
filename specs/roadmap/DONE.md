@@ -3,6 +3,15 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The hero one-pager is finished** — 2026-09-25. Roadmap 58, closed by decision rather
+  than by its checklist: after iterating on the page, the user called the current version done
+  and took the item off the release gate. The remainder it carried was dropped with it — stills
+  of the app beside the coded miniatures, a video of the sidebar gesture, the e2e test walking
+  the five steps, and the guards on the icon's two hand copies (the byte-identity check for
+  `apps/docs/static/img/factorai-icon.svg` and a geometry test for `MetalMark.tsx`, ADR-0052).
+  None of them is scheduled; the fixture workspace they would have used is item 61's, and item
+  41 still wants it for the GIF.
+
 - **Alpha and stable, and a release process with nothing left to remember** — 2026-09-23.
   Roadmap 31, built but not yet run on GitHub (the entry keeps the three live checks).
   ADR-0064: `alpha.yml` builds a `vX.Y.Z-alpha.N` prerelease from each commit Quality passes on

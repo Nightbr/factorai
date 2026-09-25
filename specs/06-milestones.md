@@ -193,8 +193,9 @@ questions; this list is the arc.
 - **The site** (item 39): one Docusaurus build deployed to GitHub Pages, the
   user guide under `/docs`, a custom domain to decide before the links are
   written.
-- **The hero one-pager** (item 58), which is that site's index — what factorai
-  is, the four verbs of the operating model, and the download.
+- **The hero one-pager** (item 58, done 2026-09-25), which is that site's
+  index — what factorai is, the four verbs of the operating model, and the
+  download.
 
 **Exit criteria.**
 - Someone who has never heard of factorai lands on the hero, installs it for

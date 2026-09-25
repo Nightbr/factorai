@@ -26,21 +26,22 @@ shipped 2026-08-20**, **item 5 (the keybinding scheme, F28) shipped 2026-09-15**
 menu verified 2026-09-17, and the release pipeline builds, signs and publishes on a tag. Items 6
 (titlebar), 7 (error UX) and 8 (the smoke pass) are what M5 still owes.
 
-**M6 is down to three workstreams.** Items 39 and 58 landed 2026-09-21 (`DONE.md`): the site
+**M6 is down to four workstreams.** Items 39 and 58 landed 2026-09-21 (`DONE.md`): the site
 builds from `apps/docs`, deploys to Pages on every push that touches it, answers on
-**`factorai.build`** (ADR-0055) and opens on the hero one-pager. Both keep their numbers for a
-remainder — the guide's content for 39, the screenshots, the motion and the e2e test for 58 —
-and **item 61**, real screenshots in the guide, is the new entry that came out of them. Items
-51, 31 and 59 are what M6 still waits on.
+**`factorai.build`** (ADR-0055) and opens on the hero one-pager. **Item 58 closed 2026-09-25**,
+when the user called the iterated hero finished and dropped its remainder; item 39 keeps its
+number for the guide's content, and **item 61**, real screenshots in the guide, is the new entry
+that came out of them. Items 51, 31, 59 and 39 are what M6 still waits on.
 
-**The list is now headed by M6 — the public first release.** See the block below: five
-workstreams, in build order, and **only those five gate it**. Everything under them, M5's own
+**The list is now headed by M6 — the public first release.** See the block below: four
+workstreams left, in build order, and **only those gate it**. Everything under them, M5's own
 remainder included, is post-release work and is not a reason to delay the tag.
 
 ### M6 — the public first release
 
 **Decided 2026-09-17.** Today's releases are for people who were told about them; M6 is the one a
-stranger finds. Five workstreams, in the order they should be built, each an item below:
+stranger finds. Five workstreams, in the order they should be built; four are items below and
+the fifth has shipped:
 
 1. **[Item 51](#51-macos--a-developer-id-certificate-notarization-and-the-end-of-the-permission-loop) — a signed, notarized macOS app.** The decision to pay for the Apple
    Developer Program was taken 2026-09-17. First because enrolment is the long pole: nothing else
@@ -54,9 +55,8 @@ stranger finds. Five workstreams, in the order they should be built, each an ite
 4. **[Item 39](#39-the-site--the-guides-content-now-that-the-build-carries-it) — the site: one Docusaurus build on GitHub Pages.** The build, the
    deployment and the domain landed 2026-09-21; the guide under `/docs` is scaffolded prose and
    is what is left.
-5. **[Item 58](#58-the-hero--the-screenshots-the-motion-and-the-test-the-page-still-owes) — the hero one-pager**, which is that site's index and the first thing anyone
-   sees. **The page landed 2026-09-21**; the entry is now the screenshots, the motion and the
-   test it owes.
+5. **Item 58 — the hero one-pager**, which is that site's index and the first thing anyone
+   sees. **Done**: the page landed 2026-09-21 and was declared finished 2026-09-25 (`DONE.md`).
 
 **Item 36 (the Homebrew cask) sits directly after them**, because it is the install path the site
 will point macOS users at and its instructions change the day item 51 lands.
@@ -74,8 +74,8 @@ switch item 33 wanted shipped with it. Each of those now needs a `SettingRow` an
 heading rather than a settings feature — read them for what is left.
 
 **Below the M6 block, a position is where a slot happened to be free, never a claim about
-priority.** The first eight entries are the exception and are ordered deliberately: the five
-workstreams, then the cask. **Item 42 (routines)** is the other one — asked for at high priority
+priority.** The first seven entries are the exception and are ordered deliberately: the four
+open workstreams, then the cask. **Item 42 (routines)** is the other one — asked for at high priority
 on 2026-08-28 and placed for it. **Item 47 (the footer shell) shipped on 2026-09-01, the day it was asked
 for, and item 49 (splits in that footer) on 2026-09-02, likewise**; their entries are in
 `DONE.md`. **Item 50 rescoped that footer from the session to the project** on 2026-09-03, also
@@ -316,7 +316,8 @@ genuinely large document before deciding anything else is needed. Tier P1; the c
 **The build, the deployment and the domain shipped 2026-09-21** (`DONE.md`): `apps/docs`
 ([ADR-0051](../adr/0051-the-site-is-apps-docs-and-the-mark-may-move-there.md)),
 `.github/workflows/pages.yml` on every push that touches it, and **`factorai.build`**
-([ADR-0055](../adr/0055-the-site-lives-at-factorai-build.md)) with item 58's hero as the index.
+([ADR-0055](../adr/0055-the-site-lives-at-factorai-build.md)) with the hero one-pager (item 58,
+`DONE.md`) as the index.
 What is left, and what still gates the release, is the **guide's own content**: seven pages
 written from the specs and not yet checked against the running app.
 
@@ -371,37 +372,6 @@ What is left:
       switching it on before there is a second release to compare against buys a directory of
       duplicates. Revisit when the stable channel has shipped twice.
 
-## 58. The hero — the screenshots, the motion and the test the page still owes
-
-**The page shipped 2026-09-21** (`DONE.md`): the five-step pinned intro, the app mock, the
-eight-cell bento, the download band that reads the real release assets, and the About lines, live
-at the site's root. **It is no longer what blocks the release.** What is left is the half the page
-currently argues with code — real pictures of the real app — and the test that guards it.
-
-**What the page has to say**, and `PRODUCT.md` is the contract for all of it: an ADE, not an
-editor with an agent in a pane; the unit of work is a session; the human supervises, decides,
-reviews and sets the rules. The four verbs are the page's spine, not decoration. What it must
-**not** do is invent evidence — no user counts, no benchmarks, no logos, no testimonials, because
-there are none and a fabricated one is the fastest way to lose the reader this page is for.
-
-- [ ] **Screenshots, and the privacy problem item 41 already hit.** A dev build against the
-      author's own workspace is full of client and employer names, and four blurred rows plus one
-      legible one reads as a redacted document. The subject has to be **fabricated**, which is
-      the same fixture item 41 needs for its GIF and item 61 needs for the guide — **build it
-      once, in item 61**, and this entry becomes a choice of which shots the hero wants beside
-      its coded miniatures.
-- [ ] **Motion, if any, is honest.** The sidebar gesture is the one thing a still cannot show
-      (item 41). A WebM of the real gesture from fake data belongs here as much as in the README;
-      a generic animated mockup of a product that does not behave that way does not.
-- [ ] **The e2e hero test** — button through the five steps, each headline asserted — and the
-      byte-identity check for `apps/docs/static/img/factorai-icon.svg` against the brand master,
-      the same way `geometry.test.ts` guards the favicon copy (B5). Owed since the promotion.
-      **Plus a geometry test for `MetalMark.tsx`** (ADR-0052), the second hand-mirror of the
-      master, which needs the same guard `geometry.ts` has.
-
-**Not in scope:** a blog, a changelog page (`CHANGELOG.md` exists since item 31, ADR-0064; rendering it on the site is not this item), pricing, or a
-newsletter. One page, one job.
-
 ## 61. Real screenshots in the guide, from a fabricated workspace
 
 **Asked for 2026-09-21**, the day the site went live: *"for the docs, can we have some real UI
@@ -419,8 +389,8 @@ loop end to end.
 **What is missing is a workspace worth photographing.** The author's own is full of client and
 employer project names, and a sidebar with four rows blurred and one legible reads as a redacted
 document rather than as a product — the finding that killed the 2026-08-27 attempt (item 41) and
-the reason item 58 has never had a still. So the subject is **fabricated**, and it is the same
-fixture items 41 and 58 want. Build it once here:
+the reason the hero shipped with coded miniatures rather than stills. So the subject is
+**fabricated**, and it is the same fixture item 41 wants. Build it once here:
 
 - [x] **A seeded workspace on disk**, not the mock bridge — `scripts/qa/fixture-workspace.py`,
       2026-09-21. `billing-api`, `docs-site`, `homelab` and `recipes` in the groups `Pro` and
