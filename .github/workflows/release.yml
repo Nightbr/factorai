@@ -613,6 +613,25 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --clobber
+          # **The manifest's URLs have to name this alpha's tag.** tauri-action
+          # uploads into a draft, whose assets have no tag in their download URL
+          # yet, so it writes `/releases/latest/download/<name>` — and `latest`
+          # is the stable release. v0.50.0-alpha.2 shipped a pointer like that:
+          # every alpha install found the update, then 404'd on the AppImage,
+          # and on macOS `factorai_universal.app.tar.gz` has the same name in
+          # every release, so it would have fetched stable's bundle and failed
+          # its signature. Rewritten here, and checked, rather than trusted.
+          LATEST="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/"
+          PINNED="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"
+          jq --arg from "$LATEST" --arg to "$PINNED" \
+            '.platforms |= map_values(.url |= (if startswith($from) then $to + ltrimstr($from) else . end))' \
+            latest.json > latest.pinned.json
+          if jq -e --arg to "$PINNED" '[.platforms[].url | startswith($to)] | all | not' latest.pinned.json >/dev/null; then
+            echo "::error::latest.json has a platform URL outside ${TAG}:"
+            jq -r '.platforms | to_entries[] | "\(.key) \(.value.url)"' latest.pinned.json
+            exit 1
+          fi
+          mv latest.pinned.json latest.json
           # The pointer release and its tag are created once, on the first
           # alpha. The tag never moves; only the asset does.
           if ! gh release view "$POINTER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
