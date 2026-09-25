@@ -173,14 +173,15 @@ contract and F14 / F11 / F17 / F29 in `05-features.md` carry the app side.
       pointer job inherited the Windows installer's skip. Fixed the same hour (`always()` plus
       the result it depends on); `v0.49.0-alpha.2` created the pointer and it serves both
       platforms.
-- [ ] **Stable to alpha on a real install.** Set a local install to Alpha, let the next alpha
-      land, and see it update. **Tried 2026-09-25 from `0.49.0`, and it failed**: the check
-      found `0.50.0-alpha.2` and the download 404'd, because every URL in the pointer's
-      `latest.json` read `/releases/latest/download/…` — tauri-action writes that for a draft,
-      and `latest` is stable. `point-alpha` now rewrites the URLs to the alpha's own tag and
-      fails if any is left outside it. Still owed: seeing the next alpha actually install.
-      A failed check is also silent — the footer's label falls back to *Check for updates* and
-      the error reaches only the console.
+- [x] **Stable to alpha on a real install.** Tried 2026-09-25 from `0.49.0` and it failed
+      first: the check found `0.50.0-alpha.2` and the download 404'd, because every URL in the
+      pointer's `latest.json` read `/releases/latest/download/…` — tauri-action writes that for
+      a draft, and `latest` is stable. `point-alpha` now rewrites the URLs to the alpha's own
+      tag and fails if any is left outside it; the same install then updated to
+      `0.50.0-alpha.3` on Linux. A failed check is still silent — the footer falls back to
+      *Check for updates* and the error reaches only the console.
+- [ ] **Alpha to alpha on a real install.** `0.50.0-alpha.3` picking up the next alpha by
+      itself — the first time an install on the channel moves along it.
 - [x] **The first promote, `0.49.0`.** Promoted from `v0.49.0-alpha.2` on 2026-09-23: Latest,
       all five assets including the `.exe`, `/releases/latest/download/latest.json` says `0.49.0`,
       the bump commit took `main` to `0.50.0` with the first `CHANGELOG.md` entry, and nothing
