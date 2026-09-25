@@ -458,7 +458,10 @@ function Terminal({ sessionId }: { sessionId: string }) {
 ```
 
 Resize: a `ResizeObserver` calls `FitAddon.fit()` then sends the new
-`cols`/`rows` to `terminal_resize`.
+`cols`/`rows` to `terminal_resize`. **Except during a panel drag**: while a `PanelResizer`
+is held the observer does nothing, and the terminal fits once when the pointer
+is released (`lib/panelDrag.ts`, PERF-30) — a resize per drag frame made the
+agent redraw its whole screen for each one.
 
 ## File viewer & diff
 

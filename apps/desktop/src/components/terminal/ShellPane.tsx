@@ -19,6 +19,7 @@ import {
 	paneFractions,
 	resizePair,
 } from '@lib/shellLayout';
+import { isPanelDragging, onPanelDragEnd } from '@lib/panelDrag';
 import { cmd } from '@lib/tauri';
 import { type ShellPaneTab, type ShellTab, useShellStore } from '@store/shellStore';
 
@@ -258,11 +259,18 @@ function PaneHost({
 			'Failed to open a shell',
 		);
 
-		const ro = new ResizeObserver(() => fitToHost(entry));
+		// Held for the length of a panel drag and fitted once at its end
+		// (PERF-30): a refit per frame is a PTY resize per frame, and the agent
+		// redraws its whole screen for each one.
+		const ro = new ResizeObserver(() => {
+			if (!isPanelDragging()) fitToHost(entry);
+		});
 		ro.observe(container);
+		const offDragEnd = onPanelDragEnd(() => fitToHost(entry));
 
 		return () => {
 			ro.disconnect();
+			offDragEnd();
 			entry.host.style.visibility = 'hidden';
 		};
 		// `dead` is in the list deliberately: a click on a dead chip has to re-run

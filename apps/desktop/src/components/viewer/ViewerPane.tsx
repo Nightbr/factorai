@@ -244,7 +244,10 @@ export function ViewerPane() {
 							<LazyFileView
 								path={viewer.path}
 								position={viewer.position}
-								onOpenPath={(path) => viewer.open(path)}
+								// `open` itself, which is stable: a fresh arrow here re-rendered
+								// `MarkdownView` through its memo on every host render, and a
+								// panel drag is one per frame (PERF-30).
+								onOpenPath={viewer.open}
 							/>
 						)}
 					</Suspense>

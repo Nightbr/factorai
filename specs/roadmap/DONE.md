@@ -3,6 +3,19 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Dragging a panel edge stops re-rendering the app** — 2026-09-25. PERF-30 in
+  `specs/10-performance.md`, found from a user report that resizing the viewer felt slow; the
+  audit had never timed a drag. Five things rode every frame of it: a fresh `onOpenPath` arrow in
+  `ViewerPane` that defeated PERF-13's `MarkdownView` memo, a fresh `position` object that rebuilt
+  Monaco for a file opened at a line, a `memo(function FileTreeNode …)` whose recursion bound the
+  inner unmemoised name so PERF-10's memo covered the root row only, an unmemoised `Sidebar`, and
+  a terminal refit per frame that sent the PTY a resize per frame. Terminals now hold their
+  geometry until the drag ends (`lib/panelDrag.ts`) and `PanelResizer` applies one size per
+  animation frame. Browser lane, a 60-step drag beside a live session: a long markdown document
+  from 30.9 s of script to 1.6 s and a worst task of 847 ms to 70 ms; a 6 000-line code file from
+  twelve long tasks to none and a worst frame of 117 ms to 17 ms; `terminal_resize` from 60 to one,
+  on release, which a smoke test now holds. The WebKit numbers are still owed.
+
 - **The hero one-pager is finished** — 2026-09-25. Roadmap 58, closed by decision rather
   than by its checklist: after iterating on the page, the user called the current version done
   and took the item off the release gate. The remainder it carried was dropped with it — stills

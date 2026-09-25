@@ -11,6 +11,7 @@ import type { RoutineFireEvent } from '@factorai/types';
 import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
+import { isPanelDragging, onPanelDragEnd } from '@lib/panelDrag';
 import { hotkeysOverTerminal, mergeKeymap } from '@lib/keymap';
 import { cmd, events, openExternally } from '@lib/tauri';
 import { usePrefsStore } from '@store/prefsStore';
@@ -749,12 +750,19 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 
 		// `fit()` is all this needs to do — the terminal's `onResize` handler
 		// pushes the new geometry to the PTY.
-		const ro = new ResizeObserver(() => fitToHost(entry));
+		// Held for the length of a panel drag and fitted once at its end
+		// (PERF-30): a refit per frame is a PTY resize per frame, and the agent
+		// redraws its whole screen for each one.
+		const ro = new ResizeObserver(() => {
+			if (!isPanelDragging()) fitToHost(entry);
+		});
 		ro.observe(container);
+		const offDragEnd = onPanelDragEnd(() => fitToHost(entry));
 
 		return () => {
 			clearTimeout(focusTimer);
 			ro.disconnect();
+			offDragEnd();
 			// Hide, never detach, and never dispose: the pooled terminal keeps its
 			// scrollback and its listeners, and keeping its box in the document is
 			// what keeps the wheel working when you come back (see `showOnly`).

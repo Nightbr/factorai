@@ -1,5 +1,5 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useViewerStore } from '@store/viewerStore';
 
 /**
@@ -147,6 +147,12 @@ export function useFileViewer(): {
 	}, [navigate]);
 
 	const line = search.file ? parsePosition(search.line) : undefined;
+	const col = parsePosition(search.col) ?? null;
+	// **One object per position, not per render** (PERF-30). `Editor` keys its
+	// create effect on it, so a fresh `{ line, col }` on every host render —
+	// every frame of a panel drag — disposed and rebuilt Monaco for a file
+	// opened at a line.
+	const position = useMemo(() => (line ? { line, col } : null), [line, col]);
 
 	return {
 		path: search.file ?? null,
@@ -155,7 +161,7 @@ export function useFileViewer(): {
 		diff: search.file && isDiffMode(search.diff) ? search.diff : null,
 		// A column without a line is the same kind of nonsense, so the line is
 		// what gates the whole position.
-		position: line ? { line, col: parsePosition(search.col) ?? null } : null,
+		position,
 		open,
 		close,
 	};

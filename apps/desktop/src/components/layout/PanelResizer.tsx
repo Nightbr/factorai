@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { beginPanelDrag, endPanelDrag } from '@lib/panelDrag';
 
 /** How far one arrow-key press moves the edge. */
 const KEY_STEP = 16;
@@ -44,9 +45,39 @@ function isInverted(edge: ResizerEdge): boolean {
  * beside it. The vertical case is the same maths on `clientY`, so it is one
  * component told which axis it is on rather than a second component that would
  * drift from this one.
+ *
+ * **One size per frame, however many pointer events arrive** (PERF-30). A
+ * high-rate mouse delivers several `pointermove`s a frame, and each `onSize`
+ * re-renders the shell around the panel; only the last one of a frame is ever
+ * seen. The pending size is flushed on release, so the drag ends exactly where
+ * the pointer did.
  */
 export function PanelResizer({ size, onSize, edge, label, clamp, onReset }: PanelResizerProps) {
 	const drag = useRef<{ origin: number; size: number } | null>(null);
+	const pending = useRef<number | null>(null);
+	const frame = useRef<number | null>(null);
+	const flush = () => {
+		if (frame.current !== null) cancelAnimationFrame(frame.current);
+		frame.current = null;
+		if (pending.current !== null) onSize(pending.current);
+		pending.current = null;
+	};
+	const finish = () => {
+		if (!drag.current) return;
+		drag.current = null;
+		flush();
+		endPanelDrag();
+	};
+	// A handle can unmount mid-drag — the viewer column goes when the shell
+	// narrows past the four-column threshold — and a drag nobody ends would
+	// hold every terminal's geometry until the next one.
+	useEffect(
+		() => () => {
+			if (frame.current !== null) cancelAnimationFrame(frame.current);
+			if (drag.current) endPanelDrag();
+		},
+		[],
+	);
 	const horizontal = isHorizontal(edge);
 	const inverted = isInverted(edge);
 
@@ -65,20 +96,23 @@ export function PanelResizer({ size, onSize, edge, label, clamp, onReset }: Pane
 			onPointerDown={(e) => {
 				drag.current = { origin: horizontal ? e.clientX : e.clientY, size };
 				e.currentTarget.setPointerCapture(e.pointerId);
+				beginPanelDrag();
 			}}
 			onPointerMove={(e) => {
 				const start = drag.current;
 				if (!start) return;
 				const delta = (horizontal ? e.clientX : e.clientY) - start.origin;
-				onSize(clamp(inverted ? start.size - delta : start.size + delta));
+				pending.current = clamp(inverted ? start.size - delta : start.size + delta);
+				frame.current ??= requestAnimationFrame(flush);
 			}}
 			onPointerUp={(e) => {
-				drag.current = null;
+				finish();
 				e.currentTarget.releasePointerCapture(e.pointerId);
 			}}
-			onPointerCancel={() => {
-				drag.current = null;
-			}}
+			onPointerCancel={finish}
+			// A capture lost any other way — the window losing focus mid-drag —
+			// still ends the drag, or every terminal would wait on it forever.
+			onLostPointerCapture={finish}
 			onDoubleClick={onReset}
 			onKeyDown={(e) => {
 				if (e.key === 'Enter' && onReset) {

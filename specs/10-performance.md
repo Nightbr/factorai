@@ -90,6 +90,7 @@ one 30 MB transcript among them, one repository with 10 000 commits.
 | Busy output (`seq 1 1000000` in one pane) | ≤ 3 s to completion; no main-thread stall over 100 ms anywhere in the app | 10 live sessions |
 | Search (F12) | ≤ 200 ms to results | 1 000 sessions indexed |
 | File tree: expand a 2 000-entry directory | ≤ 100 ms to rows on screen | repository class |
+| Dragging a panel edge (sidebar, tree, viewer column) | every frame ≤ 16 ms of main thread; no PTY resize until the pointer is released | a long document in the viewer, a live session beside it |
 | File tree: the 3 s `git_status` tick while the panel is open | ≤ 16 ms of renderer main thread per tick; ≤ 50 ms of backend per call | repository class |
 | Sidebar polls (`list_sidebar` 2 s, `list_sessions` 5 s) | ≤ 5 ms and ≤ 10 ms per call; the main thread never waits more than 10 ms on the database | workspace class |
 | Indexer: one live transcript changing | cost proportional to the bytes appended; ≤ 50 ms per debounced event for the 30 MB transcript; the renderer's polls never wait on it | workspace class |
@@ -522,7 +523,8 @@ first open this run, and a cross-project switch.
 **PERF-10 — Every file-tree row mounts five query observers, three router subscriptions and its own decoration index.**
 Impact H on a large repository with the panel open, cost M. **Landed
 2026-09-20**, and the profile it asked for says the surface is still outside
-its budget afterwards — see the end of this entry and PERF-29.
+its budget afterwards — see the end of this entry and PERF-29. **The row's
+memo reached the root row only until PERF-30** fixed the recursion.
 `FileTreeNode` (`ts/components/files/FileTreeNode.tsx:77`) calls
 `useGitDecorations`, which calls `useGitStatus`, which calls
 `useActiveCheckout`, which is `useActiveProject` plus `useWorktrees` plus a
@@ -777,12 +779,59 @@ ADR-0002's transport.
 *Measure.* Main-thread time per chunk on WebKitGTK with `cat` of a large
 file, and the keystroke-to-glyph budget under load, before and after.
 
+**PERF-30 — Dragging a panel edge re-rendered the document, the tree and the sidebar every frame, and resized the PTY on each one.**
+Impact H while dragging the viewer column with a markdown file open, cost L.
+Found 2026-09-25 from a user report ("the panel resize, mainly for the document
+viewer, is a bit slow"); the audit had not timed a drag. **Landed 2026-09-25.**
+Each `pointermove` on `PanelResizer` set a width and re-rendered `AppShell`,
+and five things rode on that render:
+
+- `ViewerPane` handed `FileView` a fresh `onOpenPath` arrow, which went
+  through `FileView`'s `useCallback` into `MarkdownView`'s props, so PERF-13's
+  memo never held inside the pane and the whole document was re-parsed and
+  re-rendered once a frame.
+- `useFileViewer` returned a fresh `position` object per render, and `Editor`
+  keys its create effect on it, so a file opened at a line had Monaco disposed
+  and rebuilt once a frame.
+- `FileTreeNode` was `memo(function FileTreeNode …)`, and a named function
+  expression binds its own name in its body: the recursive `<FileTreeNode>`
+  was the bare function, not the memo, so PERF-10's memo applied to the root
+  row alone and every visible row re-rendered with it. The inner function is
+  `FileTreeRow` now.
+- `Sidebar` has no props and was not memoised, so the project tree came too
+  (PERF-21's subject, which the rest of that entry still describes).
+- The session column narrows as the viewer widens, so the terminal's
+  `ResizeObserver` refitted every frame: a `terminal_resize` per frame, and the
+  agent redrew its whole screen for each. Terminals now hold their geometry
+  for the length of a drag (`lib/panelDrag.ts`) and fit once when it ends.
+
+`PanelResizer` also applies at most one size per animation frame, which a
+test's one-move-per-frame drag cannot show and a high-rate mouse does.
+*Measured* in the browser lane (dev build, Chromium), a 60-step out-and-back
+drag of the viewer edge, a live session beside it:
+
+| | Before | After |
+|---|---|---|
+| 120-section markdown document: script time | 30 888 ms | 1 634 ms |
+| markdown: worst long task | 847 ms | 70 ms¹ |
+| 6 000-line code file: long tasks over 50 ms | 12 | 0 |
+| code file: worst frame | 117 ms | 17 ms |
+| `terminal_resize` during the drag | 60 | 0, then 1 on release |
+
+¹ Most of what is left is Playwright's own injected script walking a large
+DOM, and about 14 ms a frame of layout, which is the document reflowing to
+its new width and is the work a resize is for. The WebKitGTK and WKWebView
+numbers are still owed, as for everything in P7. A smoke test holds the
+terminal half (`file-viewer.spec.ts`, "resizes the terminal once, on release").
+
 **PERF-29 — The file tree is not virtualized, and at 2 000 rows it is nineteen times its budget.**
 Impact H on a large repository, cost M to H, measured 2026-09-20.
 `list_dir` caps a directory at 2 000 entries (`rs/services/files.rs:25`) and
 `FileTreeNode` renders every one of them (`ts/components/files/FileTreeNode.tsx:245-254`).
 After PERF-10 removed the per-row query observers and memoised the row,
-expanding such a directory still takes **1 911 ms** against a 100 ms budget,
+expanding such a directory still takes **1 911 ms** against a 100 ms budget
+(measured before PERF-30 found that the memo held for the root row only, so
+the next-event half of it wants measuring again),
 and the main thread stays busy long enough afterwards that a 1 500 ms timer
 fires at 15 s.
 *Fix.* A windowed list over the rows. The tree is recursive and each node

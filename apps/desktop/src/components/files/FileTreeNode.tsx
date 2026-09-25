@@ -61,8 +61,15 @@ const DOUBLE_CLICK_MS = 400;
  *
  * The root row passes `trailing`, which is fresh JSX each render, so that one
  * row re-renders with its parent. It is one row.
+ *
+ * **The inner function is named `FileTreeRow`, not `FileTreeNode`, and that
+ * is the fix rather than a style choice** (PERF-30). A named function
+ * expression binds its own name inside its body, so the recursive
+ * `<FileTreeNode>` below used to resolve to the bare function and not to this
+ * memo: every row under the root re-rendered with it, and a panel drag
+ * re-rendered the whole visible tree once a frame.
  */
-export const FileTreeNode = memo(function FileTreeNode({
+export const FileTreeNode = memo(function FileTreeRow({
 	entry,
 	depth,
 	siblings,

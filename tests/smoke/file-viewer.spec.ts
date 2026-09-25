@@ -1501,6 +1501,48 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('file-tab')).toHaveText(/Cargo\.toml/);
 		await expect(viewer).toBeFocused();
 	});
+
+	test('@smoke dragging the viewer edge resizes the terminal once, on release', async ({
+		page,
+	}) => {
+		// PERF-30: a refit per drag frame was a PTY resize per frame, and the
+		// agent behind it redrew its whole screen for each one.
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.setViewportSize({ width: 1800, height: 1000 });
+		await page.goto('/');
+		await page.locator('aside').first().getByText('foo').click();
+		await page.getByRole('link', { name: /Refactor the auth middleware/ }).click();
+		await expect(page.locator('.xterm:visible')).toBeVisible();
+		await page.getByRole('button', { name: 'Toggle file tree' }).click();
+		await page.getByTestId('file-tree-panel').getByRole('button', { name: 'README.md' }).click();
+		const column = page.getByTestId('viewer-column');
+		await expect(column).toBeVisible();
+
+		const resizes = () =>
+			page.evaluate(
+				() =>
+					(window.__FACTORAI_TEST_CALLS__ ?? []).filter((c) => c.name === 'terminal_resize').length,
+			);
+		const handle = page.getByRole('separator', { name: 'Resize file viewer' });
+		const box = await handle.boundingBox();
+		if (!box) throw new Error('the viewer handle has no box');
+		const x = box.x + box.width / 2;
+		const y = box.y + box.height / 2;
+		const widthBefore = (await column.boundingBox())?.width ?? 0;
+		const before = await resizes();
+
+		await page.mouse.move(x, y);
+		await page.mouse.down();
+		for (let i = 1; i <= 20; i++) await page.mouse.move(x - 10 * i, y);
+		// The column follows the pointer while the terminal holds its geometry.
+		await expect
+			.poll(async () => (await column.boundingBox())?.width ?? 0)
+			.toBeGreaterThan(widthBefore + 150);
+		expect(await resizes()).toBe(before);
+
+		await page.mouse.up();
+		await expect.poll(resizes).toBe(before + 1);
+	});
 });
 
 test.describe('SOPS (F27)', () => {

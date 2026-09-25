@@ -80,7 +80,7 @@ import {
 	PanelLeftOpen,
 	Search,
 } from 'lucide-react';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /** A group row, narrowed once so the dialog and the handlers can name it. */
 type GroupRow = Extract<SidebarRow, { kind: 'group' }>;
@@ -173,7 +173,12 @@ const collisionDetection: CollisionDetection = (args) => {
  */
 const DRAG_START_PX = 4;
 
-export function Sidebar() {
+/**
+ * `memo` with no props, so it renders for its own stores and queries only
+ * (PERF-30). `AppShell` re-renders on every frame of a panel drag, and the
+ * whole project tree used to come with it.
+ */
+export const Sidebar = memo(function Sidebar() {
 	const navigate = useNavigate();
 	// **The poll stops while you are dragging.** A refetch landing mid-gesture
 	// re-renders the list under the pointer, and a row that moves, appears or
@@ -910,7 +915,7 @@ export function Sidebar() {
 			</Dialog>
 		</>
 	);
-}
+});
 
 /**
  * Write a new sidebar tree, applied to the cache before it lands.
