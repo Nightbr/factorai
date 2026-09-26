@@ -431,15 +431,14 @@ the reason the hero shipped with coded miniatures rather than stills. So the sub
       it is a human's job at the keyboard rather than something a session should arrange. Until
       then the Sessions and Terminal pages get the session list, the tab strip and a footer
       shell, none of which need an account.
-- [ ] **One shot per guide page, each showing the one thing its page is about.** The fixture is
-      built and the app is drivable against it — `scripts/qa/click.sh` reaches the renderer,
-      re-verified 2026-09-21 — so what is left is the capture pass itself: Projects (the sidebar
-      with its two groups, a project selected, its sessions listed), Sessions (the tab strip and
-      a transcript; the status dots wait on a signed-in store), Routines (the schedule editor and
-      the next-runs echo), Files / Changes / Graph (the panel in its three tabs, which the dirty
-      tree and the merged branch are there for), Terminal (the footer shell with a split),
-      Advanced → Worktrees, and Keyboard shortcuts (the Keyboard settings section). More than one
-      picture per page is a page that stopped explaining.
+- [x] **The guide is illustrated**, 2026-09-26, and not by the manual pass this line planned.
+      The user asked for every part to be illustrated, including GIFs of flows, such as the
+      update going from *Check for updates* to *Update ready*. Most of that is states the real
+      window reaches only by provoking them. So the pictures come from scripts in
+      `tests/docs-shots/` against the mock bridge, re-runnable with `pnpm docs:shots`
+      ([ADR-0066](../adr/0066-the-guide-is-illustrated-from-scripted-shots-of-the-mock-bridge.md)).
+      This reverses the rejection of the mock bridge in the first checkbox above, and the ADR
+      says why.
 - [ ] **Dark only.** The site is dark and the light palette does not render yet (item 32); a
       light shot would be of a theme neither the app nor the page currently shows.
 - [x] **Where they live**, which was item 39's open checkbox: `assets/images/`, referenced from

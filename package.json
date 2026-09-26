@@ -18,7 +18,8 @@
 		"deps:fix": "syncpack fix-mismatches",
 		"deps:unused": "knip",
 		"bytes:check": "node scripts/check-text-bytes.mjs",
-		"capture:hero": "node scripts/capture-hero-video.mjs"
+		"capture:hero": "node scripts/capture-hero-video.mjs",
+		"docs:shots": "playwright test --config playwright.shots.config.ts"
 	},
 	"devDependencies": {
 		"@playwright/test": "1.60.0",
@@ -35,6 +36,9 @@
 		"pnpm": ">=10.0.0"
 	},
 	"pnpm": {
-		"onlyBuiltDependencies": ["esbuild", "@playwright/test"]
+		"onlyBuiltDependencies": [
+			"esbuild",
+			"@playwright/test"
+		]
 	}
 }

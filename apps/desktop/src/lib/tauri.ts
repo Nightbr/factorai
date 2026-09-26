@@ -551,6 +551,14 @@ export function mockStagedUpdate(): string | null {
 	return testFixture()?.updateReady ?? null;
 }
 
+export function mockFoundUpdate(): {
+	version: string;
+	checkMs?: number;
+	downloadMs?: number;
+} | null {
+	return testFixture()?.updateFound ?? null;
+}
+
 export function mockUpdateFailure(): { message: string; version?: string } | null {
 	return testFixture()?.updateFails ?? null;
 }
@@ -716,6 +724,9 @@ interface TestFixture {
 	 *  means an update was found and its install failed; absent, the lookup
 	 *  itself did. */
 	updateFails?: { message: string; version?: string };
+	/** A check you ask for finds this version, downloads it for `downloadMs`
+	 *  and stages it: the whole path the footer walks, for the guide's pictures. */
+	updateFound?: { version: string; checkMs?: number; downloadMs?: number };
 	/** Path the folder picker returns for "Add project" (F1). Absent means the
 	 *  picker was cancelled — a native dialog can't be driven from a test. */
 	folderPick?: string;

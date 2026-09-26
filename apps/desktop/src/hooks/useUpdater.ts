@@ -1,7 +1,14 @@
 import { toast } from '@factorai/ui';
 import { useEffect } from 'react';
 import { formatError } from '@lib/errors';
-import { cmd, isTauri, mockStagedUpdate, mockUpdateFailure, recordMockCall } from '@lib/tauri';
+import {
+	cmd,
+	isTauri,
+	mockFoundUpdate,
+	mockStagedUpdate,
+	mockUpdateFailure,
+	recordMockCall,
+} from '@lib/tauri';
 import { type UpdatePhase, useUpdaterStore } from '@store/updaterStore';
 
 /** How often to look for a new release while the app is open.
@@ -43,6 +50,15 @@ async function check(manual = false): Promise<void> {
 		const failure = mockUpdateFailure();
 		if (failure) {
 			reportFailure(failure.message, manual, failure.version ?? null);
+			return;
+		}
+		const found = mockFoundUpdate();
+		if (found && manual) {
+			await new Promise((r) => setTimeout(r, found.checkMs ?? 600));
+			setState({ phase: 'downloading', version: found.version });
+			await new Promise((r) => setTimeout(r, found.downloadMs ?? 1500));
+			setInstalled(true);
+			setState({ phase: 'ready', version: found.version });
 			return;
 		}
 		const staged = mockStagedUpdate();

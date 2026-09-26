@@ -45,7 +45,9 @@
 		"apps/docs": {
 			// Docusaurus loads the config and every file under src/pages by
 			// convention; knip 5.38 has no Docusaurus plugin to tell it so.
-			"entry": ["docusaurus.config.ts", "src/pages/**/*.tsx"],
+			// `Shot` is imported only from the guide's Markdown pages, which knip
+			// does not parse (ADR-0066).
+			"entry": ["docusaurus.config.ts", "src/pages/**/*.tsx", "src/components/Shot/index.tsx"],
 			"project": ["src/**/*.ts", "src/**/*.tsx"],
 			"ignoreDependencies": [
 				// Imported from CSS — `@import "@fontsource-variable/inter"` in

@@ -21,6 +21,16 @@ else opens the README:
 4. **Resampling.** The app is 12px and 14px type throughout. Scaling a capture
    down turns it to mush, and the sidebar is the first thing to go.
 
+## Guide images are not taken this way
+
+Pictures for the user guide (`apps/docs/docs`) come from scripts, not from the
+window: `tests/docs-shots/*.shots.ts` drive the renderer against the mock bridge
+in an invented world and write `assets/images/guide/<page>-<subject>@2x.png` or
+`.gif`, shown through the site's `Shot` component (ADR-0066). Re-shoot a page
+with `pnpm docs:shots tests/docs-shots/<page>.shots.ts` after changing the
+surface it shows, and look at every image it writes. What follows is for the
+README and release notes, which show the whole real window.
+
 ## The loop
 
 **Launch with the flag.** `VITE_FACTORAI_SCREENSHOT=1` is the supported way to

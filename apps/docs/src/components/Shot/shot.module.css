@@ -1,0 +1,17 @@
+.figure {
+	margin: 1.25rem 0 1.5rem;
+}
+
+.image {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+}
+
+.caption {
+	margin-top: 0.5rem;
+	color: var(--fa-muted-foreground);
+	font-size: 0.8125rem;
+}
