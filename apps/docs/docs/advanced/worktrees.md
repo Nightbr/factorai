@@ -11,10 +11,15 @@ working in one stays a session of the project it belongs to.
 
 ## What follows the agent
 
-When a session moves into a worktree, the file tree, the Changes tab, the graph's working row
-and the tree's decorations describe that checkout. Sessions started in a worktree resume in it.
-The project page shows which sessions are on which checkout, and the graph's checkout picker
-lists worktrees beside branches and tags.
+When a session moves into a worktree, the file tree and its decorations, the Changes tab, the
+graph's *Working changes* row and the footer's new shells describe that checkout. Sessions started
+in a worktree resume in it.
+
+When the repository has more than one checkout, the session header shows the one it is working
+in beside the branch. That mark is also a picker: it lists the repository's **Checkouts** —
+flagging one that is *missing* or *locked* — and choosing one roots the panel there. When the
+panel is on a worktree rather than the session's own directory, the same menu has **Back to this
+session's own checkout**. Picking changes what you look at, not what git has checked out.
 
 ## What factorai does not do
 

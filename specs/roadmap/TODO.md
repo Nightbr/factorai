@@ -316,12 +316,13 @@ genuinely large document before deciding anything else is needed. Tier P1; the c
 `.github/workflows/pages.yml` on every push that touches it, and **`factorai.build`**
 ([ADR-0055](../adr/0055-the-site-lives-at-factorai-build.md)) with the hero one-pager (item 58,
 `DONE.md`) as the index.
-What is left, and what still gates the release, is the **guide's own content**: seven pages
-written from the specs and not yet checked against the running app.
+What is left, and what still gates the release, is the **guide's own content**. The pages were
+checked against the code on 2026-09-26, and what is left is the part only the real window can
+confirm.
 
 **User ask, 2026-08-24, restated 2026-08-30**: *"we will write a full docs later for all factorai
 features"*. Everything written for a *user* today is `README.md`, the five screenshots in
-`assets/images/` and those seven pages. Everything else in the repository is written for whoever
+`assets/images/` and those fourteen pages. Everything else in the repository is written for whoever
 is building it: `specs/` is the design source of truth, `specs/adr/` is the decision trail, and
 this file is sequencing. All three read as internal because they are.
 
@@ -354,12 +355,29 @@ What the guide holds, in the order a new user meets it:
 
 What is left:
 
-- [ ] **Every page checked against the running app, not against the spec it was written from.**
-      The scaffold landed 2026-09-19 — Installation and updates, Projects, Sessions, Routines,
-      Files (with Changes and Graph), Terminal, and Advanced (Profiles, Worktrees, Keyboard
-      shortcuts). A page written from a spec is a page that describes the app as designed; the
-      release is the first time a stranger reads it as the app as built. Troubleshooting and
-      *First run* are the two the scaffold does not yet have.
+- [x] **Every page checked against the code, claim by claim.** Done 2026-09-26, against the
+      renderer and Rust sources, with the browser lane for the project menu, the Keyboard
+      section and the routine editor. Every page had something wrong. Examples: the add button,
+      which has three entries and not two; the concurrency cap, which is app-wide and not per
+      project; the `×` on a tab, which closes the session and does not stop it; SOPS files,
+      which open locked; and the graph, which has no checkout picker. **First run** and
+      **Troubleshooting** are written and in the sidebar.
+- [ ] **What only the real window can confirm**, left from that pass:
+      - Terminal: copying a selection, paste from the right-click menu, and Ctrl/Cmd+click on a
+        link in a real PTY.
+      - Native surfaces: the folder picker, Reveal, the trash on delete.
+      - Updater: download, restart and channel switch, now largely seen in item 31.
+      - macOS: the permission prompts, Gatekeeper's *damaged* message, Cmd+Q, the context menu.
+      - Status dots against real agent titles, and sessions appearing live from the watcher.
+      - A routine firing, catching up and queueing.
+      - The Windows/WSL pages.
+      Most of this is item 8's pass, and the macOS half waits on item 51.
+- [ ] **Six app bugs the check turned up**, each small. The Confirmations setting says quitting
+      always asks, when it asks only while an agent works (ADR-0020). A failed spawn and the
+      profile badge both say *claude* for a Codex session. The close-session setting says
+      "while Claude is working" in a two-agent app. There may be no mouse way to copy a
+      terminal selection on Linux. The Graph tab reads the project root while the rest of the
+      panel follows the checkout.
 - [x] **The site reuses `assets/images/`** — decided and measured 2026-09-21. A relative path
       out of `apps/docs/docs/` (`../../../assets/images/<name>.png`) is resolved by the MDX
       image loader: the build emits it under `/assets/images/` with a content hash, no
@@ -373,7 +391,7 @@ What is left:
 ## 61. Real screenshots in the guide, from a fabricated workspace
 
 **Asked for 2026-09-21**, the day the site went live: *"for the docs, can we have some real UI
-screenshots of part to illustrate the docs?"*. Today the guide is seven pages of prose and not one
+screenshots of part to illustrate the docs?"*. Today the guide is fourteen pages of prose and not one
 picture, while the hero next door shows the app only as coded miniatures and a mock. The answer is
 yes, and **the hard part is not the capture, it is the subject**.
 

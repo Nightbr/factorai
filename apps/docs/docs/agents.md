@@ -13,16 +13,19 @@ yourself, and factorai starts the process you have already logged into.
 ## What factorai knows about each
 
 **Settings → Agents** shows one card per agent, collapsed to its badge: `ACTIVE` with the version
-it reports, or `NOT DETECTED`. Expand a card to see the path factorai resolved and to pin a
-different binary when the probe picked the wrong one. Auto-detection looks on `PATH`, then in a
-login shell, then in the usual install locations.
+it reports, or `NOT DETECTED`. Expand a card for **Detected binary**, the path factorai resolved,
+and **Override path**, to pin a different binary when the probe picked the wrong one or found
+none. An override is used as-is, with no fallback to the probe, and applies to the next session
+you start; empty means keep auto-detecting. Auto-detection looks on `PATH`, then asks your login
+shell, then tries the usual install locations. When it finds nothing, see
+[Troubleshooting](troubleshooting#claude-not-found).
 
 ## Which agent a project runs
 
 Each [profile](advanced/profiles) belongs to one agent, chosen when the profile is created. A
 project runs the agent of its assigned profile; a project with no profile runs the **starred**
-default. Both live in **Settings → Profiles**, and the project's right-click menu shows the agent
-mark beside every profile it offers.
+default. Both live in **Settings → Profiles**, and once there are two profiles the project's
+right-click menu has a **Profile** submenu with the agent mark beside every entry.
 
 To start the other agent once, without changing the project: the chevron beside `+` on the
 project row, or **New session with ▸** in the project's menu. Both are absent while only one
@@ -54,7 +57,8 @@ you are watching the address bar.
 ## Tools for the agent
 
 Both agents get factorai's own tools over MCP, registered at launch: an agent in either CLI can
-list, create and update the project's [routines](routines). Codex receives the registration as a
+list, create and update the project's [routines](routines), and switch one off or back on. It
+cannot delete one. Codex receives the registration as a
 launch-time override, so nothing is written into `~/.codex`.
 
 One difference in how the two find them. Claude Code lists MCP tools up front. Codex keeps them

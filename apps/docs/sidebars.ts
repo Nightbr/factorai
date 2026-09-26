@@ -4,6 +4,7 @@ import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
 	guide: [
 		'installation',
+		'first-run',
 		'agents',
 		'projects',
 		'sessions',
@@ -20,6 +21,7 @@ const sidebars: SidebarsConfig = {
 			label: 'Advanced',
 			items: ['advanced/profiles', 'advanced/worktrees', 'advanced/keyboard-shortcuts'],
 		},
+		'troubleshooting',
 	],
 };
 
