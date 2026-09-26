@@ -394,9 +394,11 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 									onCheckedChange={(v) => set('confirmCloseMiddleClick', v)}
 								/>
 							</SettingRow>
-							<p className="pt-2.5 text-muted-foreground text-xs">
-								Quitting the app always asks. That dialog is about losing every live session at
-								once, and it is not optional.
+							{/* What `needsQuitConfirm` does (ADR-0020): it asks only while an
+							    agent is working, and there is no switch for it. */}
+							<p className="pt-2.5 text-muted-foreground text-xs" data-testid="settings-quit-note">
+								Quitting asks first whenever an agent is working, because every live session ends
+								with the app. That question has no switch.
 							</p>
 						</div>
 					)}

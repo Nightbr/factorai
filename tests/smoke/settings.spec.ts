@@ -75,6 +75,16 @@ test.describe('settings', () => {
 		await expect(page.getByTestId('settings-about-channel')).toHaveText('Alpha');
 	});
 
+	test('@smoke the quit note says when quitting asks', async ({ page }) => {
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/?settings=confirmations');
+		// `needsQuitConfirm` asks only while an agent is working (ADR-0020), so the
+		// note must not promise it always does.
+		const note = page.getByTestId('settings-quit-note');
+		await expect(note).toContainText('whenever an agent is working');
+		await expect(note).not.toContainText('always');
+	});
+
 	test('@smoke Save persists and Cancel discards', async ({ page }) => {
 		await installMockBridge(page, {
 			...fixtureOneProjectOneSession(),
