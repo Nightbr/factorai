@@ -66,6 +66,8 @@ export interface TestFixture {
 	pendingRoutineFires?: RoutineFireEvent[];
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	/** Make `terminal_spawn` reject with this `AppError`, as a missing CLI does. */
+	terminalSpawnFails?: { kind: string; message: string };
 	/** The id `shell_spawn` hands back (F23). Pin it and every pane of a chip
 	 *  gets the same PTY, so only a one-pane spec should — what it buys is a
 	 *  known id to fire `terminal:data` at. Unpinned, the mock counts spawns. */

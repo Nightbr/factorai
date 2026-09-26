@@ -442,7 +442,9 @@ function attachPty(
 	attachStream(
 		entry,
 		(cols, rows) => ensureTerminal(sessionId, projectId, projectCwd, cols, rows, initialPrompt),
-		'Failed to spawn claude',
+		// Not named after an agent: Rust decides which one runs, and its error
+		// already says which CLI it could not find (F30).
+		'Could not start the session',
 	);
 }
 

@@ -671,6 +671,8 @@ interface TestFixture {
 	sessionsByProject?: Record<string, SessionSummary[]>;
 	sessionPages?: Record<string, SessionPage>;
 	terminalSpawnId?: TerminalId;
+	/** Make `terminal_spawn` reject with this `AppError`, as a missing CLI does. */
+	terminalSpawnFails?: { kind: string; message: string };
 	/** The id `shell_spawn` hands back in the browser lane (F23). Distinct from
 	 *  `terminalSpawnId` so a test can tell a shell's PTY from its agent's. */
 	shellSpawnId?: TerminalId;
@@ -1513,6 +1515,7 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			// assert the mock, and the renderer's path is identical either way.
 			return (fx?.newSessionId ?? '00000000-0000-4000-8000-000000000000') as unknown as T;
 		case 'terminal_spawn': {
+			if (fx?.terminalSpawnFails) throw fx.terminalSpawnFails;
 			// The agent Rust would resolve: the launch override, else Claude — the
 			// mock has no profiles table to consult and no `agent.default` reader.
 			const opts = args?.opts as SpawnOpts | undefined;
