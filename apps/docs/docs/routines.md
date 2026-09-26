@@ -3,12 +3,25 @@ id: routines
 title: Routines
 ---
 
+import Shot from '@site/src/components/Shot';
+
+
 # Routines
 
 A routine is a saved prompt on a schedule, per project. When due, factorai starts a session in the
 project with the prompt as its first message.
 
+<Shot
+  src={require('../../../assets/images/guide/routines-list@2x.png').default}
+  alt="The billing-api project's Routines tab: Nightly triage (every day at 2:00), Weekly dependency bump (every Monday at 9:30) and a disabled, agent-created invoice reconciliation, each with Run now, edit, delete and an enable switch"
+/>
+
 ## Creating one
+
+<Shot
+  src={require('../../../assets/images/guide/routines-editor@2x.gif').default}
+  alt="The New routine dialog: the Schedule preset changes from Daily at to Weekly on, then Friday is picked, and the Next line below updates to the next three Fridays at 7:30"
+/>
 
 Open a project's **Routines** tab and press **New routine**, or choose **New routine** from the
 project's right-click menu. Fields: **Name**, **Schedule**, **Prompt**, **Enabled**, **Run if

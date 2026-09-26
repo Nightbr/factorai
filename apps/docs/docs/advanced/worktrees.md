@@ -3,12 +3,19 @@ id: worktrees
 title: Worktrees
 ---
 
+import Shot from '@site/src/components/Shot';
+
 # Worktrees
 
 A git worktree is a checkout of the project's repository, not a new project. A session working in
 one stays in its project.
 
 ## What follows the agent
+
+<Shot
+  src={require('../../../../assets/images/guide/worktrees-checkout-menu@2x.png').default}
+  alt="The session header showing the branch fix/duplicate-invoices and the checkout duplicate-invoices, its menu open on Checkouts: billing-api on main, duplicate-invoices (current), proration-preview marked locked, checkout-e2e marked missing, and Back to this session's own checkout"
+/>
 
 - When a session moves into a worktree, the file tree, the Changes tab, the graph's *Working
   changes* row and new footer shells follow it. Sessions started in a worktree resume there.

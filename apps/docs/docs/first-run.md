@@ -3,16 +3,28 @@ id: first-run
 title: First run
 ---
 
+import Shot from '@site/src/components/Shot';
+
 # First run
 
 factorai opens on an empty sidebar: *No projects yet*, with **Add Project…** and **Import from
 Claude Code…**.
+
+<Shot
+  src={require('../../../assets/images/guide/first-run-empty@2x.png').default}
+  alt="The sidebar on first launch: an empty Projects list reading No projects yet, with Add Project… and Import from Claude Code… buttons"
+/>
 
 First, check **Settings → Agents** (`Mod+,`): each agent reads `ACTIVE` with a version, or
 `NOT DETECTED`. An undetected agent cannot start sessions; see
 [Troubleshooting](troubleshooting#claude-not-found).
 
 ## Adding your first projects
+
+<Shot
+  src={require('../../../assets/images/guide/first-run-import@2x.png').default}
+  alt="The Import from Claude Code dialog listing six folders under /home/ada/code with session counts and last activity; billing-api, docs-site and homelab are ticked, thesis-2024 is marked missing, and the button reads Import 3"
+/>
 
 - **Import from Claude Code…** lists the folders Claude Code has worked in, with their session
   counts. Tick the ones you want and import. Past sessions appear once indexing finishes.

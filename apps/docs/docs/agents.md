@@ -3,6 +3,9 @@ id: agents
 title: Agents
 ---
 
+import Shot from '@site/src/components/Shot';
+
+
 # Agents
 
 factorai runs [Claude Code](https://claude.com/claude-code) and
@@ -10,6 +13,12 @@ factorai runs [Claude Code](https://claude.com/claude-code) and
 yourself.
 
 ## What factorai knows about each
+
+<Shot
+  src={require('../../../assets/images/guide/agents-settings@2x.png').default}
+  alt="Settings → Agents with the Claude Code card open: its detected binary and the Override path field"
+/>
+
 
 **Settings → Agents** has one card per agent: `ACTIVE` with its version, or `NOT DETECTED`.
 Expand it for:
@@ -21,6 +30,11 @@ Expand it for:
 Nothing found? See [Troubleshooting](troubleshooting#claude-not-found).
 
 ## Which agent a project runs
+
+<Shot
+  src={require('../../../assets/images/guide/agents-new-session-with@2x.png').default}
+  alt="The billing-api project's right-click menu with New session with open, offering Claude Code and Codex, Codex highlighted"
+/>
 
 - Each [profile](advanced/profiles) belongs to one agent. A project runs its profile's agent, or
   the **starred** default's. Both are set in **Settings → Profiles**; with two or more profiles the

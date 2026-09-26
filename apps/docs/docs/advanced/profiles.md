@@ -3,12 +3,20 @@ id: profiles
 title: Profiles
 ---
 
+import Shot from '@site/src/components/Shot';
+
+
 # Profiles
 
 A profile is a name, an agent, and a configuration directory, set as `CLAUDE_CONFIG_DIR` for
 `claude` or `CODEX_HOME` for `codex`. Login, settings and transcripts live under it.
 
 ## Setting them up
+
+<Shot
+  src={require('../../../../assets/images/guide/profiles-settings@2x.png').default}
+  alt="Settings → Profiles: Claude Code profiles Default (starred), Work and Client, each with its config directory, and a Codex Default profile"
+/>
 
 **Settings → Profiles** saves as you click; there is no Save.
 
@@ -22,6 +30,11 @@ A profile is a name, an agent, and a configuration directory, set as `CLAUDE_CON
   `CODEX_HOME=<dir> codex login`.
 
 ## Which profile a session gets
+
+<Shot
+  src={require('../../../../assets/images/guide/profiles-project-menu@2x.png').default}
+  alt="The billing-api project's right-click menu with the Profile submenu open: the project is on Work, and the submenu lists Default profile, the Claude Code profiles and the Codex default"
+/>
 
 - **New sessions** and footer shells use the project's profile, or the starred default. Assign one
   from the project's right-click **Profile** submenu (with two or more profiles), or from the

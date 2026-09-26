@@ -3,12 +3,20 @@ id: troubleshooting
 title: Troubleshooting
 ---
 
+import Shot from '@site/src/components/Shot';
+
+
 # Troubleshooting
 
 For first-launch warnings, see
 [Installation](installation#first-launch-and-what-looks-broken).
 
 ## `claude` not found
+
+<Shot
+  src={require('../../../assets/images/guide/troubleshooting-override@2x.png').default}
+  alt="Settings → Agents with Claude Code NOT DETECTED: the card is open, Detected binary says Not found, and an Override path of /home/ada/.npm/bin/claude shows Nothing runnable at that path"
+/>
 
 **Settings → Agents** shows `NOT DETECTED`, and a new session prints a red line beginning
 *Could not start the session:* (for example `NotFound: claude CLI not found`).

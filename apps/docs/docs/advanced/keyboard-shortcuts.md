@@ -3,6 +3,9 @@ id: keyboard-shortcuts
 title: Keyboard shortcuts
 ---
 
+import Shot from '@site/src/components/Shot';
+
+
 # Keyboard shortcuts
 
 `Mod` is Command on macOS and Control on Linux and in a WSL window.
@@ -22,6 +25,11 @@ title: Keyboard shortcuts
 On macOS, Quit is the app menu's `Cmd+Q` and is not listed in Settings.
 
 ## Rebinding
+
+<Shot
+  src={require('../../../../assets/images/guide/keyboard-rebind@2x.gif').default}
+  alt="Settings → Keyboard: clicking Close the focused tab shows Press keys…, pressing Ctrl+Shift+W sets it with a reset arrow beside it, and Save lights up"
+/>
 
 In **Settings → Keyboard**, click a chord and press the new one (`Escape` cancels, `Backspace`
 clears).

@@ -3,6 +3,8 @@ id: projects
 title: Projects
 ---
 
+import Shot from '@site/src/components/Shot';
+
 # Projects
 
 A project is a folder you added; its sessions are the agent conversations that ran there.
@@ -22,6 +24,11 @@ deletes nothing; adding it back restores its sessions. It asks first if a sessio
 
 ## Organising the sidebar
 
+<Shot
+  src={require('../../../assets/images/guide/projects-organise@2x.gif').default}
+  alt="Dragging homelab above dotfiles to reorder it, holding recipes over homelab until the row reads New group, naming the new group Side projects, then dropping dotfiles onto that group"
+/>
+
 - **Drag** a row to reorder it, onto a group to file it, onto a group's edge to place it beside,
   or hold it over another project until it reads *New group*.
 - **Keyboard**: `Alt`+`↑` / `Alt`+`↓` move a row.
@@ -39,6 +46,11 @@ off.
 The sidebar resizes between 180 and 480px and collapses to a rail.
 
 ## What a row shows
+
+<Shot
+  src={require('../../../assets/images/guide/projects-row-menu@2x.png').default}
+  alt="The right-click menu of the homelab project inside the Side projects group: New session, New session with, New routine, Move up, Move down, Move to group, Remove from group, Reveal in file manager and Remove Project"
+/>
 
 - An avatar coloured from the path, with a status dot when a session is live.
 - A `+` on hover to start a session, with a chevron to pick the agent when both are installed.

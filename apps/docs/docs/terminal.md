@@ -3,11 +3,18 @@ id: terminal
 title: Terminal
 ---
 
+import Shot from '@site/src/components/Shot';
+
 # Terminal
 
 Every session is a real terminal running `claude` or `codex` itself.
 
 ## The session terminal
+
+<Shot
+  src={require('../../../assets/images/guide/terminal-file-link@2x.gif').default}
+  alt="A Claude Code session prints src/invoices/retry.ts:20; Ctrl+click on the underlined path opens retry.ts in the viewer beside the terminal at line 20"
+/>
 
 - The header holds the only controls: the pin, `×` (**Close session**), and **Restart** once the
   process has exited.
@@ -18,6 +25,11 @@ Every session is a real terminal running `claude` or `codex` itself.
 - **Paste:** right-click with nothing selected.
 
 ## The footer shell
+
+<Shot
+  src={require('../../../assets/images/guide/terminal-footer-shells@2x.png').default}
+  alt="Two footer shells split side by side under the session, pnpm test on the left and pnpm dev on the right, with the zsh chip showing 2 panes, + Terminal and Split in the strip"
+/>
 
 The strip at the bottom of every project view opens your own shell next to the agent.
 

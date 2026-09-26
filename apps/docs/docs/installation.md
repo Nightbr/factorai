@@ -4,6 +4,9 @@ title: Installation and updates
 sidebar_label: Installation
 ---
 
+import Shot from '@site/src/components/Shot';
+
+
 # Installation and updates
 
 For macOS, Linux, and Windows via WSL 2. Needs a logged-in agent CLI:
@@ -37,6 +40,12 @@ For macOS, Linux, and Windows via WSL 2. Needs a logged-in agent CLI:
   source.
 
 ## Updates
+
+<Shot
+  src={require('../../../assets/images/guide/installation-update@2x.gif').default}
+  alt="The sidebar footer: Check for updates, then Checking…, Downloading update…, and Update ready"
+/>
+
 
 - Checked on launch and every six hours, downloaded in the background.
 - Never restarts on its own: **Update ready** appears in the sidebar footer and **Update ready —
