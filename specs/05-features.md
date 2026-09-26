@@ -2671,7 +2671,7 @@ also literally the same dialog: `RestartConfirm` is one component driven by
 `updaterStore`, so the About row's restart cannot become the door that forgets
 to ask.
 
-> Restart to update? factorai 0.2.0 is ready. Claude is working in 1 of 4 live
+> Restart to update? factorai 0.2.0 is ready. An agent is working in 1 of 4 live
 > sessions. Restarting terminates all 4 — work in progress is lost. This cannot
 > be undone — the update will also apply on its own the next time you quit and
 > reopen.
@@ -2912,7 +2912,7 @@ at. Same corner badge as `ProjectIcon`, not a second mechanism.
   only for as long as a tab *was* a PTY. ADR-0005 is untouched; what changed is
   that a tab now outlives the process.
 
-**Closing kills the session, and asks first while Claude is working** — same
+**Closing kills the session, and asks first while its agent is working** — same
 terms as the quit guard: an unattended `claude` is real money, and closing one
 mid-task loses its work. `needsCloseConfirm` owns *when*, and the dialog it
 guards, `components/dialog/CloseSessionConfirm`, is **shared with the session
@@ -3759,7 +3759,7 @@ When the user closes the window:
 2. **`working_count() > 0`** — prevent the close and emit
    `app:quit-requested { liveCount, workingCount }`. The frontend opens a
    `Dialog` from `@factorai/ui`:
-   > Quit factorai? Claude is working in 1 of 4 live sessions. Quitting
+   > Quit factorai? An agent is working in 1 of 4 live sessions. Quitting
    > terminates all 4 — work in progress is lost. This cannot be undone.
    >   [Cancel]   [Quit & kill sessions]
 

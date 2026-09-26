@@ -277,8 +277,8 @@ function ProjectView() {
 						title="No sessions yet"
 						description={
 							<>
-								Start one with <b>New session</b>, and it appears here the moment Claude writes its
-								first message.
+								Start one with <b>New session</b>, and it appears here the moment its agent writes
+								its first message.
 							</>
 						}
 					/>

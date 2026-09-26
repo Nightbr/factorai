@@ -100,7 +100,7 @@ test.describe('update badge', () => {
 		await page.getByTestId('update-badge').click();
 
 		await expect(page.getByText('Restart to update?')).toBeVisible();
-		await expect(page.getByText(/Claude is working in 1 session/)).toBeVisible();
+		await expect(page.getByText(/An agent is working in 1 session/)).toBeVisible();
 		// Nothing happened yet.
 		let calls = await page.evaluate(() => window.__FACTORAI_TEST_CALLS__ ?? []);
 		expect(calls.some((c) => c.name === 'relaunch')).toBe(false);

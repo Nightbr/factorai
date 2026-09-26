@@ -373,7 +373,7 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 							<SettingRow
 								label="Ask before closing a running session"
 								htmlFor="settings-confirm-close"
-								description="Only while Claude is working — closing an idle session never asks."
+								description="Only while its agent is working — closing an idle session never asks."
 							>
 								<Switch
 									id="settings-confirm-close"

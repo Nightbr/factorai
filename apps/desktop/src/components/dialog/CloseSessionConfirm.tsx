@@ -108,8 +108,8 @@ export function CloseSessionConfirm({
 						Close this session?
 					</DialogTitle>
 					<DialogDescription>
-						{sessionName ?? ''} is running. Closing it terminates its Claude session — the
-						transcript is kept, but any work in progress is lost. This cannot be undone.
+						{sessionName ?? ''} is running. Closing it terminates its agent — the transcript is
+						kept, but any work in progress is lost. This cannot be undone.
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>

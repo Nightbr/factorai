@@ -23,19 +23,19 @@ describe('quitConfirmSentence', () => {
 		// The load-bearing assertion. Quitting here ends four processes; a
 		// sentence built from `working` would say one and be believed.
 		expect(quitConfirmSentence({ live: 4, working: 1 }, 'Quitting')).toBe(
-			'Claude is working in 1 of 4 live sessions. Quitting terminates all 4 — work in progress is lost.',
+			'An agent is working in 1 of 4 live sessions. Quitting terminates all 4 — work in progress is lost.',
 		);
 	});
 
 	it('drops the "of N" clause when every live session is working', () => {
 		expect(quitConfirmSentence({ live: 2, working: 2 }, 'Restarting')).toBe(
-			'Claude is working in 2 sessions. Restarting terminates them — work in progress is lost.',
+			'Agents are working in 2 sessions. Restarting terminates them — work in progress is lost.',
 		);
 	});
 
 	it('says "it" for a single session', () => {
 		expect(quitConfirmSentence({ live: 1, working: 1 }, 'Quitting')).toBe(
-			'Claude is working in 1 session. Quitting terminates it — work in progress is lost.',
+			'An agent is working in 1 session. Quitting terminates it — work in progress is lost.',
 		);
 	});
 });

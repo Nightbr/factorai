@@ -57,9 +57,11 @@ type QuitAct = 'Quitting' | 'Restarting';
  * "1 of 1" reads as a placeholder somebody forgot to finish.
  */
 export function quitConfirmSentence({ live, working }: LiveCounts, act: QuitAct): string {
-	const working_s = working === 1 ? '' : 's';
+	// Any agent: `working_count` counts every agent PTY, Codex's too (F30).
+	const who = working === 1 ? 'An agent is' : 'Agents are';
 	if (working >= live) {
-		return `Claude is working in ${working} session${working_s}. ${act} terminates ${working === 1 ? 'it' : 'them'} — work in progress is lost.`;
+		const sessions = working === 1 ? '1 session' : `${working} sessions`;
+		return `${who} working in ${sessions}. ${act} terminates ${working === 1 ? 'it' : 'them'} — work in progress is lost.`;
 	}
-	return `Claude is working in ${working} of ${live} live sessions. ${act} terminates all ${live} — work in progress is lost.`;
+	return `${who} working in ${working} of ${live} live sessions. ${act} terminates all ${live} — work in progress is lost.`;
 }
