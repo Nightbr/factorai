@@ -13,7 +13,8 @@ import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
 import { isPanelDragging, onPanelDragEnd } from '@lib/panelDrag';
 import { hotkeysOverTerminal, mergeKeymap } from '@lib/keymap';
-import { cmd, events, openExternally } from '@lib/tauri';
+import { cmd, copyText, events, openExternally } from '@lib/tauri';
+import { isMacOS } from '@lib/platform';
 import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 
@@ -276,6 +277,27 @@ function agentTerminalId(sessionId: string): string | undefined {
  */
 const OFFSCREEN = 'translateX(-200vw)';
 
+/**
+ * The terminal's copy chord (F5): `Cmd+C` on macOS, `Ctrl+Shift+C` elsewhere,
+ * because a Linux `Ctrl+C` is the interrupt the agent's prompt is waiting for.
+ */
+export function isCopyChord(event: KeyboardEvent): boolean {
+	if (event.key.toLowerCase() !== 'c' || event.altKey) return false;
+	return isMacOS()
+		? event.metaKey && !event.ctrlKey && !event.shiftKey
+		: event.ctrlKey && event.shiftKey && !event.metaKey;
+}
+
+/**
+ * Put the selection on the clipboard and clear it, so the grid shows the copy
+ * happened. Through `copyText`, never the web API, which WebKitGTK refuses.
+ */
+function copySelection(term: XTerm): void {
+	const text = term.getSelection();
+	term.clearSelection();
+	void copyText(text).catch((e) => console.error('terminal copy failed', e));
+}
+
 export function showOnly(container: HTMLElement, active: PooledTerm): void {
 	for (const entry of pool.values()) {
 		if (entry.host.parentElement !== container) continue;
@@ -352,6 +374,13 @@ export function getOrCreateTerm(
 		// Nothing without a modifier can be one of ours, and this runs on every
 		// keystroke typed into the terminal.
 		if (!event.ctrlKey && !event.metaKey) return true;
+		// **Copy the selection** (F5). Only with one, so a bare `Cmd+C` or
+		// `Ctrl+Shift+C` still reaches the PTY when nothing is selected.
+		if (isCopyChord(event) && term.hasSelection()) {
+			event.preventDefault();
+			copySelection(term);
+			return false;
+		}
 		const keymap = mergeKeymap(usePrefsStore.getState().keymapOverrides);
 		for (const hotkey of hotkeysOverTerminal(keymap)) {
 			if (matchesKeyboardEvent(event, hotkey)) return false;
@@ -418,6 +447,18 @@ export function getOrCreateTerm(
 		if (tid) pushSize(tid, cols, rows);
 	});
 	entry.cleanup.push(() => resizeSub.dispose());
+
+	// **Right-click copies when something is selected** (F5). WebKitGTK's own
+	// menu greys `Copy` out, because the selection lives in xterm's rendered
+	// layer rather than its textarea, so that menu could only ever paste. With
+	// no selection the native menu is left alone and still pastes.
+	const onContextMenu = (e: MouseEvent) => {
+		if (!term.hasSelection()) return;
+		e.preventDefault();
+		copySelection(term);
+	};
+	host.addEventListener('contextmenu', onContextMenu);
+	entry.cleanup.push(() => host.removeEventListener('contextmenu', onContextMenu));
 
 	return entry;
 }

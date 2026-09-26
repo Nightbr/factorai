@@ -841,9 +841,22 @@ xterm.js terminal, backed by a PTY in Rust.
 **UI.** Main pane, under F3's header — which holds the only controls there
 are: close `×` (or `Restart` when the process is dead). No toolbar. This line
 used to advertise "Resume/Restart, Kill, Copy selection, Search-in-terminal
-(`Cmd+F`)"; copy-selection has no control at all, and `SearchAddon` is loaded
-but nothing drives it, so `Cmd+F` is a keyboard-scheme item (roadmap item 5),
-not a shipped one.
+(`Cmd+F`)". `SearchAddon` is loaded but nothing drives it, so `Cmd+F` is a
+keyboard-scheme item (roadmap item 5), not a shipped one.
+
+**Copying a selection** (2026-09-26), in the agent's terminal and the footer
+shell alike, since both are one pooled xterm:
+
+- **`Cmd+C` on macOS, `Ctrl+Shift+C` elsewhere**, only while something is
+  selected. With no selection the chord goes to the PTY, and a Linux `Ctrl+C`
+  is never taken: it is the interrupt.
+- **Right-click with a selection copies it** and clears it, instead of opening
+  a menu. With no selection the native menu opens as before, and on WebKitGTK
+  that menu is how you paste. Its own `Copy` could never work: it is greyed
+  out, because the selection lives in xterm's rendered layer rather than its
+  textarea.
+- Both go through `copyText`, the Tauri clipboard plugin, because WebKitGTK
+  refuses `navigator.clipboard.writeText`.
 
 **No scrollbar, and the grid fills the pane** (2026-08-18). Both came out of one
 report — a white bar down the right of every session on macOS — and they are
