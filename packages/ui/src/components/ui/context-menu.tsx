@@ -126,13 +126,22 @@ const ContextMenuLabel = React.forwardRef<
 ));
 ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName;
 
+/**
+ * **Never two in a row, never at an edge.** A menu assembled from optional
+ * blocks — the project menu's reorder rows, its `Profile ▸` that exists only
+ * with two profiles — otherwise draws a double rule wherever a block is absent.
+ * Hiding it here means no caller has to count what the others rendered.
+ */
 const ContextMenuSeparator = React.forwardRef<
 	React.ElementRef<typeof ContextMenuPrimitive.Separator>,
 	React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Separator>
 >(({ className, ...props }, ref) => (
 	<ContextMenuPrimitive.Separator
 		ref={ref}
-		className={cn('-mx-1 my-1 h-px bg-border', className)}
+		className={cn(
+			'-mx-1 my-1 h-px bg-border first:hidden last:hidden [[role=separator]+&]:hidden',
+			className,
+		)}
 		{...props}
 	/>
 ));

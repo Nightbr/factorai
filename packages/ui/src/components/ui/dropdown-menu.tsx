@@ -181,13 +181,22 @@ const DropdownMenuLabel = React.forwardRef<
 ));
 DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName;
 
+/**
+ * **Never two in a row, never at an edge.** A menu assembled from optional
+ * blocks — the project menu's reorder rows, its `Profile ▸` that exists only
+ * with two profiles — otherwise draws a double rule wherever a block is absent.
+ * Hiding it here means no caller has to count what the others rendered.
+ */
 const DropdownMenuSeparator = React.forwardRef<
 	React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
 >(({ className, ...props }, ref) => (
 	<DropdownMenuPrimitive.Separator
 		ref={ref}
-		className={cn('-mx-1 my-1 h-px bg-muted', className)}
+		className={cn(
+			'-mx-1 my-1 h-px bg-muted first:hidden last:hidden [[role=separator]+&]:hidden',
+			className,
+		)}
 		{...props}
 	/>
 ));

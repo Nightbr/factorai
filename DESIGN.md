@@ -282,6 +282,11 @@ exception is a 16px avatar's initials.
 padding, never its labels. A menu row is tightened from 32px to 28px by its
 `py-*`, and its item text stays at 14px.
 
+**A menu rule separates two groups, or it is not drawn.** The separator in
+`@factorai/ui`'s context and dropdown menus hides itself when it would be first,
+last, or directly after another rule, so a menu assembled from optional blocks
+never shows a double line where a block is absent.
+
 ## Layout
 
 A fixed three-column desktop shell inside a bordered window: **sidebar** (resizable, ~288px default, collapsible to a 48px rail) · **session area** (flex, min-width 0) · **file panel** (resizable, collapsible to nothing). The shell itself draws a hairline border on its sides and bottom only — the titlebar caps the top — which is what gives the window a defined silhouette against the desktop. Bottom corners are rounded (12px) on macOS only; on Linux, where the WM clips nothing, a radius takes a bite out of the shell and reads worse than a square corner.
