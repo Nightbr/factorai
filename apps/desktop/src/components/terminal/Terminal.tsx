@@ -281,7 +281,7 @@ const OFFSCREEN = 'translateX(-200vw)';
  * The terminal's copy chord (F5): `Cmd+C` on macOS, `Ctrl+Shift+C` elsewhere,
  * because a Linux `Ctrl+C` is the interrupt the agent's prompt is waiting for.
  */
-export function isCopyChord(event: KeyboardEvent): boolean {
+function isCopyChord(event: KeyboardEvent): boolean {
 	if (event.key.toLowerCase() !== 'c' || event.altKey) return false;
 	return isMacOS()
 		? event.metaKey && !event.ctrlKey && !event.shiftKey
