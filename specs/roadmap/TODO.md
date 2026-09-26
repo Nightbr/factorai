@@ -50,8 +50,8 @@ the fifth has shipped:
    Strangers on the update path make "the pipeline is trustworthy" a release criterion rather
    than housekeeping. **Built 2026-09-23 (ADR-0064)**: alpha builds itself from green `main`
    through a pointer release, stable is a promoted alpha. What is left is its first real run.
-3. **[Item 59](#59-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Items 54 and 55 are its
-   first two known findings and sit directly under it.
+3. **[Item 59](#59-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Item 55 was its
+   first known finding and sits directly under it; item 54, the other, closed 2026-09-26.
 4. **[Item 39](#39-the-site--the-guides-content-now-that-the-build-carries-it) — the site: one Docusaurus build on GitHub Pages.** The build, the
    deployment and the domain landed 2026-09-21; the guide under `/docs` is scaffolded prose and
    is what is left.
@@ -178,10 +178,11 @@ contract and F14 / F11 / F17 / F29 in `05-features.md` carry the app side.
       pointer's `latest.json` read `/releases/latest/download/…` — tauri-action writes that for
       a draft, and `latest` is stable. `point-alpha` now rewrites the URLs to the alpha's own
       tag and fails if any is left outside it; the same install then updated to
-      `0.50.0-alpha.3` on Linux. A failed check is still silent — the footer falls back to
-      *Check for updates* and the error reaches only the console.
-- [ ] **Alpha to alpha on a real install.** `0.50.0-alpha.3` picking up the next alpha by
-      itself — the first time an install on the channel moves along it.
+      `0.50.0-alpha.3` on Linux. A failed check was silent then. Since 2026-09-25 (ADR-0065)
+      a check you asked for, or an update found and not installed, says so in a toast.
+- [x] **Alpha to alpha on a real install.** Confirmed 2026-09-26: the install on
+      `0.50.0-alpha.3` picked up the next alpha by itself, the first time an install on the
+      channel moved along it.
 - [x] **The first promote, `0.49.0`.** Promoted from `v0.49.0-alpha.2` on 2026-09-23: Latest,
       all five assets including the `.exe`, `/releases/latest/download/latest.json` says `0.49.0`,
       the bump commit took `main` to `0.50.0` with the first `CHANGELOG.md` entry, and nothing
@@ -250,11 +251,13 @@ if the number is inside the budget. In the spec's order:
 - [x] **PERF-08** — libgit2 out of the database write transaction. **Landed 2026-09-20**:
       `checkout_owners` builds the checkout map on a pooled reader before the transaction
       opens. The transaction went from 1.46-1.82ms to 0.14-0.19ms on this workspace.
-- [ ] **PERF-09** — item 54, session switch. **The `projectCwd` double-mount landed
-      2026-09-20** and a smoke test holds it; the defect it was really causing was a PTY
-      spawned with no cwd. **What is left is the measurement**: click-to-first-paint for a
-      pooled session, a first open this run, and a cross-project switch, in the real window
-      with the profiler on — plus the entry's other three candidates.
+- [x] **PERF-09** — item 54, session switch. **Landed 2026-09-26**, measured in a release
+      build against the fixture workspace. Pooled switches were inside the 33ms budget already:
+      the terminal painted at 24-33ms and the header at 11-18ms, with no `Loading…`. A first
+      open was not: its header took 78-164ms against 100ms, because building and fitting the
+      new xterm ran in the same task. That now waits for the task after the next paint, and
+      the header lands at 10-15ms (82ms from the project page, was 246ms). Construction still
+      slows as the pool grows, which is recorded in the spec entry and not fixed.
 - [x] **PERF-10** — the file tree's per-row query observers and per-row decoration index.
       **Landed 2026-09-20**: one `FileTreeProvider` off `PanelBody` and a memoised row.
       Expanding a 2 000-entry directory went from 3 804ms to 1 911ms and the main-thread
@@ -296,18 +299,6 @@ if the number is inside the budget. In the spec's order:
 hunch. Tier P2 (the raw-bytes PTY channel, WebGL, the entry chunk, `git_status` change detection,
 the graph window) is post-release and each of those is measured first; P3 is done when the
 adjacent code is touched.
-
-## 54. Switching session — time to the first thing on screen
-
-**Asked for 2026-09-15**, unmeasured. The analysis this entry carried moved to
-[`specs/10-performance.md`](../10-performance.md) **PERF-09** on 2026-09-20, with the audit's
-verdict on each of its four candidates: the `projectCwd` double mount is confirmed and flickers,
-the panel re-root is confirmed free, and "every hidden terminal still has layout" was understated —
-they are rendered too, which is **PERF-04**. Tier P1 in both cases; the checklist is item 59's.
-
-- [ ] **Measure first, in the real window** — click-to-first-paint for a pooled session, a first
-      open this run, and a cross-project switch — then fix what the number names. The budget is
-      spec P3's "session switch" row.
 
 ## 55. The markdown preview re-parses far more often than it changes, and mermaid pays for it
 

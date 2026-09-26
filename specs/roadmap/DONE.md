@@ -3,6 +3,18 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Switching session, measured, and a first open paints its header first** — 2026-09-26.
+  Roadmap 54 and PERF-09 in `specs/10-performance.md`, the measurement item 59 still owed.
+  Linux, a `pnpm tauri build` binary against the fixture workspace (four projects, eight
+  sessions), timed by frames from a throwaway harness. Pooled switches were already inside the
+  33ms budget: header 11-18ms, terminal 24-33ms, no `Loading…` in the panel. A first open was
+  not. Its header took 78-164ms against 100ms, and 246ms from the project page, because
+  `Terminal`'s mount effect built the xterm (37-120ms) and fitted it (18-40ms) in the task that
+  had just committed the header. A terminal the pool does not hold yet is now built in the
+  task after the next paint. After: header 10-15ms, 82ms from the project page; the terminal
+  paints a frame later than before and the PTY replay did not move. Construction slowing as
+  the pool grows is recorded in the spec and not fixed. The macOS numbers are still owed.
+
 - **A toast primitive, and update failures say so** — 2026-09-25. Roadmap 7's first
   checkbox and ADR-0065: `Toaster` and `toast` in `@factorai/ui`, on sonner, unstyled and
   dressed in the palette's tokens, mounted once by `AppShell`. The updater raises one for a

@@ -496,8 +496,9 @@ slow — WSL's 9p, which `services/wsl.rs` exists for — the gap is the one tha
 grows.
 
 **PERF-09 — Switching session (item 54).**
-Impact M, cost L; the `projectCwd` half is confirmed by reading, the rest
-needs the profile item 54 asks for. The analysis moved here from the roadmap.
+Impact M, cost L. **Landed 2026-09-26**: measured, and the one budget it
+missed is fixed (the tables at the end of this entry). The `projectCwd` half
+was confirmed by reading and landed 2026-09-20. The analysis moved here from the roadmap.
 - `SessionView` reads `list_projects`, `list_sessions` and `list_profiles`;
   `projectCwd` is `null` until `list_projects` answers
   (`ts/routes/session.tsx:51-56`) and is in the dependency list of
@@ -517,8 +518,54 @@ needs the profile item 54 asks for. The analysis moved here from the roadmap.
   changes. What does happen is PERF-10's re-render of every row through
   `useParams` and `useSearch` on the navigation itself.
 - Every hidden terminal still has layout: understated, see PERF-04.
-*Measure.* Click-to-first-paint for the three cases item 54 names: pooled,
-first open this run, and a cross-project switch.
+*Measured 2026-09-26*, Linux, a `pnpm tauri build` binary against the
+fixture workspace (`scripts/qa/fixture-workspace.py`: four projects, eight
+sessions — two short of P3's load of ten). A throwaway harness, not committed,
+set the hash route the way a sidebar click does and timed it by frames:
+*header* is the first frame whose `main > header` names the session, *painted*
+is the frame after the one in which the terminal's host became visible, and
+*content* is the first frame whose xterm buffer holds text. Each pooled row
+is twelve switches, and each first-open row is every session opened once.
+
+| | Header, median / worst | Terminal painted | Budget |
+|---|---|---|---|
+| Pooled, same project | 11 / 16 ms | 24 / 29 ms | ≤ 33 ms, no `Loading…` |
+| Pooled, cross project | 12 / 18 ms | 28 / 33 ms | as above |
+| First open, same project | 78 / 113 ms | 92 / 129 ms | chrome ≤ 100 ms |
+| First open, cross project | 117 / 164 ms | 117 / 151 ms | as above |
+| First open, from the project page | 246 ms | 232 ms | as above |
+
+The panel never showed `Loading…` during any switch. *Content*, which is the
+PTY replay and not the renderer's, arrived at 480-680 ms.
+
+**The pooled cases met the budget and the first open missed it.** The
+breakdown named one cause. React renders the route in 4-11 ms, but a new
+terminal's mount effect then built the xterm (37-120 ms) and fitted it
+(18-40 ms) in the same task, so the header that commit had just produced
+waited behind them. *Fixed by* building a terminal the pool does not hold
+yet in the task after the next paint (`Terminal.tsx`, a `requestAnimationFrame`
+then a zero timeout). A pooled terminal is still shown synchronously. After:
+
+| | Header, median / worst | Terminal painted |
+|---|---|---|
+| First open, same project | 11 / 15 ms | 109 / 138 ms |
+| First open, cross project | 12 / 13 ms | 149 / 160 ms |
+| First open, from the project page | 82 ms | 248 ms |
+| Pooled, same / cross project | 12 / 14 ms | 26 / 30 ms and 30 / 42 ms |
+
+The terminal now paints 20-40 ms later on a first open, a frame's wait. The
+PTY is spawned one frame later too, and content did not move outside its own
+noise. The single 42 ms pooled switch is one of twelve, on a path the change
+does not touch. The run before the change had a worst of 33 ms.
+
+**What the numbers show and nothing fixes yet: building a terminal gets
+slower as the pool grows.** Creation went from 37 ms for the second terminal
+to 74-102 ms for the seventh and eighth, and the first fit from 18 ms to
+35-40 ms. Both force layout, and every pooled host is still in the layout
+tree (PERF-04 moves them off screen, but they are not removed). No budget
+depends on it now that the header does not wait for it. It is the first
+place to look if a first open with a large pool starts to feel slow, and the
+macOS run is owed as it is for every row here.
 
 **PERF-10 — Every file-tree row mounts five query observers, three router subscriptions and its own decoration index.**
 Impact H on a large repository with the panel open, cost M. **Landed

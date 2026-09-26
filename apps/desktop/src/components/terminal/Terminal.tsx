@@ -705,71 +705,97 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 		// and there is no folder", which is a real answer and does run.
 		if (projectCwd === undefined) return;
 
-		const entry = getOrCreateTerm(sessionId, container, () => agentTerminalId(sessionId));
-		// Only ever true for a terminal built against a *previous* pane — the
-		// session route's pane survives a tab switch, so switching session moves
-		// nothing. Coming back from the project route does, and there is no way
-		// around it: the pane React unmounted took its children with it. A
-		// routine's terminal is the third case: it was born in the offscreen pane
-		// and this is the first time anybody has looked at it (F22).
-		const adopted = entry.host.parentElement !== container;
-		if (adopted) container.appendChild(entry.host);
-		showOnly(container, entry);
 		// **Looking at a session is what opens it.** A routine's session is live
 		// with no tab until now (ADR-0026), and `attach` — where a tab otherwise
 		// comes from — ran when it spawned. Without this the strip never gains the
 		// tab and the session you are looking at is unreachable from it.
 		useTerminalStore.getState().openTab(sessionId, projectId);
-		// Size the terminal to its container before the PTY exists, so the spawn
-		// carries the real cols/rows. `fit()` reads layout synchronously, and the
-		// host has a layout by now, so this measures the final width. If the
-		// container has none yet (zero-sized during a route transition) fit() is a
-		// no-op and the timer below catches up — `onResize` then forwards the
-		// corrected size to the PTY.
-		fitToHost(entry);
-		attachPty(entry, sessionId, projectId, projectCwd);
 
-		// An adopted terminal was measured against a different box — the routine
-		// pane's fixed 900×600, or a pane that has since unmounted — so the first
-		// paint in this one is at the old grid until something redraws it. Fit and
-		// force a repaint on the next frame, when the new layout is real.
-		if (adopted) {
-			requestAnimationFrame(() => {
-				fitToHost(entry);
-				entry.term.refresh(0, entry.term.rows - 1);
-			});
-		}
-
-		const focusTimer = setTimeout(() => {
+		// **A terminal built for the first time waits for the frame after this
+		// one** (PERF-09). Constructing an xterm and fitting it is 55-160ms of
+		// main thread on WebKitGTK, and run here it held back the header the same
+		// commit had just rendered: a first open painted its chrome at 78-164ms
+		// against a 100ms budget. The rAF lands before the next paint and the
+		// timeout after it, so the header and the tab reach the screen first and
+		// the body follows — which is what the budget allows it to do, since it
+		// waits on the PTY either way. A pooled terminal has nothing to build and
+		// is still shown in the same frame, which is the 33ms budget.
+		let teardown: (() => void) | undefined;
+		const mount = () => {
+			const entry = getOrCreateTerm(sessionId, container, () => agentTerminalId(sessionId));
+			// Only ever true for a terminal built against a *previous* pane — the
+			// session route's pane survives a tab switch, so switching session moves
+			// nothing. Coming back from the project route does, and there is no way
+			// around it: the pane React unmounted took its children with it. A
+			// routine's terminal is the third case: it was born in the offscreen pane
+			// and this is the first time anybody has looked at it (F22).
+			const adopted = entry.host.parentElement !== container;
+			if (adopted) container.appendChild(entry.host);
+			showOnly(container, entry);
+			// Size the terminal to its container before the PTY exists, so the spawn
+			// carries the real cols/rows. `fit()` reads layout synchronously, and the
+			// host has a layout by now, so this measures the final width. If the
+			// container has none yet (zero-sized during a route transition) fit() is a
+			// no-op and the timer below catches up — `onResize` then forwards the
+			// corrected size to the PTY.
 			fitToHost(entry);
-			// Coming back to a pooled terminal: jump to the latest output (the live
-			// prompt) rather than wherever the buffer was last scrolled.
-			entry.term.scrollToBottom();
-			entry.term.focus();
-		}, 0);
+			attachPty(entry, sessionId, projectId, projectCwd);
 
-		// `fit()` is all this needs to do — the terminal's `onResize` handler
-		// pushes the new geometry to the PTY.
-		// Held for the length of a panel drag and fitted once at its end
-		// (PERF-30): a refit per frame is a PTY resize per frame, and the agent
-		// redraws its whole screen for each one.
-		const ro = new ResizeObserver(() => {
-			if (!isPanelDragging()) fitToHost(entry);
+			// An adopted terminal was measured against a different box — the routine
+			// pane's fixed 900×600, or a pane that has since unmounted — so the first
+			// paint in this one is at the old grid until something redraws it. Fit and
+			// force a repaint on the next frame, when the new layout is real.
+			if (adopted) {
+				requestAnimationFrame(() => {
+					fitToHost(entry);
+					entry.term.refresh(0, entry.term.rows - 1);
+				});
+			}
+
+			const focusTimer = setTimeout(() => {
+				fitToHost(entry);
+				// Coming back to a pooled terminal: jump to the latest output (the live
+				// prompt) rather than wherever the buffer was last scrolled.
+				entry.term.scrollToBottom();
+				entry.term.focus();
+			}, 0);
+
+			// `fit()` is all this needs to do — the terminal's `onResize` handler
+			// pushes the new geometry to the PTY.
+			// Held for the length of a panel drag and fitted once at its end
+			// (PERF-30): a refit per frame is a PTY resize per frame, and the agent
+			// redraws its whole screen for each one.
+			const ro = new ResizeObserver(() => {
+				if (!isPanelDragging()) fitToHost(entry);
+			});
+			ro.observe(container);
+			const offDragEnd = onPanelDragEnd(() => fitToHost(entry));
+
+			teardown = () => {
+				clearTimeout(focusTimer);
+				ro.disconnect();
+				offDragEnd();
+				// Hide, never detach, and never dispose: the pooled terminal keeps its
+				// scrollback and its listeners, and keeping its box in the document is
+				// what keeps the wheel working when you come back (see `showOnly`).
+				// Off screen for the same reason `showOnly` moves it: a terminal nobody
+				// is looking at should not be rendering.
+				entry.host.style.visibility = 'hidden';
+				entry.host.style.transform = OFFSCREEN;
+			};
+		};
+		if (pool.has(sessionId)) {
+			mount();
+			return () => teardown?.();
+		}
+		let deferred: ReturnType<typeof setTimeout> | undefined;
+		const frame = requestAnimationFrame(() => {
+			deferred = setTimeout(mount, 0);
 		});
-		ro.observe(container);
-		const offDragEnd = onPanelDragEnd(() => fitToHost(entry));
-
 		return () => {
-			clearTimeout(focusTimer);
-			ro.disconnect();
-			offDragEnd();
-			// Hide, never detach, and never dispose: the pooled terminal keeps its
-			// scrollback and its listeners, and keeping its box in the document is
-			// what keeps the wheel working when you come back (see `showOnly`).
-			// Off screen for the same reason `showOnly` moves it: a terminal nobody
-			// is looking at should not be rendering.
-			entry.host.style.visibility = 'hidden';
-			entry.host.style.transform = OFFSCREEN;
+			cancelAnimationFrame(frame);
+			clearTimeout(deferred);
+			teardown?.();
 		};
 	}, [sessionId, projectId, projectCwd]);
 
