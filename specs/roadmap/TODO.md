@@ -372,12 +372,12 @@ What is left:
       - A routine firing, catching up and queueing.
       - The Windows/WSL pages.
       Most of this is item 8's pass, and the macOS half waits on item 51.
-- [ ] **Six app bugs the check turned up**, each small. The Confirmations setting says quitting
-      always asks, when it asks only while an agent works (ADR-0020). A failed spawn and the
-      profile badge both say *claude* for a Codex session. The close-session setting says
-      "while Claude is working" in a two-agent app. There may be no mouse way to copy a
-      terminal selection on Linux. The Graph tab reads the project root while the rest of the
-      panel follows the checkout.
+- [x] **Six app bugs the check turned up**, closed 2026-09-26. Five were fixed, one commit
+      each: the quit note no longer says quitting always asks; a failed start and the profile
+      badge no longer say *claude* for a Codex session; the confirmations say an agent is
+      working rather than Claude; and a terminal selection can now be copied (`Ctrl+Shift+C` /
+      `Cmd+C`, or right-click). The sixth, the Graph tab reading the project root, is F21's
+      decision and not a bug: worktrees share one commit list.
 - [x] **The site reuses `assets/images/`** — decided and measured 2026-09-21. A relative path
       out of `apps/docs/docs/` (`../../../assets/images/<name>.png`) is resolved by the MDX
       image loader: the build emits it under `/assets/images/` with a content hash, no

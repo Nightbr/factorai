@@ -5,24 +5,18 @@ title: Worktrees
 
 # Worktrees
 
-An agent asked to work on two things at once reaches for `git worktree add`. factorai follows it
-there: a worktree is a checkout of the project's repository, not a second project, and a session
-working in one stays a session of the project it belongs to.
+A git worktree is a checkout of the project's repository, not a new project. A session working in
+one stays in its project.
 
 ## What follows the agent
 
-When a session moves into a worktree, the file tree and its decorations, the Changes tab, the
-graph's *Working changes* row and the footer's new shells describe that checkout. Sessions started
-in a worktree resume in it.
-
-When the repository has more than one checkout, the session header shows the one it is working
-in beside the branch. That mark is also a picker: it lists the repository's **Checkouts** —
-flagging one that is *missing* or *locked* — and choosing one roots the panel there. When the
-panel is on a worktree rather than the session's own directory, the same menu has **Back to this
-session's own checkout**. Picking changes what you look at, not what git has checked out.
+- When a session moves into a worktree, the file tree, the Changes tab, the graph's *Working
+  changes* row and new footer shells follow it. Sessions started in a worktree resume there.
+- With several checkouts, the session header shows the current one beside the branch. Click it to
+  pick from **Checkouts** (marked *missing* or *locked* when so); the panel follows your pick.
+  **Back to this session's own checkout** returns. Picking does not change what git has checked
+  out.
 
 ## What factorai does not do
 
-It does not create worktrees, and it does not remove them. That is one command in the terminal,
-and the agent runs it. What factorai owes is to keep describing the right directory once the
-agent has moved.
+It does not create or remove worktrees. Use the terminal, or the agent.
