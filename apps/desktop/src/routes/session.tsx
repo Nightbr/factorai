@@ -316,7 +316,7 @@ function SessionView() {
 				{profileName && (
 					<span
 						className="flex min-w-0 max-w-[10rem] shrink-0 items-center gap-1 text-muted-foreground text-xs"
-						title={`Running as the ${profileName} Claude profile`}
+						title={`Running as the ${profileName} ${agentName(session?.agent)} profile`}
 						data-testid="session-profile"
 					>
 						<IdCard className="size-3 shrink-0" aria-hidden />

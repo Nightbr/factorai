@@ -203,3 +203,23 @@ test.describe('session header ide bridge', () => {
 		await expect(page.getByTestId('session-ide-issue')).toHaveCount(0);
 	});
 });
+
+test.describe('session header profile badge', () => {
+	test('@smoke names the session’s own agent, not always Claude', async ({ page }) => {
+		const fx = fixtureOneProjectOneSession();
+		const [project] = fx.projects ?? [];
+		const session = project && fx.sessionsByProject?.[project.id]?.[0];
+		if (!session) throw new Error('fixture has no session');
+		session.agent = 'codex';
+		session.profileName = 'client-x';
+		await installMockBridge(page, fx);
+		await page.goto('/');
+		await page.locator('aside').getByText('foo').click();
+		await page.getByText('Refactor the auth middleware').click();
+
+		await expect(page.getByTestId('session-profile')).toHaveAttribute(
+			'title',
+			'Running as the client-x Codex profile',
+		);
+	});
+});
