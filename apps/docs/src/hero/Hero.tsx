@@ -3,7 +3,7 @@ import { gsap } from 'gsap';
 import { Observer } from 'gsap/Observer';
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { About } from '../bento/About';
 import { Bento } from '../bento/Bento';
 import { Download } from '../bento/Download';
@@ -90,8 +90,12 @@ export function Hero({ copy }: Props) {
 
 	// Header hidden during the intro, back at the bento. Data attributes on
 	// `body`, not classes on `html`: Docusaurus owns the html class attribute
-	// through Helmet and rewrites it on every route render.
-	useEffect(() => {
+	// through Helmet and rewrites it on every route render. A layout effect
+	// declared before `useGSAP`: `data-fa-hero` takes the navbar out of the
+	// flow, and the trigger below must measure the stage after that, or its
+	// start sits a navbar-height below the top and the first step scrolls
+	// loose before the pin catches it.
+	useLayoutEffect(() => {
 		document.body.dataset.faHero = '';
 		return () => {
 			delete document.body.dataset.faHero;
@@ -103,15 +107,16 @@ export function Hero({ copy }: Props) {
 		else document.body.dataset.faIntro = '';
 	}, [released]);
 
-	// The skip link earns its place after two idle seconds on the first step.
+	// The skip link earns its place after two idle seconds on the first step,
+	// then stays through every step until the stage releases.
 	useEffect(() => {
-		if (step !== 0 || released) {
+		if (released) {
 			setSkipVisible(false);
 			return;
 		}
 		const t = window.setTimeout(() => setSkipVisible(true), 2000);
 		return () => window.clearTimeout(t);
-	}, [step, released]);
+	}, [released]);
 
 	useGSAP(
 		() => {
@@ -467,7 +472,12 @@ export function Hero({ copy }: Props) {
 				onClick={skip}
 				tabIndex={skipVisible ? 0 : -1}
 			>
-				Skip
+				<span>
+					Skip<span className={styles.skipLong}> intro</span>
+				</span>
+				<kbd className={styles.skipKey} aria-hidden="true">
+					Esc
+				</kbd>
 			</button>
 
 			<section className={styles.appSection} id="app">

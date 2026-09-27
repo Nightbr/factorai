@@ -523,30 +523,70 @@
 	}
 }
 
+/* Right edge on the HUD readout's, clear of the corner bracket. */
 .skip {
 	position: fixed;
-	right: clamp(16px, 3vw, 32px);
+	right: 56px;
 	bottom: clamp(20px, 4vh, 40px);
+	height: 44px;
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
 	font-size: 0.8rem;
-	letter-spacing: 0.05em;
+	letter-spacing: 0.12em;
 	text-transform: uppercase;
-	color: var(--fa-muted-foreground);
-	background: none;
-	border: 0;
-	padding: 6px 8px;
+	color: var(--fa-foreground);
+	background: color-mix(in oklch, var(--fa-background) 55%, transparent);
+	backdrop-filter: blur(8px);
+	border: 1px solid color-mix(in oklch, var(--fa-foreground) 28%, transparent);
+	border-radius: 2px;
+	padding: 0 14px;
 	cursor: pointer;
 	z-index: 5;
 	opacity: 0;
-	transition: opacity 0.6s ease;
+	pointer-events: none;
+	transition:
+		opacity 0.6s ease,
+		border-color 0.2s ease,
+		color 0.2s ease;
 	font-family: var(--ifm-font-family-monospace);
 }
 
 .skipVisible {
 	opacity: 1;
+	pointer-events: auto;
 }
 
 .skip:hover {
-	color: var(--fa-foreground);
+	color: var(--fa-primary);
+	border-color: var(--fa-primary);
+}
+
+.skip:focus-visible {
+	outline: 2px solid var(--fa-primary);
+	outline-offset: 3px;
+}
+
+.skipKey {
+	font-size: 0.66rem;
+	letter-spacing: 0.08em;
+	color: var(--fa-muted-foreground);
+	border: 1px solid color-mix(in oklch, var(--fa-foreground) 18%, transparent);
+	border-radius: 2px;
+	padding: 1px 5px;
+}
+
+@media (hover: none) {
+	.skipKey {
+		display: none;
+	}
+}
+
+/* One word on a phone, or it runs into the centred Next arrow. */
+@media (max-width: 760px) {
+	.skipLong {
+		display: none;
+	}
 }
 
 @media (max-width: 760px) {
