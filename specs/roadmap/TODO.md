@@ -123,10 +123,11 @@ and Apple issues it only to paid members; that was always a policy wall, not a t
       (`APPLE_API_KEY` / `APPLE_API_ISSUER` / `APPLE_API_PRIVATE_KEY`) rather than an Apple ID
       and app-specific password; Tauri notarizes and staples. The `add-trusted-cert` /
       passwordless-`sudo` lean is gone, and the step refuses any identity but team TBPB6GW2JQ's.
-- [x] **The README and `apps/docs`** say builds from v0.52.0 are notarized and ask for
-      permissions once more; the right-click → Open and `xattr` workaround stays, scoped to
-      v0.51.0 and older, which `/releases/latest` still serves until v0.52.0 is promoted.
-- [ ] **The v0.52.0 stable release notes** say permissions are asked for one last time.
+- [x] **The README and `apps/docs`** say builds are notarized and that v0.52.0 asks for
+      permissions once more. The right-click → Open and `xattr` workaround is gone, since
+      `/releases/latest` serves a notarized build.
+- [x] **The v0.52.0 stable release notes** say permissions are asked for one last time
+      (promoted from v0.52.0-alpha.2, 2026-09-27).
 - [ ] **Verify on a real Mac, not from Linux.** v0.52.0-alpha.2 installed and ran on macOS,
       2026-09-27, with Apple's notary service reporting it Accepted and the ticket stapled. Left:
       the in-place update to the next Developer ID alpha. `codesign -d -r- factorai.app` naming

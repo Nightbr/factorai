@@ -70,7 +70,7 @@ Anything but `0` means a build before v0.18.1: update.
   the app and its updates are signed by the same Apple team, so macOS stops asking. It can ask
   once more when updating into v0.52.0 from an older build: allow it in **System Settings →
   Privacy & Security → App Management**.
-- **Everything asks again on the first v0.52.0 build.** That release changed the signing identity,
+- **Everything asks again on v0.52.0.** That release changed the signing identity,
   which macOS ties every grant to. Allow each prompt once; later releases keep them.
 - **Folder access**, when something factorai runs first touches a protected folder such as
   Documents or Desktop. Prompts after every release mean v0.32.0 or earlier: update.

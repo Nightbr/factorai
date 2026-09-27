@@ -137,24 +137,15 @@ Windows is not supported. Keep your projects inside the distribution, under `~`
 there and git is slow, and factorai marks such a project with a warning.
 
 <details>
-<summary><b>Three things that look like the app is broken, and aren't</b></summary>
+<summary><b>Four things that look like the app is broken, and aren't</b></summary>
 
 <br>
 
-**macOS builds from v0.52.0 are signed with a Developer ID and notarized**, so
-they open like any other app. v0.51.0 and older were not, and Gatekeeper refuses
-them on first launch with *"damaged and can't be opened"*. Right-click the app →
-**Open** → **Open**, or clear the quarantine attribute yourself:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/factorai.app
-```
-
-**macOS asks for permissions one more time on the first v0.52.0 build.** Folder
-access, and App Management (*"factorai was prevented from modifying apps on your
-Mac"*) if you update into it from an older version. The signing identity changed,
-and macOS ties each grant to it. Allow them once and they stay allowed from then
-on, updates included. If folder permissions keep coming back on every release,
+**macOS asks for permissions one more time on v0.52.0.** Folder access, and App
+Management (*"factorai was prevented from modifying apps on your Mac"*) if you
+update into it from an older version. Builds are now signed with a Developer ID
+and notarized, the signing identity changed, and macOS ties each grant to it.
+Allow them once and they stay allowed from then on, updates included. If folder permissions keep coming back on every release,
 you are on a build at or before v0.32.0 — those grants were tied to the exact
 build, and every release voided them.
 
