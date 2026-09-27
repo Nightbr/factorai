@@ -3,6 +3,12 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **Item 36 (a Homebrew cask) dropped** — 2026-09-27. Not shipped: the user will sign and
+  notarize the macOS app (item 51), and with Gatekeeper satisfied the cask had nothing left to
+  buy beyond a second install path to keep in step with the updater. No tap repo, no
+  `promote.yml` job. ADR-0034 still cites item 36 for the self-signed and ad-hoc dead ends; its
+  text is preserved in git history before this entry's commit.
+
 - **The first run is a centred hero with two amber doors, and Codex can be imported** —
   2026-09-27. ADR-0067, F1 § "The empty state". An empty workspace used to offer its way out
   as two 28px outline buttons in the sidebar while the main pane said "Select a project". The

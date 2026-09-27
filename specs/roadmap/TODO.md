@@ -58,8 +58,10 @@ the fifth has shipped:
 5. **Item 58 — the hero one-pager**, which is that site's index and the first thing anyone
    sees. **Done**: the page landed 2026-09-21 and was declared finished 2026-09-25 (`DONE.md`).
 
-**Item 36 (the Homebrew cask) sits directly after them**, because it is the install path the site
-will point macOS users at and its instructions change the day item 51 lands.
+**Item 62 (the roadmap on GitHub, PRs for every change) is P0 and sits directly after them.**
+Set 2026-09-27: it does not gate the tag, but it lands right after the release or before it,
+because the release is what brings the outside contributors it exists for. It goes ahead of
+anything below this line as soon as it is free to start.
 
 **What M6 deliberately does not block on.** The titlebar (6), the toast primitive (7), the manual
 smoke pass (8), file drafts (2) and everything below. That is a choice, made 2026-09-17, and it
@@ -75,7 +77,7 @@ heading rather than a settings feature — read them for what is left.
 
 **Below the M6 block, a position is where a slot happened to be free, never a claim about
 priority.** The first seven entries are the exception and are ordered deliberately: the four
-open workstreams, then the cask. **Item 42 (routines)** is the other one — asked for at high priority
+open workstreams, then item 62. **Item 42 (routines)** is the other one — asked for at high priority
 on 2026-08-28 and placed for it. **Item 47 (the footer shell) shipped on 2026-09-01, the day it was asked
 for, and item 49 (splits in that footer) on 2026-09-02, likewise**; their entries are in
 `DONE.md`. **Item 50 rescoped that footer from the session to the project** on 2026-09-03, also
@@ -106,8 +108,7 @@ Gatekeeper still blocks the `.dmg`, and the prompt still appears.
 
 **What the paid half buys, precisely.** A **Team ID**, which satisfies the same-team rule and
 removes the App Management prompt entirely rather than making it stick; and **notarization**,
-which removes the Gatekeeper step instead of relocating it — at which point item 36's cask drops
-`--no-quarantine`. A Developer ID Application certificate is the only kind that produces either,
+which removes the Gatekeeper step instead of relocating it. A Developer ID Application certificate is the only kind that produces either,
 and Apple issues it only to paid members; that was always a policy wall, not a technical one.
 
 - [ ] **Enrol, and get the certificate.** Apple Developer Program, then a **Developer ID
@@ -130,7 +131,7 @@ and Apple issues it only to paid members; that was always a policy wall, not a t
 
 **What not to try**, kept from the free half: `NSUpdateSecurityPolicy` in our own `Info.plist`
 maps team identifiers and is redundant once we have one, and an explicit ad-hoc `codesign` step
-remains the dead end item 36 describes.
+remains a dead end: the linker already ad-hoc signs on Apple Silicon.
 
 **One operational consequence worth not learning the hard way.** The `.p12` joins the minisign key
 of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
@@ -192,8 +193,7 @@ contract and F14 / F11 / F17 / F29 in `05-features.md` carry the app side.
 - [ ] **The macOS smoke pass** has still never happened — that is item 8, not this item, and this
       item does not pretend to close it.
 
-**Deliberately not here:** macOS signing and notarisation (item 51), the Homebrew bump (item 36,
-which hooks in at the end of `promote.yml`), hotfix branches (ADR-0064 consequence 2).
+**Deliberately not here:** macOS signing and notarisation (item 51), hotfix branches (ADR-0064 consequence 2).
 
 ## 59. Performance — one audit, measured, then the fixes it names
 
@@ -340,7 +340,7 @@ A second copy of a behaviour is a second thing to update in the commit that chan
 What the guide holds, in the order a new user meets it:
 
 - **Install**, currently the most under-served thing: the AppImage, the `.dmg` and — once item 51
-  lands — a notarized one that needs no Gatekeeper step at all, plus the Homebrew cask (item 36).
+  lands — a notarized one that needs no Gatekeeper step at all.
 - **First run** — adding a project, what discovery does, why sessions appear on their own.
 - **The surfaces** — sessions and the terminal, Files, Changes, the graph, search, worktrees, and
   **routines** (F22): the schedule presets and the custom cron, the next-runs echo, catch-up and
@@ -451,57 +451,80 @@ the reason the hero shipped with coded miniatures rather than stills. So the sub
 five workstreams and this is not one of them. A guide that is correct and unillustrated is worth
 shipping; say the word and it moves up.
 
-## 36. A Homebrew cask, because the macOS build will stay unsigned
+## 62. The roadmap moves to GitHub — issues, a project, templates, and a PR for every change
 
-**Filed 2026-08-20**, out of the question "how complex is signing for macOS, and I don't want an
-Apple developer account". The answer to the first half is *not very* — it is about
-thirty lines of workflow YAML: import a `.p12` into a temporary keychain, then hand Tauri
-`APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` and let it notarize and
-staple, with `bundle.macOS` left as `{}`. The answer to the second half is that the
-certificate has to be a **Developer ID Application** one, which Apple issues only to paid
-Developer Program members — a policy wall, not a technical one. A free Apple ID's Personal Team
-signs for local development and cannot produce one.
+**Filed 2026-09-27, P0**: done right after the public release, or before it if there is room.
+It does not gate the tag. The roadmap is two markdown files one person and their agents edit in
+place: `TODO.md` is the queue, `DONE.md` the log (5,000 lines between them). That works while
+every change lands on `main` from one machine. It does not survive other people: an outside
+contributor cannot claim, discuss or be assigned an item in a markdown heading, and PRs #4–#6 are
+already from people who had nowhere to file what they fixed first. The move is to GitHub
+**issues** for items, a **Project** for their order and milestone, and a **PR** for every change,
+this repo's own sessions included.
 
-**It stopped being what we do instead of paying, on 2026-09-17**, when item 51 took the decision
-to buy a Developer ID certificate and notarize. A cask is still worth having — `brew install
---cask factorai` is how a developer installs a Mac app, and it composes with the updater we
-already ship — but it is now a *convenience* rather than the only free way around Gatekeeper, and
-**it drops `--no-quarantine` the day a notarized build ships**. Build it after item 51, not
-before, or the instructions have to change twice.
+**Decide first, in an ADR, because it supersedes a working protocol** — `specs/roadmap/README.md`
+and the "Work on `main`, no PR ceremony" rule in `AGENTS.md` and the `spec-and-adr-workflow`
+skill are all the thing being replaced.
 
-Two dead ends, closed here so nobody re-explores them: a **self-signed** certificate is free and
-Gatekeeper treats it exactly as unsigned, and an explicit **ad-hoc** `codesign` step changes
-nothing because the linker already ad-hoc signs on Apple Silicon.
+### The migration
 
-> **Amended 2026-09-03 by [ADR-0034](../adr/0034-macos-bundles-carry-a-self-signed-signature.md).**
-> The self-signed dead end is a dead end *for Gatekeeper only*, and that sentence reads as
-> closing the whole question. Gatekeeper trust and TCC persistence are different mechanisms:
-> macOS anchors every privacy grant to the app's designated requirement, an ad-hoc signature has
-> no identity to anchor to, and so every release orphaned every permission the user had granted.
-> A self-signed certificate fixes that and changes nothing about Gatekeeper — so **releases are
-> now signed with one**, and everything this item says about the cask, `--no-quarantine` and the
-> Developer ID wall stands untouched. **Item 51** holds what is left. The ad-hoc dead end is
-> unchanged and still a dead end.
+- [ ] **One issue per live `TODO.md` item**, its body the entry as it stands, its open checkboxes
+      as a task list. Labels for the area (`area:terminal`, `area:site`, …) and the kind (`bug`,
+      `feature`, `chore`); the milestone as a GitHub milestone (`M6`, …).
+- [ ] **A GitHub Project** carrying the order: a priority field or a ranked view replaces
+      "position is priority". The M6 block's prose becomes the milestone's description.
+- [ ] **Item numbers do not survive as issue numbers**, and they are cited from the specs, the
+      ADRs, `DONE.md`, `alpha.yml` and about ten code comments ("roadmap item 7"). Issues and PRs
+      share one counter and #1–#6 are taken, so item 7 cannot become #7. Keep the old number in
+      the title (`[#7] Error UX: …`) or a `roadmap:N` label, and leave one table in
+      `specs/roadmap/README.md` mapping item to issue. Rewrite the citations in mutable files to
+      the issue URL; immutable ADRs keep theirs and resolve through the table.
+- [ ] **`DONE.md` stops growing, and the ADR says whether it is deleted or frozen.** Immutable
+      ADRs link into it and `AGENTS.md` says `DONE.md` entries cite its old section numbers, so
+      deleting it leaves dangling links in files that cannot be edited. Frozen as an archive with
+      a one-line header pointing at closed issues is the cheaper default. Closed issues and merged
+      PRs are the log from then on; the gotchas a `DONE.md` entry used to record go in the PR
+      body.
+- [ ] **`TODO.md` goes once every item has an issue**, and `specs/roadmap/README.md` shrinks to
+      the protocol and the mapping table. `06-milestones.md` stays: it is the arc, not the queue.
 
-- [ ] A tap repo — `Nightbr/homebrew-factorai` — holding `Casks/factorai.rb`: version, the
-      universal `.dmg`'s URL, its sha256.
-- [ ] A job in `promote.yml` **after `release`**, bumping the cask from the published stable's
-      asset — stable only, since alphas are prereleases the cask must never point at (ADR-0064).
-      It has to be after, because the sha256 is of the artifact that was actually uploaded, and it has to
-      be idempotent, because re-running a release job is normal here (see item 31 and the `v0.10.1`
-      post-mortem in `release.yml`'s header).
-- [ ] **`auto_updates true` in the cask.** Not cosmetic: factorai replaces its own bundle in place
-      (F14), so without it Homebrew and the app disagree about what is installed and `brew upgrade`
-      fights the updater. This is the flag casks for self-updating apps carry.
+### Templates
 
-**Be honest about what it buys, now that notarization is coming.** Before item 51 lands,
-`--no-quarantine` is a flag the *user* passes and a cask cannot force — so it **moves** the bypass
-into a command they were going to paste anyway rather than deleting it. After item 51, the flag
-goes and what is left is the plain win: one command to install, one to upgrade, and a version
-Homebrew and the app agree about.
+- [ ] **`.github/ISSUE_TEMPLATE/`**: a bug form (version, platform, WSL or not, steps, what you
+      expected), a feature form (which of supervise / decide / review / set the rules it serves,
+      per `AGENTS.md`), and `config.yml` turning off blank issues.
+- [ ] **`.github/pull_request_template.md`**: what changed and why, the spec or ADR it touches
+      (the same-commit rule still holds), the issue it closes, and the gate — which commands ran,
+      and for UI work whether the real window was used. `pnpm e2e` is not in CI, so the template
+      is where it is declared.
 
-**Linux is unaffected.** The AppImage carries no equivalent problem and stays as it is; there is
-deliberately no `.deb` (F14 — the updater cannot replace one in place).
+### PRs for everything, and who may merge
+
+- [ ] **Branch protection on `main`, as rulesets.** Two, because the two rules need different
+      bypass lists:
+      1. *Required status checks* — Quality's jobs — with **no bypass**, for anyone.
+      2. *Required approving review (1)* from someone with write access, with the repository
+         admin (the owner) on the bypass list **for pull requests only**, so the owner's PRs merge
+         on green and nobody pushes straight to `main`.
+- [ ] **Owner PRs auto-merge on green**: enable auto-merge on the repo, and sessions run
+      `gh pr create` then `gh pr merge --auto --squash`. Squash, so the PR title is the commit and
+      keeps the `feat:` / `fix:` prefix; the alpha pipeline (ADR-0064) still sees one green push
+      to `main` per change.
+- [ ] **External PRs need an internal approval**, which rule 2 gives them for free. Add a
+      `CODEOWNERS` naming the maintainers so the request goes to someone. Quality already runs on
+      `pull_request` without secrets; check that a fork's first run waits for "approve and run"
+      and that nothing in it needs a secret.
+- [ ] **`AGENTS.md` and the skills rewritten to be collaborative**: a branch (and a worktree, since
+      several sessions share one tree) per task, small commits on it, a PR per slice citing its
+      issue, "Push small and often" becoming "open the PR early". `spec-and-adr-workflow` and
+      `quality-gate` say the same. The "Commits" section's no-PR rule goes.
+- [ ] **A `CONTRIBUTING.md`** for the stranger: setup, the gate, the no-emoji / no-`--no-verify`
+      rules, and that a maintainer approves before merge.
+
+**This is alpha-era policy.** Auto-merge on green is right while alpha builds itself from every
+green `main` and stable is a promotion a person makes (ADR-0064): the promotion is the review
+point for what reaches stable users. If a second maintainer joins, or stable starts shipping from
+`main` directly, rule 2's bypass is the thing to revisit.
 
 ## 1. Git graph — the wide surface, and the joins F18 deferred
 
