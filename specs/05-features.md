@@ -340,25 +340,28 @@ actions: adding is cheap and reversible, starting a session is neither.
 project, the index route renders the first-run hero instead of "Select a
 project": the wordmark, **No projects yet**, one line — *Add any folder, or
 bring in the ones Claude Code or Codex already knows.* — and the two doors as
-two amber buttons of one size, **Add Project…** and **Import from… ▾**, the
-second a menu of the same agent items as the header's. It is the one screen
+two Door Tiles of one size (DESIGN.md § Door Tile, ADR-0068): **Add a folder**
+(*Any folder on this machine*) and **Import history ▾** (*From Claude Code or
+Codex*, with both agents' marks), the second a menu of the same agent items as
+the header's, each with its mark. The block sits at the optical centre of the
+pane, a little above the geometric one. It is the one screen
 where the way out is the only thing worth saying, so it is said in the middle
 of the window at the size of a decision; the sidebar keeps only a muted *No
 projects yet.* so its list does not read as one still loading. The two
-buttons breathe together under the first-run halo (DESIGN.md § First-Run
-Halo), which holds still under reduced motion and fades on the button you
+tiles breathe together under the first-run halo (DESIGN.md § First-Run
+Halo), which holds still under reduced motion and fades on the tile you
 hover or focus.
 
-Both are primary because neither is second: which door is right depends on
+Both are the same tile because neither is second: which door is right depends on
 whether an agent has already worked in the folder. The copy leads with "No
 projects yet", not with what `~/.claude` contains: an empty workspace has
 nothing to do with what an agent has.
 
 **No agent found** — neither probe finds a CLI — adds one muted line under the
-buttons: *No agent found. Install Claude Code or Codex, or set its path in
+tiles: *No agent found. Install Claude Code or Codex, or set its path in
 Settings → Agents.*, the last words a link to that section. Adding stays
 enabled: a folder is a folder, and this is where the missing agent is
-cheapest to learn about. A failed add shows its error under the buttons here,
+cheapest to learn about. A failed add shows its error under the tiles here,
 and in the sidebar header once there is a list to put it over.
 
 The collapsed rail keeps its single `FolderPlus` (the picker) at zero
@@ -492,7 +495,7 @@ change whenever the indexer runs, and a stale count is worse than a join.
   directory to watch until its first session exists, and only a recursive watch
   on the parent notices that appearing.
 - `~/.claude/projects/` (or `~/.codex/sessions/`) doesn't exist → nothing to
-  import, which is not an error. The first-run hero offers Add Project… beside
+  import, which is not an error. The first-run hero offers Add a folder beside
   the import door, and points at installing an agent when neither is found.
 
 ---

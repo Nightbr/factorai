@@ -8,7 +8,9 @@ Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when the
   as two 28px outline buttons in the sidebar while the main pane said "Select a project". The
   main pane now carries the wordmark, *No projects yet*, and **Add Project…** beside
   **Import from… ▾**, both solid amber at one size and breathing under the First-Run Halo, the
-  one glow DESIGN.md allows. It holds still under reduced motion. `list_import_candidates`
+  one glow DESIGN.md allows. Re-cut the same day (ADR-0068) after the user found the buttons
+  plain: two Door Tiles, *Add a folder* and *Import history*, with the agents' marks, at the
+  pane's optical centre, and the halo tightened from a muddy blur into a ring. It holds still under reduced motion. `list_import_candidates`
   takes an agent, and Codex's rows come from each rollout's `cwd`. The header menu gains
   *Import from Codex…*. With no agent found, the hero links to Settings → Agents. The add and
   import state moved to a store and the dialog to the app shell, which also makes the import

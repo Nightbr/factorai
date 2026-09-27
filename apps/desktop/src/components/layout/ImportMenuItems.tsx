@@ -1,6 +1,7 @@
 import { DropdownMenuItem } from '@factorai/ui';
 import { useInstalledAgents } from '@hooks/useInstalledAgents';
 import { AGENTS } from '@lib/agents';
+import { AgentMark } from './AgentMark';
 import { useAddProjectStore } from '@store/addProjectStore';
 
 /**
@@ -28,6 +29,7 @@ export function ImportMenuItems({ label }: { label: (name: string) => string }) 
 				data-testid={id === 'claude' ? 'open-import' : `open-import-${id}`}
 				onSelect={() => openImport(id)}
 			>
+				<AgentMark agent={id} aria-hidden />
 				<span className="flex-1">{label(name)}</span>
 				{!present && <span className="text-muted-foreground text-xs">not installed</span>}
 			</DropdownMenuItem>

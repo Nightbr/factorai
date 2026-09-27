@@ -7,25 +7,25 @@ import Shot from '@site/src/components/Shot';
 
 # First run
 
-factorai opens on an empty workspace: *No projects yet*, with two buttons in the middle of the
-window, **Add Project…** and **Import from…**.
+factorai opens on an empty workspace: *No projects yet*, with two choices in the middle of the
+window, **Add a folder** and **Import history**.
 
 <Shot
   src={require('../../../assets/images/guide/first-run-empty@2x.png').default}
-  alt="factorai on first launch: the sidebar reads No projects yet, and the main pane shows the wordmark, No projects yet, and two amber buttons, Add Project… and Import from…"
+  alt="factorai on first launch: the sidebar reads No projects yet, and the main pane shows the wordmark, No projects yet, and two amber-edged tiles, Add a folder and Import history"
 />
 
-If neither Claude Code nor Codex is found, a line under the buttons links to **Settings → Agents**
+If neither Claude Code nor Codex is found, a line under them links to **Settings → Agents**
 (`Mod+,`), where each agent reads `ACTIVE` with a version, or `NOT DETECTED`. An undetected agent
 cannot start sessions; see [Troubleshooting](troubleshooting#claude-not-found).
 
 ## Adding your first projects
 
-- **Import from…** asks which agent's history to read: **Claude Code** or **Codex**.
+- **Import history** asks which agent's history to read: **Claude Code** or **Codex**.
 
   <Shot
     src={require('../../../assets/images/guide/first-run-import-menu@2x.png').default}
-    alt="The Import from… button open, offering Claude Code and Codex"
+    alt="The Import history tile open, offering Claude Code and Codex, each with its mark"
   />
 
   The dialog lists the folders that agent has worked in, with their session counts. Tick the ones
@@ -42,9 +42,10 @@ cannot start sessions; see [Troubleshooting](troubleshooting#claude-not-found).
     alt="The Import from Codex dialog listing billing-api, homelab and scratch with their session counts; homelab is ticked and the button reads Import 1"
   />
 
-- **Add Project…** picks any folder, including one no agent has run in yet.
+- **Add a folder** picks any folder, including one no agent has run in yet.
 
-Both are also in the folder menu beside **Projects** in the sidebar, once you have projects.
+Both are also in the folder menu beside **Projects** in the sidebar, as **Add Project…** and
+**Import from Claude Code…** / **Import from Codex…**.
 
 **Add the folder the agent ran in, not its parent.** Sessions started in `~/code/app/web` belong
 to `~/code/app/web`; adding `~/code/app` does not bring them in. This is the usual reason a

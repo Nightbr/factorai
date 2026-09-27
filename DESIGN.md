@@ -737,21 +737,35 @@ of. The house original is the "nothing selected" home. **Not a grey sentence in
 the top-left**: that reads as a loading state that never finished.
 
 The empty *workspace* is the one hero whose action is two: the wordmark in place
-of the glyph, **No projects yet**, one line, and **Add Project…** beside
-**Import from… ▾** — both primary, both `lg`, in a two-track grid so they are one
-width. Neither is secondary, so neither is outline.
+of the glyph, **No projects yet**, one line, and two Door Tiles side by side,
+**Add a folder** and **Import history ▾**. Neither is secondary, so both are the
+same tile. It sits at the optical centre, not the geometric one: spacers of 2 : 3
+above and below, because a block at the true middle of a pane reads low.
+
+### Door Tile
+
+A choice between ways to start, where a button would be a command (ADR-0068).
+240px wide, `rounded-lg`, the panel tone, a 1px amber edge at 60%. Inside, left
+aligned on 16px padding: a 20px amber mark, then a `text-sm` semibold title and a
+`text-xs` muted hint. A tile that opens a menu carries a 16px muted chevron in its
+top-right corner. Hover steps the fill to `secondary` and the edge to full amber —
+never the amber fill `outline` gives, because the edge already says whose move it
+is. Built on `Button`, so focus and disabled are the primitive's. Used only by the
+First-Run hero today; a second use should be the same kind of fork in the road.
 
 ### First-Run Halo
 
 The one glow in the app (ADR-0067), and the exception the elevation model names.
-It rings the two buttons of the empty workspace and nothing else, ever: an empty
+It rings the two Door Tiles of the empty workspace and nothing else, ever: an empty
 workspace is the moment the human's move is the *only* move, and the rest of the
 product is built on amber meaning exactly that.
 
-- **A breath, not a blink.** `box-shadow` in the primary at 25% to 45%, 6px to
-  18px, on a 3s ease-in-out loop. One animation shared by both buttons.
-- **Its own layer.** The halo is a span behind the button, not the button's
-  shadow, so it never stops: hovering or focusing a button fades *its* layer out
+- **A ring, not a blur.** A spread `box-shadow` in the primary, 1px at 10% at
+  rest to 4px at 22% with a faint 16px bloom at the peak, on a 3s ease-in-out
+  loop. A wide blur at high opacity turns amber brown on this ground; a tight
+  ring stays amber. One animation shared by both tiles.
+- **Its own layer.** The halo is a span behind the tile, not the tile's
+  shadow, so it never stops: hovering or focusing a tile fades *its* layer out
   and the other keeps breathing in step. A restarted animation falls out of
   phase with its twin, which reads as two things competing.
 - **Reduced motion holds it still** at a resting glow rather than removing it —

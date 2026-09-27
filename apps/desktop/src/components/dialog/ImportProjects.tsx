@@ -11,6 +11,7 @@ import {
 	Input,
 	Label,
 } from '@factorai/ui';
+import { AgentMark } from '@components/layout/AgentMark';
 import { agentName } from '@lib/agents';
 import { formatError } from '@lib/errors';
 import { formatRelative } from '@lib/format';
@@ -157,7 +158,10 @@ export function ImportProjects({ open, onOpenChange, agent }: ImportProjectsProp
 		<Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
 			<DialogContent className="max-w-2xl" data-testid="import-projects">
 				<DialogHeader>
-					<DialogTitle>Import from {agentName(agent)}</DialogTitle>
+					<DialogTitle className="flex items-center gap-2">
+						<AgentMark agent={agent} className="size-4" aria-hidden />
+						Import from {agentName(agent)}
+					</DialogTitle>
 					<DialogDescription>
 						Folders {store.short} has worked in. Importing one adds it to your workspace and indexes
 						its sessions so you can search them.

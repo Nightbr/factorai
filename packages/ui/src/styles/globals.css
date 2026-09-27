@@ -114,10 +114,12 @@
 	@keyframes first-run-halo {
 		0%,
 		100% {
-			box-shadow: 0 0 6px 0 color-mix(in oklch, var(--primary) 25%, transparent);
+			box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 10%, transparent);
 		}
 		50% {
-			box-shadow: 0 0 18px 3px color-mix(in oklch, var(--primary) 45%, transparent);
+			box-shadow:
+				0 0 0 4px color-mix(in oklch, var(--primary) 22%, transparent),
+				0 0 16px 0 color-mix(in oklch, var(--primary) 12%, transparent);
 		}
 	}
 }
