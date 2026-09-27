@@ -176,11 +176,11 @@ a performance pass before the first unfamiliar machine runs it.
 [`roadmap/TODO.md`](./roadmap/TODO.md), which holds the detail and the open
 questions; this list is the arc.
 
-- **A signed, notarized macOS app** (item 51). The Apple Developer Program is
-  paid for as of 2026-09-17, which supersedes the interim self-signed decision
-  in ADR-0034: a Developer ID Application certificate, notarization and
-  stapling, a Team ID that removes the App Management prompt rather than making
-  it stick, and TCC grants that survive an update. Enrolment is the long pole.
+- **A signed, notarized macOS app** (item 51, **shipped in v0.52.0**,
+  2026-09-27, ADR-0069). A Developer ID Application certificate, notarization
+  and stapling, a Team ID that removes the App Management prompt rather than
+  making it stick, and TCC grants that survive an update. It supersedes the
+  interim self-signed decision in ADR-0034.
 - **Two channels, and a release process with nothing left to remember**
   (item 31). Alpha beside stable, a tag that refuses to build a commit Quality
   has not passed, and the versioning and changelog questions settled. The

@@ -3,6 +3,22 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **macOS releases are Developer ID signed and notarized** — 2026-09-27, TODO item 51, shipped
+  in v0.52.0. ADR-0069, superseding ADR-0034's self-signed decision. The Apple Developer Program
+  certificate is `Developer ID Application: Titouan BENOIT (TBPB6GW2JQ)`, valid to 2031-09-17;
+  notarization uses an App Store Connect API key rather than an Apple ID. `release.yml` drops the
+  `add-trusted-cert` / passwordless-`sudo` step, refuses any other signing identity, and refuses
+  a certificate without notarization credentials, since either would reset every user's grants
+  for nothing. v0.52.0-alpha.2 was the first build: installed, launched and updated in place to
+  the next alpha on a real Mac with no Gatekeeper step and no App Management prompt. The release
+  notes warned that the identity change asks for permissions one last time. **Gotchas:** a new
+  team's first notarization sat about 44 minutes in Apple's queue against about 2 for the next;
+  `notarytool --wait` has no timeout of its own, so the job's 6-hour limit is the only bound.
+  Submission status can be read from Linux with a JWT against
+  `appstoreconnect.apple.com/notary/v2/submissions`. OpenSSL reports Apple's private critical
+  extension on a Developer ID leaf as `unhandled critical extension`; `-ignore_critical` verifies
+  it.
+
 - **Item 36 (a Homebrew cask) dropped** — 2026-09-27. Not shipped: the user will sign and
   notarize the macOS app (item 51), and with Gatekeeper satisfied the cask had nothing left to
   buy beyond a second install path to keep in step with the updater. No tap repo, no

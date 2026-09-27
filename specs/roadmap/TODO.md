@@ -85,67 +85,6 @@ the day it was asked for; its entry is in `DONE.md` too. Items 12–14 —
 the `Cmd+P` / `Cmd+Shift+F` / `Cmd+G` navigation trio — are high priority despite sitting
 mid-list, and everything past 21 is simply the order things were asked for.
 
-## 51. macOS — a Developer ID certificate, notarization, and the end of the permission loop
-
-**Release-blocking. The decision this item was holding open was taken 2026-09-17: pay for the
-Apple Developer Program.** Everything below follows from that, and it supersedes the interim the
-free half shipped.
-
-**Where it comes from.** A user report, 2026-09-03, in their words: *"il y a un petit bug avec les
-droits, on me demande tout le temps le droit d'accéder aux mêmes dossiers. Je suis ramené dans les
-paramètres pour autoriser une bonne fois pour toutes mais après redémarrage, rebelote."* Plus a
-*"factorai was prevented from modifying apps on your Mac"* notification, and factorai's **App
-Management** toggle showing as off after they had switched it on. Two mechanisms, one cause,
-diagnosed in [ADR-0034](../adr/0034-macos-bundles-carry-a-self-signed-signature.md): TCC
-anchors a grant to the app's designated requirement, so an identity that changes per build orphans
-every grant, and `tauri-plugin-updater` writing inside `/Applications/factorai.app` is App
-Management, whose only two escapes both key on an Apple **Team ID**.
-
-**The free half shipped 2026-09-03** — releases are signed with a self-signed certificate held as
-`APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD`, so grants anchor to it and App Management is
-asked for once instead of once per version. That was the right interim and it is not the answer:
-Gatekeeper still blocks the `.dmg`, and the prompt still appears.
-
-**What the paid half buys, precisely.** A **Team ID**, which satisfies the same-team rule and
-removes the App Management prompt entirely rather than making it stick; and **notarization**,
-which removes the Gatekeeper step instead of relocating it. A Developer ID Application certificate is the only kind that produces either,
-and Apple issues it only to paid members; that was always a policy wall, not a technical one.
-
-- [x] **Enrol, and get the certificate.** Done 2026-09-27: `Developer ID Application: Titouan
-      BENOIT (TBPB6GW2JQ)`, valid to 2031-09-17, held off-repo beside an App Store Connect API
-      key for notarization.
-- [x] **An ADR superseding ADR-0034's decision** —
-      [ADR-0069](../adr/0069-macos-releases-are-developer-id-signed-and-notarized.md). The
-      signing identity changes, which orphans every grant **one last time** on the first
-      Developer ID release. Users have to be told that in the release notes, because it looks
-      exactly like the bug this fixes coming back.
-- [x] **The workflow.** The secrets hold the Developer ID `.p12` and an App Store Connect API key
-      (`APPLE_API_KEY` / `APPLE_API_ISSUER` / `APPLE_API_PRIVATE_KEY`) rather than an Apple ID
-      and app-specific password; Tauri notarizes and staples. The `add-trusted-cert` /
-      passwordless-`sudo` lean is gone, and the step refuses any identity but team TBPB6GW2JQ's.
-- [x] **The README and `apps/docs`** say builds are notarized and that v0.52.0 asks for
-      permissions once more. The right-click → Open and `xattr` workaround is gone, since
-      `/releases/latest` serves a notarized build.
-- [x] **The v0.52.0 stable release notes** say permissions are asked for one last time
-      (promoted from v0.52.0-alpha.2, 2026-09-27).
-- [ ] **Verify on a real Mac, not from Linux.** v0.52.0-alpha.2 installed and ran on macOS,
-      2026-09-27, with Apple's notary service reporting it Accepted and the ticket stapled. Left:
-      the in-place update to the next Developer ID alpha. `codesign -d -r- factorai.app` naming
-      the Developer ID rather than a cdhash; `spctl -a -vv` accepting the `.dmg`; the stapled ticket
-      surviving a download; and the App Management prompt gone rather than merely sticky.
-- [ ] **The app still works signed, hardened and notarized.** `hardenedRuntime` was moot while
-      nothing signed and takes effect now. Launch it, open a session, drive a PTY, open a file
-      dialog, apply an update — the `manual-qa` lane, which is the only thing that can see this.
-
-**What not to try**, kept from the free half: `NSUpdateSecurityPolicy` in our own `Info.plist`
-maps team identifiers and is redundant once we have one, and an explicit ad-hoc `codesign` step
-remains a dead end: the linker already ad-hoc signs on Apple Silicon.
-
-**One operational consequence worth not learning the hard way.** The `.p12` joins the minisign key
-of ADR-0010 as a secret whose loss is felt by *users*: rotating it resets every permission every
-user has granted. Losing the Developer ID one also costs the Gatekeeper trust until a new
-certificate is issued and a release is notarized under it.
-
 ## 31. Two channels, and a release process with nothing left to remember
 
 **Release-blocking. Decided and built 2026-09-23 —
@@ -201,7 +140,7 @@ contract and F14 / F11 / F17 / F29 in `05-features.md` carry the app side.
 - [ ] **The macOS smoke pass** has still never happened — that is item 8, not this item, and this
       item does not pretend to close it.
 
-**Deliberately not here:** macOS signing and notarisation (item 51), hotfix branches (ADR-0064 consequence 2).
+**Deliberately not here:** macOS signing and notarisation (DONE item 51), hotfix branches (ADR-0064 consequence 2).
 
 ## 59. Performance — one audit, measured, then the fixes it names
 
@@ -347,8 +286,8 @@ A second copy of a behaviour is a second thing to update in the commit that chan
 
 What the guide holds, in the order a new user meets it:
 
-- **Install**, currently the most under-served thing: the AppImage, the `.dmg` and — once item 51
-  lands — a notarized one that needs no Gatekeeper step at all.
+- **Install**, currently the most under-served thing: the AppImage, and the `.dmg`, notarized since
+  v0.52.0 (DONE item 51) so it needs no Gatekeeper step.
 - **First run** — adding a project, what discovery does, why sessions appear on their own.
 - **The surfaces** — sessions and the terminal, Files, Changes, the graph, search, worktrees, and
   **routines** (F22): the schedule presets and the custom cron, the next-runs echo, catch-up and
@@ -358,7 +297,7 @@ What the guide holds, in the order a new user meets it:
   section that rebinds them.
 - **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
   override, the AppImage's environment leaking into child processes, Linux specifics, and the
-  macOS permission prompt (item 51) until it is gone.
+  one-time macOS permission prompt on v0.52.0 (DONE item 51).
 - **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
 
 What is left:
@@ -375,11 +314,12 @@ What is left:
         link in a real PTY.
       - Native surfaces: the folder picker, Reveal, the trash on delete.
       - Updater: download, restart and channel switch, now largely seen in item 31.
-      - macOS: the permission prompts, Gatekeeper's *damaged* message, Cmd+Q, the context menu.
+      - macOS: the permission prompts, Cmd+Q, the context menu. (Gatekeeper's *damaged* message is
+        gone since v0.52.0, DONE item 51.)
       - Status dots against real agent titles, and sessions appearing live from the watcher.
       - A routine firing, catching up and queueing.
       - The Windows/WSL pages.
-      Most of this is item 8's pass, and the macOS half waits on item 51.
+      Most of this is item 8's pass; the macOS half is unblocked now item 51 has shipped.
 - [x] **Six app bugs the check turned up**, closed 2026-09-26. Five were fixed, one commit
       each: the quit note no longer says quitting always asks; a failed start and the profile
       badge no longer say *claude* for a Codex session; the confirmations say an agent is
