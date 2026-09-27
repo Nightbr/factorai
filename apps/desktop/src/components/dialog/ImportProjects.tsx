@@ -1,4 +1,4 @@
-import type { ImportCandidate } from '@factorai/types';
+import type { AgentId, ImportCandidate } from '@factorai/types';
 import {
 	Button,
 	Checkbox,
@@ -11,6 +11,7 @@ import {
 	Input,
 	Label,
 } from '@factorai/ui';
+import { agentName } from '@lib/agents';
 import { formatError } from '@lib/errors';
 import { formatRelative } from '@lib/format';
 import { queryKeys } from '@lib/queryKeys';
@@ -57,18 +58,28 @@ const SELECT_ALL_ID = 'import-select-all';
 interface ImportProjectsProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** Whose store the list is read from. One agent per dialog (F1 § "Import"):
+	 *  the rows and the empty state are that agent's, never a merge. */
+	agent: AgentId;
 }
 
+/** How the dialog's prose names each agent and its store. */
+const STORE: Record<AgentId, { short: string; dir: string }> = {
+	claude: { short: 'Claude', dir: '~/.claude' },
+	codex: { short: 'Codex', dir: '~/.codex' },
+};
+
 /**
- * "Import from Claude Code" (specs/05-features.md F1).
+ * "Import from Claude Code" and "Import from Codex" (specs/05-features.md F1).
  *
- * The list is read from Claude's store directly rather than from our index —
+ * The list is read from the agent's store directly rather than from our index —
  * since ADR-0011 nothing outside the workspace is indexed, so the index is
  * precisely the wrong place to ask what *isn't* in it. Importing a row is the
  * same `add_project` the folder picker calls; there is one concept here, with
  * two doors.
  */
-export function ImportProjects({ open, onOpenChange }: ImportProjectsProps) {
+export function ImportProjects({ open, onOpenChange, agent }: ImportProjectsProps) {
+	const store = STORE[agent];
 	const queryClient = useQueryClient();
 	const [needle, setNeedle] = useState('');
 	const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -77,8 +88,8 @@ export function ImportProjects({ open, onOpenChange }: ImportProjectsProps) {
 	// Read on open and not before: it walks a directory, and a workspace query
 	// polling every 2s is enough filesystem in the hot path already.
 	const candidatesQ = useQuery({
-		queryKey: queryKeys.importCandidates(),
-		queryFn: () => cmd.listImportCandidates(),
+		queryKey: queryKeys.importCandidates(agent),
+		queryFn: () => cmd.listImportCandidates(agent),
 		enabled: open,
 		// The dialog is a snapshot of the moment you opened it; a refetch that
 		// reorders rows under a cursor mid-selection is worse than slightly stale.
@@ -146,10 +157,10 @@ export function ImportProjects({ open, onOpenChange }: ImportProjectsProps) {
 		<Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
 			<DialogContent className="max-w-2xl" data-testid="import-projects">
 				<DialogHeader>
-					<DialogTitle>Import from Claude Code</DialogTitle>
+					<DialogTitle>Import from {agentName(agent)}</DialogTitle>
 					<DialogDescription>
-						Folders Claude has worked in. Importing one adds it to your workspace and indexes its
-						sessions so you can search them.
+						Folders {store.short} has worked in. Importing one adds it to your workspace and indexes
+						its sessions so you can search them.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -165,13 +176,13 @@ export function ImportProjects({ open, onOpenChange }: ImportProjectsProps) {
 				</div>
 
 				{candidatesQ.isLoading && (
-					<p className="py-6 text-center text-muted-foreground text-sm">Reading ~/.claude…</p>
+					<p className="py-6 text-center text-muted-foreground text-sm">Reading {store.dir}…</p>
 				)}
 
 				{candidatesQ.data && rows.length === 0 && (
 					<p className="py-6 text-center text-muted-foreground text-sm">
 						{candidatesQ.data.length === 0
-							? 'Claude has no project history on this machine yet.'
+							? `${store.short} has no project history on this machine yet.`
 							: 'No folder matches that filter.'}
 					</p>
 				)}

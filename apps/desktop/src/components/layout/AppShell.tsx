@@ -1,6 +1,7 @@
 import { Toaster } from '@factorai/ui';
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
+import { ImportProjects } from '@components/dialog/ImportProjects';
 import { FileTreePanel } from '@components/files/FileTreePanel';
 import { ShellDock } from '@components/terminal/ShellDock';
 import { ViewerPane } from '@components/viewer/ViewerPane';
@@ -16,6 +17,7 @@ import {
 	resolveViewerHost,
 	type ViewerHost,
 } from '@lib/viewerLayout';
+import { useAddProjectStore } from '@store/addProjectStore';
 import { usePanelStore } from '@store/panelStore';
 import {
 	clampSidebarWidth,
@@ -284,9 +286,27 @@ export function AppShell({ children }: AppShellProps) {
 			{/* Portalled, so it stacks over whatever asked for it — including the
 			    settings modal, when About is the door (F29). */}
 			<RestartConfirm />
+			<ImportDialog />
 			{/* The one place a toast appears (ADR-0065). Here rather than at the
 			    root so it is only ever mounted with the app around it. */}
 			<Toaster />
 		</div>
+	);
+}
+
+/** The import dialog, mounted once for every door onto it (F1): the sidebar's
+ *  header menu, and the first-run hero. Not in the sidebar, which the collapsed
+ *  rail replaces wholesale. */
+function ImportDialog() {
+	const open = useAddProjectStore((s) => s.importOpen);
+	const agent = useAddProjectStore((s) => s.importAgent);
+	const openImport = useAddProjectStore((s) => s.openImport);
+	const closeImport = useAddProjectStore((s) => s.closeImport);
+	return (
+		<ImportProjects
+			open={open}
+			agent={agent}
+			onOpenChange={(next) => (next ? openImport(agent) : closeImport())}
+		/>
 	);
 }

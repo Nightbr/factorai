@@ -1,5 +1,5 @@
-import { ImportProjects } from '@components/dialog/ImportProjects';
 import { DragChip } from '@components/layout/DragChip';
+import { ImportMenuItems } from '@components/layout/ImportMenuItems';
 import { SidebarGroup } from '@components/layout/SidebarGroup';
 import { SidebarProject } from '@components/layout/SidebarProject';
 import { SidebarRailGlyph } from '@components/layout/SidebarRailGlyph';
@@ -44,9 +44,9 @@ import {
 	Input,
 } from '@factorai/ui';
 import { useActiveProject } from '@hooks/useActiveProject';
+import { useAddProject } from '@hooks/useAddProject';
 import { useDragDwell } from '@hooks/useDragDwell';
 import { useSessionMarks } from '@hooks/useSessionMarks';
-import { formatError } from '@lib/errors';
 import { queryKeys } from '@lib/queryKeys';
 import { projectStatus } from '@lib/sessionGroups';
 import {
@@ -66,7 +66,8 @@ import {
 	viewRows,
 	visibleRowIds,
 } from '@lib/sidebarTree';
-import { cmd, pickFolder } from '@lib/tauri';
+import { cmd } from '@lib/tauri';
+import { useAddProjectStore } from '@store/addProjectStore';
 import { useIndexerStore } from '@store/indexerStore';
 import { type ProjectSort, useSidebarStore } from '@store/sidebarStore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -492,35 +493,13 @@ export const Sidebar = memo(function Sidebar() {
 		[groupWrites],
 	);
 
-	// Adding a folder to the workspace (F1). Since ADR-0011 this is the *only*
-	// way a project appears — nothing arrives because Claude touched a directory
-	// — so it has two entry points: the picker for a folder you browse to, and
-	// the import dialog for folders Claude already knows.
-	const [adding, setAdding] = useState(false);
-	const [addError, setAddError] = useState<string | null>(null);
-	const [importOpen, setImportOpen] = useState(false);
-
-	async function addProject() {
-		setAddError(null);
-		setAdding(true);
-		try {
-			const path = await pickFolder();
-			// Cancelling the picker is an answer, not a failure.
-			if (!path) return;
-			const project = await cmd.addProject(path);
-			// Await the refetch before navigating: the project route reads the same
-			// cache, and landing there before the row exists renders "not found"
-			// for a beat.
-			await queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
-			// The tree is its own key (ADR-0025) — see `useRemoveProject`.
-			await queryClient.invalidateQueries({ queryKey: queryKeys.sidebar() });
-			await navigate({ to: '/projects/$id', params: { id: project.id } });
-		} catch (e) {
-			setAddError(formatError(e));
-		} finally {
-			setAdding(false);
-		}
-	}
+	// Adding a folder to the workspace (F1). Two doors — the picker, and the
+	// import dialog for folders an agent already knows — shared with the rail
+	// and the first-run hero, so the state is a store's, not this component's.
+	const addProject = useAddProject();
+	const adding = useAddProjectStore((s) => s.adding);
+	const addError = useAddProjectStore((s) => s.error);
+	const openImport = useAddProjectStore((s) => s.openImport);
 
 	// Debounced search: typing navigates to /search?q=… (the route runs the
 	// query). Empty input doesn't navigate, so clearing the box is harmless.
@@ -628,7 +607,7 @@ export const Sidebar = memo(function Sidebar() {
 				</span>
 				{/* Two doors onto one action (ADR-0011): the picker gives
 				    `add_project` a path you browsed to, the dialog gives it paths
-				    Claude already knows. A menu rather than two more icons — the
+				    an agent already knows. A menu rather than two more icons — the
 				    header is 180px at its narrowest and already carries sort. */}
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
@@ -655,9 +634,7 @@ export const Sidebar = memo(function Sidebar() {
 						<DropdownMenuItem data-testid="add-project" onSelect={() => void addProject()}>
 							Add Project…
 						</DropdownMenuItem>
-						<DropdownMenuItem data-testid="open-import" onSelect={() => setImportOpen(true)}>
-							Import from Claude Code…
-						</DropdownMenuItem>
+						<ImportMenuItems label={(name) => `Import from ${name}…`} />
 						{/* Below the separator: the two Add doors above it are one action
 						    with two sources (ADR-0011), and making a group is a different
 						    kind of act rather than a third door onto the same one. */}
@@ -738,7 +715,7 @@ export const Sidebar = memo(function Sidebar() {
 								size="sm"
 								variant="outline"
 								data-testid="empty-open-import"
-								onClick={() => setImportOpen(true)}
+								onClick={() => openImport('claude')}
 							>
 								Import from Claude Code…
 							</Button>
@@ -870,10 +847,6 @@ export const Sidebar = memo(function Sidebar() {
 				</span>
 				<ZoomControls />
 			</footer>
-
-			{/* Mounted here rather than at the app shell: it is the sidebar's
-			    action, and its only two triggers are in this component. */}
-			<ImportProjects open={importOpen} onOpenChange={setImportOpen} />
 
 			{/* Only reached with projects inside. An empty group goes on the click:
 			    it is a container you can remake in two clicks, and a dialog there is

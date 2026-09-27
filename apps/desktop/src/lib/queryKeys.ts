@@ -8,10 +8,12 @@ export const queryKeys = {
 	 *  that four other surfaces poll. Writing the arrangement invalidates this and
 	 *  leaves those alone. */
 	sidebar: () => ['sidebar'] as const,
-	/** Folders Claude has worked in, for the import dialog. Separate from
+	/** Folders an agent has worked in, for the import dialog. Separate from
 	 *  `projects` because it comes from a different place — a walk of the store,
-	 *  not the workspace table — and is read only while the dialog is open. */
-	importCandidates: () => ['import-candidates'] as const,
+	 *  not the workspace table — and is read only while the dialog is open.
+	 *  Without an agent it is the prefix, so an import invalidates both. */
+	importCandidates: (agent?: AgentId) =>
+		agent ? (['import-candidates', agent] as const) : (['import-candidates'] as const),
 	sessions: (projectId: string) => ['sessions', projectId] as const,
 	/** One project's routines (F22). Its own key rather than a `sessions`
 	 *  variant: they are a different object with a different lifetime, and a

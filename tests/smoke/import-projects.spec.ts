@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fixtureImportCandidates, installMockBridge } from './fixtures';
 
 /**
- * Importing folders Claude has worked in (specs/05-features.md F1, ADR-0011).
+ * Importing folders an agent has worked in (specs/05-features.md F1, ADR-0011).
  *
  * The dialog is the second door onto `add_project` — the same command the
  * folder picker calls — so what these assert is the *selection* rules and that
@@ -113,6 +113,48 @@ test.describe('import from Claude Code', () => {
 		await page.getByTestId('empty-open-import').click();
 
 		// Nothing to import is a sentence, not an empty box.
-		await expect(page.getByText(/no project history on this machine/i)).toBeVisible();
+		await expect(page.getByText(/Claude has no project history on this machine/i)).toBeVisible();
+	});
+
+	test('@smoke the Codex door lists only what Codex has', async ({ page }) => {
+		const fx = fixtureImportCandidates();
+		fx.codexCli = { installed: true, binaryPath: '/usr/bin/codex', version: '0.44.0' };
+		fx.importCandidates = [
+			...(fx.importCandidates ?? []),
+			{
+				agent: 'codex',
+				key: '/home/alice/code/osprey',
+				realPath: '/home/alice/code/osprey',
+				displayName: 'osprey',
+				sessionCount: 3,
+				lastActivityAt: Date.now() - 60_000,
+				missing: false,
+				alreadyOpen: false,
+			},
+		];
+		await installMockBridge(page, fx);
+		await page.goto('/');
+		await page.getByTestId('add-project-menu').click();
+		await page.getByTestId('open-import-codex').click();
+
+		const dialog = page.getByTestId('import-projects');
+		await expect(dialog.getByRole('heading', { name: 'Import from Codex' })).toBeVisible();
+		await expect(dialog.getByText('/home/alice/code/osprey')).toBeVisible();
+		await expect(dialog.getByText('/home/alice/code/pelican')).toHaveCount(0);
+		const asked = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'list_import_candidates')
+				.map((c) => c.args?.agent),
+		);
+		expect(asked).toEqual(['codex']);
+	});
+
+	test('@smoke an agent that is not installed is still a door, marked', async ({ page }) => {
+		await installMockBridge(page, fixtureImportCandidates());
+		await page.goto('/');
+		await page.getByTestId('add-project-menu').click();
+		const codex = page.getByTestId('open-import-codex');
+		await expect(codex).toContainText('not installed');
+		await expect(codex).toBeEnabled();
 	});
 });

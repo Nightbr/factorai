@@ -322,9 +322,14 @@ which go stale when a directory is deleted, a project id stays valid.
 
 **Adding a folder — two doors, one action.** The `FolderPlus` in the section
 header is a **menu**: **Add Project…** opens the native directory picker, and
-**Import from Claude Code…** opens the dialog below. Both call `add_project`
-with a path; there is one concept in the data model and nothing special about a
-Claude-derived project once it is in. A menu rather than two icons because the
+**Import from Claude Code…** / **Import from Codex…** open the dialog below on
+that agent's store. All of them call `add_project` with a path; there is one
+concept in the data model and nothing special about an agent-derived project
+once it is in. Every agent factorai knows has its item whether or not it is
+installed — an item that appears when a probe answers moves the menu under the
+cursor. One that is not installed is marked *not installed* and stays enabled:
+the dialog reads the store on disk, not the binary, and history outlives an
+uninstall or a CLI that is not on this `PATH`. A menu rather than two icons because the
 header is 180px at its narrowest and already carries the sort control.
 
 The chosen folder becomes a project and the app navigates to it, where the
@@ -336,11 +341,18 @@ prose — it is the one screen where the way out is the only thing worth saying.
 Its copy leads with "No projects yet", not with what `~/.claude` contains: an
 empty workspace has nothing to do with what Claude has.
 
-**Import dialog.** One row per folder Claude has worked in, each a checkbox with
-its full path, session count and last activity — enough to answer "is this the
-one I mean". Read straight from the store via `read_dir` + `stat`, never parsed,
-so it opens instantly however much history is there; and read from the store
-rather than the index precisely because the index only covers the workspace.
+**Import dialog.** Opened for one agent — `list_import_candidates { agent }`,
+`'claude'` when absent — and titled for it, never a merge of two stores. One
+row per folder that agent has worked in, each a checkbox with its full path,
+session count and last activity — enough to answer "is this the one I mean".
+Read from the store rather than the index precisely because the index only
+covers the workspace. Claude's rows come from `read_dir` + `stat`, never
+parsed, so it opens instantly however much history is there. Codex keeps no
+per-folder directory, so its rows are the `cwd` of each rollout's first line
+(F30 § "Discovery"), counted per folder by thread with sub-agent threads left
+out — one line read per rollout, still nothing parsed in full. With nothing to
+import the dialog says *Claude has no project history on this machine yet.* /
+*Codex has…*.
 
 - A **filter box** matches on the whole path, not the display name: with a dozen
   repos the names collide long before the paths do.
@@ -456,8 +468,8 @@ change whenever the indexer runs, and a stale count is worse than a join.
   deliberate: a folder you added and have never run Claude in has no store
   directory to watch until its first session exists, and only a recursive watch
   on the parent notices that appearing.
-- `~/.claude/projects/` doesn't exist → nothing to import, which is not an
-  error. The empty state points at "Add project", since that is the way out of
+- `~/.claude/projects/` (or `~/.codex/sessions/`) doesn't exist → nothing to
+  import, which is not an error. The empty state points at "Add project", since that is the way out of
   it, and at installing Claude Code.
 
 ---

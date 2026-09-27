@@ -291,6 +291,42 @@ pub fn discover(codex_dir: &Path) -> Vec<Discovered> {
 	out
 }
 
+/// For each folder the store holds threads for: how many, and when the newest
+/// rollout was last written — Claude's `dir_stats`, for a store that keeps no
+/// per-folder directory (F1 § "Import", F30). A thread with a parent is a
+/// sub-agent run on another's behalf and is not counted, the same rule as the
+/// workspace's own session count; a reverted thread's second rollout is still
+/// one thread.
+pub fn folder_stats(codex_dir: &Path) -> HashMap<String, (i64, Option<i64>)> {
+	let mut threads: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
+	let mut newest: HashMap<String, i64> = HashMap::new();
+	for path in rollouts(codex_dir) {
+		let Some(meta) = read_meta(&path) else { continue };
+		let mtime = std::fs::metadata(&path)
+			.and_then(|m| m.modified())
+			.ok()
+			.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+			.map(|d| d.as_millis() as i64);
+		if let Some(ms) = mtime {
+			let n = newest.entry(meta.cwd.clone()).or_insert(ms);
+			*n = (*n).max(ms);
+		}
+		let set = threads.entry(meta.cwd.clone()).or_default();
+		if meta.parent_thread_id.is_none() {
+			if let Some(id) = session_id_of(&path) {
+				set.insert(id);
+			}
+		}
+	}
+	threads
+		.into_iter()
+		.map(|(cwd, ids)| {
+			let last = newest.get(&cwd).copied();
+			(cwd, (ids.len() as i64, last))
+		})
+		.collect()
+}
+
 /// Codex's own name for each thread, from `session_index.jsonl` — newest line
 /// per id wins, and a line with no name is a removal.
 pub fn thread_names(codex_dir: &Path) -> HashMap<String, String> {
@@ -613,6 +649,10 @@ mod tests {
 			Some(id.clone())
 		);
 		assert_eq!(thread_names(dir).get(&id).map(String::as_str), Some("Reply with pong"));
+		let stats = folder_stats(dir);
+		let (count, last) = stats.get("/home/alice/code/pong").copied().unwrap();
+		assert_eq!(count, 1);
+		assert!(last.is_some());
 
 		let events: Vec<SessionEvent> = RolloutIter::open_at(&files[0], 0).unwrap().collect();
 		let cwd = events.iter().find_map(|e| e.cwd.clone());

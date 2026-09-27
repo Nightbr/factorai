@@ -138,8 +138,9 @@ add_project(path: String) -> Project
 // Touches nothing under ~/.claude; re-adding rebuilds from the transcripts.
 remove_project(id: String) -> ()
 // Folders an agent has worked in, read straight from the store — the index only
-// covers the workspace, and the point is to show what isn't in it.
-list_import_candidates() -> Vec<ImportCandidate>
+// covers the workspace, and the point is to show what isn't in it. One agent's
+// store per call (F1 § "Import dialog"); `agent` absent is `'claude'`.
+list_import_candidates(agent: Option<String>) -> Vec<ImportCandidate>
 resolve_project_path(id: String) -> Option<String>
 
 // sidebar — the tree (F1, ADR-0025)

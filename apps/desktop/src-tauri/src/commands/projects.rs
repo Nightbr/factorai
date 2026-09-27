@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, OptionalExtension};
 use tauri::State;
 
-use crate::agents::{self, claude};
+use crate::agents::{self, claude, codex};
 use crate::commands::off_main;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
@@ -230,8 +230,23 @@ pub fn remove_project_in(db: &Db, id: &str) -> AppResult<()> {
 /// store twice — once to discover each one's folder, which parses transcripts
 /// until one yields a `cwd`, and again for the per-directory counts.
 #[tauri::command]
-pub async fn list_import_candidates(state: State<'_, AppState>) -> AppResult<Vec<ImportCandidate>> {
-	let claude_dir = state.claude_dir.clone();
+pub async fn list_import_candidates(
+	state: State<'_, AppState>,
+	agent: Option<String>,
+) -> AppResult<Vec<ImportCandidate>> {
+	// One agent's store per call (F1 § "Import"): the dialog opens for Claude
+	// Code or for Codex, never both. Absent is Claude, the renderer that
+	// predates the Codex door.
+	let agent = agent.as_deref().unwrap_or(agents::CLAUDE);
+	let (agent, dir) = match agent {
+		agents::CLAUDE => (agents::CLAUDE, state.claude_dir.clone()),
+		agents::CODEX => {
+			let desc = agents::descriptor(agents::CODEX)
+				.ok_or_else(|| AppError::InvalidInput("unknown agent: codex".into()))?;
+			(agents::CODEX, agents::ambient_dir(desc))
+		}
+		other => return Err(AppError::InvalidInput(format!("unknown agent: {other}"))),
+	};
 	let open_paths: Vec<String> = state.db.read(|conn| {
 		let mut stmt = conn.prepare("SELECT real_path FROM projects")?;
 		let rows =
@@ -239,32 +254,46 @@ pub async fn list_import_candidates(state: State<'_, AppState>) -> AppResult<Vec
 		Ok(rows)
 	})?;
 
-	off_main(move || import_candidates(&claude_dir, &open_paths)).await
+	off_main(move || import_candidates(agent, &dir, &open_paths)).await
 }
 
 /// The walk itself, so the command above is only the part that needs `State`.
-fn import_candidates(claude_dir: &Path, open_paths: &[String]) -> AppResult<Vec<ImportCandidate>> {
-	let mut out: Vec<ImportCandidate> = claude::discover(claude_dir)
-		.into_iter()
-		.filter_map(|d| {
-			// A directory whose folder we could not identify has nothing to
-			// import: the workspace is keyed by folder, and we don't know which
-			// one this is. Listing it would offer an action that cannot work.
-			let real_path = d.real_path?;
-			let dir = claude_dir.join("projects").join(&d.key);
-			let (session_count, last_activity_at) = claude::dir_stats(&dir);
-			Some(ImportCandidate {
-				agent: d.agent.to_string(),
-				key: d.key,
-				display_name: agents::display_name_for_path(&real_path),
-				missing: !Path::new(&real_path).is_dir(),
-				already_open: open_paths.iter().any(|p| p == &real_path),
-				real_path,
-				session_count,
-				last_activity_at,
+fn import_candidates(
+	agent: &str,
+	store: &Path,
+	open_paths: &[String],
+) -> AppResult<Vec<ImportCandidate>> {
+	let candidate =
+		|key: String, real_path: String, (session_count, last_activity_at)| ImportCandidate {
+			agent: agent.to_string(),
+			key,
+			display_name: agents::display_name_for_path(&real_path),
+			missing: !Path::new(&real_path).is_dir(),
+			already_open: open_paths.iter().any(|p| p == &real_path),
+			real_path,
+			session_count,
+			last_activity_at,
+		};
+	let mut out: Vec<ImportCandidate> = if agent == agents::CODEX {
+		// Codex keys by the folder itself, so every folder is known.
+		codex::folder_stats(store)
+			.into_iter()
+			.map(|(cwd, stats)| candidate(cwd.clone(), cwd, stats))
+			.collect()
+	} else {
+		claude::discover(store)
+			.into_iter()
+			.filter_map(|d| {
+				// A directory whose folder we could not identify has nothing to
+				// import: the workspace is keyed by folder, and we don't know
+				// which one this is. Listing it would offer an action that
+				// cannot work.
+				let real_path = d.real_path?;
+				let stats = claude::dir_stats(&store.join("projects").join(&d.key));
+				Some(candidate(d.key, real_path, stats))
 			})
-		})
-		.collect();
+			.collect()
+	};
 
 	// Newest first, which is what "is this the one I mean" usually turns on.
 	// Folders with no activity at all sort last rather than first.
@@ -438,4 +467,34 @@ pub fn project_path(conn: &Connection, id: &str) -> AppResult<PathBuf> {
 	})
 	.map(PathBuf::from)
 	.map_err(|_| AppError::NotFound(format!("project {id}")))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	const CODEX_FIXTURE: &str =
+		concat!(env!("CARGO_MANIFEST_DIR"), "/../../../tests/fixtures/codex");
+
+	#[test]
+	fn codex_candidates_are_keyed_by_folder_and_marked_when_open() {
+		let store = Path::new(CODEX_FIXTURE);
+		let rows = import_candidates(agents::CODEX, store, &[]).unwrap();
+		assert_eq!(rows.len(), 1, "{rows:?}");
+		assert_eq!(rows[0].agent, "codex");
+		assert_eq!(rows[0].key, "/home/alice/code/pong");
+		assert_eq!(rows[0].display_name, "pong");
+		assert_eq!(rows[0].session_count, 1);
+		assert!(!rows[0].already_open);
+
+		let open = ["/home/alice/code/pong".to_string()];
+		assert!(import_candidates(agents::CODEX, store, &open).unwrap()[0].already_open);
+	}
+
+	#[test]
+	fn a_store_that_does_not_exist_has_nothing_to_import() {
+		let gone = Path::new("/nonexistent/factorai-test-store");
+		assert!(import_candidates(agents::CODEX, gone, &[]).unwrap().is_empty());
+		assert!(import_candidates(agents::CLAUDE, gone, &[]).unwrap().is_empty());
+	}
 }

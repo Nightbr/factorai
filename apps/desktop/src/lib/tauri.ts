@@ -84,9 +84,10 @@ export const cmd = {
 	/** Remove a folder from the workspace. Touches nothing on disk; drops this
 	 *  project's rows from the index, which re-adding rebuilds. */
 	removeProject: (id: string) => invoke<void>('remove_project', { id }),
-	/** Folders Claude has worked in, for the import dialog. Read from the store
-	 *  rather than the index — the point is to show what *isn't* indexed. */
-	listImportCandidates: () => invoke<ImportCandidate[]>('list_import_candidates'),
+	/** Folders one agent has worked in, for the import dialog. Read from its
+	 *  store rather than the index — the point is to show what *isn't* indexed. */
+	listImportCandidates: (agent: AgentId) =>
+		invoke<ImportCandidate[]>('list_import_candidates', { agent }),
 	/** The sidebar's tree — groups and the projects in them, already ordered
 	 *  (F1, ADR-0025). Separate from `listProjects`, which stays flat for the tab
 	 *  strip, the project route, the import dialog and search. */
@@ -980,8 +981,10 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			}
 			return undefined as unknown as T;
 		}
-		case 'list_import_candidates':
-			return (fx?.importCandidates ?? []) as unknown as T;
+		case 'list_import_candidates': {
+			const agent = args?.agent ?? 'claude';
+			return (fx?.importCandidates ?? []).filter((c) => c.agent === agent) as unknown as T;
+		}
 		case 'list_sessions': {
 			const projectId = String(args?.projectId ?? '');
 			return (fx?.sessionsByProject?.[projectId] ?? []) as unknown as T;
