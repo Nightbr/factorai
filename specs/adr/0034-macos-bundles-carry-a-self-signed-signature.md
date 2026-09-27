@@ -1,6 +1,7 @@
 # ADR-0034 — macOS bundles carry a self-signed signature, so TCC grants survive a release
 
-Status: accepted · 2026-09-03
+Status: accepted · 2026-09-03 · decision superseded by ADR-0069 (2026-09-27);
+the TCC / App Management diagnosis stands
 Amends the "two dead ends" paragraph of `specs/roadmap/TODO.md` item 36.
 
 ## Context

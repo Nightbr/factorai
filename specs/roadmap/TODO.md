@@ -111,17 +111,21 @@ removes the App Management prompt entirely rather than making it stick; and **no
 which removes the Gatekeeper step instead of relocating it. A Developer ID Application certificate is the only kind that produces either,
 and Apple issues it only to paid members; that was always a policy wall, not a technical one.
 
-- [ ] **Enrol, and get the certificate.** Apple Developer Program, then a **Developer ID
-      Application** certificate exported as a `.p12`. Enrolment is not instant — it is the long
-      pole of this whole roadmap and the reason this item is first.
-- [ ] **An ADR superseding ADR-0034's decision**, not an amendment to it: the signing identity
-      changes, which orphans every grant **one last time** on the first Developer ID release.
-      Users have to be told that in the release notes, because it looks exactly like the bug this
-      fixes coming back.
-- [ ] **The workflow.** Swap the secrets to the Developer ID `.p12`, add `APPLE_SIGNING_IDENTITY`
-      / `APPLE_ID` / `APPLE_PASSWORD` (an app-specific password) / `APPLE_TEAM_ID`, and let Tauri
-      notarize and staple with `bundle.macOS` left as `{}`. The self-signed import step and its
-      `add-trusted-cert` / passwordless-`sudo` lean come back out.
+- [x] **Enrol, and get the certificate.** Done 2026-09-27: `Developer ID Application: Titouan
+      BENOIT (TBPB6GW2JQ)`, valid to 2031-09-17, held off-repo beside an App Store Connect API
+      key for notarization.
+- [x] **An ADR superseding ADR-0034's decision** —
+      [ADR-0069](../adr/0069-macos-releases-are-developer-id-signed-and-notarized.md). The
+      signing identity changes, which orphans every grant **one last time** on the first
+      Developer ID release. Users have to be told that in the release notes, because it looks
+      exactly like the bug this fixes coming back.
+- [x] **The workflow.** The secrets hold the Developer ID `.p12` and an App Store Connect API key
+      (`APPLE_API_KEY` / `APPLE_API_ISSUER` / `APPLE_API_PRIVATE_KEY`) rather than an Apple ID
+      and app-specific password; Tauri notarizes and staples. The `add-trusted-cert` /
+      passwordless-`sudo` lean is gone, and the step refuses any identity but team TBPB6GW2JQ's.
+- [ ] **Release notes for the first Developer ID release** say permissions are asked for one
+      last time, and the README / `apps/docs` installation page drop the right-click → Open and
+      `xattr` section once a notarized build is verified.
 - [ ] **Verify on a real Mac, not from Linux.** `codesign -d -r- factorai.app` naming the
       Developer ID rather than a cdhash; `spctl -a -vv` accepting the `.dmg`; the stapled ticket
       surviving a download; and the App Management prompt gone rather than merely sticky.
