@@ -123,11 +123,14 @@ and Apple issues it only to paid members; that was always a policy wall, not a t
       (`APPLE_API_KEY` / `APPLE_API_ISSUER` / `APPLE_API_PRIVATE_KEY`) rather than an Apple ID
       and app-specific password; Tauri notarizes and staples. The `add-trusted-cert` /
       passwordless-`sudo` lean is gone, and the step refuses any identity but team TBPB6GW2JQ's.
-- [ ] **Release notes for the first Developer ID release** say permissions are asked for one
-      last time, and the README / `apps/docs` installation page drop the right-click → Open and
-      `xattr` section once a notarized build is verified.
-- [ ] **Verify on a real Mac, not from Linux.** `codesign -d -r- factorai.app` naming the
-      Developer ID rather than a cdhash; `spctl -a -vv` accepting the `.dmg`; the stapled ticket
+- [x] **The README and `apps/docs`** say builds from v0.52.0 are notarized and ask for
+      permissions once more; the right-click → Open and `xattr` workaround stays, scoped to
+      v0.51.0 and older, which `/releases/latest` still serves until v0.52.0 is promoted.
+- [ ] **The v0.52.0 stable release notes** say permissions are asked for one last time.
+- [ ] **Verify on a real Mac, not from Linux.** v0.52.0-alpha.2 installed and ran on macOS,
+      2026-09-27, with Apple's notary service reporting it Accepted and the ticket stapled. Left:
+      the in-place update to the next Developer ID alpha. `codesign -d -r- factorai.app` naming
+      the Developer ID rather than a cdhash; `spctl -a -vv` accepting the `.dmg`; the stapled ticket
       surviving a download; and the App Management prompt gone rather than merely sticky.
 - [ ] **The app still works signed, hardened and notarized.** `hardenedRuntime` was moot while
       nothing signed and takes effect now. Launch it, open a session, drive a PTY, open a file

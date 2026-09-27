@@ -26,14 +26,15 @@ For macOS, Linux, and Windows via WSL 2. Needs a logged-in agent CLI:
 
 ## First launch, and what looks broken
 
-- **macOS says the app is damaged.** Builds are not notarized yet. Right-click `factorai.app`,
-  choose **Open**, then **Open** again, or run:
+- **macOS says the app is damaged.** Only v0.51.0 and older do this: from v0.52.0 builds are
+  signed with a Developer ID and notarized. On an older build, right-click `factorai.app`, choose
+  **Open**, then **Open** again, or run:
 
   ```bash
   xattr -dr com.apple.quarantine /Applications/factorai.app
   ```
 
-- **macOS asks for App Management** on the first update; see
+- **macOS asks for permissions again** on the first v0.52.0 build, once; see
   [macOS permission prompts](troubleshooting#macos-permission-prompts).
 - **Windows says it protected your PC.** The installer is unsigned: **More info → Run anyway**.
 - **Linux says `GLIBC_2.38 not found`.** Your distribution is older than Ubuntu 24.04; build from
