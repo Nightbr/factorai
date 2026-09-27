@@ -5,6 +5,14 @@ release adds (ADR-0064); alphas are listed only on their GitHub prereleases.
 
 Releases before 0.49.0 are on [GitHub](https://github.com/Nightbr/factorai/releases).
 
+## 0.51.0 — 2026-09-27
+
+### Features
+
+- import from Codex, and one import dialog for every door
+- the first run is a centred hero with two amber doors
+- the first-run doors are tiles at the optical centre
+
 ## 0.50.0 — 2026-09-26
 
 ### Features
