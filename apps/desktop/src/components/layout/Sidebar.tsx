@@ -499,7 +499,6 @@ export const Sidebar = memo(function Sidebar() {
 	const addProject = useAddProject();
 	const adding = useAddProjectStore((s) => s.adding);
 	const addError = useAddProjectStore((s) => s.error);
-	const openImport = useAddProjectStore((s) => s.openImport);
 
 	// Debounced search: typing navigates to /search?q=… (the route runs the
 	// query). Empty input doesn't navigate, so clearing the box is harmless.
@@ -673,8 +672,10 @@ export const Sidebar = memo(function Sidebar() {
 			</div>
 
 			{/* In the header rather than a toast: it belongs to the button that
-			    caused it, and it clears the next time you press that button. */}
-			{addError && (
+			    caused it, and it clears the next time you press that button. With
+			    no project the first-run hero shows it instead, beside its own
+			    buttons — one error, in one place. */}
+			{addError && sidebarQ.data && sidebarQ.data.length > 0 && (
 				<div
 					role="alert"
 					data-testid="add-project-error"
@@ -688,39 +689,15 @@ export const Sidebar = memo(function Sidebar() {
 				{sidebarQ.isLoading && (
 					<div className="px-4 py-2 text-muted-foreground text-xs">Loading…</div>
 				)}
-				{/* An empty workspace has nothing to do with what Claude has. The old
-				    copy led with "No projects found in ~/.claude/projects yet", which
-				    was true of a mirror and is backwards now that a project is a
-				    folder you added (ADR-0011).
-
-				    Both ways in are offered as buttons rather than pointed at from
-				    prose: this is the one screen where the way out is the only thing
-				    worth saying. */}
+				{/* An empty workspace has nothing to do with what an agent has, and
+				    the way out of it is the first-run hero in the main pane (F1): its
+				    buttons are the size of a decision, and a column this narrow gives
+				    them the size of a footnote. What stays here is only the fact, so
+				    the list does not read as one still loading. */}
 				{sidebarQ.data && sidebarQ.data.length === 0 && (
-					<div className="flex flex-col items-start gap-2 px-4 py-2">
-						<p className="text-muted-foreground text-xs">
-							No projects yet. Add any folder — whether or not you have run Claude in it.
-						</p>
-						<div className="flex flex-wrap gap-2">
-							<Button
-								size="sm"
-								variant="outline"
-								data-testid="empty-add-project"
-								disabled={adding}
-								onClick={() => void addProject()}
-							>
-								Add Project…
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								data-testid="empty-open-import"
-								onClick={() => openImport('claude')}
-							>
-								Import from Claude Code…
-							</Button>
-						</div>
-					</div>
+					<p className="px-4 py-2 text-muted-foreground text-xs" data-testid="sidebar-empty">
+						No projects yet.
+					</p>
 				)}
 				{/* One list, no tiers. The pinned block and its divider lived here
 				    until the order became something you write by hand: a boolean was

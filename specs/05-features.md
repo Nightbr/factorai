@@ -336,10 +336,33 @@ The chosen folder becomes a project and the app navigates to it, where the
 existing `+` starts the first session. Adding and starting stay separate
 actions: adding is cheap and reversible, starting a session is neither.
 
-The **empty state** carries both as buttons rather than pointing at the icon in
-prose — it is the one screen where the way out is the only thing worth saying.
-Its copy leads with "No projects yet", not with what `~/.claude` contains: an
-empty workspace has nothing to do with what Claude has.
+**The empty state is the main pane's, not the sidebar's** (ADR-0067). With no
+project, the index route renders the first-run hero instead of "Select a
+project": the wordmark, **No projects yet**, one line — *Add any folder, or
+bring in the ones Claude Code or Codex already knows.* — and the two doors as
+two amber buttons of one size, **Add Project…** and **Import from… ▾**, the
+second a menu of the same agent items as the header's. It is the one screen
+where the way out is the only thing worth saying, so it is said in the middle
+of the window at the size of a decision; the sidebar keeps only a muted *No
+projects yet.* so its list does not read as one still loading. The two
+buttons breathe together under the first-run halo (DESIGN.md § First-Run
+Halo), which holds still under reduced motion and fades on the button you
+hover or focus.
+
+Both are primary because neither is second: which door is right depends on
+whether an agent has already worked in the folder. The copy leads with "No
+projects yet", not with what `~/.claude` contains: an empty workspace has
+nothing to do with what an agent has.
+
+**No agent found** — neither probe finds a CLI — adds one muted line under the
+buttons: *No agent found. Install Claude Code or Codex, or set its path in
+Settings → Agents.*, the last words a link to that section. Adding stays
+enabled: a folder is a folder, and this is where the missing agent is
+cheapest to learn about. A failed add shows its error under the buttons here,
+and in the sidebar header once there is a list to put it over.
+
+The collapsed rail keeps its single `FolderPlus` (the picker) at zero
+projects; the hero beside it is the fuller version of the same offer.
 
 **Import dialog.** Opened for one agent — `list_import_candidates { agent }`,
 `'claude'` when absent — and titled for it, never a merge of two stores. One
@@ -469,8 +492,8 @@ change whenever the indexer runs, and a stale count is worse than a join.
   directory to watch until its first session exists, and only a recursive watch
   on the parent notices that appearing.
 - `~/.claude/projects/` (or `~/.codex/sessions/`) doesn't exist → nothing to
-  import, which is not an error. The empty state points at "Add project", since that is the way out of
-  it, and at installing Claude Code.
+  import, which is not an error. The first-run hero offers Add Project… beside
+  the import door, and points at installing an agent when neither is found.
 
 ---
 

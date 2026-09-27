@@ -3,6 +3,17 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The first run is a centred hero with two amber doors, and Codex can be imported** —
+  2026-09-27. ADR-0067, F1 § "The empty state". An empty workspace used to offer its way out
+  as two 28px outline buttons in the sidebar while the main pane said "Select a project". The
+  main pane now carries the wordmark, *No projects yet*, and **Add Project…** beside
+  **Import from… ▾**, both solid amber at one size and breathing under the First-Run Halo, the
+  one glow DESIGN.md allows. It holds still under reduced motion. `list_import_candidates`
+  takes an agent, and Codex's rows come from each rollout's `cwd`. The header menu gains
+  *Import from Codex…*. With no agent found, the hero links to Settings → Agents. The add and
+  import state moved to a store and the dialog to the app shell, which also makes the import
+  dialog reachable while the sidebar is collapsed.
+
 - **Switching session, measured, and a first open paints its header first** — 2026-09-26.
   Roadmap 54 and PERF-09 in `specs/10-performance.md`, the measurement item 59 still owed.
   Linux, a `pnpm tauri build` binary against the fixture workspace (four projects, eight

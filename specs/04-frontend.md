@@ -8,7 +8,7 @@ apps/desktop/src/
 ├── App.tsx                  # router boot
 ├── routes/
 │   ├── __root.tsx           # shell layout
-│   ├── index.tsx            # redirect → /projects/<lastOpened> or empty state
+│   ├── index.tsx            # home: "Select a project", or the first-run hero at zero projects
 │   ├── projects.tsx         # all-projects view
 │   ├── project.$id.tsx      # sessions list for one project
 │   ├── session.$id.tsx      # main split view: terminal | side panel
@@ -70,7 +70,7 @@ apps/desktop/src/
 
 | Path                       | Component             | Notes                                       |
 | -------------------------- | --------------------- | ------------------------------------------- |
-| `/`                        | redirect              | → `/projects` or empty state                |
+| `/`                        | home                  | "Select a project", or the first-run hero   |
 | `/projects`                | ProjectsView          | grid of project cards                       |
 | `/projects/$id`            | ProjectView           | `Sessions \| Routines` tabs; `?tab=routines` selects (F22)  |
 | `/projects/$id/sessions/$sessionId` | SessionView  | terminal-only (header + xterm)              |

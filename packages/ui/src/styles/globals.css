@@ -104,6 +104,22 @@
 			opacity: 0.4;
 		}
 	}
+
+	/* The first-run halo (DESIGN.md § First-Run Halo, ADR-0067): the one glow in
+	   the app, around the two buttons of an empty workspace. Slow and shallow —
+	   a breath, not a blink — and on a layer of its own, so hovering a button
+	   can fade it without restarting it and the pair never falls out of step. */
+	--animate-first-run-halo: first-run-halo 3s ease-in-out infinite;
+
+	@keyframes first-run-halo {
+		0%,
+		100% {
+			box-shadow: 0 0 6px 0 color-mix(in oklch, var(--primary) 25%, transparent);
+		}
+		50% {
+			box-shadow: 0 0 18px 3px color-mix(in oklch, var(--primary) 45%, transparent);
+		}
+	}
 }
 
 /* ── Semantic colour aliases → Tailwind utilities ─────────────────────────── */

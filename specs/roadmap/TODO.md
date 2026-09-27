@@ -642,8 +642,10 @@ like a window once the OS frame goes away.
       the tagged-union contract in `03-backend-rust.md` § "Errors".
       Then a mounted app's window-level errors go through the toast too, and `lib/errorNotice`
       shrinks to the crash-time fallback it is the only answer for.
-- [ ] Empty states: no `~/.claude/projects/` (F1 — one-line explainer plus a link to install
-      Claude Code), project with no sessions (F6 already offers `New session` here), empty search.
+- [x] Empty workspace (F1, ADR-0067): the first-run hero in the main pane, with an Import door
+      per agent and a pointer to Settings → Agents when no agent is found.
+- [ ] Empty states: project with no sessions (F6 already offers `New session` here), empty
+      search.
 - [ ] Friendlier indexing UI on top of the `indexer:progress` events the sidebar already
       consumes.
 

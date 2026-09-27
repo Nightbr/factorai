@@ -111,6 +111,7 @@ test.describe('import from Claude Code', () => {
 
 		await expect(page.getByTestId('empty-add-project')).toBeVisible();
 		await page.getByTestId('empty-open-import').click();
+		await page.getByRole('menuitem', { name: /Claude Code/ }).click();
 
 		// Nothing to import is a sentence, not an empty box.
 		await expect(page.getByText(/Claude has no project history on this machine/i)).toBeVisible();

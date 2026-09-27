@@ -336,7 +336,8 @@ in one row truncate each other down to the prefix they share.
 **The system is flat and tonal.** Depth is carried by four lightness steps at one
 hue — ground 16%, panel 18%, pressed 22%, border 25% — plus a hairline border,
 and by nothing else. There are no ambient shadows, no gradients, no bevels, no
-glows on resting surfaces. A panel is above the ground because it is two points
+glows on resting surfaces — with one named exception, the First-Run Halo, which
+exists on exactly one screen and nowhere else (ADR-0067). A panel is above the ground because it is two points
 lighter and separated by a 1px line.
 
 Shadows exist only where a surface genuinely floats above the app rather than
@@ -735,6 +736,30 @@ title, one line of `text-sm` muted description, and the action the list is empty
 of. The house original is the "nothing selected" home. **Not a grey sentence in
 the top-left**: that reads as a loading state that never finished.
 
+The empty *workspace* is the one hero whose action is two: the wordmark in place
+of the glyph, **No projects yet**, one line, and **Add Project…** beside
+**Import from… ▾** — both primary, both `lg`, in a two-track grid so they are one
+width. Neither is secondary, so neither is outline.
+
+### First-Run Halo
+
+The one glow in the app (ADR-0067), and the exception the elevation model names.
+It rings the two buttons of the empty workspace and nothing else, ever: an empty
+workspace is the moment the human's move is the *only* move, and the rest of the
+product is built on amber meaning exactly that.
+
+- **A breath, not a blink.** `box-shadow` in the primary at 25% to 45%, 6px to
+  18px, on a 3s ease-in-out loop. One animation shared by both buttons.
+- **Its own layer.** The halo is a span behind the button, not the button's
+  shadow, so it never stops: hovering or focusing a button fades *its* layer out
+  and the other keeps breathing in step. A restarted animation falls out of
+  phase with its twin, which reads as two things competing.
+- **Reduced motion holds it still** at a resting glow rather than removing it —
+  the emphasis is the point, the motion is not.
+- **Never copy it.** A second glowing thing makes both mean nothing; a surface
+  that wants attention gets amber, and one that wants more is asking for this
+  rule to be superseded.
+
 ### Graph Rail (signature)
 
 A 6px-pitch lane rail beside the commit list, drawn in the eight categorical
@@ -775,7 +800,7 @@ without that constant would simply never be drawn.
 - **Don't** introduce a third type size, and don't hand-write one
   (`text-[13px]`) to sneak past the scale.
 - **Don't** add a shadow to a surface that stays on screen; tone and a hairline
-  are the elevation model.
+  are the elevation model. The First-Run Halo is the one exception.
 - **Don't** animate more than one thing at a time in a list. Status animation is
   opt-in and belongs to the single dot that describes the current view.
 - **Don't** use HTML5 drag-and-drop; it is dead in this shell on macOS. Drag with
