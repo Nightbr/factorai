@@ -15,9 +15,9 @@ The folder button beside **Projects** in the sidebar header, **Add a project or 
 menu.
 
 - **Add Project…**: pick any folder, even one no agent has run in.
-- **Import from Claude Code…**: lists folders Claude Code has worked in, with session count and
-  last activity. Tick (or **Select all**) and press **Import**. Already-added folders are marked *in
-  workspace*. Add Codex-only folders with **Add Project…**.
+- **Import from Claude Code…** / **Import from Codex…**: lists folders that agent has worked in,
+  with session count and last activity. Tick (or **Select all**) and press **Import**.
+  Already-added folders are marked *in workspace*.
 
 **Remove Project**, at the bottom of a project's right-click menu, takes it off the sidebar and
 deletes nothing; adding it back restores its sessions. It asks first if a session is running.

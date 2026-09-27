@@ -33,21 +33,30 @@ function candidate(
 	};
 }
 
-test('first-run: the empty sidebar', async ({ page }) => {
+test('first-run: the empty workspace', async ({ page }) => {
 	await installMockBridge(page, freshInstall());
 	await page.goto('/');
-	const sidebar = page.getByTestId('sidebar');
-	await expect(sidebar).toContainText('No projects yet');
+	await expect(page.getByTestId('first-run')).toBeVisible();
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-	// The top of the sidebar only: below the two buttons it is empty to the
-	// footer, and the picture is about what the empty state offers.
-	const top = await around([sidebar], 0);
-	const importButton = await sidebar.getByText('Import from Claude Code…').boundingBox();
-	if (!importButton) throw new Error('no import button');
-	await shot(page, 'first-run-empty', {
-		...top,
-		height: importButton.y + importButton.height + 28 - top.y,
-	});
+	// The whole window: the point is where the doors are — the middle of it,
+	// with the sidebar saying only the fact. Taken under reduced motion so
+	// the halo is caught at its resting glow, not wherever the breath was.
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await shot(page, 'first-run-empty');
+});
+
+test('first-run: the Import from… menu', async ({ page }) => {
+	await installMockBridge(page, freshInstall());
+	await page.goto('/');
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await page.getByTestId('empty-open-import').click();
+	const menu = page.getByRole('menu');
+	await expect(menu).toBeVisible();
+	await shot(
+		page,
+		'first-run-import-menu',
+		await around([page.getByTestId('empty-add-project'), menu], 28),
+	);
 });
 
 test('first-run: the Import from Claude Code dialog', async ({ page }) => {
@@ -72,4 +81,24 @@ test('first-run: the Import from Claude Code dialog', async ({ page }) => {
 	}
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 	await shot(page, 'first-run-import', await around([dialog], 16));
+});
+
+test('first-run: the Import from Codex dialog', async ({ page }) => {
+	await installMockBridge(page, {
+		...freshInstall(),
+		importCandidates: [
+			candidate('billing-api', 4, 2, { agent: 'codex', key: `${HOME}/billing-api` }),
+			candidate('homelab', 7, 30, { agent: 'codex', key: `${HOME}/homelab` }),
+			candidate('scratch', 2, 200, { agent: 'codex', key: `${HOME}/scratch` }),
+		],
+	});
+	await page.goto('/');
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await page.getByTestId('empty-open-import').click();
+	await page.getByRole('menuitem', { name: /^Codex/ }).click();
+	const dialog = page.getByTestId('import-projects');
+	await expect(dialog.getByRole('heading', { name: 'Import from Codex' })).toBeVisible();
+	await dialog.getByTestId(`import-row-${HOME}/homelab`).getByRole('checkbox').click();
+	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	await shot(page, 'first-run-import-codex', await around([dialog], 16));
 });
