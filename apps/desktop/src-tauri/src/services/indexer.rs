@@ -34,7 +34,9 @@ use crate::services::jsonl::{
 /// 4 — Codex image attachment markers are omitted from thread names and
 ///     first-message titles (specs/05-features.md § F30).
 /// 5 — The closing tag and adjacent image label are omitted too.
-const PARSE_VERSION: i64 = 5;
+/// 6 — A row indexed before the first user message was written, and so titled
+///     by its id, takes that message's title from a later tail.
+const PARSE_VERSION: i64 = 6;
 
 /// How many recent paths a session keeps. See migration 0010 for why a list at
 /// all, and why the number is not doing any selecting.
@@ -883,6 +885,14 @@ impl Indexer {
 					// offer short of another rename.
 					(TitleKind::Custom, _) => (c.title.clone(), TitleKind::Custom),
 					(_, Some(t)) => (t, TitleKind::Ai),
+					// A row first indexed before any user message was written — only
+					// the transcript's header lines existed — holds the id fallback.
+					// The first message is the tail's to supply, not the row's to keep.
+					(TitleKind::Derived, None)
+						if title_source.is_some() && c.title == derive_title(None, &session_id) =>
+					{
+						(derive_title(title_source.as_deref(), &session_id), TitleKind::Derived)
+					}
 					(k, None) => (c.title.clone(), k),
 				}
 			}

@@ -232,6 +232,39 @@ fn a_rename_in_the_tail_still_wins() {
 	assert_eq!(row::<String>(&db, "title_kind"), "custom");
 }
 
+/// Claude Code writes a transcript's header lines — the mode, the SessionStart
+/// hook's output — before the first user message. A scan that lands in between
+/// can only title the session by its id, and the tail that brings the message
+/// has to replace that placeholder rather than keep it forever.
+#[test]
+fn a_first_message_in_the_tail_replaces_the_id_fallback() {
+	let tmp = TempDir::new().unwrap();
+	let (db, indexer, path) = fixture(tmp.path());
+
+	let header = concat!(
+		r#"{"type":"mode","mode":"normal","sessionId":"11111111-2222-3333-4444-555555555555"}"#,
+		"\n",
+		r#"{"type":"attachment","uuid":"a1","timestamp":"2026-01-01T00:00:00Z","attachment":{"type":"hook_success"}}"#,
+		"\n",
+	);
+	write(&path, header);
+	indexer.full_scan().expect("first scan");
+	assert_eq!(row::<String>(&db, "title"), "11111111");
+	assert_eq!(row::<String>(&db, "title_kind"), "derived");
+
+	let slash = "<command-message>review</command-message>\\n<command-name>/review</command-name>\\n<command-args>PR 42</command-args>";
+	let second = format!("{header}{}\n", user("u1", "2026-01-01T00:00:01Z", slash));
+	write(&path, &second);
+	indexer.full_scan().expect("second scan");
+	assert_eq!(row::<String>(&db, "title"), "/review PR 42");
+	assert_eq!(row::<String>(&db, "title_kind"), "derived");
+
+	// Once a message has titled it, a later one does not.
+	write(&path, &format!("{second}{}\n", user("u2", "2026-01-01T00:00:02Z", "go")));
+	indexer.full_scan().expect("third scan");
+	assert_eq!(row::<String>(&db, "title"), "/review PR 42");
+}
+
 #[test]
 fn a_transcript_that_shrank_is_parsed_in_full_again() {
 	let tmp = TempDir::new().unwrap();
