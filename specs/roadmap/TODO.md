@@ -408,10 +408,12 @@ checklist of carrying it out.
       `CODEOWNERS` sends the request to someone. Quality already runs on
       `pull_request` without secrets; check that a fork's first run waits for "approve and run"
       and that nothing in it needs a secret.
-- [ ] **`AGENTS.md` and the skills rewritten to be collaborative**: a branch (and a worktree, since
-      several sessions share one tree) per task, small commits on it, a PR per slice citing its
-      issue, "Push small and often" becoming "open the PR early". `spec-and-adr-workflow` and
-      `quality-gate` say the same. The "Commits" section's no-PR rule goes.
+- [x] **`AGENTS.md` and the skills rewritten to be collaborative** — 2026-10-01, the first PR
+      under the rulesets. "Commits" became "Branches, commits and PRs": a branch in its own
+      worktree per task, a PR per slice citing its issue, the title as the squash commit,
+      screenshots or a video attached with `gh pr create --attach` (gh 2.101+), auto-merge for
+      the owner. A new `pull-requests` skill holds the commands; `spec-and-adr-workflow`,
+      `quality-gate` and `app-screenshot` point at it.
 - [x] **The promote deploy key on both rulesets' bypass list**, for `promote.yml`'s bump push —
       2026-10-01. The GitHub Actions app was the plan and GitHub refused it: it can bypass
       rulesets only on an organization's repository. The key's push starts workflows, so the bump

@@ -14,7 +14,7 @@ Closes #
 
 ## Contract
 
-<!-- The contract changes in the same PR as the code (AGENTS.md, "Commits"). -->
+<!-- The contract changes in the same PR as the code (AGENTS.md, "Branches, commits and PRs"). -->
 
 - [ ] No spec or ADR change needed
 - [ ] Spec updated: <!-- specs/… -->

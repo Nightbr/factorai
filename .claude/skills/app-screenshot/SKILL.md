@@ -31,6 +31,10 @@ with `pnpm docs:shots tests/docs-shots/<page>.shots.ts` after changing the
 surface it shows, and look at every image it writes. What follows is for the
 README and release notes, which show the whole real window.
 
+**Pictures for a pull request** are the `pull-requests` skill's: they stay in
+your scratch directory, are uploaded with `gh pr create --attach`, and never
+enter the repository.
+
 ## The loop
 
 **Launch with the flag.** `VITE_FACTORAI_SCREENSHOT=1` is the supported way to
