@@ -119,10 +119,11 @@ rulesets, and a direct push is refused for everyone, the owner included. The
   interest.
 - **The PR title is the commit on `main`.** PRs are squash-merged, so the title
   carries the prefix, and `feat:` / `fix:` titles become the release notes.
-- **The body follows the template**, and **every PR carries screenshots or a
-  video of the app**, from a fabricated workspace. `gh pr create --attach`
-  uploads them. A change with nothing visible shows the surface it touches
-  still working. Gotchas worth keeping go under "Notes for the reviewer".
+- **The body follows the template**, and **a PR that changes the app carries
+  screenshots or a video of it**, from a fabricated workspace.
+  `gh pr create --attach` uploads them. A PR with no app change (docs, CI, an
+  invisible refactor) says "No app change" instead. Gotchas worth keeping go
+  under "Notes for the reviewer".
 - **Merging.** The owner's PRs, this repo's own sessions included, arm
   `gh pr merge --auto --squash` and merge once Quality is green. Anyone else's
   PR waits for a maintainer's approval. Red CI is fixed on the branch, never

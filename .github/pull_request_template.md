@@ -32,13 +32,12 @@ CI runs the whole gate except `pnpm e2e` (Playwright). Tick what you ran.
 ## Screenshots or video
 
 <!--
-Required on every PR: show the app with the change in it.
+Required whenever the app changes: show it with the change in it. Before and
+after screenshots, or a short video (drag a .mp4 or .gif into this box) when it
+moves, such as a drag, an animation, or a flow across several steps.
 
-- A visible change: before and after screenshots, or a short video (drag a
-  .mp4 or .gif into this box) when it moves, such as a drag, an animation, or
-  a flow across several steps.
-- No visible change (a refactor, a backend fix, CI): show the surface it
-  touches still working in the real app.
+Nothing in the app changed (docs, CI, a refactor with no visible effect)?
+Write "No app change" and delete the rest.
 
 Use a fabricated workspace, not your own projects or sessions: no real paths,
 names or tokens on screen.

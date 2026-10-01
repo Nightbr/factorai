@@ -1,6 +1,6 @@
 # ADR-0070 — The roadmap is GitHub issues, and every change is a PR
 
-Status: accepted · 2026-10-01 · amended 2026-10-01 (a deploy key bypasses the rulesets, not the GitHub Actions app)
+Status: accepted · 2026-10-01 · amended 2026-10-01 twice (a deploy key bypasses the rulesets, not the GitHub Actions app; Review requires no approval, and media only when the app changes)
 Replaces the protocol in `specs/roadmap/README.md` and the "Work on `main`. No
 PR ceremony for solo work" rule in `AGENTS.md` § "Commits" and the
 `spec-and-adr-workflow` skill. No earlier ADR decided either, so none is
@@ -211,4 +211,24 @@ instead:
 Rejected: **a GitHub App owned by the user**, which a ruleset would accept as a
 bypass actor. It does the same job, at the cost of an app, its installation and
 two secrets instead of one key.
+
+## Amendment, 2026-10-01: no required approval, and media only when the app changes
+
+**"main: Review" requires a pull request with 0 approvals**, not 1. PR #7, the
+first PR under the rulesets, was green but stayed `BLOCKED`. Auto-merge waits
+for every requirement and never uses a bypass, and the owner's "pull requests
+only" bypass applies only to an explicit admin merge. With an approval
+required, every owner PR would need a session to wait out CI (about eight
+minutes, the Rust job) and run `gh pr merge --admin`.
+
+Dropping the count costs nothing while the owner is the only one with write
+access. A fork contributor cannot merge their own PR, so a maintainer reading it
+and pressing merge is the approval. The required pull request and the required
+checks are unchanged. **When a second person gets write access, the count goes
+back to 1**, and owner PRs then need an approval or an admin merge.
+
+**Screenshots or a video are required only when the app changes.** A PR with no
+app change (docs, CI, a refactor with no visible effect) says "No app change"
+instead. This was decided by the owner the same day. A capture of an unchanged
+app shows nothing a reviewer can use.
 

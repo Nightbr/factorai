@@ -10,9 +10,11 @@ owner included**:
 
 - **"main: Quality"** requires both Quality jobs to be green, and forbids force
   pushes and deletion.
-- **"main: Review"** requires one approval. The repository admin bypasses it
-  for pull requests only, so the owner's PRs merge on green, and anyone else's
-  waits for a maintainer.
+- **"main: Review"** requires a pull request, with **0 approvals**. Auto-merge
+  never uses a bypass, so with an approval required the owner's own PRs sat
+  blocked even when green. An outside contributor still cannot merge: a fork
+  has no write access, so a maintainer reads their PR and presses merge. That
+  click is the approval.
 
 `promote.yml`'s bump commit is the one exception. It goes through a deploy key
 and is marked `[skip ci]`.
@@ -54,11 +56,12 @@ a changelog.
 - what changed and why, and `Closes #N`;
 - the spec or ADR it touches;
 - whether `pnpm e2e` ran and the real window was used;
-- **screenshots or a video of the app, always**;
+- **screenshots or a video of the app whenever the app changes**, or "No app
+  change" for docs, CI or an invisible refactor;
 - notes for the reviewer. The gotchas a `DONE.md` entry used to keep go here.
 
 **Attach the media with `gh`.** `gh` 2.101+ uploads images and videos with
-`--attach`, so the PR is complete when it is opened, before auto-merge can fire:
+`--attach`, so the PR is complete when it is opened:
 
 ```bash
 gh pr create --title "fix: …" --body-file "$SCRATCH/pr.md" \
@@ -88,8 +91,8 @@ not in the repository.
   for every click.
 - **Motion needs a video.** Use Playwright's `recordVideo` (WebM, which GitHub
   plays inline) for a drag, an animation, or a flow across several steps.
-- **No visible change** (a refactor, a backend fix, CI): attach the surface it
-  touches, still working.
+- **No app change** (docs, CI, a refactor with no visible effect): no media.
+  Say "No app change" in that section.
 
 ## Merge
 
