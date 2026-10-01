@@ -404,10 +404,15 @@ skill are all the thing being replaced.
       several sessions share one tree) per task, small commits on it, a PR per slice citing its
       issue, "Push small and often" becoming "open the PR early". `spec-and-adr-workflow` and
       `quality-gate` say the same. The "Commits" section's no-PR rule goes.
-- [ ] **`promote.yml` stops pushing to `main`.** Its bump commit is a direct push
-      (`git push origin HEAD:main`), which the rulesets above refuse. Open a bump PR with
-      auto-merge instead, with an app token or a fine-grained PAT so Quality runs on it — a PR
-      opened with `GITHUB_TOKEN` triggers no workflows. Lands before the rulesets do.
+- [ ] **The GitHub Actions app on both rulesets' bypass list**, for `promote.yml`. Its bump commit
+      is a direct push (`git push origin HEAD:main`) with `GITHUB_TOKEN`, which the rulesets above
+      would refuse, leaving `main` on the shipped version. Decided 2026-10-01 over a bump PR: the
+      workflow and ADR-0064 consequence 4 stay as they are, where a PR would need an app token or a
+      PAT (a `GITHUB_TOKEN` PR starts no Quality run, so its required checks never report), an
+      approval the owner's bypass does not cover, and an alpha on every bump. The cost is that any
+      workflow in the repo with `contents: write` (`release`, `alpha`, `promote`) may push to
+      `main`; fork PRs get a read-only token. Set in the same sitting as the rulesets, recorded in
+      the ADR, and confirmed by the next promote.
 - [ ] **`CONTRIBUTING.md` rewritten for the stranger.** It exists and covers setup and the gate.
       Missing: `pnpm bytes:check` in its list, an HTTPS clone (or fork-then-clone), how to claim
       an issue, what will not be merged (no native Windows, no telemetry — PR #3), screenshots on
