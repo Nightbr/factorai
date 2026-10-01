@@ -8,18 +8,28 @@ Agentic Development Environment for the AI era
 
 [![site: factorai.build](https://img.shields.io/badge/site-factorai.build-FFB020?style=flat-square&labelColor=272B31)](https://factorai.build)
 [![status: alpha](https://img.shields.io/badge/status-alpha-FFB020?style=flat-square&labelColor=272B31)](https://github.com/Nightbr/factorai/releases)
-[![platform: macOS and Linux](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-3A4048?style=flat-square&labelColor=272B31)](#install)
+[![platform: macOS, Linux and Windows through WSL 2](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20WSL%202-3A4048?style=flat-square&labelColor=272B31)](#install)
 [![CI](https://img.shields.io/github/actions/workflow/status/Nightbr/factorai/quality.yml?branch=main&style=flat-square&labelColor=272B31&color=FFB020&label=CI)](https://github.com/Nightbr/factorai/actions/workflows/quality.yml)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-3A4048?style=flat-square&labelColor=272B31)](LICENSE)
 
+[Download](https://factorai.build/#download) · [Guide](https://factorai.build/docs/first-run) · [Roadmap](https://github.com/users/Nightbr/projects/1) · [Contributing](CONTRIBUTING.md)
+
 </div>
 
-> [!WARNING]
-> **factorai is alpha.** It is used daily by its author and by very few other
-> people. Releases go out several times a day and publish themselves; things
-> move, break and get renamed without ceremony. It drives real agent sessions
-> against real repositories, so point it at work your version control can
-> recover. [What's next and what just landed](specs/roadmap/).
+> [!NOTE]
+> **factorai is early, and used every day by several senior engineers.** It
+> ships on two channels, and you pick one in **Settings → Advanced → Update
+> channel**:
+>
+> - **Stable**, the default. A release only reaches it once alpha users have
+>   run it. Choose this unless you want fixes the day they land.
+> - **Alpha**. Every app change that passes CI on `main` builds itself and ships,
+>   often several times a day. Fixes arrive first, and so do the rough edges.
+>
+> Both update themselves, and moving from alpha back to stable never
+> downgrades: you stay where you are until the next stable release catches up.
+> Either way factorai drives real agent sessions against real repositories, so
+> point it at work your version control can recover.
 
 You stopped writing most of the code. Your editor never noticed. It still opens
 files one at a time, still assumes the cursor is the thing that matters, still
@@ -27,12 +37,16 @@ treats the terminal running your agent as a rectangle at the bottom of the
 screen.
 
 factorai is built the other way round. **The unit of work is a session, not a
-file** — agents are long-lived processes you launch, watch, resume and kill, and
-reading code is something you do to *check on* the work.
+file.** Agents are long-lived processes you launch, watch, resume and kill, and
+reading code is something you do to *check on* the work. **You supervise,
+decide, review, and set the rules. Agents do the rest.**
+
+It is a free, community-driven open-source project: no company behind it, no
+paid tier, and none planned. Issues, ideas and pull requests set the roadmap.
 
 ---
 
-### Run agents, not chats
+### Run several agents at once
 
 Every session is a real PTY with xterm.js in front of it — the actual `claude`
 or `codex` CLI, not a reimplementation of it. Claude Code and Codex sit side by
@@ -46,9 +60,9 @@ you*, or *stopped* — read from the agent's own terminal title rather than
 guessed at, so "is it blocked on a permission prompt?" is answerable from the sidebar.
 Open sessions become tabs, and the tabs come back when you relaunch.
 
-![factorai running a live session, with the sidebar showing session status](assets/images/factorai-sessions.png)
+![Three sessions open as tabs, one agent mid-task in its terminal, and the sidebar's dots saying which is working, waiting or stopped](assets/images/factorai-sessions.png)
 
-### Put an agent on a schedule
+### Agents on a schedule
 
 A **routine** is a saved prompt with a cron behind it, kept per project: a
 nightly triage, a dependency sweep, a lint gate on the hour. When one comes due,
@@ -60,17 +74,19 @@ opening it makes it an ordinary session with an ordinary tab.
 Routines run while factorai is open, and a run missed while it was closed is
 caught up at launch.
 
-![A project's Routines tab: three routines with their schedules, next runs and enable switches](assets/images/factorai-routines.png)
+![A project's Routines tab: a nightly triage, a weekly dependency bump and a disabled monthly job, each with its schedule and next run](assets/images/factorai-routines.png)
 
-### Arrange the sidebar the way you think
+### Arranged the way you think
 
-Projects sit where you drag them, in groups you name — Pro, Perso, side projects.
+Projects sit where you drag them, in groups you name — Pro, Side projects, whatever you think in.
 Drop one on a group to file it, on the edge to leave it beside, or hold it over
 another project to group the two. `Alt`+arrows and `Move to group` do the same
 from the keyboard, and `Name` or `Recent` sort when you would rather have a rule
 than an arrangement.
 
-### Find the conversation you half-remember
+![Projects dragged into the Pro and Side projects groups in the sidebar](assets/images/guide/projects-organise@2x.gif)
+
+### Every message, every session
 
 factorai reads `~/.claude/projects/` and `~/.codex/sessions/` directly —
 projects, sessions, titles, turn counts, timestamps. Nothing is imported, copied
@@ -81,9 +97,9 @@ On top of it sits SQLite FTS5 across **every message in every session**, so
 "which conversation was that?" takes a second rather than an afternoon of `grep`
 through JSONL.
 
-![Full-text search across every message in every session](assets/images/factorai-search.png)
+![A search for "retry" finding matches in four sessions across three projects, each with the line it matched](assets/images/factorai-search.png)
 
-### Inspect what it did to your repo
+### Audit whenever you choose
 
 A **Changes** panel with the usual git grouping — staged, unstaged, conflicts —
 line counts per file, and a diff on click. It polls, so it keeps up with an
@@ -94,9 +110,9 @@ wrote each commit. And a **file tree** with git decorations — changed files
 coloured, dirty folders dotted, ignored ones dimmed — in front of a Monaco
 viewer with syntax highlighting and rendered markdown.
 
-![A side-by-side diff of a changed file, index against the working tree](assets/images/factorai-changes.png)
+![The Changes panel grouping a merge conflict, staged and unstaged files, a diff of one of them open, and the agent that made them beside it](assets/images/factorai-changes.png)
 
-![The Graph tab, showing refs, tags and a commit's changed files](assets/images/factorai-graph.png)
+![The Graph tab: a merged branch, tags and the current branch, with one commit open on its changed files](assets/images/factorai-graph.png)
 
 ---
 
@@ -112,11 +128,13 @@ process is real money.
 ## Install
 
 Grab the `.dmg` (macOS), the `.AppImage` (Linux) or `factorai-setup.exe`
-(Windows) from
+(Windows) from [factorai.build](https://factorai.build/#download) or
 [Releases](https://github.com/Nightbr/factorai/releases). They **update
 themselves** — factorai checks on launch and every six hours, stages the new
 version in the background, and shows `Restart` in the header when it is ready.
-Nothing restarts on its own, because a restart kills running sessions.
+Nothing restarts on its own, because a restart kills running sessions. A new
+install follows the stable channel; switch to alpha in **Settings → Advanced**
+(see the note at the top).
 
 You also need at least one agent CLI, already authenticated:
 [Claude Code](https://claude.com/claude-code) (`claude login`) or
