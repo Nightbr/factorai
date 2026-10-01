@@ -47,6 +47,39 @@ export async function shot(page: Page, name: string, clip?: Box): Promise<string
 	return path;
 }
 
+/** Where the README's whole-window pictures go (ADR-0071). */
+export const README_OUT = resolve(__dirname, '../../assets/images');
+
+/**
+ * A README picture: the whole 1440×900 window, at device scale 2, as
+ * `assets/images/factorai-<subject>.png` (ADR-0071). Taken from the same
+ * state a guide shot is, so the README and the guide show one world.
+ */
+export async function windowShot(page: Page, subject: string): Promise<string> {
+	const path = join(README_OUT, `factorai-${subject}.png`);
+	await page.mouse.move(-10, -10).catch(() => undefined);
+	await page.screenshot({ path, animations: 'disabled', caret: 'hide' });
+	return path;
+}
+
+/** Open every group and project in the sidebar, from its sort menu. */
+export async function expandProjects(page: Page): Promise<void> {
+	await page.getByRole('button', { name: 'Sort and expand projects' }).click();
+	await page.getByRole('menuitem', { name: 'Expand all' }).click();
+}
+
+/** Write `text` into the terminal with PTY id `id`, as the agent's output. */
+export async function agentWrites(page: Page, id: string, text: string): Promise<void> {
+	await page.evaluate(
+		({ id, text }) =>
+			window.__FACTORAI_EMIT__?.('terminal:data', {
+				id,
+				bytesB64: btoa(unescape(encodeURIComponent(text))),
+			}),
+		{ id, text: text.replace(/\n/g, '\r\n') },
+	);
+}
+
 /**
  * An animated flow, as a GIF.
  *

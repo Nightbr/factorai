@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installMockBridge, type TestFixture } from '../smoke/fixtures';
-import { around, shot } from './capture';
+import { agentWrites, around, expandProjects, shot, windowShot } from './capture';
 import { IDS, world } from './world';
 
 type SearchHit = NonNullable<TestFixture['searchHits']>[number];
@@ -30,26 +30,10 @@ async function status(page: Page, id: string, s: Status) {
 	);
 }
 
-async function write(page: Page, id: string, text: string) {
-	await page.evaluate(
-		({ id, text }) =>
-			window.__FACTORAI_EMIT__?.('terminal:data', {
-				id,
-				bytesB64: btoa(unescape(encodeURIComponent(text))),
-			}),
-		{ id, text: text.replace(/\n/g, '\r\n') },
-	);
-}
-
 async function rest(page: Page) {
 	await page.mouse.move(-10, -10);
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 	await page.waitForTimeout(300);
-}
-
-async function expandAll(page: Page) {
-	await page.getByRole('button', { name: 'Sort and expand projects' }).click();
-	await page.getByRole('menuitem', { name: 'Expand all' }).click();
 }
 
 const TRANSCRIPT = [
@@ -69,18 +53,20 @@ const TRANSCRIPT = [
 test('sessions: tabs and the session header', async ({ page }) => {
 	await installMockBridge(page, w());
 	await page.goto('/');
-	await expandAll(page);
+	await expandProjects(page);
 	await open(page, 'Move Jellyfin', 'pty-jellyfin');
 	await open(page, 'Write the install page', 'pty-install');
 	await open(page, 'Stripe retries', 'pty-stripe');
 	await status(page, 'pty-jellyfin', 'stopped');
 	await status(page, 'pty-install', 'waiting_input');
 	await status(page, 'pty-stripe', 'working');
-	await write(page, 'pty-stripe', TRANSCRIPT);
+	await agentWrites(page, 'pty-stripe', TRANSCRIPT);
 	await rest(page);
 	// The tab strip, the header under it and the first lines of the agent's
 	// output: enough terminal to say what the tab holds.
 	await shot(page, 'sessions-tabs', { x: 0, y: 0, width: 880, height: 270 });
+	// The README's picture of the same moment, the whole window (ADR-0071).
+	await windowShot(page, 'sessions');
 	// Every dot the sidebar can show at once: working, waiting, stopped.
 	const sidebar = await around([page.getByTestId('sidebar')], 0);
 	await shot(page, 'sessions-status', { ...sidebar, y: 96, height: 520 });
@@ -199,4 +185,7 @@ test('sessions: search results', async ({ page }) => {
 		width: 1440,
 		height: results.y + results.height + 24,
 	});
+	await expandProjects(page);
+	await rest(page);
+	await windowShot(page, 'search');
 });

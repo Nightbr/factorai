@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { installMockBridge, type TestFixture } from '../smoke/fixtures';
-import { around, shot } from './capture';
+import { agentWrites, around, expandProjects, shot, windowShot } from './capture';
 import { HOME, IDS, world } from './world';
 
 /**
@@ -157,6 +157,23 @@ function fixture(): TestFixture {
 	};
 }
 
+const AGENT = [
+	'\x1b[1m> Key invoices on the event id, with a test.\x1b[0m',
+	'',
+	'\x1b[36m●\x1b[0m Editing src/invoices/retry.ts \x1b[2m(+11 -3)\x1b[0m',
+	'\x1b[36m●\x1b[0m Writing migrations/0042_webhook_events.sql',
+	'\x1b[36m●\x1b[0m Writing tests/retry.test.ts',
+	'\x1b[36m●\x1b[0m Running pnpm test retry',
+	'',
+	'  \x1b[32m✓\x1b[0m a retried delivery writes one invoice',
+	'  \x1b[32m✓\x1b[0m a delivery past 72h is handled again',
+	'',
+	'A retry now finds the row the first delivery',
+	'wrote. sync.ts still conflicts with main; that',
+	'one is yours to settle.',
+	'',
+].join('\n');
+
 const SESSION = `${IDS.billing.slice(0, 8)}-5e55-4000-8000-000000000001`;
 
 test('changes: the groups, and a diff open inline', async ({ page }) => {
@@ -180,4 +197,9 @@ test('changes: the groups, and a diff open inline', async ({ page }) => {
 	await page.waitForTimeout(600);
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 	await shot(page, 'changes-diff', await around([viewer, panel], 0));
+	// The README's whole window: the agent that made these changes, beside them.
+	await expandProjects(page);
+	await agentWrites(page, PTY, AGENT);
+	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	await windowShot(page, 'changes');
 });

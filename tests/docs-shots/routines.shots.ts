@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { installMockBridge, routineFixture } from '../smoke/fixtures';
-import { around, Gif, shot } from './capture';
+import { around, expandProjects, Gif, shot, windowShot } from './capture';
 import { IDS, world } from './world';
 
 const HOUR = 3_600_000;
@@ -71,6 +71,9 @@ test('routines: a project’s Routines tab', async ({ page }) => {
 		'routines-list',
 		await around([header, list, page.getByTestId('new-routine')], 20),
 	);
+	await expandProjects(page);
+	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	await windowShot(page, 'routines');
 });
 
 test('routines: choosing a preset updates the next runs', async ({ page }) => {

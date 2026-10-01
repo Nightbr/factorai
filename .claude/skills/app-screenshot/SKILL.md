@@ -1,6 +1,6 @@
 ---
 name: app-screenshot
-description: Capture a factorai screenshot for README.md, assets/images/ or a release note — correct size, no DEV badge, private project names blurred. Use when asked to add, retake or update a screenshot of the app in documentation.
+description: Capture a factorai screenshot for README.md, the guide or a release note — README and guide images are scripted (pnpm docs:shots); a release note's real-window shot is the right size, has no DEV badge and has private names blurred. Use when asked to add, retake or update a screenshot of the app in documentation.
 ---
 
 # Taking a screenshot of factorai for documentation
@@ -15,21 +15,25 @@ else opens the README:
    employer project names in the sidebar, `~/` paths, session titles naming both.
    Committing those publishes them permanently; a later edit does not remove them
    from the git history.
-3. **The size.** Every image in `assets/images/` is 1440×900 of the client area. One
+3. **The size.** A real-window shot is 1440×900 of the client area. One
    that is a different size, or that carries the window frame and the
    compositor's drop shadow, reads as a mistake.
 4. **Resampling.** The app is 12px and 14px type throughout. Scaling a capture
    down turns it to mush, and the sidebar is the first thing to go.
 
-## Guide images are not taken this way
+## README and guide images are not taken this way
 
-Pictures for the user guide (`apps/docs/docs`) come from scripts, not from the
-window: `tests/docs-shots/*.shots.ts` drive the renderer against the mock bridge
-in an invented world and write `assets/images/guide/<page>-<subject>@2x.png` or
-`.gif`, shown through the site's `Shot` component (ADR-0066). Re-shoot a page
-with `pnpm docs:shots tests/docs-shots/<page>.shots.ts` after changing the
-surface it shows, and look at every image it writes. What follows is for the
-README and release notes, which show the whole real window.
+Pictures for the user guide (`apps/docs/docs`) and the README come from
+scripts, not from the window: `tests/docs-shots/*.shots.ts` drive the renderer
+against the mock bridge in an invented world and write
+`assets/images/guide/<page>-<subject>@2x.png` or `.gif`, shown through the
+site's `Shot` component (ADR-0066), and — through `windowShot` — the README's
+whole-window `assets/images/factorai-<subject>.png` at 2880×1800 (ADR-0071).
+Re-shoot with `pnpm docs:shots tests/docs-shots/<page>.shots.ts` after changing
+the surface it shows, look at every image it writes, and `git checkout` any
+image it rewrote that you did not mean to change (the timestamps in a commit
+detail or a routine's next run move on every run). What follows is for release
+notes and bug reports, which have to show this machine's real window.
 
 **Pictures for a pull request** are the `pull-requests` skill's: they stay in
 your scratch directory, are uploaded with `gh pr create --attach`, and never
@@ -67,7 +71,7 @@ what the image is *for* and show only that.
 **Capture.**
 
 ```bash
-scripts/qa/doc-shot.sh assets/images/factorai-<subject>.png
+scripts/qa/doc-shot.sh ~/shots/factorai-<subject>.png
 ```
 
 It resizes the window so the client area is exactly 1440×900, crops the frame and
@@ -78,7 +82,7 @@ declined the resize.
 instead of guessing:
 
 ```bash
-scripts/qa/redact.py assets/images/factorai-<subject>.png --probe   # grid overlay
+scripts/qa/redact.py ~/shots/factorai-<subject>.png --probe   # grid overlay
 scripts/qa/redact.py in.png out.png 60,170,130,26 60,208,130,26
 ```
 
@@ -94,10 +98,12 @@ is about?
 ## Referencing it
 
 Match the existing style in `README.md` — one image per section, alt text that
-says what the picture shows rather than repeating the heading:
+says what the picture shows rather than repeating the heading. A new README
+image is a `windowShot` call in the shots script for that surface, not a capture
+of the real window:
 
 ```markdown
-![The sidebar with projects grouped into Pro, Side projects and Perso](assets/images/factorai-sidebar.png)
+![The sidebar with projects grouped into Pro and Side projects](assets/images/factorai-sidebar.png)
 ```
 
 ## If the resize is refused
