@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { installMockBridge, type TestFixture } from '../smoke/fixtures';
-import { around, shot } from './capture';
+import { agentWrites, around, expandProjects, shot, windowShot } from './capture';
 import { HOME, IDS, world } from './world';
 
 /**
@@ -213,4 +213,22 @@ test('graph: branches and tags, with a commit open', async ({ page }) => {
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 	await page.mouse.move(-10, -10);
 	await shot(page, 'graph-commit', await around([page.getByTestId('file-tree-panel')], 0));
+	// The README's whole window, with the session that wrote the top commits.
+	await expandProjects(page);
+	await agentWrites(
+		page,
+		'mock-terminal-id',
+		[
+			'\x1b[1m> Commit the fix and the test separately.\x1b[0m',
+			'',
+			'\x1b[36m●\x1b[0m git commit -m "test: a retried delivery writes one invoice"',
+			'\x1b[36m●\x1b[0m git commit -m "fix: key invoices on the webhook event id"',
+			'',
+			'Two commits on fix/duplicate-invoices, one ahead of the merge of',
+			'feat/proration-preview. Nothing pushed yet.',
+			'',
+		].join('\n'),
+	);
+	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	await windowShot(page, 'graph');
 });

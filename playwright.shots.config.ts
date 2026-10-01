@@ -3,9 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = process.env.PLAYWRIGHT_PORT ?? '1440';
 
 /**
- * The guide's illustrations (ADR-0066), not a test suite: `pnpm docs:shots`
- * drives the renderer against the mock bridge and writes the images into
- * `assets/images/guide/`. Kept out of `pnpm e2e` — a picture is reviewed by
+ * The guide's and the README's illustrations (ADR-0066, ADR-0071), not a test
+ * suite: `pnpm docs:shots` drives the renderer against the mock bridge and
+ * writes the images into `assets/images/guide/` and `assets/images/`. Kept out of `pnpm e2e` — a picture is reviewed by
  * looking at it, and re-shooting belongs to whoever changed the surface.
  *
  * Its own port, so it never reuses a `pnpm dev` or `pnpm e2e` server, and
