@@ -9,9 +9,12 @@ credentials, so a vulnerability in it can matter more than its size suggests.
 [Security → Report a vulnerability](https://github.com/Nightbr/factorai/security/advisories/new).
 
 Please include the version (Settings → About), the platform, and the steps
-that reproduce it. You will get an answer within a week. A fix ships as an alpha
-first and is then promoted to stable, and the advisory is published once the
-stable release is out.
+that reproduce it.
+
+factorai is a community-driven project maintained on volunteer time, so there
+is no guaranteed response time. You should usually hear back within a week or
+so. A fix ships as an alpha first and is then promoted to stable, and the
+advisory is published once the stable release is out.
 
 ## Supported versions
 
