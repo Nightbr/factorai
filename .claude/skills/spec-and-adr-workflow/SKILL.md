@@ -1,6 +1,6 @@
 ---
 name: spec-and-adr-workflow
-description: How work starts and lands here — read the spec first, start from an up-to-date main, commit in small prefixed slices, write an ADR in the same commit as the decision, update the spec in the same commit as the contract change. Use when picking up a task, before the first edit, when writing or revising an ADR, or when a spec and the code disagree.
+description: How work starts and lands here — read the spec first, start from an up-to-date main on a branch in its own worktree, commit in small prefixed slices, write an ADR in the same PR as the decision, update the spec in the same PR as the contract change. Use when picking up a task, before the first edit, when writing or revising an ADR, or when a spec and the code disagree.
 ---
 
 # Before writing code
@@ -14,30 +14,30 @@ description: How work starts and lands here — read the spec first, start from 
 
 # While implementing
 
-- **Start from an up-to-date `main`.** `git fetch origin && git status` before
-  the first edit, and pull if you are behind — someone else's branch may have
-  merged while you were reading specs. This is not hygiene, it is the cheapest
+- **Start from an up-to-date `main`, on a branch in its own worktree.**
+  `git fetch origin`, then branch from `origin/main` (the `pull-requests` skill
+  has the command), because someone else's PR may have merged while you were
+  reading specs. This is not hygiene, it is the cheapest
   version of a conflict you will otherwise resolve later with both features
   half-built: on 2026-08-16 two agents spent a weekend on `sessions` from
   different schemas and both shipped a migration numbered `0004`, which is keyed
-  by name and so cannot simply be renumbered once it has run anywhere. Push
-  small slices for the same reason — a commit sitting unpushed is a conflict
-  accruing interest.
-- Work on `main`. No PR ceremony for solo work. Branches are fine when multiple
-  agents are pairing on the same area — coordinate, don't collide. If you *do*
-  branch, say so in the roadmap entry you are working from, so the next agent
-  sees the collision coming.
+  by name and so cannot simply be renumbered once it has run anywhere. Push the
+  branch and open the PR early for the same reason: an open PR is where the next
+  agent sees the collision coming.
+- **Every change is a PR** (ADR-0070); `main` refuses a direct push. The
+  `pull-requests` skill covers the branch, the body, the screenshots and the
+  merge.
 - Commit in small slices (one Red→Green or one feature step). Prefix with
   `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 - The bans that apply here (`--no-verify`, `as any`, `#[allow(...)]`,
-  `// oxlint-disable`, emojis) are in AGENTS.md § "Code style" and § "Commits".
+  `// oxlint-disable`, emojis) are in AGENTS.md § "Code style" and § "Branches, commits and PRs".
 
 Before declaring the task done, run the full gate — see the `quality-gate`
 skill.
 
 # ADRs (`specs/adr/`)
 
-Create an ADR **in the same commit** as the code that implements the decision.
+Create an ADR **in the same PR** as the code that implements the decision.
 ADR file naming: `NNNN-kebab-case-title.md`. Format: context, decision,
 consequences.
 
@@ -79,14 +79,15 @@ in place, and delete the entry when it's resolved. It is *not* a decision
 record; `07-open-questions.md` holds things already settled.
 
 If you change the contract (new command, new event, renamed field), update the
-relevant spec **in the same commit** as the code.
+relevant spec **in the same PR** as the code.
 
 `specs/roadmap/` is the exception to "design source of truth": it holds
 **sequencing**, not design. `TODO.md` says what to do next and in what order,
 `DONE.md` logs what landed. A feature is never specified there — if a roadmap
 item and a spec disagree about behaviour, the spec wins (or the spec is wrong
-and gets fixed first). When an item ships, the same commit updates the spec it
-changed, *then* the entry moves to `DONE.md`.
+and gets fixed first). When an item ships, the same PR updates the spec it
+changed, *then* the entry moves to `DONE.md`. Once the roadmap has moved to
+GitHub issues (ADR-0070, roadmap item 62), the PR closes the issue instead.
 
 # Helpful files when picking up work
 

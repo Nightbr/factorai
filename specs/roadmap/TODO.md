@@ -393,25 +393,28 @@ checklist of carrying it out.
 
 ### PRs for everything, and who may merge
 
-- [ ] **Branch protection on `main`, as rulesets.** Two, because the two rules need different
-      bypass lists:
-      1. *Required status checks* — Quality's jobs — with no bypass but the promote deploy key
-         (below).
-      2. *Required approving review (1)* from someone with write access, with the repository
-         admin (the owner) on the bypass list **for pull requests only**, so the owner's PRs merge
-         on green and nobody pushes straight to `main`.
-- [ ] **Owner PRs auto-merge on green**: enable auto-merge on the repo, and sessions run
+- [x] **Branch protection on `main`, as rulesets** — on 2026-10-01:
+      1. *"main: Quality"*: the two Quality jobs required, no force push or deletion, and no
+         bypass but the promote deploy key (below).
+      2. *"main: Review"*: a pull request required, with **0 approvals**. It was 1, with the
+         owner bypassing for pull requests, and PR #7 showed why that fails: auto-merge never
+         uses a bypass, so the owner's green PR sat blocked. Fork contributors have no write
+         access, so their PRs still need a maintainer to press merge. Back to 1 approval when a
+         second person gets write access.
+- [x] **Owner PRs auto-merge on green**: enable auto-merge on the repo, and sessions run
       `gh pr create` then `gh pr merge --auto --squash`. Squash, so the PR title is the commit and
       keeps the `feat:` / `fix:` prefix; the alpha pipeline (ADR-0064) still sees one green push
       to `main` per change.
-- [ ] **External PRs need an internal approval**, which rule 2 gives them for free, and
-      `CODEOWNERS` sends the request to someone. Quality already runs on
+- [ ] **External PRs need a maintainer to merge them**, which having no write access gives them
+      for free, and `CODEOWNERS` sends the review request to someone. Quality already runs on
       `pull_request` without secrets; check that a fork's first run waits for "approve and run"
       and that nothing in it needs a secret.
-- [ ] **`AGENTS.md` and the skills rewritten to be collaborative**: a branch (and a worktree, since
-      several sessions share one tree) per task, small commits on it, a PR per slice citing its
-      issue, "Push small and often" becoming "open the PR early". `spec-and-adr-workflow` and
-      `quality-gate` say the same. The "Commits" section's no-PR rule goes.
+- [x] **`AGENTS.md` and the skills rewritten to be collaborative** — 2026-10-01, the first PR
+      under the rulesets. "Commits" became "Branches, commits and PRs": a branch in its own
+      worktree per task, a PR per slice citing its issue, the title as the squash commit,
+      screenshots or a video attached with `gh pr create --attach` (gh 2.101+) whenever the app
+      changes (none for docs or CI, decided 2026-10-01), auto-merge for the owner. A new `pull-requests` skill holds the commands; `spec-and-adr-workflow`,
+      `quality-gate` and `app-screenshot` point at it.
 - [x] **The promote deploy key on both rulesets' bypass list**, for `promote.yml`'s bump push —
       2026-10-01. The GitHub Actions app was the plan and GitHub refused it: it can bypass
       rulesets only on an organization's repository. The key's push starts workflows, so the bump

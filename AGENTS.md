@@ -41,8 +41,9 @@ The site is `mise run docs` (or `pnpm --filter @factorai/docs start`), on port
 2. Check `specs/adr/` for decisions that constrain the approach. Don't relitigate
    a decided ADR — supersede it with a new one.
 3. If a spec is wrong or stale, fix the spec first, then write the code.
-4. Start from an up-to-date `main`: `git fetch origin && git status`, and pull if
-   you are behind.
+4. Start from an up-to-date `main`, on a branch in its own worktree:
+   `git fetch origin && git worktree add ../factorai-<slug> -b <type>/<slug> origin/main`.
+   Several sessions share this checkout, so never switch its branch in place.
 
 ## Code style
 
@@ -103,19 +104,35 @@ push to `main`.
 For UI or behaviour work, also launch the app and use the feature in the real
 window. Type checking does not validate UX.
 
-## Commits
+## Branches, commits and PRs
 
-- Work on `main`. No PR ceremony for solo work. Branch when several agents are
-  pairing on one area, and say so in the roadmap entry you are working from.
-- Small slices — one Red→Green step or one feature step. Prefix `feat:`, `fix:`,
-  `refactor:`, `test:`, `docs:`, `chore:`.
-- **Never `--no-verify`.** If a hook blocks the commit, fix the cause.
-- Push small and often; a commit sitting unpushed is a conflict accruing
+**Every change reaches `main` through a pull request** (ADR-0070). `main` has
+rulesets, and a direct push is refused for everyone, the owner included. The
+`pull-requests` skill has the commands.
+
+- **One branch per task, in its own worktree.** Name it `<type>/<slug>`, with
+  the issue number in the slug when there is one.
+- **Small commits on it**, one Red→Green step or one feature step each. Prefix
+  them `feat:`, `fix:`, `refactor:`, `test:`, `docs:` or `chore:`.
+- **One PR per slice**, opened early (as a draft while unfinished) and citing
+  its issue with `Closes #N`. A branch nobody can see is a conflict accruing
   interest.
+- **The PR title is the commit on `main`.** PRs are squash-merged, so the title
+  carries the prefix, and `feat:` / `fix:` titles become the release notes.
+- **The body follows the template**, and **a PR that changes the app carries
+  screenshots or a video of it**, from a fabricated workspace.
+  `gh pr create --attach` uploads them. A PR with no app change (docs, CI, an
+  invisible refactor) says "No app change" instead. Gotchas worth keeping go
+  under "Notes for the reviewer".
+- **Merging.** The owner's PRs, this repo's own sessions included, arm
+  `gh pr merge --auto --squash` and merge once Quality is green. Anyone else's
+  PR waits for a maintainer's approval. Red CI is fixed on the branch, never
+  merged around.
+- **Never `--no-verify`.** If a hook blocks the commit, fix the cause.
 - Change the contract (new command, new event, renamed field) and the spec is
-  updated in the same commit. Make a decision worth recording and the ADR lands
-  in the same commit — `NNNN-kebab-case-title.md`, context / decision /
-  consequences, immutable once written.
+  updated in the same PR. Make a decision worth recording and the ADR lands in
+  the same PR: `NNNN-kebab-case-title.md`, context / decision / consequences,
+  immutable once written.
 - Kill-on-quit is non-optional: no orphan zombies, ever.
 
 ## What this project does not do
@@ -140,13 +157,14 @@ into the renderer.
 | [`assets/`](assets/) | the brand masters (`brand/`) and the README screenshots (`images/`) |
 | [`specs/roadmap/`](specs/roadmap/) | what is next, and a dated log of what shipped |
 | `.claude/rules/` | the traps in a given area, loaded when you edit it |
-| `.claude/skills/` | the long form: the gate, the test lanes, QA, screenshots |
+| `.claude/skills/` | the long form: PRs, the gate, the test lanes, QA, screenshots |
 
 Spec and code disagree — fix whichever is wrong, usually the spec, before
 writing anything.
 
 Immutable ADRs and `DONE.md` entries cite the section numbers this file used to
-have: § 1 is now "Project overview", § 2a/2b "Before you start" and "Commits",
+have: § 1 is now "Project overview", § 2a/2b "Before you start" and "Branches,
+commits and PRs",
 § 2c/3 "Testing" and "Code style", § 2d/2e the `smoke-tests` and `manual-qa`
 skills, § 4 "Code style" plus `.claude/rules/frontend.md` and `rust.md`, § 5/6
 the `spec-and-adr-workflow` skill, § 8 "What this project does not do".
