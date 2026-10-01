@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { type CrashContext, crashReport, issueUrl } from './crashReport';
 
@@ -56,18 +58,32 @@ describe('issueUrl', () => {
 		expect(nasty).not.toMatch(/\s/);
 	});
 
-	it('points at the repo and prefills both fields', () => {
-		const url = issueUrl(ctx());
-		expect(url).toContain('https://github.com/Nightbr/factorai/issues/new?');
-		expect(url).toContain('title=');
-		expect(url).toContain('body=');
+	it('opens the bug form and fills the fields it has', () => {
+		const params = new URL(issueUrl(ctx())).searchParams;
+		expect(issueUrl(ctx())).toContain('https://github.com/Nightbr/factorai/issues/new?');
+		// Blank issues are off, so without a template the report is dropped.
+		expect(params.get('template')).toBe('bug.yml');
+		expect(params.get('title')).toMatch(/^Crash: /);
+		expect(params.get('version')).toBe(ctx().version);
+		expect(params.get('what-happened')).toBe(crashReport(ctx()));
+		expect(params.has('body')).toBe(false);
+	});
+
+	it('names fields the bug form actually has', () => {
+		const form = readFileSync(
+			join(import.meta.dirname, '../../../../.github/ISSUE_TEMPLATE/bug.yml'),
+			'utf8',
+		);
+		for (const id of ['version', 'what-happened']) {
+			expect(form).toMatch(new RegExp(`^\\s+id: ${id}$`, 'm'));
+		}
 	});
 
 	it('caps a runaway title', () => {
 		const url = issueUrl(ctx({ message: 'x'.repeat(500) }));
 		const title = new URL(url).searchParams.get('title') ?? '';
 		expect(title.length).toBeLessThanOrEqual(120);
-		// The body is not capped — that is where the detail belongs.
-		expect((new URL(url).searchParams.get('body') ?? '').length).toBeGreaterThan(120);
+		// The report is not capped — that is where the detail belongs.
+		expect((new URL(url).searchParams.get('what-happened') ?? '').length).toBeGreaterThan(120);
 	});
 });

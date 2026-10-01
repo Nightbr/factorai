@@ -3226,9 +3226,13 @@ information exists. Three actions:
   re-syncs from `terminal_list()`. What does **not** survive is xterm's
   scrollback, since nothing snapshots or replays it. The screen says so
   underneath rather than letting it be discovered.
-- **Report an issue** — opens a prefilled GitHub issue in the browser. It is a
-  link, not a reporting service: nothing is sent, the user reads and edits the
-  whole body first, and § "No telemetry" is untouched. The body carries the
+- **Report an issue** — opens the repository's **bug form**, prefilled, in the
+  browser. It is a link, not a reporting service: nothing is sent, the user
+  reads and edits the whole report first, and § "No telemetry" is untouched.
+  Blank issues are off (ADR-0070), so the URL names the form
+  (`template=bug.yml`) and fills its fields by id: the title, `version`, and
+  `what-happened` with the report. A test reads the form so a renamed field
+  fails the build rather than silently emptying the report. The report carries the
   message, the component stack, the app version (a Vite `define` from
   `package.json`, so the crash path does not depend on the Tauri bridge still
   working), the **update channel** (read from `updaterStore`, where the last

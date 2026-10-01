@@ -12,6 +12,14 @@
  *  opened in the browser, never submitted for the user. */
 const ISSUES_URL = 'https://github.com/Nightbr/factorai/issues/new';
 
+/** The bug form in `.github/ISSUE_TEMPLATE/`. Blank issues are off
+ *  (ADR-0070), so a bare `?body=` lands on the template chooser and drops the
+ *  report; a form takes its fields by `id` instead. These two ids must match
+ *  the form's. */
+const BUG_FORM = 'bug.yml';
+const FIELD_VERSION = 'version';
+const FIELD_WHAT_HAPPENED = 'what-happened';
+
 /** GitHub rejects a title over 256 chars; leave room and keep it scannable. */
 const MAX_TITLE = 120;
 
@@ -61,7 +69,8 @@ export function crashReport(ctx: CrashContext): string {
 }
 
 /**
- * The prefilled issue URL.
+ * The prefilled issue URL: the bug form, with the title, the version and the
+ * report filled in.
  *
  * `encodeURIComponent` is load-bearing rather than tidiness: the shell scope in
  * `tauri.conf.json` is `https?://\w[^\s]*`, so a URL carrying a raw space or
@@ -72,6 +81,7 @@ export function crashReport(ctx: CrashContext): string {
  */
 export function issueUrl(ctx: CrashContext): string {
 	const title = encodeURIComponent(`Crash: ${ctx.name}: ${ctx.message}`.slice(0, MAX_TITLE));
-	const body = encodeURIComponent(crashReport(ctx));
-	return `${ISSUES_URL}?title=${title}&body=${body}`;
+	const version = encodeURIComponent(ctx.version);
+	const report = encodeURIComponent(crashReport(ctx));
+	return `${ISSUES_URL}?template=${BUG_FORM}&title=${title}&${FIELD_VERSION}=${version}&${FIELD_WHAT_HAPPENED}=${report}`;
 }
