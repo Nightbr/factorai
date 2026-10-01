@@ -125,17 +125,22 @@ jobs:
     needs: [plan, release]
     runs-on: ubuntu-latest
     steps:
+      # Checked out with the promote deploy key: the rulesets on main refuse a
+      # direct push from anything else, and a deploy key is the one actor a
+      # personal repository can put on their bypass list (ADR-0070, amended).
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+          ssh-key: ${{ secrets.PROMOTE_DEPLOY_KEY }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      # Pushed with GITHUB_TOKEN, so it starts no Quality run and no alpha by
-      # itself (ADR-0064 consequence 4). The next real push does both.
+      # A deploy key's push starts workflows, unlike GITHUB_TOKEN's, so the
+      # commit carries [skip ci]: it still starts no Quality run and no alpha
+      # by itself (ADR-0064 consequence 4). The next real push does both.
       - name: Commit the bump and the changelog
         shell: bash
         env:
@@ -149,7 +154,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add CHANGELOG.md apps/desktop/package.json apps/desktop/src-tauri/tauri.conf.json \
             apps/desktop/src-tauri/Cargo.toml Cargo.lock
-          git commit -m "chore: bump to $NEXT" -m "v$VERSION shipped as stable; main now builds $NEXT alphas (ADR-0064)."
+          git commit -m "chore: bump to $NEXT" -m "v$VERSION shipped as stable; main now builds $NEXT alphas (ADR-0064)." -m "[skip ci]"
           # One retry over a push that raced this job: the bump touches only
           # the version fields and the changelog, so a rebase onto someone
           # else's commit is conflict-free unless they bumped by hand.

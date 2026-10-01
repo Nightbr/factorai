@@ -1,6 +1,6 @@
 # ADR-0070 — The roadmap is GitHub issues, and every change is a PR
 
-Status: accepted · 2026-10-01
+Status: accepted · 2026-10-01 · amended 2026-10-01 (a deploy key bypasses the rulesets, not the GitHub Actions app)
 Replaces the protocol in `specs/roadmap/README.md` and the "Work on `main`. No
 PR ceremony for solo work" rule in `AGENTS.md` § "Commits" and the
 `spec-and-adr-workflow` skill. No earlier ADR decided either, so none is
@@ -183,3 +183,32 @@ it costs one header line.
 **Rejected: keeping `TODO.md` beside the issues.** Two sources of truth for the
 queue disagree within a week. That is the failure `TODO.md` itself was cleaned
 of three times.
+
+## Amendment, 2026-10-01: a deploy key, not the GitHub Actions app
+
+Creating the first ruleset failed: *"Actor GitHub Actions integration must be
+part of the ruleset source or owner organization"*. The GitHub Actions app can
+bypass rulesets only on a repository owned by an organization, and this one is
+owned by a user. So the bypass actor on both rulesets is a **deploy key**
+instead:
+
+- An ed25519 key with write access, titled "promote.yml: bump push to main
+  (ADR-0070)". Its private half lives only in the `PROMOTE_DEPLOY_KEY` secret.
+  Nothing else keeps a copy: a lost key is replaced, not recovered.
+- `promote.yml`'s `finish` job checks `main` out with that key, so its bump
+  push and its tag pruning go over SSH as the key.
+- **A deploy key's push starts workflows, where `GITHUB_TOKEN`'s does not.**
+  The bump commit therefore carries `[skip ci]`. It still starts no Quality run
+  and no alpha, and ADR-0064 consequence 4 holds as written.
+- **The cost is narrower than the one stated above.** Only a workflow that
+  reads `PROMOTE_DEPLOY_KEY` can push to `main`, not every workflow with
+  `contents: write`. The rulesets' deploy-key bypass covers every deploy key on
+  the repository, so a second key with write access would inherit it: keep this
+  the only one.
+- Unverified item 1 becomes: the next promote's bump push goes through, and
+  starts no Quality run.
+
+Rejected: **a GitHub App owned by the user**, which a ruleset would accept as a
+bypass actor. It does the same job, at the cost of an app, its installation and
+two secrets instead of one key.
+
