@@ -419,13 +419,14 @@ checklist of carrying it out.
       2026-10-01. The GitHub Actions app was the plan and GitHub refused it: it can bypass
       rulesets only on an organization's repository. The key's push starts workflows, so the bump
       commit carries `[skip ci]` (ADR-0070, amended). Confirmed by the next promote.
-- [ ] **`CONTRIBUTING.md` rewritten for the stranger.** It exists and covers setup and the gate.
-      Missing: `pnpm bytes:check` in its list, an HTTPS clone (or fork-then-clone), how to claim
-      an issue, what will not be merged (no native Windows, no telemetry — PR #3), screenshots on
-      every PR, the no-emoji / no-`--no-verify` rules, that a maintainer approves before merge,
-      a note for contributors working through an agent, Discussions for questions, a
-      `CODE_OF_CONDUCT.md`, and a link to `SECURITY.md`.
-- [ ] **Repository settings**, in the UI: Discussions on (the issue chooser already links there),
+- [x] **`CONTRIBUTING.md` rewritten for the stranger** — 2026-10-01. It opens on how a change
+      gets in (find or file an issue, claim it, fork, PR, a maintainer merges), says what will
+      not be merged, and covers setup with CI's apt list, a short pre-push check and the full
+      gate with `bytes:check`, the PR rules (title as commit, media when the app changes, specs
+      and ADRs in the same PR), the rules that most often send a PR back, contributing through an
+      agent, Discussions, `SECURITY.md` and the MIT licence. **A Code of Conduct is deferred** on
+      the user's call: it needs a reporting contact, and none is chosen yet.
+- [x] **Repository settings** — set 2026-10-01 through `gh api`: Discussions on (the issue chooser already links there),
       private vulnerability reporting on (`SECURITY.md` and the chooser link to it), squash merge
       only, auto-merge on, branches deleted on merge.
 
