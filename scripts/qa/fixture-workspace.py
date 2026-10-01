@@ -27,7 +27,7 @@ hero and the guide show one invented world rather than two.
 unless `--force`, which deletes it first. `seed` needs the database to exist,
 which is why the app is booted between the two.
 
-See specs/roadmap/TODO.md item 61, and `.claude/skills/app-screenshot/SKILL.md`
+See roadmap item 61 (#11), and `.claude/skills/app-screenshot/SKILL.md`
 for the capture itself.
 """
 

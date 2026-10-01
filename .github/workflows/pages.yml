@@ -2,7 +2,7 @@ name: Pages
 
 # The site (apps/docs) to GitHub Pages, through the Pages *artifact* workflow
 # rather than the serve-a-branch-folder mode: pointing Pages at a folder would
-# publish the decision trail as a website by accident (roadmap item 39).
+# publish the decision trail as a website by accident (roadmap item 39 (#10)).
 #
 # Runs on every push to main that touches the site or what it is built with,
 # and by hand. Cheap enough to run on every push, or it would be skipped and go

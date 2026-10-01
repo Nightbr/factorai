@@ -790,7 +790,7 @@ function SessionRow({ session, projectId, mark, subagentCount, clock24, pad }: S
 	// Whether the last copy worked, shown on the row for a moment: the menu has
 	// closed by the time the clipboard write returns, so it cannot report
 	// anything itself. Same transient mark the file tree's rows use, and for the
-	// same missing toast (roadmap item 7).
+	// same missing toast (roadmap item 7 (#17)).
 	const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
 
 	const title = session.title.trim() || session.id.slice(0, 8);

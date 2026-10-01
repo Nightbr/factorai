@@ -155,7 +155,8 @@ into the renderer.
 | [`PRODUCT.md`](PRODUCT.md) | who this is for and what may not change |
 | [`specs/adr/`](specs/adr/) | decisions and why, including superseded ones |
 | [`assets/`](assets/) | the brand masters (`brand/`) and the README screenshots (`images/`) |
-| [`specs/roadmap/`](specs/roadmap/) | what is next, and a dated log of what shipped |
+| [the roadmap Project](https://github.com/users/Nightbr/projects/1) | what is next: issues on a kanban, *Todo* in priority order |
+| [`specs/roadmap/`](specs/roadmap/) | the old item numbers mapped to issues, and the frozen log of what shipped before 2026-10-01 |
 | `.claude/rules/` | the traps in a given area, loaded when you edit it |
 | `.claude/skills/` | the long form: PRs, the gate, the test lanes, QA, screenshots |
 

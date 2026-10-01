@@ -8,8 +8,9 @@ clear issue and a small PR are the fastest way to get something in.
 ## How a change gets in
 
 1. **Find or file an issue.** The
-   [open issues](https://github.com/Nightbr/factorai/issues) are the work, and
-   the ones labelled
+   [roadmap board](https://github.com/users/Nightbr/projects/1) shows what is
+   next, the [open issues](https://github.com/Nightbr/factorai/issues) are the
+   work, and the ones labelled
    [`good first issue`](https://github.com/Nightbr/factorai/labels/good%20first%20issue)
    and [`help wanted`](https://github.com/Nightbr/factorai/labels/help%20wanted)
    are the easiest way in. For anything bigger than a small fix, open an issue

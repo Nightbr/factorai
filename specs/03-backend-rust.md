@@ -26,7 +26,7 @@ commands/
   ide.rs              # the IDE bridge's command surface (F20)
   routines.rs         # list/create/update/delete/set_enabled/run_now
                       #   (+ list_skills — slice 2, planned)
-  memory.rs           # list_plans, read_plan — PLANNED, roadmap item 2.
+  memory.rs           # list_plans, read_plan — PLANNED, roadmap item 2 (#14).
                       #   read_claude_md/write_claude_md dropped: F26 makes
                       #   every text file editable through write_file
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
@@ -304,7 +304,7 @@ app_quit_confirmed() -> ()
 
 // files
 read_file(path: String, max_bytes: Option<usize>) -> FileContents     // size, binary + truncated + lossy flags
-// The one command that writes a file (F26) — PLANNED, roadmap item 2. Atomic:
+// The one command that writes a file (F26) — PLANNED, roadmap item 2 (#14). Atomic:
 // canonicalise (so a symlinked `.env` writes its target), temp file in the same
 // directory, copy the original's mode, fsync, rename over. Creates the file if
 // it has gone; never creates a parent directory. Project files only — never an
@@ -391,7 +391,7 @@ git_blob_at(path: String, commit: String, max_bytes: Option<usize>) -> Option<Fi
 // Read-only like the rest, and it doubles as the IDE bridge's path scope.
 git_worktrees(project_path: String) -> Vec<GitWorktree>
 
-// memory / plans — PLANNED. Neither is registered yet (roadmap item 2).
+// memory / plans — PLANNED. Neither is registered yet (roadmap item 2 (#14)).
 // `read_claude_md` / `write_claude_md` were here and are dropped: F26 makes
 // every text file editable, so the tree reads a path and `write_file` writes
 // one. A per-file command pair would be a wrapper around both.

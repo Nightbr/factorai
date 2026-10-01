@@ -11,7 +11,7 @@
  * Converting rather than hardcoding is the point. A second copy of the palette
  * in hex is a copy that goes stale the first time a token moves, and the tokens
  * *have* moved — the amber was corrected by 3% lightness on 2026-08-19. This
- * also means the light theme (roadmap item 32) gets mermaid for free: it
+ * also means the light theme (roadmap item 32 (#28)) gets mermaid for free: it
  * redefines the same custom properties, and a diagram re-reads them.
  */
 

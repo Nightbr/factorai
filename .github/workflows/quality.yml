@@ -12,7 +12,7 @@ name: Quality
 #
 # **No e2e here on purpose.** Playwright needs a browser download and a dev
 # server, and the suite is ~70s and growing; it belongs in a lane that can be
-# slow (`tests/regression/`, roadmap item 10) rather than in front of every
+# slow (`tests/regression/`, roadmap item 10 (#19)) rather than in front of every
 # push. What that costs is the one thing e2e checked incidentally — that the
 # renderer still bundles — so `vite:build` is run here in its place. It is 2
 # seconds and it catches what `tsc` cannot: a bundler-visible break in an import

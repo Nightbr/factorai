@@ -32,7 +32,7 @@ and how well each is served is a fair way to judge any proposed feature.
 
 The fourth row is the thin one, and saying so is the point of the table: **F9
 is the only place the human edits the rules an agent runs under, and it is the
-one thing in this list that isn't built yet** (roadmap item 2). Under the old
+one thing in this list that isn't built yet** (roadmap item 2 (#14)). Under the old
 "session browser" framing it read as a nice-to-have file editor. Under this
 one it is the human's only lever on agent behaviour, which is a different
 priority argument entirely.
@@ -86,8 +86,8 @@ stub in `07-open-questions.md` for a possible follow-up.
 
 | Dropped                          | Why                                                          |
 | -------------------------------- | ------------------------------------------------------------ |
-| MCP / IDE emulator               | Implementing a WebSocket-based MCP server that impersonates an editor for Claude CLI is a project on its own. Dropped from the MVP, but **no longer deferred** — it graduated into `roadmap/TODO.md` item 19 on 2026-08-15, because the operating model above makes it the *push* half of review. |
-| Scheduler (`schedule-runner`)    | Cron-style session runs add a lot of surface; not core to the browse/manage loop. **No longer deferred** — it graduated into `roadmap/TODO.md` item 42 on 2026-08-28 as **Routines**, a per-project scheduled object, because the operating model above makes "sets the rules agents run under" a first-class verb. |
+| MCP / IDE emulator               | Implementing a WebSocket-based MCP server that impersonates an editor for Claude CLI is a project on its own. Dropped from the MVP, but **no longer deferred** — it graduated into roadmap item 19 (#25) on 2026-08-15, because the operating model above makes it the *push* half of review. |
+| Scheduler (`schedule-runner`)    | Cron-style session runs add a lot of surface; not core to the browse/manage loop. **No longer deferred** — it graduated into roadmap item 42 (#15) on 2026-08-28 as **Routines**, a per-project scheduled object, because the operating model above makes "sets the rules agents run under" a first-class verb. |
 | Grid overview (live multi-PTY)   | Single-session focus is enough for v1. Multi-PTY rendering is expensive in the webview. |
 | Activity heatmap                 | Nice-to-have. Easy to add later from the cached session index. |
 | ~~Auto-updates~~ **shipped**     | Was deferred; landed 2026-08-14 on `tauri-plugin-updater` (F14, ADR-0010). |

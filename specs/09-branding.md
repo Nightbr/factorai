@@ -124,7 +124,7 @@ release pages, where it cannot be corrected later.
 
 The **light theme keeps its own darker amber** (`oklch(58% 0.17 75)`) and should.
 `#FFB020` on a 98% ground fails contrast; a light theme needs a separate step,
-which is roadmap item 32's job. One brand amber does not mean one token value in
+which is roadmap item 32 (#28)'s job. One brand amber does not mean one token value in
 every theme.
 
 ---
@@ -357,7 +357,7 @@ to `themeConfig.image`, and writes a `headTags` href out verbatim.
 cd apps/desktop && pnpm tauri icon ../../assets/brand/factorai-icon.svg
 ```
 
-**Feed it the SVG, not a raster master.** `06-milestones.md` and roadmap item 18
+**Feed it the SVG, not a raster master.** `06-milestones.md` and roadmap item 18 (#24)
 both said to hand it a 1024px PNG; the SVG is better, because `tauri icon`
 rasterises each size natively from vector instead of downsampling one bitmap,
 and this mark is grid-aligned enough for that to be visible at 32px.
@@ -466,7 +466,7 @@ dev build show it, because they share a `WM_CLASS`.
 
 So: shipping an icon in the bundle is not sufficient for the dock. The
 `.desktop` entry and the `hicolor` theme files are the thing the shell reads,
-and they are what roadmap item 18 still has open.
+and they are what roadmap item 18 (#24) still has open.
 
 **This machine was fixed by hand on 2026-08-17** — the theme files regenerated
 from the master at 16/24/32/48/64/128/256/512 plus a `scalable` SVG, the entry's
@@ -516,4 +516,4 @@ paragraph version for the same metadata, and nothing else uses it yet.
 
 The AppImage installed before this existed carried `Comment=Command center for
 Claude Code sessions` and `Name=FactorAI`. Both are wrong now; both are fixed by
-a fresh install once the bundler work in roadmap item 18 lands.
+a fresh install once the bundler work in roadmap item 18 (#24) lands.

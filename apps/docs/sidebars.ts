@@ -1,6 +1,6 @@
 import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
-/** The guide, in the order a new user meets things (roadmap item 39). */
+/** The guide, in the order a new user meets things (roadmap item 39 (#10)). */
 const sidebars: SidebarsConfig = {
 	guide: [
 		'installation',

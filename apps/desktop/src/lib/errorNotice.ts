@@ -7,7 +7,7 @@
  * never touch `#root` — writing there is what used to destroy the app and every
  * terminal in it.
  *
- * **This is a stopgap and should be deleted.** Roadmap item 7 brings a real
+ * **This is a stopgap and should be deleted.** Roadmap item 7 (#17) brings a real
  * toast primitive to `@factorai/ui` and an `AppError` routing story; when it
  * lands, a *mounted* app should surface these through it and this file goes
  * away. It exists because the alternative today is `console.error` alone, and a

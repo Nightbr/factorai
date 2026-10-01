@@ -51,7 +51,7 @@ function umamiPlugin(): Plugin {
 	};
 }
 
-// The site: roadmap item 39 (one Docusaurus build, the guide under /docs) with
+// The site: roadmap item 39 (#10) (one Docusaurus build, the guide under /docs) with
 // item 58's hero as its index. `url` is the custom domain of ADR-0055, so
 // `baseUrl` is the root and `static/CNAME` rides in the build output.
 // `headTags` hrefs are written out verbatim — unlike `favicon` or

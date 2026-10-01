@@ -44,7 +44,7 @@ Where it would shine in a future version:
 the deferred list, evaluate honker before writing custom cron logic.
 Link this note from the eventual scheduler ADR.
 
-**It returned, was evaluated, and was declined** — `roadmap/TODO.md` item 42
+**It returned, was evaluated, and was declined** — roadmap item 42 (#15)
 (Routines), specified 2026-08-29 as
 [F22](./05-features.md) with
 [ADR-0026](adr/0026-a-routine-runs-without-a-tab.md) § 6 holding the

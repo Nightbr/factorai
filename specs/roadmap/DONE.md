@@ -1,8 +1,17 @@
 # Done
 
-Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
-[`README.md`](./README.md) for the workflow.
+> **Frozen on 2026-10-01** ([ADR-0070](../adr/0070-the-roadmap-is-github-issues-and-every-change-is-a-pr.md)).
+> The roadmap moved to [GitHub issues](https://github.com/Nightbr/factorai/issues) and
+> [the factorai roadmap Project](https://github.com/users/Nightbr/projects/1); closed issues and
+> merged PRs are the log from here on. Nothing is added below. A "TODO item N" in an entry resolves
+> through the table in [`README.md`](./README.md); `TODO.md` itself is in git history at `205305a`.
 
+Shipped work, newest first, up to 2026-10-01.
+
+- **The roadmap moved to GitHub** — 2026-10-01, TODO item 62, ADR-0070. Thirty items became issues
+  #9 to #38, with sub-issues #39 to #46 under items 2 and 38, on a public Project run as a kanban.
+  `TODO.md` was deleted, this file frozen, and every mutable citation of a live item now carries its
+  issue number. The last entry this file will get.
 - **The roadmap cleaned before the move to GitHub** — 2026-10-01, ahead of TODO item 62. Every
   live entry was checked against the code, the git log and the releases rather than against its
   own checkboxes, so only live work becomes an issue. What left `TODO.md`:

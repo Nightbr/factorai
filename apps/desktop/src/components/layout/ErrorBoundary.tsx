@@ -24,7 +24,7 @@ interface ErrorBoundaryState {
  *
  * What no React boundary catches, this one included: errors in event handlers,
  * in `setTimeout`, in unhandled promise rejections — anything thrown outside
- * the render phase. Those belong to the toast path (roadmap item 7), which is
+ * the render phase. Those belong to the toast path (roadmap item 7 (#17)), which is
  * the *expected*-failure surface. Keep the two separate: a toast is useless
  * when the tree is already gone, and this screen is far too much for a command
  * that returned an `AppError`.
