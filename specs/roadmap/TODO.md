@@ -5,7 +5,9 @@ on next". Consult it before re-deriving a plan from the specs and codebase. See
 [`README.md`](./README.md) for how this folder works, and [`DONE.md`](./DONE.md) for what has
 shipped.
 
-**Only live work is listed here.** Cleaned out twice — 2026-08-18 and again **2026-09-17**, when
+**Only live work is listed here.** Cleaned out three times — 2026-08-18, **2026-09-17**, and
+**2026-10-01**, before the move to GitHub issues (item 62), when items 31 and 55 closed, 21 and 37
+were retired, 27 folded into 6, 41 was dropped and fourteen more were rewritten. On 2026-09-17
 every remaining entry was checked against the code rather than against its own checkboxes; items
 5, 15 and 24 were fully shipped and left, and seven others lost the half they had already
 delivered. The first pass found eleven of thirty-four entries were announcements of their own
@@ -23,35 +25,35 @@ is not here, it shipped, and `DONE.md`'s entry for it names the number.
 kill-on-quit, FTS5 search. M4 is one item from done: **item 2**, now down to drafts that survive a
 quit, the secrets rule and F9's last two pieces. M5 is most of the way: **item 4 (settings, F11)
 shipped 2026-08-20**, **item 5 (the keybinding scheme, F28) shipped 2026-09-15** with its macOS
-menu verified 2026-09-17, and the release pipeline builds, signs and publishes on a tag. Items 6
+menu verified 2026-09-17, and the release pipeline builds alphas from `main` and promotes stables
+(ADR-0064), notarized on macOS since v0.52.0. Items 6
 (titlebar), 7 (error UX) and 8 (the smoke pass) are what M5 still owes.
 
-**M6 is down to four workstreams.** Items 39 and 58 landed 2026-09-21 (`DONE.md`): the site
+**M6 is down to two workstreams.** Items 39 and 58 landed 2026-09-21 (`DONE.md`): the site
 builds from `apps/docs`, deploys to Pages on every push that touches it, answers on
 **`factorai.build`** (ADR-0055) and opens on the hero one-pager. **Item 58 closed 2026-09-25**,
 when the user called the iterated hero finished and dropped its remainder; item 39 keeps its
 number for the guide's content, and **item 61**, real screenshots in the guide, is the new entry
-that came out of them. Items 51, 31, 59 and 39 are what M6 still waits on.
+that came out of them. Item 51 (notarization) closed 2026-09-27 and item 31 (the channels)
+2026-10-01, so items 59 and 39 are what M6 still waits on.
 
-**The list is now headed by M6 — the public first release.** See the block below: four
+**The list is now headed by M6 — the public first release.** See the block below: two
 workstreams left, in build order, and **only those gate it**. Everything under them, M5's own
 remainder included, is post-release work and is not a reason to delay the tag.
 
 ### M6 — the public first release
 
 **Decided 2026-09-17.** Today's releases are for people who were told about them; M6 is the one a
-stranger finds. Five workstreams, in the order they should be built; four are items below and
-the fifth has shipped:
+stranger finds. Five workstreams, in the order they should be built; two are items below and
+three have shipped:
 
-1. **[Item 51](#51-macos--a-developer-id-certificate-notarization-and-the-end-of-the-permission-loop) — a signed, notarized macOS app.** The decision to pay for the Apple
-   Developer Program was taken 2026-09-17. First because enrolment is the long pole: nothing else
-   here waits on a third party.
-2. **[Item 31](#31-two-channels-and-a-release-process-with-nothing-left-to-remember) — alpha and stable, and a release process with nothing left to remember.**
-   Strangers on the update path make "the pipeline is trustworthy" a release criterion rather
-   than housekeeping. **Built 2026-09-23 (ADR-0064)**: alpha builds itself from green `main`
-   through a pointer release, stable is a promoted alpha. What is left is its first real run.
-3. **[Item 59](#59-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Item 55 was its
-   first known finding and sits directly under it; item 54, the other, closed 2026-09-26.
+1. **Item 51 — a signed, notarized macOS app.** **Done** 2026-09-27, in v0.52.0 (ADR-0069,
+   `DONE.md`).
+2. **Item 31 — alpha and stable, and a release process with nothing left to remember.**
+   **Done** 2026-10-01 (ADR-0064, `DONE.md`): stable has been promoted four times and updates
+   have been seen on real installs on both channels.
+3. **[Item 59](#59-performance--one-audit-measured-then-the-fixes-it-names) — the performance audit, then the fixes it names.** Every P1 fix has
+   landed (items 54 and 55 with them); the ADR accepting the budgets is what is left.
 4. **[Item 39](#39-the-site--the-guides-content-now-that-the-build-carries-it) — the site: one Docusaurus build on GitHub Pages.** The build, the
    deployment and the domain landed 2026-09-21; the guide under `/docs` is scaffolded prose and
    is what is left.
@@ -67,80 +69,24 @@ anything below this line as soon as it is free to start.
 smoke pass (8), file drafts (2) and everything below. That is a choice, made 2026-09-17, and it
 has a cost worth stating once: going public with no toast means a transient failure still has
 nowhere to surface, and skipping item 8 means the first Finder-launched macOS run may be a
-stranger's. Item 51's own verification list covers part of that ground on the platform where it
-matters most.
+stranger's. Item 51's install-and-update check on a real Mac covers part of that ground on the
+platform where it matters most; the Finder-launched PATH list is still item 8's.
 
-**Item 4 was the one with dependents, and they are unblocked.** Items 31 (the channel picker), 32
-(the theme control) and 35 (the notification toggle) were waiting on the surface it creates; the
-switch item 33 wanted shipped with it. Each of those now needs a `SettingRow` and a section
+**Item 4 was the one with dependents, and they are unblocked.** Items 32 (the theme control) and
+35 (the notification toggle) were waiting on the surface it creates, as was item 31's channel
+picker, which shipped; the switch item 33 wanted shipped with it. Each of those now needs a `SettingRow` and a section
 heading rather than a settings feature — read them for what is left.
 
 **Below the M6 block, a position is where a slot happened to be free, never a claim about
-priority.** The first seven entries are the exception and are ordered deliberately: the four
-open workstreams, then item 62. **Item 42 (routines)** is the other one — asked for at high priority
+priority.** The first four entries are the exception and are ordered deliberately: the two
+open workstreams, item 61 (which came out of item 39), then item 62. **Item 42 (routines)** is the other one — asked for at high priority
 on 2026-08-28 and placed for it. **Item 47 (the footer shell) shipped on 2026-09-01, the day it was asked
 for, and item 49 (splits in that footer) on 2026-09-02, likewise**; their entries are in
 `DONE.md`. **Item 50 rescoped that footer from the session to the project** on 2026-09-03, also
 the day it was asked for; its entry is in `DONE.md` too. Items 12–14 —
 the `Cmd+P` / `Cmd+Shift+F` / `Cmd+G` navigation trio — are high priority despite sitting
-mid-list, and everything past 21 is simply the order things were asked for.
-
-## 31. Two channels, and a release process with nothing left to remember
-
-**Release-blocking. Decided and built 2026-09-23 —
-[ADR-0064](../adr/0064-alpha-builds-itself-and-stable-is-a-promoted-alpha.md); what is left is
-watching it run for real.** The design came out of an interview the same day; the ADR is the
-contract and F14 / F11 / F17 / F29 in `05-features.md` carry the app side.
-
-**What landed.**
-
-- **Alpha builds itself** (`alpha.yml`): on every successful Quality run for a push to `main`,
-  debounced by Quality's own `cancel-in-progress` and alpha's concurrency group, skipped when
-  only `specs/`, `apps/docs/` or `*.md` moved. A real prerelease, `vX.Y.Z-alpha.N`, macOS and
-  Linux only.
-- **The alpha channel is a pointer release**, `alpha-channel`, whose one asset is the newest
-  alpha's `latest.json`. Stable stays at `/releases/latest`, so every existing install keeps
-  working.
-- **Stable is a promoted alpha** (`gh workflow run promote`): the alpha's commit must have a
-  green Quality run, it is tagged and rebuilt with the stable version, published as Latest
-  after ADR-0014's check, then `CHANGELOG.md` and the next-minor bump land in one commit and
-  alphas older than the previous cycle are pruned.
-- **A hand-pushed `v*` tag fails** in `release-guard.yml` and publishes nothing.
-- **The repo holds the next stable** (`0.49.0`); dev builds say `0.49.0-dev`. The placeholder
-  special case in `vite.config.ts` is gone.
-- **Notes come from `feat:` / `fix:` subjects** (`scripts/release/`, tested with `node --test`
-  under `pnpm test`), with an optional headline on promote.
-- **In the app**: `check_update` runs in Rust against the channel's endpoint and hands the
-  plugin's own `Update` back; Settings › Advanced has the channel; About and the crash report
-  name it. Leaving alpha never downgrades.
-
-**Still open — each needs the workflows to run once on GitHub, which no local gate can do:**
-
-- [x] **The first alpha.** `v0.49.0-alpha.1` published itself on 2026-09-23 as a prerelease
-      with both platforms in its manifest — and **without** the `alpha-channel` pointer: the
-      pointer job inherited the Windows installer's skip. Fixed the same hour (`always()` plus
-      the result it depends on); `v0.49.0-alpha.2` created the pointer and it serves both
-      platforms.
-- [x] **Stable to alpha on a real install.** Tried 2026-09-25 from `0.49.0` and it failed
-      first: the check found `0.50.0-alpha.2` and the download 404'd, because every URL in the
-      pointer's `latest.json` read `/releases/latest/download/…` — tauri-action writes that for
-      a draft, and `latest` is stable. `point-alpha` now rewrites the URLs to the alpha's own
-      tag and fails if any is left outside it; the same install then updated to
-      `0.50.0-alpha.3` on Linux. A failed check was silent then. Since 2026-09-25 (ADR-0065)
-      a check you asked for, or an update found and not installed, says so in a toast.
-- [x] **Alpha to alpha on a real install.** Confirmed 2026-09-26: the install on
-      `0.50.0-alpha.3` picked up the next alpha by itself, the first time an install on the
-      channel moved along it.
-- [x] **The first promote, `0.49.0`.** Promoted from `v0.49.0-alpha.2` on 2026-09-23: Latest,
-      all five assets including the `.exe`, `/releases/latest/download/latest.json` says `0.49.0`,
-      the bump commit took `main` to `0.50.0` with the first `CHANGELOG.md` entry, and nothing
-      was pruned.
-- [ ] **A `0.48.2` install picks up `0.49.0`.** The manifest is right; seeing an existing
-      install update through it is still owed.
-- [ ] **The macOS smoke pass** has still never happened — that is item 8, not this item, and this
-      item does not pretend to close it.
-
-**Deliberately not here:** macOS signing and notarisation (DONE item 51), hotfix branches (ADR-0064 consequence 2).
+mid-list, and everything past 19 is simply the order things were asked for — except item 17,
+last on purpose at very low priority (2026-10-01).
 
 ## 59. Performance — one audit, measured, then the fixes it names
 
@@ -240,21 +186,14 @@ if the number is inside the budget. In the spec's order:
       `cargo build --release` binary still points at the dev server and shows a connection
       error that counts as a painted window.
 - [ ] **Accept the budgets** — an ADR once the numbers in P3 are agreed, and every `DONE.md` entry
-      above quotes before and after against them.
+      above quotes before and after against them. **This is the whole remainder** (re-checked
+      2026-10-01): `10-performance.md` still reads "P3 — Budgets (proposed)". The macOS numbers
+      PERF-04 and PERF-09 owe are measured in item 8's Mac pass.
 
 **What this item is not.** A rewrite, a virtualization project, or a dependency swap done on a
 hunch. Tier P2 (the raw-bytes PTY channel, WebGL, the entry chunk, `git_status` change detection,
 the graph window) is post-release and each of those is measured first; P3 is done when the
 adjacent code is touched.
-
-## 55. The markdown preview re-parses far more often than it changes, and mermaid pays for it
-
-**Asked for 2026-09-15.** The analysis this entry carried moved to
-[`specs/10-performance.md`](../10-performance.md) **PERF-13** on 2026-09-20, unchanged by the audit:
-hoist and memoise the parse, make the render-time ref read explicit, cache the palette reads behind
-the theme event, queue diagram renders, keep the old SVG during a re-render, and measure a
-genuinely large document before deciding anything else is needed. Tier P1; the checklist is item
-59's.
 
 ## 39. The site — the guide's content, now that the build carries it
 
@@ -298,7 +237,7 @@ What the guide holds, in the order a new user meets it:
 - **Troubleshooting**, where the known-and-non-obvious go: `claude` not found and the F11
   override, the AppImage's environment leaking into child processes, Linux specifics, and the
   one-time macOS permission prompt on v0.52.0 (DONE item 51).
-- **Releases and channels**, sharing whatever item 31 settles rather than describing it twice.
+- **Releases and channels**, linking ADR-0064 rather than describing it twice.
 
 What is left:
 
@@ -309,17 +248,9 @@ What is left:
       project; the `×` on a tab, which closes the session and does not stop it; SOPS files,
       which open locked; and the graph, which has no checkout picker. **First run** and
       **Troubleshooting** are written and in the sidebar.
-- [ ] **What only the real window can confirm**, left from that pass:
-      - Terminal: copying a selection, paste from the right-click menu, and Ctrl/Cmd+click on a
-        link in a real PTY.
-      - Native surfaces: the folder picker, Reveal, the trash on delete.
-      - Updater: download, restart and channel switch, now largely seen in item 31.
-      - macOS: the permission prompts, Cmd+Q, the context menu. (Gatekeeper's *damaged* message is
-        gone since v0.52.0, DONE item 51.)
-      - Status dots against real agent titles, and sessions appearing live from the watcher.
-      - A routine firing, catching up and queueing.
-      - The Windows/WSL pages.
-      Most of this is item 8's pass; the macOS half is unblocked now item 51 has shipped.
+- [x] **What only the real window can confirm**, left from that pass, **moved to item 8** on
+      2026-10-01: it is that pass. The updater line came out of the list, seen on real installs
+      in item 31 (`DONE.md`).
 - [x] **Six app bugs the check turned up**, closed 2026-09-26. Five were fixed, one commit
       each: the quit note no longer says quitting always asks; a failed start and the profile
       badge no longer say *claude* for a Codex session; the confirmations say an agent is
@@ -332,9 +263,11 @@ What is left:
       `staticDirectories` entry is needed, and a path that does not exist fails the build rather
       than shipping a broken image. One copy per screenshot, so one re-shoot serves the README
       and the guide. The images themselves are item 61.
-- [ ] **Versioning is deliberately off at first.** Docusaurus can version the docs per release;
-      switching it on before there is a second release to compare against buys a directory of
-      duplicates. Revisit when the stable channel has shipped twice.
+- [ ] **Decide on versioning.** It was deliberately off at first: Docusaurus can version the docs
+      per release, and switching it on before there is a second release to compare against buys a
+      directory of duplicates. The trigger was "when the stable channel has shipped twice", and it
+      has shipped four times (0.49 to 0.52), so this is now a decision rather than a wait. Saying
+      no is a fine answer while the guide only ever describes the latest stable.
 
 ## 61. Real screenshots in the guide, from a fabricated workspace
 
@@ -354,7 +287,7 @@ loop end to end.
 employer project names, and a sidebar with four rows blurred and one legible reads as a redacted
 document rather than as a product — the finding that killed the 2026-08-27 attempt (item 41) and
 the reason the hero shipped with coded miniatures rather than stills. So the subject is
-**fabricated**, and it is the same fixture item 41 wants. Build it once here:
+**fabricated**. Build it once here:
 
 - [x] **A seeded workspace on disk**, not the mock bridge — `scripts/qa/fixture-workspace.py`,
       2026-09-21. `billing-api`, `docs-site`, `homelab` and `recipes` in the groups `Pro` and
@@ -372,13 +305,9 @@ the reason the hero shipped with coded miniatures rather than stills. So the sub
       JSONL shape specs/02-data-model.md records, with `ai-title` events so the list reads as
       sentences, tool-use blocks so the panel has touched paths, and timestamps spread over three
       weeks so the times read as times.
-- [ ] **A signed-in fixture store, for the one shot that needs a live agent.** Opening a session
-      spawns `claude --resume` in the fixture's config directory, where no account is set up, so
-      the pane shows the trust prompt and then a sign-in screen. Running `claude` once
-      interactively with `CLAUDE_CONFIG_DIR` pointed at the fixture store fixes it for good, and
-      it is a human's job at the keyboard rather than something a session should arrange. Until
-      then the Sessions and Terminal pages get the session list, the tab strip and a footer
-      shell, none of which need an account.
+- [x] **A signed-in fixture store** — moot since 2026-09-26: ADR-0066 makes the guide's shots
+      scripted from the mock bridge, and its consequence 3 says the live-agent gap stops
+      mattering for the guide.
 - [x] **The guide is illustrated**, 2026-09-26, and not by the manual pass this line planned.
       The user asked for every part to be illustrated, including GIFs of flows, such as the
       update going from *Check for updates* to *Update ready*. Most of that is states the real
@@ -387,8 +316,8 @@ the reason the hero shipped with coded miniatures rather than stills. So the sub
       ([ADR-0066](../adr/0066-the-guide-is-illustrated-from-scripted-shots-of-the-mock-bridge.md)).
       This reverses the rejection of the mock bridge in the first checkbox above, and the ADR
       says why.
-- [ ] **Dark only.** The site is dark and the light palette does not render yet (item 32); a
-      light shot would be of a theme neither the app nor the page currently shows.
+- **Dark only**, a constraint rather than a task: the site is dark and the light palette does not
+  render yet (item 32), so a light shot would be of a theme neither the app nor the page shows.
 - [x] **Where they live**, which was item 39's open checkbox: `assets/images/`, referenced from
       a guide page by a relative path, verified by a build 2026-09-21.
 - [ ] **Re-shoot the five in `assets/images/` from the same fixture.** They predate it, the
@@ -407,7 +336,7 @@ place: `TODO.md` is the queue, `DONE.md` the log (5,000 lines between them). Tha
 every change lands on `main` from one machine. It does not survive other people: an outside
 contributor cannot claim, discuss or be assigned an item in a markdown heading, and PRs #4–#6 are
 already from people who had nowhere to file what they fixed first. The move is to GitHub
-**issues** for items, a **Project** for their order and milestone, and a **PR** for every change,
+**issues** for items, a **Project** for their order, and a **PR** for every change,
 this repo's own sessions included.
 
 **Decide first, in an ADR, because it supersedes a working protocol** — `specs/roadmap/README.md`
@@ -416,17 +345,26 @@ skill are all the thing being replaced.
 
 ### The migration
 
+- [x] **Only live work migrates.** Every entry was re-checked against the code on 2026-10-01:
+      items 31 and 55 closed as shipped, 21 and 37 retired (the PDF follow-ups became item 63,
+      the `HEAD` chip went to item 1), 27 folded into 6, and 41 dropped. Fourteen others were
+      rewritten to their true remainder. `DONE.md` has the entries.
 - [ ] **One issue per live `TODO.md` item**, its body the entry as it stands, its open checkboxes
-      as a task list. Labels for the area (`area:terminal`, `area:site`, …) and the kind (`bug`,
-      `feature`, `chore`); the milestone as a GitHub milestone (`M6`, …).
-- [ ] **A GitHub Project** carrying the order: a priority field or a ranked view replaces
-      "position is priority". The M6 block's prose becomes the milestone's description.
+      as a task list, relative links rewritten to absolute ones. Labels for the kind (`bug`,
+      `feature`, `perf`, `chore`, `docs`) and the area (`area:terminal`, `area:site`, …).
+      **No milestones to start with** — decided 2026-10-01; the Project carries the order.
+- [ ] **A GitHub Project, run as a kanban**: *Incoming* (filed, unread — where every new issue
+      lands), *Needs triage* (read, waiting on a repro or a decision), *Qualified* (accepted, not
+      scheduled), *Todo* (next, ordered by hand), *In progress*, *In review*, *Done*. The
+      hand order in *Todo* replaces "position is priority". Migrated items land in *Qualified*,
+      the head of this file in *Todo*. The built-in workflows do the moves they can: auto-add
+      from the repo, closed or merged to *Done*.
 - [ ] **Item numbers do not survive as issue numbers**, and they are cited from the specs, the
       ADRs, `DONE.md`, `alpha.yml` and about ten code comments ("roadmap item 7"). Issues and PRs
       share one counter and #1–#6 are taken, so item 7 cannot become #7. Keep the old number in
-      the title (`[#7] Error UX: …`) or a `roadmap:N` label, and leave one table in
-      `specs/roadmap/README.md` mapping item to issue. Rewrite the citations in mutable files to
-      the issue URL; immutable ADRs keep theirs and resolve through the table.
+      an *Item* number field on the Project, and leave one table in `specs/roadmap/README.md`
+      mapping item to issue. Rewrite the citations in mutable files to the issue URL; immutable
+      ADRs keep theirs and resolve through the table.
 - [ ] **`DONE.md` stops growing, and the ADR says whether it is deleted or frozen.** Immutable
       ADRs link into it and `AGENTS.md` says `DONE.md` entries cite its old section numbers, so
       deleting it leaves dangling links in files that cannot be edited. Frozen as an archive with
@@ -441,10 +379,10 @@ skill are all the thing being replaced.
 - [ ] **`.github/ISSUE_TEMPLATE/`**: a bug form (version, platform, WSL or not, steps, what you
       expected), a feature form (which of supervise / decide / review / set the rules it serves,
       per `AGENTS.md`), and `config.yml` turning off blank issues.
-- [ ] **`.github/pull_request_template.md`**: what changed and why, the spec or ADR it touches
-      (the same-commit rule still holds), the issue it closes, and the gate — which commands ran,
-      and for UI work whether the real window was used. `pnpm e2e` is not in CI, so the template
-      is where it is declared.
+- [x] **`.github/pull_request_template.md`** — landed 2026-10-01 (`1994c6a`): what changed and
+      why, the issue it closes, the spec or ADR it touches, `pnpm e2e` and the real window
+      declared (e2e is not in CI), and **screenshots or a video of the app on every PR**, from a
+      fabricated workspace.
 
 ### PRs for everything, and who may merge
 
@@ -466,8 +404,16 @@ skill are all the thing being replaced.
       several sessions share one tree) per task, small commits on it, a PR per slice citing its
       issue, "Push small and often" becoming "open the PR early". `spec-and-adr-workflow` and
       `quality-gate` say the same. The "Commits" section's no-PR rule goes.
-- [ ] **A `CONTRIBUTING.md`** for the stranger: setup, the gate, the no-emoji / no-`--no-verify`
-      rules, and that a maintainer approves before merge.
+- [ ] **`promote.yml` stops pushing to `main`.** Its bump commit is a direct push
+      (`git push origin HEAD:main`), which the rulesets above refuse. Open a bump PR with
+      auto-merge instead, with an app token or a fine-grained PAT so Quality runs on it — a PR
+      opened with `GITHUB_TOKEN` triggers no workflows. Lands before the rulesets do.
+- [ ] **`CONTRIBUTING.md` rewritten for the stranger.** It exists and covers setup and the gate.
+      Missing: `pnpm bytes:check` in its list, an HTTPS clone (or fork-then-clone), how to claim
+      an issue, what will not be merged (no native Windows, no telemetry — PR #3), screenshots on
+      every PR, the no-emoji / no-`--no-verify` rules, that a maintainer approves before merge,
+      a note for contributors working through an agent, Discussions for questions, a
+      `CODE_OF_CONDUCT.md`, and `SECURITY.md` with private vulnerability reporting.
 
 **This is alpha-era policy.** Auto-merge on green is right while alpha builds itself from every
 green `main` and stable is a promotion a person makes (ADR-0064): the promotion is the review
@@ -487,10 +433,11 @@ follow-ups the design named. None of it is started.
   needs — full 40-character SHAs, and both author and committer timestamps.
 - **A merge's parent picker**, so the file list can diff against either side rather than only the
   first.
-- **Worktrees**, which change what "the repository" means on screen. **Specified 2026-08-21
-  and moved out to item 37** — it turned out to be a session feature that the graph happens to
-  render, not a graph feature. What stays here is the graph's share of it: a `HEAD` chip per
-  checkout, which is one more ref kind through machinery this item already owns.
+- **A `HEAD` chip per checkout.** Worktrees shipped as a session feature (F21) that the graph
+  happens to render; this is the graph's share of it, one more ref kind through F18's badge
+  machinery and its "the icon says where the ref lives" rule. In a worktree-heavy repository it is
+  the reason to open a graph at all — three checkouts, visible at once, on the commits they are
+  sitting on. Item 37 carried it until it closed on 2026-10-01.
 
 ## 2. M4 — editing and saving a file (F26)
 
@@ -512,7 +459,8 @@ Specs: [F26](../05-features.md#f26--editing-and-saving-a-file), amended F7 and F
 
 ### Slice 2 — drafts
 
-- [ ] Migration `0020` `file_drafts(path PK, contents, base_hash, updated_at)`, and the two
+- [ ] A migration (0023 or later — `0020` went to PERF-01's `messages` table)
+      `file_drafts(path PK, contents, base_hash, updated_at)`, and the two
       commands behind it. Caps: 1MB per draft, 32MB total, oldest evicted first.
 - [ ] Debounced persistence from the editor; a buffer equal to disk leaves no row.
 - [ ] Restore compares `base_hash` against the file as read: equal → restore dirty; different →
@@ -573,7 +521,8 @@ What is left:
   been lived with. The cap has no visible queue either — a fire held back for the next tick is
   invisible until it runs.
 - Where a failed fire surfaces. `last_error` is on the row today, which is the copy that survives
-  being away from the machine; item 7's toast is the other half and is not built.
+  being away from the machine. The toast is the other half: the primitive exists (ADR-0065), and
+  nothing sends a routine failure to it yet.
 - **Run history** — one `last_run_at`, or a table of runs. A table is what makes "why did last
   Tuesday's fail" answerable, and it is the natural home for the interrupted and skipped states
   this design already produces.
@@ -604,7 +553,19 @@ macOS, buttons right on Linux), and a double-click-to-maximise handler. The shel
 corners and border are already in place from the August fixes, so the window will actually look
 like a window once the OS frame goes away.
 
-## 7. M5 — error UX: a toast primitive, empty states, indexing feedback
+**It also owns the Linux corners**, folded in from item 27 on 2026-10-01. The bottom corners are
+square on Linux today — the least-bad shape, not a clean one: the WM rounds the frame it draws, and
+our opaque client area paints over the curve. Two cheap fixes were tried and verified wrong on the
+real window, and [Q21](../07-open-questions.md) has the measurements: `border-radius` on an opaque
+window leaves a wedge of `bg-background`, and a transparent window exposes the compositor's drop
+shadow as a grey smudge. With `decorations: false` the app owns the whole frame: it declares its
+shadow margins through `_GTK_FRAME_EXTENTS`, draws the shadow itself, and rounds the corners inside
+a region it controls, which is how every GTK4 app gets clean corners on this desktop. Check the
+result on Wayland as well as X11 + Mutter, and measure it the way Q21 says (full-screen
+`gnome-screenshot`, crop by `xwininfo` geometry, per-pixel luminance): scaled screenshots lie about
+exactly these pixels.
+
+## 7. M5 — error UX: transient errors through the toast
 
 - [x] **A toast in `@factorai/ui`** — landed 2026-09-25 (ADR-0065): sonner, dressed in the
       palette's tokens, one `Toaster` in `AppShell`. Its first customer is F14's update
@@ -615,10 +576,15 @@ like a window once the OS frame goes away.
       shrinks to the crash-time fallback it is the only answer for.
 - [x] Empty workspace (F1, ADR-0067): the first-run hero in the main pane, with an Import door
       per agent and a pointer to Settings → Agents when no agent is found.
-- [ ] Empty states: project with no sessions (F6 already offers `New session` here), empty
-      search.
-- [ ] Friendlier indexing UI on top of the `indexer:progress` events the sidebar already
-      consumes.
+- [x] Empty states, found shipped on 2026-10-01: a project with no sessions draws an `EmptyHero`
+      (`routes/project.tsx`), and an empty search says "No matches for …".
+- [x] Indexing feedback, found shipped on 2026-10-01: the sidebar footer shows
+      "Indexing… N/M" off `indexer:progress`.
+
+**What is left is the first unchecked box**: today `toast` has one caller (`useUpdater.ts`), and
+`lib/errorNotice.ts` still handles every window-level error with a header calling itself a stopgap
+waiting on this item. Routine failures (item 42) and a background `openFile` (item 19) are the next
+two customers.
 
 ## 8. M5 — release: the smoke pass on both platforms
 
@@ -626,20 +592,31 @@ The last mile before the app is something a teammate installs rather than runs f
 
 **Three of the four landed 2026-08-14/17** — the icon set (with `09-branding.md`'s
 regeneration command; **item 18** keeps the `.desktop` entry it did not cover), the README with
-install instructions, and the tag-driven `tauri build` workflow that drafts a release with a
-universal macOS `.dmg` and a Linux `.AppImage`. Two constraints it wrote into the README rather
-than leaving a user to find: macOS builds are unsigned so Gatekeeper blocks them until quarantine
-is cleared, and the Linux bundles carry a **glibc 2.39 floor** from ubuntu-24.04. What is left is
-the pass nobody has run:
+install instructions, and the release pipeline, which is now alpha-from-`main` plus a promoted
+stable (ADR-0064). macOS builds are signed and notarized since v0.52.0 (ADR-0069), so the
+Gatekeeper step is gone; the Linux bundles still carry a **glibc 2.39 floor** from ubuntu-24.04.
+Item 51 installed, launched and updated a notarized build on a real Mac, which is not this pass.
+What is left is the pass nobody has run:
 
-- [ ] Manual smoke pass on **macOS arm64** and **Ubuntu 24**. macOS is the untested platform:
-      every gotcha in `DONE.md` so far is WebKitGTK-flavoured, and the login-shell PATH fallback
-      in the claude probe (Q2) exists specifically for GUI launches on macOS and has never been
-      exercised there. **Two surfaces now, not one** — as of 2026-08-17 the *session's own* PATH
-      is resolved from the login shell too, which is a much wider blast radius than the probe
-      (hooks, stdio MCP servers, the statusline, everything the agent runs from `Bash`). Run the
-      verification list in `DONE.md`'s entry for it, and run it from a **Finder-launched** build:
-      `pnpm dev` from a terminal inherits a healthy PATH and hides this whole class of bug.
+- [ ] **macOS arm64, from a Finder-launched build.** macOS is the untested platform: every gotcha
+      in `DONE.md` so far is WebKitGTK-flavoured, and the login-shell PATH fallback in the claude
+      probe (Q2) exists specifically for GUI launches on macOS and has never been exercised there.
+      **Two surfaces, not one** — the *session's own* PATH is resolved from the login shell too,
+      which is a much wider blast radius than the probe (hooks, stdio MCP servers, the statusline,
+      everything the agent runs from `Bash`). Run the verification list in `DONE.md`'s entry for
+      it ("needs a human on a Mac"): `pnpm dev` from a terminal inherits a healthy PATH and hides
+      this whole class of bug.
+- [ ] **What only the real window can confirm**, moved here from item 39 on 2026-10-01:
+      - Terminal: copying a selection, paste from the right-click menu, and Ctrl/Cmd+click on a
+        link in a real PTY.
+      - Native surfaces: the folder picker, Reveal, the trash on delete.
+      - macOS: the permission prompts, Cmd+Q, the context menu.
+      - Status dots against real agent titles, and sessions appearing live from the watcher.
+      - A routine firing, catching up and queueing.
+      - The Windows/WSL pages of the guide.
+- [ ] **The macOS numbers item 59 still owes**: PERF-04 (the wheel region is WKWebView's alone)
+      and PERF-09, measured on the same Mac in a release build.
+- [ ] **Ubuntu 24, the AppImage**, as a formal pass against the exit criterion below.
 
 **Exit criterion for M5** (`06-milestones.md`): a teammate installs the `.dmg` or `.AppImage` and uses
 factorai for an hour without hitting a flow-breaking bug.
@@ -647,9 +624,8 @@ factorai for an hour without hitting a flow-breaking bug.
 ## 10. Interaction-level QA coverage
 
 **Partly done — narrow this rather than reading it as unstarted.** The Playwright lane it called
-"the path forward" exists: 75 `@smoke` tests across 14 files, covering the tree, the viewer, the
-tab strip, search, zoom, the update badge, add-project and the missing-project state. What is
-left is the *regression* lane and the depth, not the approach.
+"the path forward" exists, and has grown: about 320 `@smoke` tests across 41 files by
+2026-10-01. What is left is the *regression* lane, not the approach.
 
 The doc correction it asked for is **done (2026-08-15)**. Worth noting how that went, because it
 is the argument for this item: the accurate version was written *here*, in this entry, while
@@ -663,9 +639,11 @@ two `factorai` processes running *different builds* — now distinguishable, sin
 titles itself `factorai DEV`; and `pnpm dev` doesn't rebuild Rust at all, so a new command needs
 a full restart.
 
-- [ ] Open the `tests/regression/` lane. The smoke suite is at ~110s against a stated budget of
-      "a few seconds"; one of the two has to give, and that is inconsistency **E1**.
-- [ ] Fixtures stay one-factory-per-shape in `tests/smoke/fixtures.ts`.
+- [ ] Open the `tests/regression/` lane and move the heavy tests into it, or change the budget
+      the `smoke-tests` skill states ("a few seconds"). One of the two has to give, and that is
+      inconsistency **E1**. Fixtures stay one-factory-per-shape in `tests/smoke/fixtures.ts`
+      either way — a standing rule, not a task.
+
 Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 `gnome-screenshot` for `swaymsg` / `grim`). X11-only is fine while the dev box is X11.
 
@@ -673,8 +651,9 @@ Deferred within this item: **Wayland support in `scripts/qa/`** (swap `wmctrl` /
 
 > **Priority: HIGH for items 12–14** (user ask, 2026-08-14) — kept at the end of the file to avoid
 > renumbering items 1–11 and their cross-references. Read them as sitting **right after M4 (items
-> 1–3)**. Item 5's binding scheme shipped 2026-09-15, so each of these is now a map entry plus a
-> call site. They're a coherent trio: don't build the third without the first.
+> 1–3)**. The binding scheme shipped 2026-09-15 (F28, ADR-0046, which already names `Cmd+P` as a
+> future default), so each of these is now a map entry plus a call site. They're a coherent trio:
+> don't build the third without the first.
 
 The first of three navigation surfaces (12–14) that the desktop Claude Code app has and factorai
 doesn't. They're specced separately because their **backends** differ wildly — a filename index, a
@@ -683,9 +662,10 @@ component**: a single palette modal with a mode prefix, VS Code style (bare = fi
 `>` = commands later), not three modals that each reinvent the list, the fuzzy match and the
 keyboard handling. Build the palette here; items 13–14 add modes to it.
 
-**Prerequisite: none of the three exists in the specs yet.** `05-features.md` stops at F12, and its
-keyboard table has no `Cmd+P`. Write F13 (this item) before coding, per the `spec-and-adr-workflow` skill — the
-palette is a new surface with its own state, not a variation on the tree.
+**Prerequisite: none of the three exists in the specs yet.** `05-features.md` has no palette, and
+its keyboard table has no `Cmd+P`. Write the next free F-number (F31 or later; F13 is the Changes
+tab) before coding, per the `spec-and-adr-workflow` skill — the palette is a new surface with its
+own state, not a variation on the tree.
 
 - [ ] Palette shell in app code (`Command`-style modal): fuzzy filter, ↑/↓/Enter, Escape, scoped to
       the route's project. `@factorai/ui` has no combobox/command primitive — decide whether one
@@ -715,13 +695,11 @@ nobody merges them into one input.
       regex toggles. Same `ignore`-crate walker as item 12; results streamed or capped (a match
       list on a large repo is unbounded), with per-file grouping and a line + column per hit.
 - [ ] Results UI. A palette mode is the wrong shape for this — hits need file grouping, context
-      lines and persistence while you click through them. The right-hand panel is a better home
-      (it's where `Changes` and the graph already live), which makes the panel's tab strip a decision
-      that three items now depend on. Settle it once.
-- [ ] Clicking a hit must open the file **at that line**. `?file=` carries a path and nothing else
-      today, so this needs `?file=…&line=N` (validated on `__root` beside the existing param) and
-      a `revealLineInCenter` call once Monaco has mounted. Item 12 doesn't need this; this item
-      does.
+      lines and persistence while you click through them. The panel is the home: it has a tab
+      strip now (`PanelTab = 'files' | 'changes' | 'graph'`, `panelStore.ts`), so search is a
+      fourth tab.
+- [x] Clicking a hit opens the file **at that line** — already possible: `__root` validates
+      `&line=` / `&col=` (F19) and `FileView` places the caret. Nothing to build.
 - [ ] Debounce and cancel in-flight searches — typing in a grep box fires a walk per keystroke
       otherwise.
 
@@ -834,29 +812,6 @@ A white bar down the right of every session on macOS turned out to be two faults
 Still parked, still wants doing together — the `pr-2` gutters, overlay-vs-in-flow and the fate of
 the two utilities are all untouched by the above.
 
-## 17. Rename a session from inside factorai
-
-Reading the name `/rename` set is done (F2). Setting one from the app is not, and it is a bigger
-question than it looks: `custom-title` lines live in the session's own JSONL under
-`~/.claude/`, which **ADR-0004 declares read-only** — the CLI owns that tree. Appending to a file
-Claude Code has open, from a second process, is exactly the kind of thing that ADR exists to
-prevent.
-
-Options, none free:
-
-- **Append a `custom-title` line** to the transcript, as the CLI does. Simple, and the name shows
-  up in Claude Code too. But it writes into a file another process is actively appending to, and
-  it supersedes ADR-0004 — which needs a new ADR, not a shrug.
-- **Keep the name in our own database**, overriding the transcript for display. No writes to
-  `~/.claude` at all, so ADR-0004 stands — but the name exists only in factorai, and `/rename`
-  and the app can then disagree about what a session is called.
-- **Drive the CLI**: send `/rename <name>` to the session's PTY. Uses the owner of the file to do
-  the writing, which is the tidy answer — but only works while a session is live, and typing into
-  someone's terminal to change metadata is a strange mechanism.
-
-Worth doing — the user manages names with `/rename` today and has a hook proposing names from the
-issue/PR — but it wants the ADR-0004 question answered first.
-
 ## 18. UI / branding: desktop integration assets
 
 **The mark, the app icon set, the README and the in-app brand row all landed on 2026-08-17** —
@@ -915,93 +870,37 @@ is the half that is still only a decision. What is left:
   directory boundary today because the tree is recursive and each node fetches
   its own listing, so nothing holds a flat list of what is visible. Wider ranges
   mean lifting those listings out of their nodes.
-- **Where an `openFile` for a background session should land.** Nothing happens
+- **An `openFile` for a background session lands in a toast.** Nothing happens
   today and the agent is told so. A tab mark was tried and removed for colliding
-  with the session status dot; the toast primitive item 7 wants is the likely
-  home, since a transient event probably deserves a transient surface.
+  with the session status dot, and the toast it was waiting on exists now
+  (ADR-0065), so this is a call site rather than a decision. The comments in
+  `services/ide/protocol.rs` and `ui_state.rs` still describe the removed tab
+  mark; fix them in the same commit.
 - **The off switch**, which is now a `SettingRow` in F11's modal — `prefsStore` and the
   Confirmations/Sessions pattern exist, so this is a row and a boolean rather than a surface.
 - **`openDiff` and the write path** — its own ADR, and the thing that supersedes
   part of ADR-0009.
 
-## 21. Post-MVP / deferred
+## 63. The PDF viewer's four follow-ups
 
-Not duplicated here — [`06-milestones.md`](../06-milestones.md) § "Deferred" holds the ordered
-list (MCP/IDE emulator, scheduler, grid overview, activity heatmap, external terminal launch,
-multi-window, auto-updates, crash reporting, Windows, mobile). Items graduate from there into
-this file when they become the next thing to do, not before.
+**Split out of item 21 on 2026-10-01**, when that entry was retired. Preview itself shipped
+2026-08-19 (pdf.js, bundled, continuous scroll with a text layer — F7, ADR-0018); these were scoped
+out of it deliberately, in the order they are worth doing. None is started.
 
-**The keep-awake inhibitor travelled that way on 2026-08-17** — disqualified on the user's call as
-too risky for now, and demoted to that list (entry 11), which holds the reasoning and the two open
-design questions. It was the first item to go back rather than forward, and it should not be the
-last: an item that has stopped being the next thing to do belongs there, not sitting here looking
-queued. The short version, so nobody re-adds it by reflex: the danger is the **release** path, not
-the feature — a leaked sleep inhibitor is invisible, which is ADR-0005's orphan-PTY problem on a
-platform surface we don't control, and Linux has no single mechanism (logind / portal /
-ScreenSaver).
-
-Two viewer follow-ups sit between "shipped" and "deferred", and belong here rather than there
-because F7 already commits to them:
-
-- **Per-project tab system.** `?file=` is a single path today, validated on the `__root` route
-  precisely so it can grow into a list. The end state is tabs switching between the project page,
-  its sessions, and open files — at which point `FileViewerModal` stops being the host.
-- **The PDF viewer's four follow-ups.** Preview itself shipped 2026-08-19 (pdf.js, bundled,
-  continuous scroll with a text layer — F7, ADR-0018); these were scoped out of it deliberately,
-  in the order they are worth doing:
-  - **A find bar.** `Cmd+F` across the document, with match highlighting and next/prev. The text
-    layer is already there, so this is a match index and a scroll-to-match rather than new
-    plumbing. **The shape is settled**: F7's find widget shipped 2026-09-09 — Monaco's, restated
-    in the app's palette — and this bar matches it rather than inventing a second look. What is
-    still open is only where the bar sits, because a floating widget over a PDF has no editor to
-    scroll a blank row into.
-  - **Go-to-page.** A number box beside the counter. Small, and only obviously worth it once a
-    document long enough to want it is in front of someone.
-  - **Outline sidebar**, from `getOutline()` — real navigation for a spec or a book. Needs a
-    layout decision the pane doesn't currently have room for.
-  - **Rendered PDF diff.** A changed `.pdf` in the Changes tab dead-ends on "Cannot preview binary
-    file" today. Two `PdfView`s scroll-synced by page is the obvious shape; the open questions are
-    what "changed" means for a page (any pixel? any text?) and whether an added or deleted page
-    should align against nothing on the other side. Not started, and not blocking anything.
-
-## 27. The window's bottom corners on Linux are still not pixel-clean
-
-**Found 2026-08-16, after two attempts at it.** Cosmetic, and the reason it gets an entry rather
-than a third attempt is that both cheap answers are now known to be wrong — see
-[Q21](../07-open-questions.md) for the measurements, which are worth reading before touching this.
-
-Where it stands: the corners are **square** on Linux, with the shell's 1px border running unbroken
-into them. That is the least-bad shape, not a clean one. The WM rounds all four corners of the
-frame it draws — its own outline traces a ~12px arc at the top-left, and at the bottom-left it
-fades out over the last ~10 rows because our opaque client area is painted over the curve. So the
-app covers the frame's arc, and the last few pixels before the corner read as a hairline that
-stops early.
-
-Ruled out, both verified on the real window rather than reasoned about:
-
-- **`border-radius` on an opaque window.** Carves the shell away and whatever paints behind it
-  fills the gap — a wedge of `bg-background` outside the arc, the border curving off into it.
-- **A transparent window** (`transparent: true` in a `tauri.linux.conf.json`, `<html>`/`body`
-  painting nothing). The geometry is right — a real 12px antialiased arc, desktop visible through
-  it — but the corner then exposes the **compositor's drop shadow**, which is a grey smudge where
-  the wedge was.
-
-**The likely real fix is client-side decorations**, which is why this is worth doing next to
-**item 6 / M5's custom titlebar** rather than on its own. With `decorations: false` the app owns
-the whole frame: it declares its shadow margins through `_GTK_FRAME_EXTENTS`, draws the shadow
-itself, and rounds the corners inside a region it controls — which is exactly how every GTK4 app
-gets clean rounded corners on this desktop. Doing it as part of the titlebar work means one change
-to the window shape rather than two.
-
-Worth confirming when someone picks this up:
-
-- Whether the artifact survives on **Wayland** (all of the above was measured on X11 + Mutter with
-  server-side decorations) and under a different WM. It may be narrower than "Linux".
-- Whether Mutter can be told not to draw its shadow under the client corner. If it can, the
-  transparent-window route becomes viable without the titlebar work.
-- Method, so this isn't re-derived: full-screen `gnome-screenshot`, crop the corner by the client
-  geometry from `xwininfo -id <wid>`, and dump per-pixel luminance. Scaled screenshots lie about
-  exactly the pixels this is about — the first round of this was diagnosed wrongly off one.
+- **A find bar.** `Cmd+F` across the document, with match highlighting and next/prev. The text
+  layer is already there, so this is a match index and a scroll-to-match rather than new
+  plumbing. **The shape is settled**: F7's find widget shipped 2026-09-09 — Monaco's, restated
+  in the app's palette — and this bar matches it rather than inventing a second look. What is
+  still open is only where the bar sits, because a floating widget over a PDF has no editor to
+  scroll a blank row into.
+- **Go-to-page.** A number box beside the counter. Small, and only obviously worth it once a
+  document long enough to want it is in front of someone.
+- **Outline sidebar**, from `getOutline()` — real navigation for a spec or a book. Needs a
+  layout decision the pane doesn't currently have room for.
+- **Rendered PDF diff.** A changed `.pdf` in the Changes tab dead-ends on "Cannot preview binary
+  file" today. Two `PdfView`s scroll-synced by page is the obvious shape; the open questions are
+  what "changed" means for a page (any pixel? any text?) and whether an added or deleted page
+  should align against nothing on the other side.
 
 ## 29. Error boundaries — per-surface, so one crash costs one pane
 
@@ -1048,11 +947,12 @@ Three unbuilt things, and the CSS is the part that is already done:
 **And a pass over every surface**, because a token existing is not the same as a surface being
 judged in it. F18's lane colours are the sharpest case: eight categorical hues chosen against a 16%
 background, with light values written but never once looked at. Expect real corrections there.
+The pass also has four hardcoded `bg-[#0c0e12]` to replace with a token: `Terminal.tsx`,
+`ShellPane.tsx`, `SubAgentTranscript.tsx` and `routes/session.tsx`.
 
-**Where the control goes is already decided, and the place to put it now exists** — F11 shipped
-2026-08-20 with four sections and the `SettingRow` primitive, and **Appearance is deliberately not
-one of them** because it would hold nothing until this lands. So the settings work here is a
-section constant, a `Select` and a `prefsStore` key; everything else in this item is the feature.
+**Where the control goes is decided, and the section exists**: Settings has an **Appearance**
+section now, holding the 24-hour clock. So the settings work here is one more row there, a `Select`
+and a `prefsStore` key; everything else in this item is the feature.
 
 ## 34. Session status — the unread axis, and two upgrades worth waiting for
 
@@ -1064,6 +964,8 @@ the entry. Four things it left, in the order they are worth doing.
 part of it not built: durable `viewed_at` per session compared against `updated_at`, which needs a
 migration and is orthogonal to the live PTY states. It is also what a
 `finished` state would need in order to mean anything, so the two arrive together or not at all.
+It has to be agent-agnostic: Codex sessions have their own status source (`run-state`, F30), and
+the unread axis is about the human having looked, not about which agent wrote the turn.
 
 **`needs_permission` is a verified recipe sitting unused.** F10 records it in full — `claude
 --settings '{"preferredNotifChannel":"ghostty"}'` plus
@@ -1088,8 +990,8 @@ nothing but keeping a string the parser already has.
 **Depended on item 4, which shipped 2026-08-20** — the user's condition was "wait the setting modal
 to control enable of desktop notif", and it is met: a notification nobody can switch off is a bug,
 and the switch is now a `SettingRow` beside the other four preferences rather than a home this
-feature has to invent. Which section it goes in is the only open question (Sessions is about the
-unit of work, so probably there rather than a new one).
+feature has to invent. It goes in the **Sessions** section, which exists now: that section is
+about the unit of work, and so is this.
 
 **The edge it fires on already exists.** F10's title parser produces exactly the
 `working` → `waiting_input` transition this needs (shipped 2026-08-18), so there is no detection
@@ -1118,22 +1020,6 @@ whatever notices "this session wants you" cannot be driven off the tab strip or 
 assumes a session is open. That is the case this feature is most useful for — an agent that started
 while you were elsewhere — and the easiest one to miss when the trigger is written.
 
-## 37. Worktrees — the two pieces F21 v0 left
-
-**F21 v0 shipped 2026-08-21 as v0.19.0** — see [`DONE.md`](./DONE.md) for what landed and the
-four things it cost that the design did not predict. What follows is the remainder.
-
-- [ ] **A `HEAD` chip per checkout in the graph.** This is item 1's share of the feature: one
-      more ref kind through F18's existing badge machinery and its "the icon says where the ref
-      lives" rule. In a worktree-heavy repository it is the reason to open a graph at all — three
-      checkouts, visible at once, on the commits they are sitting on. Cosmetic, so it did not
-      gate the release.
-- [ ] **Watch whether `setWorktree` is ever called by a real agent.** Five live runs produced
-      five worktrees and zero calls. The tool stays advertised because it costs nothing and is
-      the only signal that is an intent rather than an inference — but nothing rests on it, and
-      if it is still unobserved in a month, say so here rather than leaving it looking
-      load-bearing.
-
 ## 38. More agents — Codex first, then Gemini CLI, OpenCode and Cursor, behind one seam
 
 **User ask, 2026-08-24; specified 2026-09-22** as [F30](../05-features.md) with
@@ -1150,7 +1036,11 @@ that before a line of parser is written.
 
 Slices, in order; each is its own commit series against `main` and each moves here when it lands:
 
-- [ ] **1. Fixtures.** Log in to Codex, run three sessions in a scratch folder (one fresh, one
+**Shipped outside the slices, so nobody re-files them:** importing Codex sessions (`a319f66`) and
+the agent's mark on search hits (`9aa372a`).
+
+- [ ] **1. Fixtures — the rest.** Slice 3 landed one real thread under `tests/fixtures/codex/`;
+      what is left is the multi-session set below and the **[unverified]** sweep. Log in to Codex, run three sessions in a scratch folder (one fresh, one
       resumed with a second turn, one with a tool call and an approval), rename one thread, archive
       one, trash one rollout by hand and reopen `codex resume`. Record the OSC-0 title sequence of
       one full turn through a PTY. Land the rollouts, `session_index.jsonl` and the title log under
@@ -1168,7 +1058,8 @@ Slices, in order; each is its own commit series against `main` and each moves he
       the dot; the truncated `thread-id` prefix plus the rollout that appears at the first turn is
       the adoption (ADR-0062 amended). Slice 1's fixture came with it: one real thread, sanitised,
       under `tests/fixtures/codex/`, and the title sequence of one turn as test literals.
-- [ ] **4. One profile per project.** What slice 2 left of it: migration 0022's index change
+- [ ] **4. One profile per project.** What slice 2 left of it: a migration (0023 or later — 0022
+      is taken) for the index change
       (`UNIQUE (project_id)`), `Profile ▸` grouped by agent, and `set_project_profile` clearing
       one row rather than every agent's.
 - [x] **5. Discovery, transcripts, search** — shipped 2026-09-22, `DONE.md`. Discovery by
@@ -1237,51 +1128,9 @@ Then, in order:
 - [ ] **Review threads in the app**, which is the § 1 *review* verb and is bigger than everything
       above it combined. Scope it separately; do not let it ride along.
 
-**Worktrees make "the current branch" ambiguous** (item 37, F21). Resolve it against the checkout
+**Worktrees make "the current branch" ambiguous** (F21). Resolve it against the checkout
 the panel is showing, which is the rule F21 already settled for the file panel — not against the
 repository's `HEAD`, which may be a checkout nobody is looking at.
-
-## 41. A GIF of the sidebar gesture, from fake data
-
-**Filed 2026-08-27, deferred the same day.** The sidebar's drag — file into a
-group, drop beside one, hold over a project to group the two — is the one feature
-in this app that a still image cannot show. It is motion: a line that moves, a
-ring that fills, a row that lands. The README section for it currently has no
-image at all, because the alternatives were worse than none.
-
-**Why a screenshot of the real app was rejected.** Taken 2026-08-27 and reverted
-within the hour. A dev build against the author's own workspace means the sidebar
-is full of client and employer project names, so every one has to be blurred — and
-a picture of four blurred rows and one legible one says nothing about the feature
-while looking like a redacted document. Framing around it (no project selected)
-left 70% of a 1440×900 frame as empty pane. The tooling from that attempt is
-worth keeping and is not the problem: `VITE_FACTORAI_SCREENSHOT=1`,
-`scripts/qa/doc-shot.sh`, `scripts/qa/redact.py`, and the `app-screenshot` skill.
-
-**What this actually needs, and why it is not cheap.** A GIF of the real app has
-the same privacy problem as the screenshot, moving. So the subject has to be
-**fabricated**: a sidebar rendered from invented projects with invented names, in
-isolation, driven through the gesture at a watchable pace. That is a demo harness,
-not a capture — and the pieces are not all there:
-
-- The renderer can already be driven from fake data in a browser
-  (`pnpm vite:dev` + `installMockBridge`, § 2d), and a fixture with plausible
-  names is a few lines. That part is nearly free.
-- What is missing is the **choreography**: dnd-kit is driven by pointer events, so
-  a recording needs a script that presses, moves in small steps, dwells long
-  enough for `GROUP_DWELL_MS` to read on screen, and releases — with pauses a
-  human eye can follow rather than the 40ms steps a test uses.
-- And the **capture**: Playwright records video as WebM, not GIF, so this wants
-  either a WebM in the README (fine on GitHub) or a conversion step and a
-  palette/size budget for a file that ships in the repo.
-
-Worth doing when the sidebar's gesture stops changing — it moved three times on
-2026-08-27 alone. A recording made against a gesture still being tuned is a
-recording to redo.
-
-Sequencing note: the mock-bridge fixture and the pointer choreography would also
-give the smoke suite a way to demonstrate the drag at human speed for debugging,
-which is the second reason to build it once rather than hand-roll a capture.
 
 ## 43. A simpler way to hand a file to the agent — a drop target and a visible control
 
@@ -1323,9 +1172,12 @@ means typing `/model` in each one. Wanted as a preference.
       `--session-id` / `--mcp-config`). Empty means unset, and unset must pass no flag at all —
       the CLI's own default is a real answer and overriding it with a stale pin is worse than
       nothing.
-- [ ] A row in the `claude` section of `SettingsModal.tsx`, beside the binary path — same section,
-      because both are "how we launch it". A free text field, not a hardcoded list: model ids
-      outlive our releases, and a picker that does not know this month's names is a wrong picker.
+- [ ] A row per agent in `components/settings/AgentsSection.tsx`, beside that agent's binary path —
+      same card, because both are "how we launch it". A free text field, not a hardcoded list:
+      model ids outlive our releases, and a picker that does not know this month's names is a
+      wrong picker.
+- [ ] **Codex too** (F30): its own key and its own flag, passed where `agents/codex.rs` builds
+      the argv. Rewritten 2026-10-01 — this entry was written when Claude was the only agent.
 - [ ] A `--resume`d session keeps the model its transcript already has; check what the CLI does
       when `--model` and `--resume` disagree before assuming either.
 
@@ -1386,7 +1238,6 @@ it, the same measured rule as item 48 decides tree-beside-viewer or tree-above-v
 
 None of it is started until item 48 has shipped and been lived with.
 
-
 ## 60. The oxlint rules the Biome migration left off
 
 **Deferred 2026-09-21**, in ADR-0054, which swapped Biome for oxlint + oxfmt and deliberately did
@@ -1414,3 +1265,34 @@ with its reason written beside it there. This item is the work of turning them o
       per-package fan-out and lint `tests/` and `scripts/`, which nothing has ever linted. Both
       are one-line config changes with a wide diff behind them; neither belongs in a commit with
       the other two.
+
+## 17. Rename a session from inside factorai
+
+Reading the name `/rename` set is done (F2). Setting one from the app is not, and it is a bigger
+question than it looks: `custom-title` lines live in the session's own JSONL under
+`~/.claude/`, which **ADR-0004 declares read-only** — the CLI owns that tree. Appending to a file
+Claude Code has open, from a second process, is exactly the kind of thing that ADR exists to
+prevent.
+
+Options, none free:
+
+- **Append a `custom-title` line** to the transcript, as the CLI does. Simple, and the name shows
+  up in Claude Code too. But it writes into a file another process is actively appending to, and
+  it supersedes ADR-0004 — which needs a new ADR, not a shrug.
+- **Keep the name in our own database**, overriding the transcript for display. No writes to
+  `~/.claude` at all, so ADR-0004 stands — but the name exists only in factorai, and `/rename`
+  and the app can then disagree about what a session is called.
+- **Drive the CLI**: send `/rename <name>` to the session's PTY. Uses the owner of the file to do
+  the writing, which is the tidy answer — but only works while a session is live, and typing into
+  someone's terminal to change metadata is a strange mechanism.
+
+Worth doing — the user manages names with `/rename` today and has a hook proposing names from the
+issue/PR — but it wants the ADR-0004 question answered first.
+
+**Re-checked 2026-10-01, and kept at very low priority on the user's call** — last in this file for
+that reason. The first option is now ruled out twice: ADR-0039 restates that factorai writes files
+in the user's project and never inside an agent's own store. And Codex sessions (ADR-0060) mean an
+answer that only drives Claude's CLI covers half the sessions. So the realistic shape is the second
+option, a name in our own database, and the question left is whether `/rename` and the app
+disagreeing is acceptable.
+

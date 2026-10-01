@@ -3,6 +3,35 @@
 Shipped work, newest first. Items move here from [`TODO.md`](./TODO.md) when they land; see
 [`README.md`](./README.md) for the workflow.
 
+- **The roadmap cleaned before the move to GitHub** — 2026-10-01, ahead of TODO item 62. Every
+  live entry was checked against the code, the git log and the releases rather than against its
+  own checkboxes, so only live work becomes an issue. What left `TODO.md`:
+  - **Item 31 (two channels) done.** Its last open check, a `0.48.2` install picking up `0.49.0`,
+    is moot: stable has been promoted four times since (0.49.0 to 0.52.0), and updates were seen
+    on real installs stable to alpha, alpha to alpha, and in place on a notarized Mac. Its other
+    open line was item 8's and said so.
+  - **Item 55 (the markdown preview) done** as PERF-13 on 2026-09-20; the entry had stayed behind
+    after its checklist moved to item 59.
+  - **Item 21 (post-MVP / deferred) retired.** It was a pointer to `06-milestones.md` § Deferred,
+    not a task. Its PDF viewer follow-ups became **TODO item 63**; its per-project tab system was
+    superseded by item 48's strip of open files (ADR-0037). The deferred list itself was pruned the
+    same day: the IDE bridge, routines and auto-updates shipped, Windows went to WSL (ADR-0044), and
+    crash reporting is excluded outright by `AGENTS.md`.
+  - **Item 27 (Linux window corners) folded into TODO item 6**, the custom titlebar, which its own
+    entry already named as the likely fix. The measurements stay in Q21.
+  - **Item 37 (worktrees' remainder) closed.** Its `HEAD` chip per checkout is TODO item 1's, which
+    already listed it. Its other line, watching whether a real agent ever calls `setWorktree`, ran
+    its month: five live runs, five worktrees, zero calls, and none observed since. The tool stays
+    advertised; nothing rests on it, and it is Claude-only because Codex has no IDE bridge.
+  - **Item 41 (a GIF of the sidebar gesture) dropped** on the user's call. Its privacy blocker is
+    gone (the fixture workspace, ADR-0066), but the site already animates the gesture in code, and
+    the README stays as it is.
+  Fourteen entries were rewritten to their true remainder, among them item 7 (the empty states and
+  the indexing line had shipped unticked; routing errors to the toast is what is left), item 8
+  (now carrying item 39's real-window list and item 59's macOS numbers), item 13 (opening a file at
+  a line already worked) and item 44 (one model setting per agent, not Claude's alone). Item 17 is
+  kept at very low priority, last in the file.
+
 - **macOS releases are Developer ID signed and notarized** — 2026-09-27, TODO item 51, shipped
   in v0.52.0. ADR-0069, superseding ADR-0034's self-signed decision. The Apple Developer Program
   certificate is `Developer ID Application: Titouan BENOIT (TBPB6GW2JQ)`, valid to 2031-09-17;

@@ -217,7 +217,8 @@ cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
 
 1. ~~**MCP/IDE emulator.**~~ **Graduated 2026-08-15** into `roadmap/TODO.md`
    item 19, and **designed 2026-08-19** — see `05-features.md` F20 and
-   ADR-0017; the code is still to come. A WebSocket MCP server so Claude routes
+   ADR-0017. **The read-only bridge shipped 2026-08-19**; `openDiff` and the
+   write path are what is left, in item 19. A WebSocket MCP server so Claude routes
    file opens and diff approvals through factorai instead of an external
    editor, including the "accept / reject hunk" UI we skipped. It moved
    because the ADE operating model (`00-overview.md`) makes it the *push* half
@@ -225,7 +226,8 @@ cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
    post-MVP nicety.
 2. ~~**Scheduler.**~~ **Graduated 2026-08-28** into `roadmap/TODO.md` item 42
    as **Routines**, at high priority, and **specified 2026-08-29** as F22 with
-   ADR-0026; the code is still to come. A cron-like runner that launches a
+   ADR-0026. **Shipped 2026-08-29/30**; the skills picker is what is left, in
+   item 42. A cron-like runner that launches a
    session with a prompt at a given time, and — the part that made it a feature
    rather than a timer — **without opening a tab**. It moved because a routine is
    a stored per-project object the human configures, which makes it the "sets the
@@ -239,13 +241,18 @@ cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
    (`open -a Terminal …` / xdg-open) with the right `claude` argv,
    bypassing the embedded xterm.
 6. **Multi-window.** Detached session windows for power users running
-   many parallel agents.
+   many parallel agents. The first second window is the file viewer's, in
+   `roadmap/TODO.md` item 52; whatever it settles about window lifetime and
+   state is what this would build on.
 7. ~~**Auto-updates.**~~ **Shipped 2026-08-14** — see F14 and ADR-0010.
    The signing flow it was waiting on is a minisign key held as a repository
-   secret, not Apple code-signing, which remains outstanding.
-8. **Crash reporting / Sentry.** Wire `tauri-plugin-sentry` if/when
-   factorai gets external users. Requires a DSN — either Sentry SaaS or
-   a self-hosted instance; the plugin can't run "purely local".
+   secret, not Apple code-signing — which shipped separately on 2026-09-27
+   (ADR-0069).
+8. ~~**Crash reporting / Sentry.**~~ **Ruled out**, not deferred: `AGENTS.md`
+   § "What this project does not do" excludes telemetry, analytics and crash
+   reporting from the app, and ADR-0063's cookieless page counts on the site
+   stop there. The crash screen (F17) builds a report the user files
+   themselves.
 9. ~~**Windows support.**~~ **Graduated 2026-09-12** — see ADR-0044. The
    PTY validation and path-encoding edge cases this item was scoped around
    never had to happen: Windows runs the Linux build inside WSL 2 under WSLg,
