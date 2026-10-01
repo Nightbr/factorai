@@ -339,9 +339,11 @@ already from people who had nowhere to file what they fixed first. The move is t
 **issues** for items, a **Project** for their order, and a **PR** for every change,
 this repo's own sessions included.
 
-**Decide first, in an ADR, because it supersedes a working protocol** — `specs/roadmap/README.md`
-and the "Work on `main`, no PR ceremony" rule in `AGENTS.md` and the `spec-and-adr-workflow`
-skill are all the thing being replaced.
+**Decided 2026-10-01 in
+[ADR-0070](../adr/0070-the-roadmap-is-github-issues-and-every-change-is-a-pr.md)**, which replaces
+the protocol in `specs/roadmap/README.md` and the "Work on `main`, no PR ceremony" rule in
+`AGENTS.md` and the `spec-and-adr-workflow` skill. The ADR is the contract; what follows is the
+checklist of carrying it out.
 
 ### The migration
 
