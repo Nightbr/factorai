@@ -81,13 +81,13 @@ record; `07-open-questions.md` holds things already settled.
 If you change the contract (new command, new event, renamed field), update the
 relevant spec **in the same PR** as the code.
 
-`specs/roadmap/` is the exception to "design source of truth": it holds
-**sequencing**, not design. `TODO.md` says what to do next and in what order,
-`DONE.md` logs what landed. A feature is never specified there — if a roadmap
-item and a spec disagree about behaviour, the spec wins (or the spec is wrong
-and gets fixed first). When an item ships, the same PR updates the spec it
-changed, *then* the entry moves to `DONE.md`. Once the roadmap has moved to
-GitHub issues (ADR-0070, roadmap item 62), the PR closes the issue instead.
+The roadmap is **sequencing**, not design, and it lives on GitHub (ADR-0070):
+issues on [the Project](https://github.com/users/Nightbr/projects/1), ordered by
+hand in its *Todo* column. A feature is never specified in an issue. If an issue
+and a spec disagree about behaviour, the spec wins (or the spec is wrong and
+gets fixed first). When the work ships, the same PR updates the spec it changed
+and closes the issue (`Closes #N`). `specs/roadmap/DONE.md` is frozen: it is the
+log up to 2026-10-01, and nothing is added to it.
 
 # Helpful files when picking up work
 
@@ -99,8 +99,10 @@ GitHub issues (ADR-0070, roadmap item 62), the PR closes the issue instead.
 - `specs/04-frontend.md` — routes, components, state shape.
 - `specs/05-features.md` — feature-by-feature behaviour.
 - `specs/06-milestones.md` — what ships in M0..M5.
-- `specs/roadmap/TODO.md` — the agreed next steps, in priority order. Read it
-  before re-deriving a plan; `specs/roadmap/DONE.md` is the dated log of what
-  landed and the gotchas found on the way.
+- [The roadmap Project](https://github.com/users/Nightbr/projects/1) — what is
+  next, in *Todo*'s order. Read it (`gh issue list`, `gh project item-list 1
+  --owner Nightbr`) before re-deriving a plan. `specs/roadmap/README.md` maps
+  an old "roadmap item N" to its issue, and `specs/roadmap/DONE.md` is the
+  frozen log of what landed before 2026-10-01.
 - `specs/annex-A-cli-agent-patterns.md` — Tauri + CLI-agent plumbing patterns:
   binary discovery, streaming events, file watching, mock bridge.

@@ -26,7 +26,7 @@ import { useEffect } from 'react';
  * the way up and preventing an already-prevented default costs nothing, so the
  * two do not have to know about each other.
  *
- * macOS is unverified — nobody has run this app on one (roadmap item 8). WKWebView
+ * macOS is unverified — nobody has run this app on one (roadmap item 8 (#18)). WKWebView
  * draws a different menu; the rule "chrome is not a document" holds either way.
  */
 export function useNativeContextMenu(): void {

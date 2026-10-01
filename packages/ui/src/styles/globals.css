@@ -199,7 +199,7 @@
 
 	   The light theme's amber is deliberately NOT this value — #FFB020 on a 98%
 	   ground is unreadable. A light theme needs its own darker step, and that
-	   is roadmap item 32's problem, not this token's. */
+	   is roadmap item 32 (#28)'s problem, not this token's. */
 	--primary: oklch(81.3% 0.165 75);
 	--primary-foreground: oklch(16% 0.008 250);
 	--secondary: oklch(22% 0.008 250);

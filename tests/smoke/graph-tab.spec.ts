@@ -27,7 +27,7 @@ import {
  * suite is already well past the few-seconds budget claimed for it
  * (`08-inconsistencies.md` E1), so a case earns its ~0.5s by being something
  * that already regressed once. The
- * split drag is still recorded against roadmap item 10 rather than covered here.
+ * split drag is still recorded against roadmap item 10 (#19) rather than covered here.
  */
 
 const PROJECT = `/#/projects/${FOO_ID}`;

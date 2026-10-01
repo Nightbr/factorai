@@ -7,7 +7,7 @@ story, not a fix, and a surface that is inside its budget gets one line here
 saying so, which is worth as much as a fix because it stops the next person
 re-deriving it.
 
-It exists because of roadmap item 59, which made one measured audit a
+It exists because of roadmap item 59 (#9), which made one measured audit a
 release-blocking workstream for M6 after two unmeasured reports (items 54 and
 55) arrived in the same week. The analysis those two items carried lives here
 now; their roadmap entries are pointers.
@@ -55,7 +55,7 @@ needs a profile before the fix is known; H is a redesign or supersedes an ADR.
 
 | Tier | Pairs | Meaning |
 |---|---|---|
-| **P1** | H impact with L or M cost; M impact with L cost | **Before the M6 tag.** Item 59's checklist in `TODO.md` lists exactly these. |
+| **P1** | H impact with L or M cost; M impact with L cost | **Before the M6 tag.** Item 59's checklist (#9) lists exactly these. |
 | **P2** | H impact with H cost; M with M | After the tag, in this order, each with its own measurement first. |
 | **P3** | L impact at any cost; M with H | Worth a line here so nobody re-derives it; done when adjacent code is touched. |
 

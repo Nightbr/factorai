@@ -172,9 +172,9 @@ M6 is the release a stranger finds: a signed app, an update path that can be
 trusted by people nobody told about it, a site that explains what this is, and
 a performance pass before the first unfamiliar machine runs it.
 
-**Deliverables**, in build order. Each is an item in
-[`roadmap/TODO.md`](./roadmap/TODO.md), which holds the detail and the open
-questions; this list is the arc.
+**Deliverables**, in build order. Each was an item in the roadmap, now
+[an issue](https://github.com/users/Nightbr/projects/1), which holds the detail
+and the open questions; this list is the arc.
 
 - **A signed, notarized macOS app** (item 51, **shipped in v0.52.0**,
   2026-09-27, ADR-0069). A Developer ID Application certificate, notarization
@@ -209,14 +209,15 @@ questions; this list is the arc.
 **Deliberately not gating M6**: the custom titlebar (item 6), the toast
 primitive and the empty states (item 7), the manual smoke pass (item 8) and
 M4's file drafts (item 2). They are M5's remainder and post-release work; the
-cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
+cost of shipping without them was stated in the M6 block of `roadmap/TODO.md`
+(removed 2026-10-01, ADR-0070; read it in git history).
 
 ---
 
 ## Deferred (post-MVP, in priority order)
 
-1. ~~**MCP/IDE emulator.**~~ **Graduated 2026-08-15** into `roadmap/TODO.md`
-   item 19, and **designed 2026-08-19** — see `05-features.md` F20 and
+1. ~~**MCP/IDE emulator.**~~ **Graduated 2026-08-15** into roadmap
+   item 19 (#25), and **designed 2026-08-19** — see `05-features.md` F20 and
    ADR-0017. **The read-only bridge shipped 2026-08-19**; `openDiff` and the
    write path are what is left, in item 19. A WebSocket MCP server so Claude routes
    file opens and diff approvals through factorai instead of an external
@@ -224,7 +225,7 @@ cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
    because the ADE operating model (`00-overview.md`) makes it the *push* half
    of review — the agent asks and the human decides in place — rather than a
    post-MVP nicety.
-2. ~~**Scheduler.**~~ **Graduated 2026-08-28** into `roadmap/TODO.md` item 42
+2. ~~**Scheduler.**~~ **Graduated 2026-08-28** into roadmap item 42 (#15)
    as **Routines**, at high priority, and **specified 2026-08-29** as F22 with
    ADR-0026. **Shipped 2026-08-29/30**; the skills picker is what is left, in
    item 42. A cron-like runner that launches a
@@ -242,7 +243,7 @@ cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
    bypassing the embedded xterm.
 6. **Multi-window.** Detached session windows for power users running
    many parallel agents. The first second window is the file viewer's, in
-   `roadmap/TODO.md` item 52; whatever it settles about window lifetime and
+   roadmap item 52 (#36); whatever it settles about window lifetime and
    state is what this would build on.
 7. ~~**Auto-updates.**~~ **Shipped 2026-08-14** — see F14 and ADR-0010.
    The signing flow it was waiting on is a minisign key held as a repository
@@ -263,7 +264,7 @@ cost of shipping without them is stated in `roadmap/TODO.md`'s M6 block.
 10. **Mobile / iPad.** Tauri 2 supports mobile. Probably never useful
     for this product, but it's on the table.
 11. **Keep the machine awake while a session is working.** **Demoted here
-    from `roadmap/TODO.md` item 20 on 2026-08-17** — the first item to move
+    from roadmap item 20 on 2026-08-17** — the first item to move
     in this direction rather than out of it. Hold a sleep inhibitor while an
     agent is actually working, release it when it isn't.
 

@@ -533,7 +533,7 @@ window's outer edge, so the gear moves once by a fixed offset rather than compet
 
 ## Q25 — What does a routine's schedule mean across DST and sleep? → **wall clock, fixed-time rules, catch-up on wake**
 
-**Decision (2026-08-29, from the F22 interview). Not built** — roadmap item 42.
+**Decision (2026-08-29, from the F22 interview). Not built** — roadmap item 42 (#15).
 A routine's cron expression is **local wall-clock time**, and the two cases that
 break naive schedulers are answered by `croner`'s documented rules rather than by
 whatever falls out of the arithmetic (ADR-0026 § 5):

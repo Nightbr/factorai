@@ -63,13 +63,13 @@ as its own task or the app's `include` grows, and on how many existing errors it
 surfaces (not yet measured).
 
 **C3 — Read-only, except where we plan to write.** ADR-0009 states
-*"Everything is read-only. No staging, no discard, no commit"*. TODO item 19
+*"Everything is read-only. No staging, no discard, no commit"*. roadmap item 19 (#25)
 (IDE emulation) applies hunks to the working tree. Needs a **superseding ADR**,
 not an edit — ADRs are immutable (`.claude/skills/spec-and-adr-workflow/SKILL.md`)
 — and that ADR has to say
 what happens when the working tree moves under a pending approval.
 
-**C4 — `~/.claude/` is read-only.** ADR-0004. TODO item 17 (rename a session
+**C4 — `~/.claude/` is read-only.** ADR-0004. roadmap item 17 (#38) (rename a session
 from inside factorai) writes a `custom-title` line into a session's JSONL,
 which lives there. Same shape as C3, same remedy.
 
@@ -82,7 +82,7 @@ shipped). Note the five added in F18's second pass each caught something, two of
 them real bugs: this is an argument for the `tests/regression/` lane, not against
 writing tests. Either the budget is wrong or the suite has outgrown its lane — § 2d also promises a heavier
 `tests/regression/` lane that was never created, which is probably the real
-answer. See TODO item 10.
+answer. See roadmap item 10 (#19).
 
 **C7 — `scripts/qa/geometry.sh` has `click.sh`'s frame-offset bug, and its README
 says only `click.sh` does.** Found 2026-08-19 while capturing the README
@@ -164,7 +164,7 @@ regeneration, not a class swap on one component.
 Two patterns worth keeping in mind next time this file is compiled.
 
 **A correction recorded in the wrong place is not a correction.** The accurate
-account of WebKitGTK and synthetic input was sitting in TODO item 10 the whole
+account of WebKitGTK and synthetic input was sitting in roadmap item 10 (#19) the whole
 time, while `scripts/qa/README.md` and what is now the `manual-qa` skill went on asserting the
 opposite — and it was those two that agents actually read, so QA strategy
 followed the false version for days.

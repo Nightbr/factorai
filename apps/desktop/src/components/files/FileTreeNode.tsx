@@ -90,7 +90,7 @@ export const FileTreeNode = memo(function FileTreeRow({
 	// The menu has closed by the time a copy resolves, so the acknowledgement
 	// belongs on the row that was acted on — the transient tick the viewer's
 	// copy-path button already uses. A toast would be the other answer and
-	// there still isn't one (roadmap item 7).
+	// there still isn't one (roadmap item 7 (#17)).
 	const [copied, setCopied] = useState<RowOutcome | null>(null);
 
 	function reportCopy(outcome: RowOutcome) {

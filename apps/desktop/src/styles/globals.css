@@ -26,7 +26,7 @@
    of the session.
 
    **Hidden rather than styled, and the terminal is the right place for that
-   exception.** Roadmap item 16 parks the app-wide scrollbar pass with one
+   exception.** Roadmap item 16 (#23) parks the app-wide scrollbar pass with one
    stated constraint — the bar has to stay visible enough to be usable — and
    that constraint is about panels you navigate by position: the sidebar, the
    file tree, the Changes list. A terminal is not one. Its scroll position is

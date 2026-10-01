@@ -7,7 +7,7 @@
 //! which matters for a component whose correctness is a security property.
 //!
 //! **`getDiagnostics` is deliberately not offered.** We have no diagnostics
-//! source — that is roadmap item 14's LSP question — and a tool that always
+//! source — that is roadmap item 14 (#22)'s LSP question — and a tool that always
 //! answers "no problems" is not a missing feature, it is a false one the agent
 //! will act on. Silence is honest; a confident empty answer is not.
 //!

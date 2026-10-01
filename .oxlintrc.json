@@ -47,7 +47,7 @@
 		// The React Compiler family. These are real, they are new — Biome 1.9
 		// had no equivalent and the code was never written against them — and
 		// between them they fire 77 times in renderer code that works. Turning
-		// them on is its own piece of work, tracked in specs/roadmap/TODO.md.
+		// them on is its own piece of work, roadmap item 60 (#37).
 		"react/refs": "off",
 		"react/immutability": "off",
 		"react/set-state-in-effect": "off",

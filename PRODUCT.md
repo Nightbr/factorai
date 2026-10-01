@@ -145,8 +145,9 @@ Binding, and recorded in `specs/09-branding.md`:
   ADRs are immutable and superseded, never edited.
 - `assets/brand/` — the icon master, the one-colour mark, raster masters and the
   lockup.
-- `specs/roadmap/TODO.md` and `DONE.md` — sequencing and a dated log of what
-  landed, with the gotchas found on the way.
+- [The roadmap Project](https://github.com/users/Nightbr/projects/1) and its
+  issues — sequencing — and `specs/roadmap/DONE.md`, the frozen log of what
+  landed before 2026-10-01, with the gotchas found on the way.
 - The running app itself, launchable with `pnpm dev` or via `scripts/qa/`.
 
 **No marketing surface exists yet** — no landing page, no screenshots-as-assets,

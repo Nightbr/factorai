@@ -151,7 +151,7 @@ function RootLayout() {
 	// value, so it was indistinguishable from "this session is waiting for you",
 	// and that dot could sit beside the status badge already on the same tab.
 	// Where such a request should land is an open question — probably the toast
-	// primitive roadmap item 7 wants — so until then the bridge reports honestly
+	// primitive roadmap item 7 (#17) wants — so until then the bridge reports honestly
 	// that nothing was shown rather than claiming a mark nobody can see.
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;

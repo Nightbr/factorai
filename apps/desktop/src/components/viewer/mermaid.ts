@@ -33,7 +33,7 @@ let cachedKey: { key: string; palette: DiagramPalette; fontFamily: string } | nu
 /**
  * Forget the cached palette when the document's own theme attributes move.
  *
- * A theme switch (roadmap item 32) is an event, and this is where it arrives:
+ * A theme switch (roadmap item 32 (#28)) is an event, and this is where it arrives:
  * whatever flips a class or a custom property on `<html>` invalidates the key
  * without having to know this module exists. Registered once, for the life of
  * the renderer.
@@ -68,7 +68,7 @@ function currentFontFamily(): string {
  *
  * Configuration is re-applied whenever the palette has moved rather than only
  * once: `mermaid.initialize` is idempotent and cheap, and the alternative is a
- * theme switch (roadmap item 32) leaving the next diagram drawn for the old
+ * theme switch (roadmap item 32 (#28)) leaving the next diagram drawn for the old
  * one.
  */
 async function loadMermaid(): Promise<MermaidApi> {

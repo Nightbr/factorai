@@ -912,7 +912,7 @@ three separate faults that happened to stack in the same 30px.
   scrollbar when a mouse is attached and the auto-fading overlay one otherwise.
   Now hidden outright (`scrollbar-width: none`). Scrolling still works — wheel,
   trackpad, keyboard — and drawing nothing is what Terminal.app and iTerm2 do.
-  This is the one surface exempt from roadmap item 16's "visible enough to be
+  This is the one surface exempt from roadmap item 16 (#23)'s "visible enough to be
   usable": that constraint is about panels you navigate by position, and a
   terminal's scroll position is transient.
 - **Width, which was neither of the above.** The scrollbar overlaid the grid
@@ -1261,7 +1261,7 @@ host-agnostic, which is what makes three hosts possible at all.
   `ImageView`'s copy button already uses. The two ways it fails are a file
   deleted while it was on screen and a desktop with no file manager at all,
   and neither is distinguishable from a dead button. There is still no toast
-  (roadmap item 7).
+  (roadmap item 7 (#17)).
 - **Footer: `language · size · line count`, as one string**, with the markdown
   toggle to its left and "add to agent context" (F20) at the right. It is a
   `@container` and it degrades in a fixed order, because the viewer's column can
@@ -1416,7 +1416,7 @@ before anyone pressed the key, and it is true only with the import.
   `Cmd+G` / `Cmd+Shift+G`, `Ctrl+H` for replace, `Alt+C` / `Alt+W` / `Alt+R`
   for the toggles. All of it is **editor-scoped**, the way `Cmd/Ctrl+S` is
   (F26), so none of it reaches a focused terminal and none of it waits on the
-  keyboard scheme in roadmap item 5. Roadmap item 14's *global* `Cmd+G` still
+  keyboard scheme in roadmap item 5. Roadmap item 14 (#22)'s *global* `Cmd+G` still
   has to not fire while the find widget has focus, which its own entry already
   says.
 - **The pane forwards the key.** Monaco's binding fires only when the editor
@@ -1457,7 +1457,7 @@ before anyone pressed the key, and it is true only with the import.
   because the theme keys are API and the widget's internal class names are not.
 - **On a truncated file, find searches what was read**, and says nothing extra
   about it: the footer already reads `read-only — truncated` whenever that is
-  true. Searching the file that is actually on disk is roadmap item 13's job.
+  true. Searching the file that is actually on disk is roadmap item 13 (#21)'s job.
 - **The widget needs its icon font, and that is a second import** (fixed
   2026-09-09, found in the real window). `features/codicon/register` is CSS
   only — an `@font-face` for `codicon.ttf` and a class per glyph. Without it the
@@ -1819,7 +1819,7 @@ network here for any of them to come from. `vite/pdfjsAssets.ts` stages them int
   blocks, XFA widgets, `button` rules — and pulling all of it in to get 145
   lines would land in this app's cascade. A colocated test reads the installed
   package and fails if the copy drifts. There is no find bar yet; see
-  `roadmap/TODO.md`.
+  roadmap item 63 (#26).
 - **100% on open** — one CSS pixel per PDF point, the page at its authored size.
   Fit-width was built first and dropped on the user's call (2026-08-19): a scale
   derived from the pane is a different number in every pane, so the same document
@@ -1853,7 +1853,7 @@ both halves of that are true of anything else that measures this pane.
 
 **A changed `.pdf` in the Changes tab keeps `DiffView`'s binary dead end.**
 Diffing two rendered documents is a feature of its own — which side, aligned
-how, what counts as a change — and it is in `roadmap/TODO.md`, not here.
+how, what counts as a change — and it is in roadmap item 63 (#26), not here.
 
 **Edge cases.**
 - Binary (null byte in the first 8KB) → "Cannot preview binary file (N
@@ -2467,7 +2467,7 @@ project it shows follows the route (`/projects/$id` or
   A copy is acknowledged by a **transient tick on the row** (a cross if the
   clipboard refused), the pattern the viewer's copy-path button already uses.
   The menu has closed by then, so it cannot say so itself, and there is still
-  no toast (roadmap item 7).
+  no toast (roadmap item 7 (#17)).
 - **The WebView's own context menu is suppressed on app chrome**
   (`useNativeContextMenu`), because it is a browser's: measured on WebKitGTK
   2.52.3, right-clicking the panel or the sidebar draws `Back · Forward ·
@@ -3252,7 +3252,7 @@ are guarded: `lib/crashReport.test.ts` on the building side and
 
 ## F18 — Git graph
 
-**Specified 2026-08-17**, from the clarify-needs interview roadmap item 1 was
+**Specified 2026-08-17**, from the clarify-needs interview roadmap item 1 (#13) was
 gated on. Not built yet.
 
 **A viewer, not a git client, and that asymmetry is the whole reason it is
@@ -3785,7 +3785,7 @@ bindings register at whoever owns the focus (ADR-0046).
   unstyled and dressed in the palette's tokens, bottom-right, one `Toaster`
   mounted by `AppShell`. `toast.error(title, { description })` is the call,
   from a component or from plain code. Its first customer is F14's update
-  failures; routing every transient `AppError` through it is roadmap item 7's
+  failures; routing every transient `AppError` through it is roadmap item 7 (#17)'s
   remainder, and `lib/errorNotice` stays until then as the path that works when
   React does not.
 
@@ -4038,7 +4038,7 @@ since there is nothing to hover and nobody is looking.
 ## F20 — IDE bridge: the agent opens files in our viewer
 
 **Status: built, and the CLI connects — observed 2026-08-19 against 2.1.235.**
-Roadmap item 19 and
+Roadmap item 19 (#25) and
 [ADR-0017](adr/0017-ide-bridge-writes-one-lockfile-into-claude-ide.md),
 which hold the decisions and the reasoning behind each. This section is the
 behaviour they add up to.
@@ -4159,7 +4159,7 @@ There *was* a mark on the background session's tab, and it was removed rather
 than recoloured. It used `--primary`, which is `--color-status-waiting`'s exact
 value, so it was indistinguishable from "this session is waiting for you" — on a
 tab that already carries a status badge. Where the request should land instead
-is **open**: the toast primitive roadmap item 7 wants is the likely home, since
+is **open**: the toast primitive roadmap item 7 (#17) wants is the likely home, since
 a transient event probably deserves a transient surface. Until then the bridge
 reports honestly rather than claiming a mark nobody can see, which is the same
 rule that keeps `getDiagnostics` out of the tool list.
@@ -4946,7 +4946,7 @@ The rule this feature has to satisfy: **an agent is never running invisibly.**
   tab, and this needs one treatment in all three places.
 - **No notification when a routine fires.** A notification every weekday at 09:00
   is training to dismiss the ones that matter. What deserves one is a routine
-  session reaching `waiting_input` or exiting, which is roadmap item 35's
+  session reaching `waiting_input` or exiting, which is roadmap item 35 (#30)'s
   trigger — and that item inherits the requirement that its trigger cannot be
   driven off the tab strip, since these sessions have no tab.
 - **The sidebar does not list routines themselves.** It answers *what is
@@ -6708,7 +6708,7 @@ of a static file plus the existing `openExternally` and `copyText` helpers.
 
 ## F30 — Agents: Codex CLI behind one seam
 
-**Roadmap item 38, specified 2026-09-22.** factorai runs one CLI. This feature
+**Roadmap item 38 (#31), specified 2026-09-22.** factorai runs one CLI. This feature
 makes it run two — Claude Code and Codex CLI — and settles the seam the third
 and fourth will land on. Three ADRs carry the decisions:
 [ADR-0060](adr/0060-an-agent-is-four-capabilities-each-of-which-may-be-absent.md)
@@ -7114,7 +7114,7 @@ needed unless asked. Paths are scope-checked against the session's checkouts
 exactly as the bridge's are.
 
 **`openFile` — no.** Claude's CLI calls it when Claude reads a file; nothing in
-Codex fires on a read. Two substitutes are recorded in roadmap item 38 and not
+Codex fires on a read. Two substitutes are recorded in roadmap item 38 (#31) and not
 built: an `openFile` tool on factorai's own MCP server (a model decision, not a
 follow), and tailing the session's rollout for `custom_tool_call` paths (a
 follow, about a second late). The `/ide` status badge stays Claude-only.
