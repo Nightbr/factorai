@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in factorai is broken or behaves differently from what it says.
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing this. Please check the [open issues](https://github.com/Nightbr/factorai/issues) first, in case it is already known.
+
+        Before pasting logs or screenshots, remove anything private: project names, paths, tokens.
+  - type: input
+    id: version
+    attributes:
+      label: factorai version
+      description: Settings → About shows it, along with the update channel.
+      placeholder: 0.52.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux
+        - Windows, through WSL 2
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - .dmg from the releases page
+        - .AppImage from the releases page
+        - The Windows installer (WSL 2)
+        - Built from source (pnpm dev or pnpm tauri build)
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and its version
+      description: The output of `claude --version` or `codex --version`, if the bug involves a session.
+      placeholder: claude 2.1.260
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw. A crash report from the crash screen lands here.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a project with …
+        2. Click …
+        3. See …
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Drag in screenshots or a short video. Paste terminal output as text.

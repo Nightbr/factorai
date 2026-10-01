@@ -1,0 +1,47 @@
+name: Feature request
+description: Something factorai should do that it does not.
+title: "Feature: "
+labels: [feature]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        factorai is an Agentic Development Environment: agents are at the centre, and the human supervises, decides, reviews and sets the rules agents run under. A feature that serves one of those four usually fits.
+
+        Some things are out of scope on purpose: a native Windows port (Windows runs the Linux build in WSL 2), telemetry or crash reporting, and localization. See [What this project does not do](https://github.com/Nightbr/factorai/blob/main/AGENTS.md#what-this-project-does-not-do).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How it could work. Sketches, mockups or screenshots of another tool are welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: verb
+    attributes:
+      label: Which part of the human's job does it serve?
+      multiple: true
+      options:
+        - Supervise (seeing what agents are doing)
+        - Decide (answering what an agent asks)
+        - Review (reading what an agent produced)
+        - Set the rules (configuring how agents run)
+        - None of these, or not sure
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use now, or other ways this could be solved.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to build this myself, with a maintainer's guidance.

@@ -378,9 +378,14 @@ checklist of carrying it out.
 
 ### Templates
 
-- [ ] **`.github/ISSUE_TEMPLATE/`**: a bug form (version, platform, WSL or not, steps, what you
-      expected), a feature form (which of supervise / decide / review / set the rules it serves,
-      per `AGENTS.md`), and `config.yml` turning off blank issues.
+- [x] **`.github/ISSUE_TEMPLATE/`** — landed 2026-10-01: a bug form (version, platform, install
+      type, agent version, what happened, steps, expected, logs), a feature form (the problem,
+      the proposal, which of supervise / decide / review / set the rules it serves, and an offer
+      to build it), and `config.yml` turning off blank issues and pointing questions at
+      Discussions and vulnerabilities at private reporting. **Blank issues off broke the crash
+      screen's link**, which prefilled `?body=` on a bare `/issues/new`: it now names the bug form
+      and fills its fields by id (F17), with a test that reads the form.
+- [x] **`.github/CODEOWNERS`** and **`SECURITY.md`** — landed 2026-10-01.
 - [x] **`.github/pull_request_template.md`** — landed 2026-10-01 (`1994c6a`): what changed and
       why, the issue it closes, the spec or ADR it touches, `pnpm e2e` and the real window
       declared (e2e is not in CI), and **screenshots or a video of the app on every PR**, from a
@@ -390,7 +395,8 @@ checklist of carrying it out.
 
 - [ ] **Branch protection on `main`, as rulesets.** Two, because the two rules need different
       bypass lists:
-      1. *Required status checks* — Quality's jobs — with **no bypass**, for anyone.
+      1. *Required status checks* — Quality's jobs — with no bypass but the GitHub Actions app
+         (below).
       2. *Required approving review (1)* from someone with write access, with the repository
          admin (the owner) on the bypass list **for pull requests only**, so the owner's PRs merge
          on green and nobody pushes straight to `main`.
@@ -398,8 +404,8 @@ checklist of carrying it out.
       `gh pr create` then `gh pr merge --auto --squash`. Squash, so the PR title is the commit and
       keeps the `feat:` / `fix:` prefix; the alpha pipeline (ADR-0064) still sees one green push
       to `main` per change.
-- [ ] **External PRs need an internal approval**, which rule 2 gives them for free. Add a
-      `CODEOWNERS` naming the maintainers so the request goes to someone. Quality already runs on
+- [ ] **External PRs need an internal approval**, which rule 2 gives them for free, and
+      `CODEOWNERS` sends the request to someone. Quality already runs on
       `pull_request` without secrets; check that a fork's first run waits for "approve and run"
       and that nothing in it needs a secret.
 - [ ] **`AGENTS.md` and the skills rewritten to be collaborative**: a branch (and a worktree, since
@@ -420,7 +426,10 @@ checklist of carrying it out.
       an issue, what will not be merged (no native Windows, no telemetry — PR #3), screenshots on
       every PR, the no-emoji / no-`--no-verify` rules, that a maintainer approves before merge,
       a note for contributors working through an agent, Discussions for questions, a
-      `CODE_OF_CONDUCT.md`, and `SECURITY.md` with private vulnerability reporting.
+      `CODE_OF_CONDUCT.md`, and a link to `SECURITY.md`.
+- [ ] **Repository settings**, in the UI: Discussions on (the issue chooser already links there),
+      private vulnerability reporting on (`SECURITY.md` and the chooser link to it), squash merge
+      only, auto-merge on, branches deleted on merge.
 
 **This is alpha-era policy.** Auto-merge on green is right while alpha builds itself from every
 green `main` and stable is a promotion a person makes (ADR-0064): the promotion is the review

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/Nightbr/factorai/discussions
+    about: Ask how something works, or float an idea before it is a feature request.
+  - name: Security vulnerability
+    url: https://github.com/Nightbr/factorai/security/advisories/new
+    about: Report it privately, not in a public issue. See SECURITY.md.
