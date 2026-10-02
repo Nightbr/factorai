@@ -4,13 +4,33 @@
 ([ADR-0070](../adr/0070-the-roadmap-is-github-issues-and-every-change-is-a-pr.md)):
 
 - **[Issues](https://github.com/Nightbr/factorai/issues)** are the work, one per
-  item, with labels for the kind (`bug`, `feature`, `perf`, `chore`, `docs`) and the
-  area (`area:*`).
+  item, with labels for the kind (`bug`, `feature`, `perf`, `chore`, `docs`), the
+  area (`area:*`) and the size (`size:*`, below).
 - **[The factorai roadmap Project](https://github.com/users/Nightbr/projects/1)** is
   the order. Its board runs *Incoming → Needs triage → Qualified → Todo → In
   progress → In review → Done*, and the hand order in *Todo* is the priority.
 - **A merged PR closes its issue** (`Closes #N`), and that is the log. The gotchas
   worth keeping go in the PR's "Notes for the reviewer".
+
+## Size
+
+Every triaged issue carries one `size:*` label, set by the maintainer when it moves
+from *Needs triage* to *Qualified*. An issue with an `area:*` label and no size has
+not been triaged yet. Size is **effort to ship the issue as written**: the
+maintainer's wall-clock from picking it up to the last PR merged, agents included,
+since review, the real-window check and the gate are the slow part, not the typing.
+Uncertainty is not part of it; `needs-adr` carries that.
+
+| Label | Meaning |
+|---|---|
+| `size:XS` | Under an hour. No spec or ADR touched. |
+| `size:S` | One sitting, one PR. May touch a spec. |
+| `size:M` | One or two days, one PR. |
+| `size:L` | Several PRs, up to a week. |
+| `size:XL` | An epic. It never enters *Todo*: it is split into sized sub-issues first, and the parent keeps `size:XL`. |
+
+Two rules follow from it. A `good first issue` is `size:XS` or `size:S`, or it is not
+a first issue. And an issue carries exactly one size; re-sizing replaces the label.
 
 What is left in this folder:
 
