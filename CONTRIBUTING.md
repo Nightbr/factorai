@@ -13,9 +13,13 @@ clear issue and a small PR are the fastest way to get something in.
    work, and the ones labelled
    [`good first issue`](https://github.com/Nightbr/factorai/labels/good%20first%20issue)
    and [`help wanted`](https://github.com/Nightbr/factorai/labels/help%20wanted)
-   are the easiest way in. For anything bigger than a small fix, open an issue
-   first and say what you plan to do, so nobody builds the same thing twice or
-   builds something that will not be merged.
+   are the easiest way in. Every triaged issue also carries a `size:*` label,
+   from [`size:XS`](https://github.com/Nightbr/factorai/labels/size%3AXS) (under
+   an hour) to `size:XL` (an epic that is split before it is scheduled);
+   [`specs/roadmap/README.md`](specs/roadmap/README.md#size) defines them, and
+   a first issue is `size:XS` or `size:S`. For anything bigger than a small
+   fix, open an issue first and say what you plan to do, so nobody builds the
+   same thing twice or builds something that will not be merged.
 2. **Comment on the issue to claim it.**
 3. **Fork, then branch** from `main`, with a name such as `fix/123-resume-hang`.
 4. **Open a pull request early**, as a draft if it is not finished. The template
