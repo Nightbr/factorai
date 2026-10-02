@@ -1,0 +1,100 @@
+name: Triage
+
+# Every triaged issue carries exactly one `size:*` label, a `good first issue`
+# is XS or S, and an `area:*` label is the mark that triage happened
+# (specs/roadmap/README.md, "Size"). The Project's Status column would be the
+# exact signal, but GITHUB_TOKEN cannot read a user Project, so the area label
+# stands in for it and no secret is needed.
+#
+# A violation gets one comment, and the same violation is not repeated while
+# its comment is still the latest word on it. Nothing is labelled, closed or
+# edited: issues have no checks to fail, and the comment is the whole effect.
+
+on:
+  issues:
+    types: [opened, labeled, unlabeled]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  size:
+    name: Check the size label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const names = issue.labels.map((l) => l.name);
+            const sizes = names.filter((n) => n.startsWith('size:'));
+            const triaged = names.some((n) => n.startsWith('area:'));
+            const firstIssue = names.includes('good first issue');
+            const guide = 'See the Size section of specs/roadmap/README.md.';
+
+            // One marker per rule, so a fixed-then-broken-again issue is told again
+            // while a still-broken one is not.
+            const rules = [];
+            if (triaged && sizes.length === 0) {
+              rules.push({
+                marker: 'triage:size-missing',
+                text: `This issue has an area but no size. Triage adds one of \`size:XS\` to \`size:XL\`. ${guide}`,
+              });
+            }
+            if (sizes.length > 1) {
+              rules.push({
+                marker: 'triage:size-many',
+                text: `This issue carries ${sizes.length} size labels (${sizes.map((s) => `\`${s}\``).join(', ')}). An issue has exactly one; re-sizing replaces the label. ${guide}`,
+              });
+            }
+            if (firstIssue && sizes.some((s) => !['size:XS', 'size:S'].includes(s))) {
+              rules.push({
+                marker: 'triage:size-first-issue',
+                text: `A \`good first issue\` is \`size:XS\` or \`size:S\`. This one is ${sizes.map((s) => `\`${s}\``).join(', ')}: either split a small child out or take the label off. ${guide}`,
+              });
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              per_page: 100,
+            });
+            const mine = comments.filter(
+              (c) => c.user?.type === 'Bot' && c.body?.includes('<!-- triage:'),
+            );
+
+            // Delete the bot's comments for rules that no longer apply, so a
+            // relapse is reported again rather than being deduplicated against
+            // a stale comment.
+            const active = new Set(rules.map((r) => r.marker));
+            for (const c of mine) {
+              const m = c.body.match(/<!-- (triage:[a-z-]+) -->/);
+              if (m && !active.has(m[1])) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: c.id,
+                });
+                core.info(`#${issue.number}: ${m[1]} cleared, comment removed`);
+              }
+            }
+
+            for (const rule of rules) {
+              const already = mine.some((c) => c.body.includes(`<!-- ${rule.marker} -->`));
+              if (already) {
+                core.info(`#${issue.number}: ${rule.marker} already reported`);
+                continue;
+              }
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `${rule.text}\n\n<!-- ${rule.marker} -->`,
+              });
+              core.info(`#${issue.number}: ${rule.marker} reported`);
+            }
