@@ -43,14 +43,14 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       notes: ${{ steps.plan.outputs.notes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           # Tags and history: the alpha number is counted from tags and the
           # notes are read from the log.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
