@@ -68,7 +68,7 @@ jobs:
     outputs:
       release_id: ${{ steps.draft.outputs.result }}
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         id: draft
         env:
           VERSION: ${{ inputs.version }}
@@ -162,7 +162,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.sha }}
 
@@ -210,10 +210,10 @@ jobs:
           fi
           test -x /usr/lib/"$(uname -m)"-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         # Version comes from `packageManager` in package.json.
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -436,7 +436,7 @@ jobs:
     env:
       TAG: v${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.sha }}
 
@@ -512,7 +512,7 @@ jobs:
         (inputs.channel == 'alpha' && needs.installer.result == 'skipped'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         env:
           CHANNEL: ${{ inputs.channel }}
         with:

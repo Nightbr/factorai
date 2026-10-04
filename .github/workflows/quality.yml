@@ -38,12 +38,12 @@ jobs:
     name: JS — format, lint, types, unit tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         # Version comes from `packageManager` in package.json.
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -91,7 +91,7 @@ jobs:
     name: Rust — format, clippy, cargo test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Identical list to release.yml on purpose. Some of these are only needed
       # by the bundler, so a leaner set would compile — but keeping one list
