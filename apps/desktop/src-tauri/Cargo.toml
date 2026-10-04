@@ -1,6 +1,6 @@
 [package]
 name = "factorai"
-version = "0.53.0"
+version = "0.54.0"
 description = "Agentic Development Environment (ADE) for the AI era"
 edition = "2021"
 

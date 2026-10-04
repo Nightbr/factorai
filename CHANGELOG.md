@@ -5,6 +5,13 @@ release adds (ADR-0064); alphas are listed only on their GitHub prereleases.
 
 Releases before 0.49.0 are on [GitHub](https://github.com/Nightbr/factorai/releases).
 
+## 0.53.0 — 2026-10-04
+
+### Fixes
+
+- a session indexed before its first message keeps the id as its title
+- the crash screen's report opens the bug form
+
 ## 0.52.0 — 2026-09-27
 
 macOS builds are now signed with a Developer ID and notarized: factorai opens on first launch with no right-click → Open or xattr step, and updates install without the App Management prompt. Because the signing identity changed, macOS asks for folder access and App Management one last time on this release. Allow them once and they stay allowed from here on.
