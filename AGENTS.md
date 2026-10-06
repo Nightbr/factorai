@@ -158,7 +158,7 @@ into the renderer.
 | [the roadmap Project](https://github.com/users/Nightbr/projects/1) | what is next: issues on a kanban, *Todo* in priority order, each sized `size:XS` to `size:XL` |
 | [`specs/roadmap/`](specs/roadmap/) | the old item numbers mapped to issues, and the frozen log of what shipped before 2026-10-01 |
 | `.claude/rules/` | the traps in a given area, loaded when you edit it |
-| `.claude/skills/` | the long form: PRs, the gate, the test lanes, QA, screenshots |
+| `.claude/skills/` | the long form: PRs, the gate, the test lanes, QA, screenshots, an issue to a PR |
 
 Spec and code disagree — fix whichever is wrong, usually the spec, before
 writing anything.

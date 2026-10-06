@@ -21,6 +21,9 @@ and is marked `[skip ci]`.
 
 ## Start: a branch in its own worktree
 
+Picking up an issue end to end, from the claim to the PR that is ready for
+review, is the `github-issue-to-pr` skill; this one is the branch and the PR.
+
 Several sessions share this checkout, so a branch switched in place pulls the
 tree out from under whoever else is in it. Give each task its own worktree:
 
