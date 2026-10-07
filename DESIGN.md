@@ -29,6 +29,12 @@ colors:
   lane-5: "oklch(78% 0.15 65)"
   lane-6: "oklch(72% 0.17 340)"
   lane-7: "oklch(76% 0.16 115)"
+  terminal: "oklch(16.3% 0.009 264)"
+  terminal-foreground: "oklch(87.1% 0.005 286)"
+  git-added: "oklch(69.6% 0.17 162.48)"
+  git-modified: "oklch(76.9% 0.188 70.08)"
+  git-deleted: "oklch(64.5% 0.246 16.439)"
+  git-renamed: "oklch(68.5% 0.169 237.323)"
 typography:
   title:
     fontFamily: "Inter, system-ui, sans-serif"
@@ -227,6 +233,39 @@ a small set of signal and categorical hues that never leave their jobs.
   subject, a filename in a list.
 - **Metadata Grey** (`oklch(56% 0.006 250)`): counts, SHAs, timestamps, section
   headers, and every icon affordance at rest.
+- **Terminal Well** (`oklch(16.3% 0.009 264)`, text `oklch(87.1% 0.005 286)`):
+  the agent's PTY, a shell and the sub-agent transcript. A hair deeper and cooler
+  than the ground, so a pane full of output reads as a well rather than as
+  chrome. xterm cannot read a variable, so `components/terminal/themes.ts` reads
+  these and hands xterm hex.
+
+### Content colours
+
+- **Git hues** (`git-added`, `git-modified`, `git-deleted`, `git-renamed`): what
+  git says about a path — `A`/`U`, `M`, `D`/`C`, `R` — and the graph's tag and
+  remote chips. They are content, not signals: green here is not `working`, and
+  none of them asks anything of you.
+
+### Light Theme
+
+Selected in Settings → Appearance (`system` by default, following the OS). It is
+a translation of everything above, never a tint: every token has its own value
+on `[data-theme="light"]`.
+
+- **Ground and chrome** go up rather than down: the ground is `oklch(98% 0.004
+  250)`, while card, popover and the terminal well are white. Depth is still
+  steps of lightness and a hairline (`oklch(88% 0.006 250)`).
+- **Amber** is `oklch(58% 0.17 75)` (`#B36600`) — see § Primary. `waiting` takes
+  it too, because it *is* the accent.
+- **Status, git and lane hues** drop roughly 15–20 lightness points: `working`
+  and `background` to 55%, the git hues to about the Tailwind 700 steps, the
+  lanes to 50–58%. A dot that reads on near-black at 68% is a pale smudge as text
+  on white. The lanes were judged at a 6px pitch on 2026-10-07 and held.
+- **The terminal** keeps xterm's ANSI defaults in dark and uses a palette made
+  for white paper in light (GitHub's Primer light colours): xterm's default
+  `white` and `yellow` vanish on a light ground.
+- **The editor** is `factorai-light`, restating `factorai-dark`'s roles against
+  the light ladder, with the diff at a ground's weight rather than `vs`'s lime.
 
 ### Named Rules
 
