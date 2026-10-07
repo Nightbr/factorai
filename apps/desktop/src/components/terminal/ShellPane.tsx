@@ -80,7 +80,7 @@ function PaneRow({ chip, projectRoot }: { chip: ShellTab; projectRoot: string | 
 	const available = availableWidth(rowWidth, count);
 
 	return (
-		<div className="h-full w-full overflow-hidden border-border border-t bg-[#0c0e12]">
+		<div className="h-full w-full overflow-hidden border-border border-t bg-terminal">
 			<div ref={rowRef} className="flex h-full w-full" data-testid="shell-pane">
 				{chip.panes.map((pane, i) => (
 					<Fragment key={pane.key}>

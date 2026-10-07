@@ -61,13 +61,29 @@ export interface ThemeHandle {
 }
 
 /**
- * Before anything is installed — in a unit test, or a module evaluated ahead of
- * `main.tsx` — the app is dark, which is what the CSS shows with no attribute.
+ * Module state rather than state inside `installTheme`, because **imports run
+ * first**: `Terminal.tsx` subscribes when it is evaluated, which is before the
+ * body of `main.tsx` installs anything. A listener added then must still hear
+ * the changes that come after.
+ *
+ * Dark until installed — in a unit test, or for a module evaluated ahead of
+ * `main.tsx` — which is what the CSS shows with no attribute.
  */
-let installed: ThemeHandle = {
-	current: () => 'dark',
-	onChange: () => () => {},
-};
+const listeners = new Set<(theme: Theme) => void>();
+let theme: Theme = 'dark';
+
+/** The theme on screen now. */
+export function currentTheme(): Theme {
+	return theme;
+}
+
+/** Subscribe to palette changes; returns the unsubscribe. */
+export function onThemeChange(listener: (theme: Theme) => void): () => void {
+	listeners.add(listener);
+	return () => {
+		listeners.delete(listener);
+	};
+}
 
 /**
  * Apply the theme and keep it applied.
@@ -77,39 +93,19 @@ let installed: ThemeHandle = {
  * paints anything, and a light-theme user never sees one frame of dark.
  */
 export function installTheme(deps: ThemeDeps): ThemeHandle {
-	const listeners = new Set<(theme: Theme) => void>();
-	let theme = resolveTheme(deps.getPref(), deps.media.matches);
-	deps.root.setAttribute('data-theme', theme);
-
-	const update = () => {
-		const next = resolveTheme(deps.getPref(), deps.media.matches);
-		if (next === theme) return;
+	const apply = (next: Theme, notify: boolean) => {
+		const changed = next !== theme;
 		theme = next;
 		deps.root.setAttribute('data-theme', theme);
-		for (const listener of listeners) listener(theme);
+		if (notify && changed) for (const listener of listeners) listener(theme);
 	};
+	apply(resolveTheme(deps.getPref(), deps.media.matches), true);
 
+	const update = () => apply(resolveTheme(deps.getPref(), deps.media.matches), true);
 	// Both are app-lifetime: the media query and the store outlive every
 	// component, so neither is ever removed.
 	deps.media.addEventListener('change', update);
 	deps.subscribePref(update);
 
-	installed = {
-		current: () => theme,
-		onChange: (listener) => {
-			listeners.add(listener);
-			return () => listeners.delete(listener);
-		},
-	};
-	return installed;
-}
-
-/** The theme on screen now. */
-export function currentTheme(): Theme {
-	return installed.current();
-}
-
-/** Subscribe to palette changes; returns the unsubscribe. */
-export function onThemeChange(listener: (theme: Theme) => void): () => void {
-	return installed.onChange(listener);
+	return { current: currentTheme, onChange: onThemeChange };
 }

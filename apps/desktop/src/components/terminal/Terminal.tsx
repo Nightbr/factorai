@@ -5,6 +5,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
 import { createFileLinkProvider } from '@components/terminal/fileLinkProvider';
+import { documentXtermTheme } from '@components/terminal/themes';
 import { activateFileLink, fileLinkContext } from '@components/terminal/fileLinkWiring';
 import { useFileLinks } from '@hooks/useFileLinks';
 import type { RoutineFireEvent } from '@factorai/types';
@@ -15,6 +16,7 @@ import { isPanelDragging, onPanelDragEnd } from '@lib/panelDrag';
 import { hotkeysOverTerminal, mergeKeymap } from '@lib/keymap';
 import { cmd, copyText, events, openExternally } from '@lib/tauri';
 import { isMacOS } from '@lib/platform';
+import { currentTheme, onThemeChange } from '@lib/theme';
 import { usePrefsStore } from '@store/prefsStore';
 import { useTerminalStore } from '@store/terminalStore';
 
@@ -197,6 +199,14 @@ export interface PooledTerm {
  *  what keeps them from ever colliding. */
 const pool = new Map<string, PooledTerm>();
 
+// A theme switch repaints every pooled terminal, hidden ones included: they are
+// kept alive across session switches, so a terminal skipped now would show the
+// old palette the next time its tab is picked. Module-lifetime, like the pool.
+onThemeChange((theme) => {
+	const next = documentXtermTheme(theme);
+	for (const entry of pool.values()) entry.term.options.theme = next;
+});
+
 // Memoises the spawn so StrictMode's double-invoke (and any concurrent caller)
 // shares ONE `terminal_spawn` rather than racing two.
 const spawnInFlight = new Map<string, Promise<string>>();
@@ -336,7 +346,7 @@ export function getOrCreateTerm(
 		cursorBlink: true,
 		allowProposedApi: true,
 		scrollback: 10_000,
-		theme: { background: '#0c0e12', foreground: '#d4d4d8', cursor: '#e5b455' },
+		theme: documentXtermTheme(currentTheme()),
 		// **OSC 8 hyperlinks are a second, separate link path, and leaving this
 		// unset crashed the app.** `WebLinksAddon` only handles URLs it finds by
 		// regex; a link the program *declared* with OSC 8 goes to
@@ -848,7 +858,7 @@ export function Terminal({ sessionId, projectId, projectCwd, sessionCwd }: Termi
 	// The inner element is the hosts' positioning parent, so the padding stays in
 	// one place and `fitToHost` measures exactly the box it used to.
 	return (
-		<div className="h-full w-full overflow-hidden bg-[#0c0e12] p-2">
+		<div className="h-full w-full overflow-hidden bg-terminal p-2">
 			<div ref={containerRef} className="relative h-full w-full" />
 		</div>
 	);
