@@ -52,14 +52,6 @@ interface ThemeDeps {
 	root: { setAttribute(name: string, value: string): void };
 }
 
-export interface ThemeHandle {
-	current(): Theme;
-	/** Called with the new theme whenever the palette on screen changes — and
-	 *  only then: a preference change that resolves to the same theme repaints
-	 *  nothing. */
-	onChange(listener: (theme: Theme) => void): () => void;
-}
-
 /**
  * Module state rather than state inside `installTheme`, because **imports run
  * first**: `Terminal.tsx` subscribes when it is evaluated, which is before the
@@ -77,7 +69,9 @@ export function currentTheme(): Theme {
 	return theme;
 }
 
-/** Subscribe to palette changes; returns the unsubscribe. */
+/** Subscribe to palette changes; returns the unsubscribe. A listener hears a
+ *  change only when the palette on screen moves: a preference change that
+ *  resolves to the same theme repaints nothing. */
 export function onThemeChange(listener: (theme: Theme) => void): () => void {
 	listeners.add(listener);
 	return () => {
@@ -92,7 +86,7 @@ export function onThemeChange(listener: (theme: Theme) => void): () => void {
  * synchronously from localStorage, so the attribute is on `<html>` before React
  * paints anything, and a light-theme user never sees one frame of dark.
  */
-export function installTheme(deps: ThemeDeps): ThemeHandle {
+export function installTheme(deps: ThemeDeps): void {
 	const apply = (next: Theme, notify: boolean) => {
 		const changed = next !== theme;
 		theme = next;
@@ -106,6 +100,4 @@ export function installTheme(deps: ThemeDeps): ThemeHandle {
 	// component, so neither is ever removed.
 	deps.media.addEventListener('change', update);
 	deps.subscribePref(update);
-
-	return { current: currentTheme, onChange: onThemeChange };
 }

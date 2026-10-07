@@ -4,7 +4,7 @@
  * These turn a token into the hex they can take.
  */
 
-export interface Oklch {
+interface Oklch {
 	/** Lightness, 0..1. */
 	l: number;
 	/** Chroma, unbounded in principle, ~0..0.4 in practice. */

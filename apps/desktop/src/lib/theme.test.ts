@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { installTheme, resolveTheme, type ThemeMedia, type ThemePref, themePrefOf } from './theme';
+import {
+	currentTheme,
+	installTheme,
+	onThemeChange,
+	resolveTheme,
+	type ThemeMedia,
+	type ThemePref,
+	themePrefOf,
+} from './theme';
 
 /** A stand-in for `<html>`: only the one attribute the theme writes. */
 function fakeRoot() {
@@ -47,14 +55,14 @@ function fakePref(initial: ThemePref) {
 function install(pref: ReturnType<typeof fakePref>, media: ReturnType<typeof fakeMedia>) {
 	const root = fakeRoot();
 	const onChange = vi.fn();
-	const theme = installTheme({
+	installTheme({
 		getPref: pref.get,
 		subscribePref: pref.subscribe,
 		media,
 		root,
 	});
-	const unsubscribe = theme.onChange(onChange);
-	return { root, onChange, theme, unsubscribe };
+	const unsubscribe = onThemeChange(onChange);
+	return { root, onChange, unsubscribe };
 }
 
 describe('resolveTheme', () => {
@@ -78,9 +86,9 @@ describe('themePrefOf', () => {
 
 describe('installTheme', () => {
 	it('writes the resolved theme onto the root before anything renders', () => {
-		const { root, theme } = install(fakePref('system'), fakeMedia(false));
+		const { root } = install(fakePref('system'), fakeMedia(false));
 		expect(root.theme).toBe('light');
-		expect(theme.current()).toBe('light');
+		expect(currentTheme()).toBe('light');
 	});
 
 	it('follows the system appearance while the preference is system', () => {
