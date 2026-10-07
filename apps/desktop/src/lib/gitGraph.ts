@@ -329,8 +329,8 @@ function chipCost(chip: RefChip): number {
  */
 export const CHIP_CLASSES: Record<GitRefKind, string> = {
 	localBranch: 'border-primary/30 bg-primary/12 text-primary',
-	remoteBranch: 'border-sky-500/30 bg-sky-500/12 text-sky-400',
-	tag: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-400',
+	remoteBranch: 'border-git-renamed/30 bg-git-renamed/12 text-git-renamed',
+	tag: 'border-git-added/30 bg-git-added/12 text-git-added',
 	head: 'border-primary/30 bg-primary/12 text-primary',
 };
 

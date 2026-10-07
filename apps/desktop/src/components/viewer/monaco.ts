@@ -249,6 +249,21 @@ export function ensureTheme(): void {
 			'editorOverviewRuler.findMatchForeground': '#b36600b3',
 			'toolbar.hoverBackground': '#e8ebef',
 			'icon.foreground': '#52565a',
+			// The diff (F8/F13). `vs` ships a saturated lime for an added line,
+			// which at the size of a whole hunk is the loudest thing on screen.
+			// These are the light git hues (`--git-added`, `--git-deleted`) at a
+			// ground's weight, with the changed characters one step stronger.
+			'diffEditor.insertedLineBackground': '#0f7a550f',
+			'diffEditor.insertedTextBackground': '#0f7a5524',
+			'diffEditor.removedLineBackground': '#cf222e0f',
+			'diffEditor.removedTextBackground': '#cf222e24',
+			'diffEditorOverview.insertedForeground': '#0f7a5599',
+			'diffEditorOverview.removedForeground': '#cf222e99',
+			// The scrollbar thumb, on the metadata grey rather than `vs`'s 40%
+			// grey slab beside the text.
+			'scrollbarSlider.background': '#52565a33',
+			'scrollbarSlider.hoverBackground': '#52565a4d',
+			'scrollbarSlider.activeBackground': '#52565a66',
 		},
 	});
 

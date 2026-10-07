@@ -219,7 +219,7 @@ export const MarkdownView = memo(function MarkdownView({
 	return (
 		<div className="h-full overflow-auto px-8 py-6" data-testid="markdown-view">
 			<div
-				className="prose prose-invert prose-sm mx-auto max-w-3xl
+				className="prose prose-tokens prose-sm mx-auto max-w-3xl
 					prose-headings:font-semibold
 					prose-h1:mt-0 prose-h1:border-b prose-h1:border-border prose-h1:pb-2
 					prose-h2:border-b prose-h2:border-border prose-h2:pb-1.5

@@ -11,9 +11,9 @@ const PRECEDENCE: Record<Decoration, number> = { conflicted: 0, untracked: 1, mo
 /** Git's own colour semantics, in the app's palette rather than new hex
  *  values (F12). */
 export const DECORATION_CLASSES: Record<Decoration, string> = {
-	conflicted: 'text-rose-500',
-	untracked: 'text-emerald-500',
-	modified: 'text-amber-500',
+	conflicted: 'text-git-deleted',
+	untracked: 'text-git-added',
+	modified: 'text-git-modified',
 };
 
 function decorationFor(kind: GitChangeKind): Decoration {
