@@ -13,8 +13,8 @@ import type { UpdateChannel } from '@factorai/types';
  */
 
 /** The nav, in order. **Appearance arrived 2026-08-29 with the clock setting**,
- *  which is what the "absent until it has content" rule was waiting for; theme
- *  joins it when item 32 lands. **Advanced arrived 2026-09-23 with the update
+ *  which is what the "absent until it has content" rule was waiting for; the
+ *  theme joined it with item 32 (#28). **Advanced arrived 2026-09-23 with the update
  *  channel** (ADR-0064), for the same reason. */
 export const SETTINGS_SECTIONS = [
 	'appearance',
@@ -111,6 +111,7 @@ export const SECTION_FOR: Record<keyof SettingsValues, SettingsSection> = {
 	routinesMaxConcurrent: 'routines',
 	updateChannel: 'advanced',
 	clock24: 'appearance',
+	theme: 'appearance',
 	keymapOverrides: 'keyboard',
 };
 
