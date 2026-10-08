@@ -438,12 +438,7 @@ function SessionTab({
 			{/* The badge is the only thing that says whether this session is running.
 			    No dimming, no italics: at 14px a second treatment says the same thing
 			    twice and makes the strip harder to read, not easier (F16). */}
-			<ProjectIcon
-				name={project?.displayName ?? projectId}
-				path={project?.realPath ?? projectId}
-				size={16}
-				status={status}
-			/>
+			<ProjectIcon name={project?.displayName ?? projectId} size={16} status={status} />
 			{/* A routine started this one (F22). Beside the avatar rather than in
 			    the title, so it stays visible when a long title truncates. */}
 			{routine && <RoutineOrigin name={routine.routineName} />}

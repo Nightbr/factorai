@@ -13,22 +13,7 @@
  * a URL would sit in front of `avatarFor`, and everything below stays the
  * offline default.
  */
-
-/**
- * FNV-1a, 32-bit. Small, stable across runs, and good enough to spread a few
- * dozen authors across a hue circle — this picks a colour, it does not protect
- * anything.
- */
-function hash(input: string): number {
-	let h = 0x811c9dc5;
-	for (let i = 0; i < input.length; i++) {
-		h ^= input.charCodeAt(i);
-		// The FNV prime, as shifts: `h * 16777619` overflows past 2^31 and JS
-		// would silently give it back as a double.
-		h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
-	}
-	return h >>> 0;
-}
+import { fnv1a } from '@lib/hash';
 
 /** Distinct hues, evenly spaced. 12 rather than 360 so two authors are either
  *  obviously the same colour or obviously different, never "nearly". */
@@ -80,7 +65,7 @@ export function avatarInk(email: string): string {
 
 /** The hue both halves share. */
 function avatarHue(email: string): number {
-	return (hash(email) % HUE_STEPS) * (360 / HUE_STEPS);
+	return (fnv1a(email) % HUE_STEPS) * (360 / HUE_STEPS);
 }
 
 /**

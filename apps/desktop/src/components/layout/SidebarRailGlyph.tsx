@@ -87,12 +87,7 @@ export function SidebarRailGlyph({
 							{/* 20px, the size the expanded row draws it at. Collapsing takes
 							    the label away, not the identity, so the glyph has no reason
 							    to grow (DESIGN.md, the rail). */}
-							<ProjectIcon
-								name={project.displayName}
-								path={project.realPath}
-								size={20}
-								status={liveStatus}
-							/>
+							<ProjectIcon name={project.displayName} size={20} status={liveStatus} />
 						</Link>
 					</HoverCardTrigger>
 				</ContextMenuTrigger>

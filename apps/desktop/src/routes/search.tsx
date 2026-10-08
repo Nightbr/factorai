@@ -111,7 +111,7 @@ function SearchView() {
 									    because the icon is what the sidebar and the tab strip
 									    are already scanned by — same hue, same initials, hashed
 									    from the same path. */}
-									<ProjectIcon name={h.projectName} path={h.projectPath} size={16} />
+									<ProjectIcon name={h.projectName} size={16} />
 									<span
 										className="max-w-[10rem] shrink-0 truncate text-muted-foreground text-xs"
 										title={h.projectPath}

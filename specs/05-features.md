@@ -174,7 +174,7 @@ display a group nobody created.
 **The row**: a chevron, the name, and a count **only when collapsed** — where it
 is the one thing that can say what is inside; expanded it would repeat what you
 can see while competing with the name at 180px. No avatar, because `ProjectIcon`
-hashes its hue from a path and a group has none. No `+`, because there is no cwd
+is a project's mark, hashed from its name, and a group is not a project. No `+`, because there is no cwd
 to start a session in and a button that had to pick one of the group's projects
 for you is worse than no button. The name is set in the header's 12px uppercase,
 so a group reads as a quiet heading over the project names it contains rather than
@@ -834,7 +834,7 @@ matched role. Click a hit → navigate to that session (opens its terminal).
 **A hit names its project, not just its session.** Results are workspace-wide,
 and a session title on its own doesn't place a conversation: two projects
 routinely hold a "Fix the flaky test". The row leads with the project's
-`ProjectIcon` and display name — the same path-hashed icon the sidebar and the
+`ProjectIcon` and display name — the same name-hashed icon the sidebar and the
 tab strip are scanned by — then the session title, then the matched role. The
 project's folder is the row's hover title.
 
@@ -844,10 +844,9 @@ project's folder is the row's hover title.
 (default/cap 200) hits, each
 `{ sessionId, projectId, projectName, projectPath, title, role, snippet }`
 (`title` JOINed from `sessions`, `projectName` / `projectPath` from `projects`,
-for the result label). `projectPath` travels because the icon's hue is hashed
-from the path, so a name alone would colour the same project differently here
-than in the sidebar. The FTS index stores no per-event position, so hits carry
-no `event_index`.
+for the result label). `projectPath` travels for the row's hover title; the icon itself is hashed
+from `projectName` (ADR-0072), so it matches the sidebar's by construction. The
+FTS index stores no per-event position, so hits carry no `event_index`.
 
 `messages_fts` carries **no `session_id` and no `project_id` column** — both
 live on `messages`, which the query joins on `messages_fts.rowid`. `session_id`

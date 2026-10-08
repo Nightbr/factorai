@@ -32,7 +32,7 @@ export function DragChip({ row }: { row: SidebarRow }) {
 		>
 			{row.kind === 'project' ? (
 				<>
-					<ProjectIcon name={row.project.displayName} path={row.project.realPath} size={16} />
+					<ProjectIcon name={row.project.displayName} size={16} />
 					<span className="min-w-0 truncate">{row.project.displayName}</span>
 				</>
 			) : (

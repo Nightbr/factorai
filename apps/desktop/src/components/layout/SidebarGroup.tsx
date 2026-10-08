@@ -62,9 +62,9 @@ interface SidebarGroupProps {
  * than two kinds of thing stacked together. What it deliberately does *not*
  * have:
  *
- * - **No avatar.** `ProjectIcon` hashes its hue from a path, and a group has no
- *   path; a coloured square with no folder behind it would be inventing an
- *   identity the group does not have.
+ * - **No avatar.** `ProjectIcon` is a project's mark, hashed from its name, and
+ *   a group is not a project: a coloured square with no folder behind it would
+ *   be inventing an identity the group does not have.
  * - **No `+`.** There is no cwd to start a session in. A button that had to pick
  *   one of the group's projects for you is a worse answer than no button.
  *
