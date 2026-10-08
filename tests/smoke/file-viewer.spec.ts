@@ -565,6 +565,31 @@ test.describe('file viewer', () => {
 		await expect(md.getByRole('heading', { name: 'live' })).toBeVisible();
 	});
 
+	test('@smoke an edit lands in the editor, not only in the footer', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+
+		// A source file, so the text is Monaco's rather than the markdown
+		// preview's: the preview reads the query, and the editor is created from
+		// the buffer — two paths, and only one of them had coverage.
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+		const editor = page.getByTestId('file-viewer').getByTestId('file-view-editor');
+		await expect(editor.locator('.view-lines')).toContainText('name = "foo"');
+
+		await page.evaluate((path) => {
+			const files = window.__FACTORAI_TEST__?.files;
+			const file = files?.[path];
+			if (files && file) files[path] = { ...file, contents: '[package]\nname = "rewritten"\n' };
+			window.__FACTORAI_EMIT__?.('file:changed', { path });
+		}, `${ROOT}/Cargo.toml`);
+
+		await expect(editor.locator('.view-lines')).toContainText('name = "rewritten"');
+		await expect(editor.locator('.view-lines')).not.toContainText('name = "foo"');
+		// Clean, because what is on screen is what is on disk.
+		await expect(page.getByTestId('file-viewer').getByTestId('viewer-save')).toBeDisabled();
+	});
+
 	test('@smoke an event for another file leaves the open one alone', async ({ page }) => {
 		await installMockBridge(page, fixtureWithFileTree());
 		await page.goto('/');
@@ -1233,6 +1258,15 @@ test.describe('file viewer', () => {
 
 		await expect(viewer.getByTestId('viewer-conflict')).toHaveCount(0);
 		await expect(viewer.getByTestId('viewer-save')).toBeDisabled();
+		// Theirs is what the editor shows, not merely what the footer says: a
+		// Reload that left the buffer on screen would be a clean buffer that
+		// disagrees with disk, which is the one state F26 rules out.
+		await expect(viewer.getByTestId('file-view-editor').locator('.view-lines')).toContainText(
+			'theirs',
+		);
+		await expect(viewer.getByTestId('file-view-editor').locator('.view-lines')).not.toContainText(
+			'mine-and-unsaved',
+		);
 		expect(await writeCalls(page)).toEqual([]);
 	});
 
