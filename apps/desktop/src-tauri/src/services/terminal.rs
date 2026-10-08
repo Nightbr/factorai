@@ -965,16 +965,17 @@ impl TerminalManager {
 	/// can't race the indexer's 1s debounce, because it reads the transcript
 	/// directly rather than the index.
 	///
-	/// **"Messaged" is the same question `spawn_inner` asks, so it takes the
-	/// same answer** — `resume_cwd` first, the passed `folder` only as the
-	/// fallback. A session driven in a worktree (F21) keeps its transcript under
-	/// the checkout it ran in, not under the project folder, and once the agent
-	/// `cd`s into a subdirectory even the recorded cwd stops encoding to the store
-	/// directory — so `resume_cwd`'s key probe is what finds it. Probing the
-	/// folder alone misses it, calls a live messaged session "never messaged", and
-	/// hands its id back on every "new session" click instead of minting a fresh
-	/// one. `resume_cwd` is `None` for a genuinely new, never-messaged session, so
-	/// the fallback is what still lets one be reused.
+	/// **"Messaged" asks the store, not the index.** A session's transcript does
+	/// not stay where it started: one driven in a worktree (F21) keys it by the
+	/// checkout, and Claude Code's own worktrees *move* a live session's file
+	/// there mid-run, after the index recorded the old directory. Each
+	/// recorded location — the cwd, the store key, the project folder — has
+	/// been the stale one in turn, and a miss reads a live messaged session as
+	/// "never messaged" and hands its id back on every "new session" click.
+	///
+	/// **Probed under the handle's own store**, the one it was spawned under,
+	/// not the project's current profile: reassigning the project must not make
+	/// its running sessions look unmessaged (F25).
 	///
 	/// **Per agent** (F30): a live, unmessaged Codex session is not the one a
 	/// "new Claude session" click asks for, so only handles running the same
@@ -988,7 +989,6 @@ impl TerminalManager {
 		agent: Option<&str>,
 	) -> AppResult<String> {
 		let agent = self.resolve_agent(agent, project_id, None)?;
-		let config_dir = self.config_dir_for(agent, project_id, None);
 		for entry in self.terminals.iter() {
 			let h = entry.value();
 			// A shell contributes no id here because it has none: it would
@@ -1002,44 +1002,11 @@ impl TerminalManager {
 			if h.adopted.lock().is_some() {
 				continue;
 			}
-			if !self.is_messaged(agent, session_id, folder, &config_dir) {
+			if !is_messaged(agent, session_id, folder, &h.store_dir) {
 				return Ok(session_id.to_string());
 			}
 		}
 		Ok(Uuid::new_v4().to_string())
-	}
-
-	/// Whether a session has a transcript on disk — i.e. has been messaged.
-	///
-	/// A pure boolean, and deliberately wider than [`resume_cwd`]: that has to
-	/// hand back a real directory to spawn in, so it can only answer for a session
-	/// whose store directory it can name as a real path. This only has to answer
-	/// *does a transcript exist*, so it can also trust the store key directly —
-	/// the case where the agent worked in a worktree subdirectory and no recorded
-	/// cwd (nor its climbable ancestors) is available, but the key still names the
-	/// file. The three probes are the recorded cwd, the store key, and the passed
-	/// folder; any one hit means messaged.
-	fn is_messaged(
-		&self,
-		agent: &AgentDescriptor,
-		session_id: &str,
-		folder: &Path,
-		claude_dir: &Path,
-	) -> bool {
-		// A session Codex named has a rollout under its store (ADR-0062); one it
-		// has not named yet has nothing on disk and is by definition unmessaged.
-		if agent.id_source == IdSource::Agent {
-			return codex::transcript_path(claude_dir, session_id).is_some();
-		}
-		if self.resume_cwd(session_id, claude_dir).is_some() {
-			return true;
-		}
-		if let Some(key) = self.session_key.as_ref().and_then(|cb| cb(session_id)) {
-			if claude::transcript_path_by_key(claude_dir, &key, session_id).exists() {
-				return true;
-			}
-		}
-		claude::transcript_path(claude_dir, folder, session_id).exists()
 	}
 
 	/// Stand up this session's **agent tool server** (F22 slice 3, ADR-0029).
@@ -1973,6 +1940,23 @@ fn spawn_reader(
 /// but no rollout yet: the file appears at the first turn, and the spinner
 /// rewrites the title ten times a second meanwhile.
 const ADOPT_PROBE_EVERY: Duration = Duration::from_millis(500);
+
+/// Whether a session has a transcript on disk — i.e. has been messaged.
+///
+/// The folder the click came from first, because it is one `stat` and it is
+/// where an ordinary session's transcript is; then every directory of the
+/// store, which is what finds a transcript that moved. No recorded
+/// location in between: each is a guess at where the file is, and the store
+/// answers the question itself.
+fn is_messaged(agent: &AgentDescriptor, session_id: &str, folder: &Path, store_dir: &Path) -> bool {
+	// A session Codex named has a rollout under its store (ADR-0062); one it
+	// has not named yet has nothing on disk and is by definition unmessaged.
+	if agent.id_source == IdSource::Agent {
+		return codex::transcript_path(store_dir, session_id).is_some();
+	}
+	claude::transcript_path(store_dir, folder, session_id).exists()
+		|| claude::transcript_exists_anywhere(store_dir, session_id)
+}
 
 /// Adopt the agent's id for a session that started under ours (ADR-0062).
 ///
@@ -2985,6 +2969,47 @@ mod tests {
 		mgr.kill_all();
 	}
 
+	/// The same click, one step further: Claude Code's own worktree
+	/// (`EnterWorktree`) *moves* a live session's transcript from the project's
+	/// store directory to the worktree's, and the index — which still names the
+	/// old key and the old folder — is the last to hear. Every probe that goes
+	/// through a recorded location misses, so only a probe that asks the store
+	/// itself "is there a transcript with this id anywhere" can answer.
+	#[test]
+	fn next_session_id_does_not_reuse_a_session_whose_transcript_moved() {
+		let store = tempfile::TempDir::new().unwrap();
+		let project_dir = tempfile::TempDir::new().unwrap();
+		let worktree = project_dir.path().join(".claude/worktrees/wt");
+		let subdir = worktree.join("backend");
+		let project = "11111111-aaaa-4bbb-8ccc-dddddddddddd";
+		let sid = "22222222-2222-3333-4444-555555555555";
+		// The transcript is under the worktree's key now; nothing is left under
+		// the project's.
+		let tpath = claude::transcript_path(store.path(), &worktree, sid);
+		std::fs::create_dir_all(tpath.parent().unwrap()).unwrap();
+		std::fs::write(&tpath, "{}\n").unwrap();
+
+		// What the index still says: the project's key, the project folder as the
+		// first cwd, and a subdirectory of the worktree as the last one.
+		let old_key = claude::encode_path(project_dir.path());
+		let cwds = vec![subdir.clone(), project_dir.path().to_path_buf()];
+		let (mgr, _d, _e) = make_manager_in(store.path().to_path_buf());
+		let mgr = mgr
+			.with_session_cwd(Arc::new(move |_| cwds.clone()))
+			.with_session_key(Arc::new(move |_| Some(old_key.clone())));
+
+		let mut req = agent_req(sid, project);
+		req.cwd = Some(project_dir.path().to_string_lossy().into_owned());
+		let _live = mgr
+			.spawn_inner(req, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+			.unwrap();
+
+		let offered = mgr.next_session_id(project, project_dir.path(), None).unwrap();
+		assert_ne!(offered, sid, "a session whose transcript moved is still a messaged one");
+
+		mgr.kill_all();
+	}
+
 	#[test]
 	fn spawn_runs_in_the_recorded_folder_not_the_one_it_was_given() {
 		let store = tempfile::TempDir::new().unwrap();
@@ -3273,6 +3298,31 @@ mod tests {
 			mgr.next_session_id("elsewhere", Path::new("/tmp/elsewhere"), None).unwrap(),
 			session
 		);
+		mgr.kill_all();
+	}
+
+	/// A running session keeps the profile it started under (F25), so it is
+	/// probed there: the project's current assignment names a store this
+	/// session's transcript was never written to.
+	#[test]
+	fn next_session_id_probes_a_session_under_the_store_it_was_spawned_in() {
+		let spawned_in = tempfile::TempDir::new().unwrap();
+		let reassigned = tempfile::TempDir::new().unwrap();
+		let assignment: Arc<StdMutex<Option<PathBuf>>> = Arc::new(StdMutex::new(None));
+		let (mgr, _d, _e) = make_manager_in(spawned_in.path().to_path_buf());
+		let mgr = mgr.with_profile_dir({
+			let assignment = assignment.clone();
+			Arc::new(move |_, _, _| assignment.lock().unwrap().clone())
+		});
+		let mut o = opts(80, 24);
+		o.project_id = "proj".into();
+		let session = o.session_id.clone();
+		write_transcript(spawned_in.path(), "/tmp/proj", &session);
+		mgr.spawn_with_argv(o, Some(vec!["/bin/sh".into(), "-c".into(), "sleep 30".into()]))
+			.unwrap();
+
+		*assignment.lock().unwrap() = Some(reassigned.path().to_path_buf());
+		assert_ne!(mgr.next_session_id("proj", Path::new("/tmp/proj"), None).unwrap(), session);
 		mgr.kill_all();
 	}
 

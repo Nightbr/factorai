@@ -826,6 +826,15 @@ processes. It lives here rather than in the renderer because the sidebar's
 per-project button fires on projects whose session list was never fetched, and
 because the filesystem can't lag the way the index can.
 
+**"Has a transcript" asks the store, not a recorded location.** The probe looks
+for `<id>.jsonl` in the project folder's store directory first, then in every
+directory under the store's `projects/`, under the store the live session was
+spawned in rather than the project's current profile. Claude Code moves a live
+session's transcript when the agent enters one of its own worktrees
+(`.claude/worktrees/<name>`), and the index's key and cwds still name the
+directory it left; probing only those read a messaged session as unmessaged,
+and `+` kept reopening it until a restart.
+
 ### `find_claude_binary()` — three-tier discovery
 
 *Generalised 2026-09-22 (F30 § "Spawn"): `find_agent_binary(descriptor,

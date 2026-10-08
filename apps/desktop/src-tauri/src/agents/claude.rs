@@ -65,6 +65,21 @@ pub fn transcript_path_by_key(claude_dir: &Path, key: &str, session_id: &str) ->
 	claude_dir.join("projects").join(key).join(format!("{session_id}.jsonl"))
 }
 
+/// Whether any directory of the store holds a transcript for this session.
+///
+/// The probe that cannot go stale: it asks the store, not the index or a folder
+/// we remember. Claude Code moves a live session's transcript into another
+/// directory when the agent enters one of its own worktrees, and every recorded
+/// location then names the directory it left. Session ids are uuids, so a file
+/// with this name anywhere in the store is this session's.
+pub fn transcript_exists_anywhere(claude_dir: &Path, session_id: &str) -> bool {
+	let file = format!("{session_id}.jsonl");
+	let Ok(dirs) = std::fs::read_dir(claude_dir.join("projects")) else {
+		return false;
+	};
+	dirs.filter_map(Result::ok).any(|d| d.path().join(&file).is_file())
+}
+
 /// The transcript file for a **sub-agent** run, which Claude Code nests inside
 /// the directory of the session that spawned it:
 /// `<store dir>/<parent session>/subagents/agent-*.jsonl`.
