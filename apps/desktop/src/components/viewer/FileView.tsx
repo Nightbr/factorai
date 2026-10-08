@@ -840,6 +840,17 @@ function Editor({
 		});
 
 		const model = editor.getModel();
+		// **What this editor last put in the buffer**, so the cleanup below can
+		// tell its own text from somebody else's. `bufferRef` has two writers: the
+		// editor, on every keystroke, and `useEditBuffer`, when disk is adopted —
+		// the watcher's re-read of a clean file (F7 § "Freshness") and the
+		// banner's Reload (F26). Both adopt by writing the new contents here and
+		// changing `baseline`, and a changed `baseline` is exactly what disposes
+		// this editor and creates the next one from `bufferRef`. A cleanup that
+		// wrote the old model back unconditionally ran *between* those two steps
+		// and put the stale text in front of the new editor every time: the
+		// footer said five lines and the editor showed three.
+		let lastWritten = bufferRef.current;
 		// The file's own line endings, so a CRLF file saves back as one. Monaco
 		// guesses from the text it was given, but only when the text has an
 		// ending to guess from — a one-line file has none, and inherits the
@@ -912,7 +923,8 @@ function Editor({
 			// `getValue()` here and not per render: the buffer has to be current
 			// for a Save that can come from a keystroke, and this is the only place
 			// that knows it changed.
-			bufferRef.current = model.getValue();
+			lastWritten = model.getValue();
+			bufferRef.current = lastWritten;
 			onDirtyChange(model.getAlternativeVersionId() !== cleanVersion);
 		});
 
@@ -926,7 +938,11 @@ function Editor({
 			// give, and this is the only moment the next one can inherit from.
 			viewStateRef.current = editor.saveViewState();
 			findStateRef.current = saveFindState(editor);
-			bufferRef.current = model?.getValue() ?? bufferRef.current;
+			// Only while the buffer still holds this editor's text. If it holds
+			// something else, disk was adopted since the last keystroke and the
+			// next editor is being created from it — writing the model back here
+			// would hand that editor the text the reader is leaving behind.
+			if (model && bufferRef.current === lastWritten) bufferRef.current = model.getValue();
 			// The host's handle points at an editor that is about to stop
 			// existing. Cleared here rather than left for the next editor to
 			// overwrite, so a host that outlives the view cannot call into a
