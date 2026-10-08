@@ -216,15 +216,17 @@ a small set of signal and categorical hues that never leave their jobs.
   including the wrap from 7 back to 0, and for hue spacing wide enough to survive
   both themes. They deliberately reuse hues the semantic tokens hold; the rail is
   not a signal surface, so the overlap costs nothing.
-- **The project tiles** (`lib/icon.ts`, ADR-0072): 22 categorical swatches for
-  the initials tile beside a project's name — eleven oklch hues hand-spaced so
-  neighbours read as different colours, each at a deep weight
-  (`oklch(46% 0.13 h)`, near-white initials) and a bright one
-  (`oklch(60% 0.15 h)`, near-black initials). Picked by hashing the display
+- **The project tiles** (`lib/icon.ts`, ADR-0072, ADR-0073): 30 categorical
+  swatches for the initials tile beside a project's name — fifteen hand-spaced
+  oklch hues, each at a deep weight (`oklch(45% 0.12 h)`) and a vivid one
+  (`oklch(56% 0.17 h)`), both with near-white initials. Picked by hashing the display
   name, so the same name draws the same tile in every checkout. The band
   around amber is empty on purpose: the `waiting` badge sits on the tile's
   corner, and a tile that was itself amber would always look like your turn.
   Fill and ink are fixed values, not tokens, so the pair holds in both themes.
+  Within one workspace two projects never share a tile while the palette has
+  room: a collision bumps the later project, by `id`, seven slots on
+  (ADR-0073).
 
 ### Neutral
 

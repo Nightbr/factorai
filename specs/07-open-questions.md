@@ -194,11 +194,15 @@ Full flow in `05-features.md` § "Quit guard".
 
 **Decision.** Cheap and pure CSS:
 
-- Hash the project's display name → one of 22 swatches (ADR-0072): eleven
-  oklch hues, hand-spaced so neighbours read as different colours and leaving
-  the amber band empty, each at two weights — a deep fill with near-white
-  initials and a brighter fill with near-black ones. Case and surrounding
-  whitespace are folded before hashing.
+- Hash the project's display name → one of 30 swatches (ADR-0072, widened
+  by ADR-0073): fifteen hand-spaced oklch hues leaving the amber band empty,
+  each at two weights, a deep fill and a vivid one, both with near-white
+  initials. Case and surrounding whitespace are folded before hashing.
+- The hashed slot is the project's *preferred* one. Across the workspace,
+  collisions are resolved (ADR-0073): projects are taken in `id` order and a
+  project whose slot is held is bumped seven slots on, so under 30 projects no
+  two tiles are the same. A project with no collision draws its hashed tile,
+  which is also what `ProjectIcon` paints before the project list has arrived.
 - First letter (or two) of the display name as the glyph.
 - The fill and the ink are fixed oklch values rather than theme tokens, so the
   pair holds in both themes without a per-theme variant.

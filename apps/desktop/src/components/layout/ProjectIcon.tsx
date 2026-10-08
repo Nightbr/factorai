@@ -1,11 +1,13 @@
 /**
  * Cheap hashed icon — initials over a swatch picked from the project's display
- * name. Pure CSS, no asset generation. Per specs/07-open-questions.md Q11 and
- * ADR-0072 (the palette, and why the name rather than the path is the seed).
+ * name. Pure CSS, no asset generation. Per specs/07-open-questions.md Q11,
+ * ADR-0072 (the palette, and why the name rather than the path is the seed) and
+ * ADR-0073 (collisions resolved across the workspace).
  */
 import type { TerminalStatus } from '@factorai/types';
 import { StatusDot } from '@components/layout/StatusDot';
-import { pickInitials, projectSwatch } from '@lib/icon';
+import { useProjectSwatch } from '@hooks/useProjectSwatch';
+import { pickInitials } from '@lib/icon';
 
 interface ProjectIconProps {
 	name: string;
@@ -16,7 +18,7 @@ interface ProjectIconProps {
 }
 
 export function ProjectIcon({ name, size = 24, status }: ProjectIconProps) {
-	const swatch = projectSwatch(name);
+	const swatch = useProjectSwatch(name);
 	const initials = pickInitials(name);
 	return (
 		// `inline-flex`, not `inline-block`, and the tile below is a FLEX child.
