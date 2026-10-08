@@ -839,6 +839,14 @@ a search hit opened it, found no transcript, and spawned `claude --session-id`
 rather than `--resume` — exactly as ADR-0008 specifies, but landing you in an
 empty session wearing a long conversation's name.
 
+**A row follows its transcript.** Claude Code moves a live session's file into
+another store directory when the agent enters one of its own worktrees
+(`.claude/worktrees/<name>`), with its mtime and size unchanged. The upsert
+writes `discovered_id`, and a file whose row names another directory is
+re-indexed even when the stat matches. Without that the row kept the directory
+the file had left, and since a live session is exempt from the reap, nothing
+corrected it until the session closed.
+
 We do not block UI on the initial scan. The indexer streams progress events
 (`indexer:progress { processed, total }`) and the UI shows a small spinner
 until the first pass completes. Search works against whatever is indexed so

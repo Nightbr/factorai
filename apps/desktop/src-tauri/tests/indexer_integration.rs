@@ -654,6 +654,43 @@ fn a_live_session_is_exempt_from_the_reap() {
 	assert_eq!(counts(&db, &session_id), (1, 2), "a live session keeps its row");
 }
 
+/// Claude Code moves a live session's transcript into another store directory
+/// when the agent enters one of its own worktrees — same file, same mtime, same
+/// size. The row follows it: left on the old directory, every lookup through the
+/// recorded key names a directory the file has left, and the live exemption
+/// means the reap never clears that up while the session runs.
+#[test]
+fn a_moved_transcript_moves_its_row_to_the_new_directory() {
+	let tmp = TempDir::new().unwrap();
+	let db = open_db(tmp.path());
+	let (claude_dir, _cwd, store, session_id) = fixture_one_session(tmp.path(), &db);
+	let live_id = session_id.clone();
+	let (indexer, _) = make_indexer(db.clone(), claude_dir);
+	let indexer = indexer.with_live_ids(Arc::new(move || HashSet::from([live_id.clone()])));
+	indexer.full_scan().expect("first scan");
+
+	let moved_key =
+		format!("{}--claude-worktrees-wt", store.file_name().unwrap().to_string_lossy());
+	let moved = store.with_file_name(&moved_key);
+	std::fs::create_dir_all(&moved).expect("mkdir moved store");
+	let file = format!("{session_id}.jsonl");
+	std::fs::rename(store.join(&file), moved.join(&file)).expect("move transcript");
+	indexer.full_scan().expect("second scan");
+
+	let key: String = db
+		.with(|conn| {
+			Ok(conn.query_row(
+				"SELECT d.key FROM sessions s JOIN discovered_projects d ON d.id = s.discovered_id
+				 WHERE s.id = ?1",
+				params![session_id],
+				|r| r.get(0),
+			)?)
+		})
+		.expect("session row");
+	assert_eq!(key, moved_key, "the row names the directory the transcript is in now");
+	assert_eq!(counts(&db, &session_id), (1, 2), "moved, not duplicated or reaped");
+}
+
 // ── Sub-agent transcripts ────────────────────────────────────────────────────
 //
 // Claude Code writes each agent a session spawns to

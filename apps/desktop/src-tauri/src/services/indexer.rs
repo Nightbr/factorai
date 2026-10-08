@@ -72,6 +72,7 @@ impl TitleKind {
 /// anything to do at all, and the rest is what an incremental re-index resumes
 /// from.
 struct CachedSession {
+	discovered_id: i64,
 	mtime: i64,
 	size: i64,
 	parse_version: i64,
@@ -667,7 +668,8 @@ impl Indexer {
 					// version of this function wrote the row". The rest is what an
 					// incremental re-index resumes from (PERF-03).
 					"SELECT file_mtime, file_size, parse_version, indexed_bytes, title_kind, \
-					        title, turn_count, created_at, cwd, last_cwd, touched_paths \
+					        title, turn_count, created_at, cwd, last_cwd, touched_paths, \
+					        discovered_id \
 					   FROM sessions WHERE id = ?1",
 					params![session_id],
 					|row| {
@@ -683,6 +685,7 @@ impl Indexer {
 							cwd: row.get(8)?,
 							last_cwd: row.get(9)?,
 							touched_paths: row.get(10)?,
+							discovered_id: row.get(11)?,
 						})
 					},
 				)
@@ -708,7 +711,12 @@ impl Indexer {
 				None => c.kind() == TitleKind::Ai,
 			});
 		if let Some(c) = &cached {
+			// **A file that moved keeps its mtime and size**, so the stat alone
+			// would skip it and leave the row naming the directory it left.
+			// Claude Code does exactly this to a live session's transcript when
+			// the agent enters one of its own worktrees.
 			if (c.mtime, c.size) == (mtime_ms, size)
+				&& c.discovered_id == discovered_id
 				&& c.parse_version >= PARSE_VERSION
 				&& !codex_name_changed
 			{
@@ -904,6 +912,7 @@ impl Indexer {
 				"INSERT INTO sessions(id, discovered_id, title, created_at, updated_at, turn_count, file_mtime, file_size, cwd, subagent_of, last_cwd, touched_paths, parse_version, indexed_bytes, title_kind, transcript_path)
 				 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
 				 ON CONFLICT(id) DO UPDATE SET
+				   discovered_id = excluded.discovered_id,
 				   transcript_path = COALESCE(excluded.transcript_path, sessions.transcript_path),
 				   title = excluded.title,
 				   updated_at = excluded.updated_at,
