@@ -194,13 +194,19 @@ Full flow in `05-features.md` § "Quit guard".
 
 **Decision.** Cheap and pure CSS:
 
-- Hash the project path → HSL hue.
+- Hash the project's display name → one of 22 swatches (ADR-0072): eleven
+  oklch hues, hand-spaced so neighbours read as different colours and leaving
+  the amber band empty, each at two weights — a deep fill with near-white
+  initials and a brighter fill with near-black ones. Case and surrounding
+  whitespace are folded before hashing.
 - First letter (or two) of the display name as the glyph.
-- Background: `hsl(h, 60%, 35%)` for dark mode, `hsl(h, 60%, 85%)` for
-  light. White / dark text accordingly.
+- The fill and the ink are fixed oklch values rather than theme tokens, so the
+  pair holds in both themes without a per-theme variant.
 
 No asset generation, no image processing. Drops into a `<ProjectIcon
-name="..." path="..." />` component.
+name="..." />` component.
+
+*Originally hashed the path to an HSL hue; ADR-0072 records why that changed.*
 
 ---
 

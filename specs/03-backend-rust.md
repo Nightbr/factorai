@@ -227,7 +227,7 @@ search_sessions(query: String, project_id: Option<String>, limit: usize) -> Vec<
 // SearchHit = { sessionId, projectId, projectName, projectPath, title, role,
 // snippet } — no event_index, the FTS index stores no per-event position.
 // `title` is JOINed from sessions and the two project fields from projects, so
-// a row can say which codebase a hit came from and draw the same path-hashed
+// a row can say which codebase a hit came from and draw the same name-hashed
 // icon the sidebar does.
 
 // routines (F22, ADR-0026, ADR-0028)

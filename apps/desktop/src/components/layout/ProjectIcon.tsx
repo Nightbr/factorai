@@ -1,22 +1,22 @@
 /**
- * Cheap hashed icon — initials over an HSL color derived from the project
- * path. Pure CSS, no asset generation. Per specs/07-open-questions.md Q11.
+ * Cheap hashed icon — initials over a swatch picked from the project's display
+ * name. Pure CSS, no asset generation. Per specs/07-open-questions.md Q11 and
+ * ADR-0072 (the palette, and why the name rather than the path is the seed).
  */
 import type { TerminalStatus } from '@factorai/types';
 import { StatusDot } from '@components/layout/StatusDot';
-import { hashHue, pickInitials } from '@lib/icon';
+import { pickInitials, projectSwatch } from '@lib/icon';
 
 interface ProjectIconProps {
 	name: string;
-	path: string;
 	size?: number;
 	/** Live PTY status for this project, badged on the icon's top-right corner
 	 *  rather than sitting as one more thing in the row (F1). */
 	status?: TerminalStatus;
 }
 
-export function ProjectIcon({ name, path, size = 24, status }: ProjectIconProps) {
-	const hue = hashHue(path);
+export function ProjectIcon({ name, size = 24, status }: ProjectIconProps) {
+	const swatch = projectSwatch(name);
 	const initials = pickInitials(name);
 	return (
 		// `inline-flex`, not `inline-block`, and the tile below is a FLEX child.
@@ -38,10 +38,11 @@ export function ProjectIcon({ name, path, size = 24, status }: ProjectIconProps)
 			data-testid="project-icon"
 		>
 			<span
-				className="flex size-full items-center justify-center rounded font-semibold text-white"
+				className="flex size-full items-center justify-center rounded font-semibold"
 				style={{
 					fontSize: Math.floor(size * 0.45),
-					backgroundColor: `hsl(${hue}, 60%, 35%)`,
+					backgroundColor: swatch.fill,
+					color: swatch.ink,
 				}}
 				data-testid="project-icon-tile"
 				aria-hidden

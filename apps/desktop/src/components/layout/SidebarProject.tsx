@@ -349,12 +349,7 @@ export function SidebarProject({
 							// is always "moved from where?" and the name alone can't answer it.
 							title={project.missing ? `Folder not found: ${project.realPath}` : undefined}
 						>
-							<ProjectIcon
-								name={project.displayName}
-								path={project.realPath}
-								size={16}
-								status={liveStatus}
-							/>
+							<ProjectIcon name={project.displayName} size={16} status={liveStatus} />
 							<span className="min-w-0 flex-1 truncate">{project.displayName}</span>
 							{project.missing && (
 								<span className="shrink-0 text-muted-foreground/70 text-xs">missing</span>
