@@ -2304,8 +2304,13 @@ Off shows AM/PM. It is what every surface that prints a clock reads — a
 routine's schedule, its next run, the graph's absolute timestamps and the
 routine editor's own time field, which is a hand-built control precisely so it
 can follow this rather than the browser's locale (F22). This is the section
-that was "absent until it has content"; theme joins it when the roadmap's item
-32 lands.
+that was "absent until it has content".
+
+Above it, since item 32 (#28): **Theme**, a `Select` of System, Light and Dark,
+`system` by default. System follows the OS appearance and switches with it,
+without a reload; a choice holds against the OS. Like every row it applies on
+Save. `prefsStore`, because only the renderer reads it; see
+[`04-frontend.md`](./04-frontend.md) § Theming for how it is applied.
 
 **Keyboard.** One row per bindable action, added by F28 and sitting directly
 after Appearance because both are app-wide chrome you set once, before the
@@ -2341,18 +2346,16 @@ the thing that sets nothing at the bottom. See F29.
 **A section is dropped until it has content.** This heading read "three, not
 four" until Sessions arrived, and the count is not the point — having content is.
 Appearance arrived with the clock setting and Advanced with the update channel;
-theme, which is deferred to its own roadmap item (below), will join Appearance. An
-empty section reads as a bug.
+the theme joined Appearance with its own roadmap item. An empty section reads as
+a bug.
 
-**Theme is not here, and that is a scope decision rather than an omission.**
-Nothing in the app sets `data-theme` today, so the light palette in
-`packages/ui/src/styles/globals.css` has never rendered. A theme control is three
-unbuilt things — something to set the attribute, a second Monaco theme (only
-`factorai-dark` is defined), and Q8's palette→xterm mapper that `Terminal.tsx`
-currently hardcodes as three hex values — plus a light-mode pass over every
-surface, including F18's lane colours, which have only ever been judged on a dark
-background. That is a feature, and burying it in this one is how this one never
-lands.
+**Theme shipped as its own item (32, #28), not as a row of this one**, because a
+theme control was three unbuilt things — something to set the attribute, a
+second Monaco theme, and Q8's palette→xterm mapper — plus a light-mode pass over
+every surface. That pass, on 2026-10-07, corrected the markdown preview (it was
+`prose-invert`, near-white on white), the git status colours (fixed Tailwind
+500s, under 3:1 on white) and the light Monaco diff; F18's light lane colours
+were judged at a 6px pitch and held as written.
 
 **Q3 still stands:** no projects-dir override. `CLAUDE_HOME` is the escape hatch,
 and adding a setting for it means superseding Q3 rather than quietly filling in the
@@ -2564,7 +2567,8 @@ pinned to the right edge, so the columns that *are* scanned vertically still
 are. The full path is in the row's `title`.
 
 Status letters follow git and take their colour from the theme, not from new
-hex values: `M` modified, `A` added, `D` deleted, `R` renamed (the row's
+hex values — the `--git-added` / `--git-modified` / `--git-deleted` /
+`--git-renamed` tokens, which have a value per theme: `M` modified, `A` added, `D` deleted, `R` renamed (the row's
 `title` shows `new ← old`; inline it would be a second full path in a row that
 already leads with one), `U` untracked, `C` conflicted.
 

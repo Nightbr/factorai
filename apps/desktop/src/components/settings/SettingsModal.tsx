@@ -39,6 +39,7 @@ import {
 	type SettingsValues,
 } from '@lib/settingsDraft';
 import { cmd } from '@lib/tauri';
+import { THEME_PREFS, themePrefOf } from '@lib/theme';
 import { currentPrefs, type Prefs, usePrefsStore } from '@store/prefsStore';
 import { useUpdater } from '@hooks/useUpdater';
 import type { AgentId, UpdateChannel } from '@factorai/types';
@@ -405,6 +406,24 @@ function SettingsForm({ section, onSection, onClose, savedSqlite, dirtyRef }: Se
 
 					{section === 'appearance' && (
 						<div className="divide-y divide-border">
+							<SettingRow
+								label="Theme"
+								htmlFor="settings-theme"
+								description="System follows your OS appearance and switches with it."
+							>
+								<Select value={draft.theme} onValueChange={(v) => set('theme', themePrefOf(v))}>
+									<SelectTrigger id="settings-theme" data-testid="settings-theme" className="w-32">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{THEME_PREFS.map(({ id, label }) => (
+											<SelectItem key={id} value={id} data-testid={`settings-theme-${id}`}>
+												{label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</SettingRow>
 							<SettingRow
 								label="24-hour clock"
 								htmlFor="settings-clock24"

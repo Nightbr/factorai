@@ -1,4 +1,5 @@
 import type { KeymapOverrides } from '@lib/keymap';
+import type { ThemePref } from '@lib/theme';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { legacyDiffInline } from '@store/diffInlineHandover';
@@ -70,6 +71,14 @@ interface PrefsState {
 	 *  the routine editor's time field, which is why that field is ours rather
 	 *  than the native control (F22). */
 	clock24: boolean;
+	/** Light, dark, or whatever the OS appearance is (roadmap item 32 (#28)).
+	 *
+	 *  **`system` by default.** The dark theme is the product's identity
+	 *  (`DESIGN.md`), but somebody who runs their desktop light has said what
+	 *  they want to look at, and the light palette is a translation of the dark
+	 *  one rather than a lesser copy of it. `lib/theme.ts` resolves and applies
+	 *  it. */
+	theme: ThemePref;
 	/** The keyboard bindings the user has changed, and **only** those (F28).
 	 *
 	 *  The whole table is not stored: what is saved is the difference from the
@@ -107,6 +116,7 @@ const DEFAULT_PREFS: Prefs = {
 	// 24-hour by default: this app is a developer tool, and every timestamp it
 	// already prints beside a clock — a commit, a log line — is unambiguous.
 	clock24: true,
+	theme: 'system',
 	// Nothing overridden: the shipped map is `SHORTCUT_SPECS`, and an empty
 	// object here is what makes "reset all" a deletion rather than a copy of a
 	// table that would go stale.
@@ -140,6 +150,7 @@ export const usePrefsStore = create<PrefsState>()(
 				frontmatterOpen: s.frontmatterOpen,
 				restoreTabs: s.restoreTabs,
 				clock24: s.clock24,
+				theme: s.theme,
 				keymapOverrides: s.keymapOverrides,
 			}),
 		},
@@ -157,6 +168,7 @@ export function currentPrefs(): Prefs {
 		frontmatterOpen: s.frontmatterOpen,
 		restoreTabs: s.restoreTabs,
 		clock24: s.clock24,
+		theme: s.theme,
 		keymapOverrides: s.keymapOverrides,
 	};
 }

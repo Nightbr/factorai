@@ -96,7 +96,7 @@ export function SubAgentTranscript({ sessionId }: { sessionId: string }) {
 	const hasEarlier = data.offset > 0;
 
 	return (
-		<div className="min-h-0 flex-1 overflow-y-auto bg-[#0c0e12] px-4 py-3">
+		<div className="min-h-0 flex-1 overflow-y-auto bg-terminal px-4 py-3">
 			{hasEarlier && (
 				<Button variant="outline" size="sm" className="mb-3" onClick={() => setWidth(width + PAGE)}>
 					<ChevronUp /> Show earlier ({data.offset} events hidden)

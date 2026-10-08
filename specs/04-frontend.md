@@ -307,8 +307,8 @@ things a human chose in the settings modal, as opposed to layout they dragged
 (ADR-0013, F11).
 
 Rewritten 2026-08-17. The earlier key list was written before any of it existed and
-has not survived contact: `theme` is deferred to its own roadmap item (nothing sets
-`data-theme` yet), `fontFamily`/`fontSize` were never specced anywhere else,
+has not survived contact: `theme` was deferred to its own roadmap item (it landed
+with item 32, #28, below), `fontFamily`/`fontSize` were never specced anywhere else,
 `lastProjectId` is not a preference and no feature asked for it, and the two widths
 stay in their layout stores.
 
@@ -336,6 +336,8 @@ Keys, as shipped with F11:
   `<input type="time">` render, and those disagreed with the app's own 24-hour
   text on the same screen, which is why that field is a hand-built control
   (F22).
+- `theme: 'system' | 'light' | 'dark'` — default `system` (roadmap item 32,
+  #28). Applied by `lib/theme.ts`; see § Theming.
 
 The store exposes `applyPrefs(next)` — one write for a whole Save, so a
 half-applied save cannot exist — plus `setDiffInline`, because the diff footer's
@@ -475,8 +477,10 @@ imports Monaco:
   `basic-languages/monaco.contribution`, which is every Monarch grammar with
   **no** web-worker requirement (the workers back language services, i.e.
   IntelliSense, which the viewer doesn't want — editing is a text buffer and a
-  Save, not a language service). Also owns the `factorai-dark` theme and
-  language resolution via Monaco's own registry.
+  Save, not a language service). Also owns the `factorai-dark` and
+  `factorai-light` themes — both defined on first use, and switched with
+  Monaco's global `setTheme` when the app theme moves — and language resolution
+  via Monaco's own registry.
 - `FileView.tsx` — one file, modal-agnostic. Runs the `read_file` query, renders
   the editor / binary card / empty state, and the footer. Owns the edit buffer,
   Save, Revert and the changed-on-disk banner (F26); the draft store outlives it.
@@ -521,9 +525,28 @@ Same exact list as factorai-v0. No new primitives needed for MVP.
 
 ## Theming
 
-Tailwind v4 with CSS variables for colors (light + dark). Theme is applied
-by toggling `data-theme="dark"` on `<html>`. Initial value from
-`prefsStore.theme` (default `system`).
+Tailwind v4 with CSS variables for colors (light + dark). The dark palette is
+on `:root` and the light one on `[data-theme="light"]`, both in `@factorai/ui`'s
+stylesheet. `lib/theme.ts` sets `data-theme` to `light` or `dark` on `<html>`,
+resolving `prefsStore.theme` (default `system`) against
+`prefers-color-scheme`, and keeps it current as either moves.
 
-xterm theme follows the same palette via a tiny mapper in
-`components/terminal/themes.ts`.
+**It runs in `main.tsx` before the first render.** `prefsStore` hydrates from
+localStorage synchronously, so the first frame is already in the right palette.
+
+Three surfaces cannot read CSS variables and subscribe to `onThemeChange`
+instead:
+
+- **xterm**, through the Q8 mapper in `components/terminal/themes.ts`: the
+  ground, text and cursor come from `--terminal`, `--terminal-foreground` and
+  `--primary`; the light theme adds an ANSI palette that reads on white, and the
+  dark theme keeps xterm's defaults. Every pooled terminal is repainted, hidden
+  ones included.
+- **Monaco**, through `factorai-light` beside `factorai-dark` in
+  `viewer/monaco.ts`.
+- **Mermaid** watches `data-theme` itself and re-reads the tokens
+  (`viewer/mermaid.ts`).
+
+The markdown preview takes its `prose` colours from the tokens (the
+`prose-tokens` utility) rather than `prose-invert`, which is a fixed dark scale.
+PDF pages stay white paper in both themes (F7).

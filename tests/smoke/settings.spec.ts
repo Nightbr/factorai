@@ -4,10 +4,11 @@ import { fixtureOneProjectOneSession, installMockBridge } from './fixtures';
 /**
  * The settings modal (specs/05-features.md F11).
  *
- * **Two tests, deliberately.** The suite is already at 130-odd and E1 says
+ * **Few tests, deliberately.** The suite is already at 130-odd and E1 says
  * everything else goes to the future regression lane: what is here is the way
- * in (the gear, and a deep link) and the thing an explicit Save makes
- * load-bearing (Save persists, Cancel discards). The dirty-diffing itself is
+ * in (the gear, and a deep link), the thing an explicit Save makes
+ * load-bearing (Save persists, Cancel discards), and the theme, whose whole
+ * effect is an attribute no unit test can see the document take. The dirty-diffing itself is
  * unit-tested in `settingsDraft.test.ts`, where it belongs.
  */
 test.describe('settings', () => {
@@ -135,5 +136,27 @@ test.describe('settings', () => {
 			'aria-checked',
 			'true',
 		);
+	});
+
+	test('@smoke the theme follows the system until one is chosen', async ({ page }) => {
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		const html = page.locator('html');
+
+		// `system` by default, and it moves with the OS appearance without a reload.
+		await page.emulateMedia({ colorScheme: 'light' });
+		await page.goto('/');
+		await expect(html).toHaveAttribute('data-theme', 'light');
+		await page.emulateMedia({ colorScheme: 'dark' });
+		await expect(html).toHaveAttribute('data-theme', 'dark');
+
+		// A choice holds against the OS, and survives a reload: it is applied
+		// before the first render, from the stored preference.
+		await page.goto('/?settings=appearance');
+		await page.getByTestId('settings-theme').click();
+		await page.getByTestId('settings-theme-light').click();
+		await page.getByTestId('settings-save').click();
+		await expect(html).toHaveAttribute('data-theme', 'light');
+		await page.reload();
+		await expect(html).toHaveAttribute('data-theme', 'light');
 	});
 });

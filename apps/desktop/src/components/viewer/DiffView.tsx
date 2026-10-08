@@ -22,7 +22,7 @@ import {
 } from '@components/viewer/chrome';
 import {
 	ensureTheme,
-	FACTORAI_DARK,
+	monacoTheme,
 	findIsRevealed,
 	languageForFile,
 	monaco,
@@ -489,7 +489,7 @@ function DiffEditor({
 
 		ensureTheme();
 		const editor = monaco.editor.createDiffEditor(host, {
-			theme: FACTORAI_DARK,
+			theme: monacoTheme(),
 			readOnly,
 			domReadOnly: readOnly,
 			// The left side is a revision in every mode there is. Nothing here

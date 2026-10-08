@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { showErrorNotice } from '@lib/errorNotice';
 import { installGlobalErrorHandlers } from '@lib/globalErrors';
+import { installTheme } from '@lib/theme';
+import { usePrefsStore } from '@store/prefsStore';
 import { App } from './App';
 import './styles/globals.css';
 
@@ -31,6 +33,15 @@ function escapeHtml(s: string): string {
 		(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
 	);
 }
+
+// Before the first render, so the first frame is already in the right palette:
+// `prefsStore` has hydrated from localStorage by the time this runs.
+installTheme({
+	getPref: () => usePrefsStore.getState().theme,
+	subscribePref: (listener) => usePrefsStore.subscribe(listener),
+	media: window.matchMedia('(prefers-color-scheme: dark)'),
+	root: document.documentElement,
+});
 
 installGlobalErrorHandlers({
 	// Asked of the DOM rather than tracked with a flag: if React has painted

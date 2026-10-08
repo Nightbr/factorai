@@ -76,8 +76,11 @@
 	   `waiting` is the accent's exact value and moves with it — "your move" is
 	   the same signal the accent carries everywhere else, and two ambers three
 	   percent apart would read as a mistake rather than a distinction. */
-	--color-status-working: oklch(68% 0.17 150);
-	--color-status-waiting: oklch(81.3% 0.165 75);
+	--color-status-working: var(--status-working);
+	/* The accent itself rather than a copy of its value, so the light theme's
+	   darker amber (`DESIGN.md` § Primary) reaches the dot too: the brand
+	   `#FFB020` on a 98% ground is a dot you have to look for. */
+	--color-status-waiting: var(--primary);
 	--color-status-stopped: oklch(55% 0.01 250);
 	/* A fourth colour and **not** a fourth state (F22): it is `working` for a
 	   session running with no tab — a routine's, until somebody opens it. Blue
@@ -86,7 +89,7 @@
 	   work you started. It sits at the green's lightness and chroma so the two
 	   read as the same kind of mark; `waiting` still wins over it, because
 	   "your move" is true wherever the session runs. */
-	--color-status-background: oklch(68% 0.16 255);
+	--color-status-background: var(--status-background);
 	/* A fifth mark, drawn hollow (F30, DESIGN.md § Status Dot): a live PTY whose
 	   agent has told us nothing. `stopped`'s value on purpose — same weight,
 	   different shape. */
@@ -145,6 +148,12 @@
 	--color-input: var(--input);
 	--color-ring: var(--ring);
 	--color-dev: var(--dev);
+	--color-terminal: var(--terminal);
+	--color-git-added: var(--git-added);
+	--color-git-modified: var(--git-modified);
+	--color-git-deleted: var(--git-deleted);
+	--color-git-renamed: var(--git-renamed);
+	--color-terminal-foreground: var(--terminal-foreground);
 	--color-lane-0: var(--lane-0);
 	--color-lane-1: var(--lane-1);
 	--color-lane-2: var(--lane-2);
@@ -221,6 +230,32 @@
 	   mixed from this hue — so nothing is ever set *on* solid violet. */
 	--dev: oklch(68% 0.19 300);
 
+	/* The terminal's own ground and text: the agent's PTY, a shell, and the
+	   transcript that stands in for a PTY. A step deeper than `--background` in
+	   the dark theme, because a terminal full of output reads as a well rather
+	   than as chrome. Read by `components/terminal/themes.ts` for xterm, which
+	   cannot take a CSS variable, and by `bg-terminal` around it so the padding
+	   matches the canvas (Q8, roadmap item 32 (#28)). */
+	--terminal: oklch(16.3% 0.009 264);
+	--terminal-foreground: oklch(87.1% 0.005 286);
+
+	/* Two of the status hues (F10), per theme now that there are two. Their
+	   meaning and ramp are documented with `--color-status-*` in the theme block
+	   above; the values live here because a dot that reads on near-black at 68%
+	   lightness is a pale smudge as text on white. `stopped` and `unknown` are
+	   mid-grey and hold in both, so they stay where they are. */
+	--status-working: oklch(68% 0.17 150);
+	--status-background: oklch(68% 0.16 255);
+
+	/* Git's own colours for a path's state — `M`, `A`/`U`, `D`/`C`, `R` — in the
+	   Files and Changes panels, and the graph's remote and tag chips (F12, F18).
+	   Content colours, not signals: they say what git says and ask nothing of
+	   you. The dark values are the Tailwind 400/500 steps these shipped as. */
+	--git-added: oklch(69.6% 0.17 162.48);
+	--git-modified: oklch(76.9% 0.188 70.08);
+	--git-deleted: oklch(64.5% 0.246 16.439);
+	--git-renamed: oklch(68.5% 0.169 237.323);
+
 	/* Categorical scale — see specs/adr/0012-categorical-colour-tokens.md.
 	   Everything above is *semantic*: there is one right answer for any given
 	   element. These carry no meaning beyond "not the same as my neighbour",
@@ -281,6 +316,19 @@
 	--input: oklch(94% 0.006 250);
 	--ring: oklch(58% 0.17 75);
 	--dev: oklch(52% 0.21 300);
+	/* White paper, a step above the 98% chrome — the light theme's well goes up,
+	   not down, the way `--card` does. */
+	--terminal: oklch(100% 0 0);
+	--terminal-foreground: oklch(24% 0.008 250);
+	--status-working: oklch(55% 0.17 150);
+	--status-background: oklch(55% 0.16 255);
+	/* Roughly the 700 steps: on white the 500s fall under 3:1, and an `M` you
+	   have to look for is an `M` you miss. Amber moves toward orange as it
+	   darkens, the way the accent does, so it stays a warm "changed". */
+	--git-added: oklch(50.8% 0.118 165.612);
+	--git-modified: oklch(55.5% 0.163 48.998);
+	--git-deleted: oklch(55% 0.22 17.585);
+	--git-renamed: oklch(50% 0.134 242.749);
 
 	/* The categorical scale again, against a 98% background instead of a 16% one.
 	   Not a tint of the dark values: lightness drops by ~20 points and chroma

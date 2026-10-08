@@ -21,6 +21,7 @@ const SAVED: SettingsValues = {
 	routinesMaxConcurrent: '',
 	updateChannel: 'stable',
 	clock24: true,
+	theme: 'system',
 	diffInline: false,
 	confirmCloseSession: true,
 	confirmCloseMiddleClick: true,
@@ -83,6 +84,7 @@ describe('dirtySections', () => {
 			else if (key === 'routinesMaxConcurrent') draft.routinesMaxConcurrent = '4';
 			else if (key === 'keymapOverrides') draft.keymapOverrides = { openSettings: null };
 			else if (key === 'updateChannel') draft.updateChannel = 'alpha';
+			else if (key === 'theme') draft.theme = 'light';
 			else draft[key] = !SAVED[key];
 			expect(dirtySections(SAVED, draft)).toEqual([SECTION_FOR[key]]);
 		}

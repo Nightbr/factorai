@@ -55,6 +55,7 @@ import 'monaco-editor/features/codicon/register';
 // for why not the whole thing. Untyped upstream; declared in src/vite-env.d.ts.
 import { createTokenizationSupport } from 'monaco-editor/languages/features/json/tokenization';
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+import { currentTheme, onThemeChange, type Theme } from '@lib/theme';
 
 // The diff editor (F8/F13) computes its diff in a worker and throws without
 // one — this is the wiring the plain file viewer deliberately shipped without.
@@ -113,16 +114,31 @@ registerJson();
 
 export { monaco };
 
-/** Matches the app's `--card` / `--foreground` so the editor doesn't sit in the
- *  modal as a differently-coloured slab. Monaco wants hex, not oklch. */
-export const FACTORAI_DARK = 'factorai-dark';
+/** Monaco's theme names, one per app theme. Each matches that theme's `--card`
+ *  / `--foreground`, so the editor doesn't sit in the modal as a
+ *  differently-coloured slab. Monaco wants hex, not oklch. */
+const MONACO_THEMES: Record<Theme, string> = {
+	dark: 'factorai-dark',
+	light: 'factorai-light',
+};
 
-let themeDefined = false;
+/** The Monaco theme for the app theme on screen — what an editor is created
+ *  with. A switch afterwards is `setTheme`, below. */
+export function monacoTheme(): string {
+	return MONACO_THEMES[currentTheme()];
+}
 
+let themesDefined = false;
+
+/**
+ * Define both themes, once. **Both, not the current one**: `setTheme` on a
+ * switch needs the other already defined, and the old latch here assumed there
+ * would only ever be one theme.
+ */
 export function ensureTheme(): void {
-	if (themeDefined) return;
-	themeDefined = true;
-	monaco.editor.defineTheme(FACTORAI_DARK, {
+	if (themesDefined) return;
+	themesDefined = true;
+	monaco.editor.defineTheme(MONACO_THEMES.dark, {
 		base: 'vs-dark',
 		inherit: true,
 		rules: [],
@@ -186,6 +202,74 @@ export function ensureTheme(): void {
 			'icon.foreground': '#8b919c',
 		},
 	});
+
+	// The same roles as the dark theme above, restated against the light
+	// palette rather than inverted: `#ffffff` is `--card`, `#f6f9fb` the
+	// `--background` step, `#e8ebef` / `#d5d8db` the two hairline steps, `#52565a`
+	// metadata, `#0f1215` text, `#b36600` the light theme's darker amber (the
+	// brand `#ffb020` is unreadable on white — DESIGN.md § Primary).
+	monaco.editor.defineTheme(MONACO_THEMES.light, {
+		base: 'vs',
+		inherit: true,
+		rules: [],
+		colors: {
+			'editor.background': '#ffffff',
+			'editor.foreground': '#0f1215',
+			'editorLineNumber.foreground': '#83878b',
+			'editorLineNumber.activeForeground': '#52565a',
+			'editor.selectionBackground': '#dde2e6',
+			'editor.lineHighlightBackground': '#f6f9fb',
+			'editorIndentGuide.background1': '#e8ebef',
+
+			'editorWidget.background': '#ffffff',
+			'editorWidget.foreground': '#0f1215',
+			'editorWidget.border': '#d5d8db',
+			'editorWidget.resizeBorder': '#d5d8db',
+			// Lighter than the dark theme's: on paper a shadow reads at a third
+			// of the weight it needs on near-black.
+			'widget.shadow': '#0000001f',
+			'input.background': '#f6f9fb',
+			'input.foreground': '#0f1215',
+			'input.border': '#d5d8db',
+			focusBorder: '#b36600',
+			'inputOption.activeBackground': '#b3660021',
+			'inputOption.activeForeground': '#b36600',
+			'inputOption.activeBorder': '#b3660066',
+			'inputValidation.errorBackground': '#ffe7e4',
+			'inputValidation.errorBorder': '#df202e',
+			'inputValidation.errorForeground': '#0f1215',
+			errorForeground: '#df202e',
+			// A darker amber needs less weight to show: the dark theme's 34% fill
+			// would turn the matched text brown.
+			'editor.findMatchBackground': '#b366003d',
+			'editor.findMatchBorder': '#b36600',
+			'editor.findMatchHighlightBackground': '#b366001f',
+			'editor.findMatchHighlightBorder': '#b366004d',
+			'editor.findRangeHighlightBackground': '#52565a14',
+			'editorOverviewRuler.findMatchForeground': '#b36600b3',
+			'toolbar.hoverBackground': '#e8ebef',
+			'icon.foreground': '#52565a',
+			// The diff (F8/F13). `vs` ships a saturated lime for an added line,
+			// which at the size of a whole hunk is the loudest thing on screen.
+			// These are the light git hues (`--git-added`, `--git-deleted`) at a
+			// ground's weight, with the changed characters one step stronger.
+			'diffEditor.insertedLineBackground': '#0f7a550f',
+			'diffEditor.insertedTextBackground': '#0f7a5524',
+			'diffEditor.removedLineBackground': '#cf222e0f',
+			'diffEditor.removedTextBackground': '#cf222e24',
+			'diffEditorOverview.insertedForeground': '#0f7a5599',
+			'diffEditorOverview.removedForeground': '#cf222e99',
+			// The scrollbar thumb, on the metadata grey rather than `vs`'s 40%
+			// grey slab beside the text.
+			'scrollbarSlider.background': '#52565a33',
+			'scrollbarSlider.hoverBackground': '#52565a4d',
+			'scrollbarSlider.activeBackground': '#52565a66',
+		},
+	});
+
+	// Monaco's theme is global — one `setTheme` repaints every editor and diff
+	// editor on screen — so this is subscribed once, beside the definitions.
+	onThemeChange((theme) => monaco.editor.setTheme(MONACO_THEMES[theme]));
 }
 
 /**

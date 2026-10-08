@@ -13,7 +13,7 @@ import {
 import { FindBar } from '@components/viewer/FindBar';
 import { useFindHandleSink } from '@components/viewer/findHandle';
 import {
-	FACTORAI_DARK,
+	monacoTheme,
 	type FindState,
 	ensureTheme,
 	findIsRevealed,
@@ -816,7 +816,7 @@ function Editor({
 		const editor = monaco.editor.create(host, {
 			value: bufferRef.current,
 			language,
-			theme: FACTORAI_DARK,
+			theme: monacoTheme(),
 			readOnly,
 			// A read-only file still wants a caret for keyboard scrolling and
 			// selection, but no edit affordances.

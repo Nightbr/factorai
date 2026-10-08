@@ -45,9 +45,12 @@ export function showErrorNotice(text: string): void {
 		'max-width:min(520px,90vw)',
 		'max-height:40vh',
 		'overflow:auto',
-		'background:#1a1e24',
-		'color:#d4d4d8',
-		'border:1px solid #3a3f48',
+		// Tokens with the dark values behind them: the card has to follow the
+		// theme (roadmap item 32 (#28)), and it has to draw even if the
+		// stylesheet never loaded, which is when it is likeliest to be needed.
+		'background:var(--popover,#1a1e24)',
+		'color:var(--popover-foreground,#d4d4d8)',
+		'border:1px solid var(--border,#3a3f48)',
 		'border-radius:6px',
 		'padding:10px 12px',
 		'font:11px/1.5 ui-monospace,monospace',
@@ -57,7 +60,7 @@ export function showErrorNotice(text: string): void {
 
 	const bar = document.createElement('div');
 	bar.style.cssText =
-		'display:flex;align-items:center;gap:8px;margin-bottom:6px;color:#f0a4a4;font-weight:600';
+		'display:flex;align-items:center;gap:8px;margin-bottom:6px;color:var(--destructive,#f0a4a4);font-weight:600';
 
 	const title = document.createElement('span');
 	title.textContent = 'Unexpected error';
@@ -66,13 +69,13 @@ export function showErrorNotice(text: string): void {
 	const badge = document.createElement('span');
 	badge.dataset.count = '';
 	badge.textContent = '×1';
-	badge.style.cssText = 'color:#8b919c;font-weight:400';
+	badge.style.cssText = 'color:var(--muted-foreground,#8b919c);font-weight:400';
 
 	const close = document.createElement('button');
 	close.textContent = '✕';
 	close.setAttribute('aria-label', 'Dismiss');
 	close.style.cssText =
-		'background:none;border:0;color:#8b919c;cursor:pointer;font:12px/1 monospace;padding:2px';
+		'background:none;border:0;color:var(--muted-foreground,#8b919c);cursor:pointer;font:12px/1 monospace;padding:2px';
 	close.onclick = () => {
 		cards.delete(text);
 		card.remove();

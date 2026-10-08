@@ -96,8 +96,8 @@ function LineCounts({
 	if (additions === null && deletions === null) return null;
 	return (
 		<span className="shrink-0 gap-1 text-xs tabular-nums">
-			{additions ? <span className="text-emerald-500">+{additions}</span> : null}
-			{deletions ? <span className="ml-1 text-rose-500">−{deletions}</span> : null}
+			{additions ? <span className="text-git-added">+{additions}</span> : null}
+			{deletions ? <span className="ml-1 text-git-deleted">−{deletions}</span> : null}
 		</span>
 	);
 }
@@ -134,11 +134,11 @@ const KIND_LABELS: Record<GitChangeKind, string> = {
 /** Git's own colour semantics, expressed in the app's palette rather than new
  *  hex values (F13). */
 const KIND_CLASSES: Record<GitChangeKind, string> = {
-	modified: 'text-amber-500',
-	added: 'text-emerald-500',
-	deleted: 'text-rose-500',
-	renamed: 'text-sky-500',
-	typechange: 'text-amber-500',
-	untracked: 'text-emerald-500',
-	conflicted: 'text-rose-500',
+	modified: 'text-git-modified',
+	added: 'text-git-added',
+	deleted: 'text-git-deleted',
+	renamed: 'text-git-renamed',
+	typechange: 'text-git-modified',
+	untracked: 'text-git-added',
+	conflicted: 'text-git-deleted',
 };
