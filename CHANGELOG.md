@@ -5,6 +5,19 @@ release adds (ADR-0064); alphas are listed only on their GitHub prereleases.
 
 Releases before 0.49.0 are on [GitHub](https://github.com/Nightbr/factorai/releases).
 
+## 0.54.0 — 2026-10-09
+
+### Features
+
+- project tiles hash the display name to a curated 22-swatch palette (#63)
+- a light theme, chosen in Settings → Appearance or following the OS (#57)
+
+### Fixes
+
+- the viewer's editor shows the re-read file, not the text it was leaving (#62)
+- + no longer reopens a session whose transcript moved to a worktree (#60)
+- project tiles never collide within a workspace, on a 30-swatch white-ink palette (#64)
+
 ## 0.53.0 — 2026-10-04
 
 ### Fixes
