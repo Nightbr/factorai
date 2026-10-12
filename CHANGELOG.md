@@ -5,6 +5,12 @@ release adds (ADR-0064); alphas are listed only on their GitHub prereleases.
 
 Releases before 0.49.0 are on [GitHub](https://github.com/Nightbr/factorai/releases).
 
+## 0.55.0 — 2026-10-12
+
+### Fixes
+
+- the Linux AppImage renders on Mesa 25+, with @tauri-apps/cli 2.12.1 no longer bundling libwayland-client (#66)
+
 ## 0.54.0 — 2026-10-09
 
 ### Features
