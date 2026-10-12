@@ -299,6 +299,31 @@ function isCopyChord(event: KeyboardEvent): boolean {
 }
 
 /**
+ * **`Shift+Enter` is a line break, not a submit** (specs/05-features.md F5).
+ *
+ * xterm encodes `Enter` and `Shift+Enter` identically, as `\r`, so Claude Code
+ * cannot tell them apart and sends the prompt. A line feed is what its own
+ * `Ctrl+J` sends, and Claude Code inserts it as a newline. It is also the safe
+ * choice in a plain shell, where readline treats `\n` exactly like `Enter` — the
+ * `ESC CR` some terminals send instead is bound to `vi-editing-mode` there.
+ *
+ * Matches every event type, so the `keypress` that can follow the `keydown` is
+ * swallowed too rather than writing the `\r` after all.
+ *
+ * **Never while an IME is composing.** This handler runs before xterm's
+ * `CompositionHelper`, and WebKit reports the real key with `keyCode` 229 then,
+ * so taking the event would drop the pending text and write a line feed instead.
+ */
+export function isShiftEnter(event: KeyboardEvent): boolean {
+	if (event.isComposing || event.keyCode === 229) return false;
+	return (
+		event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey
+	);
+}
+
+export const SHIFT_ENTER_INPUT = '\n';
+
+/**
  * Put the selection on the clipboard and clear it, so the grid shows the copy
  * happened. Through `copyText`, never the web API, which WebKitGTK refuses.
  */
@@ -380,6 +405,14 @@ export function getOrCreateTerm(
 	// for the app's life (see below), and a snapshot taken at construction would
 	// pass the chord the user has since moved away from.
 	term.attachCustomKeyEventHandler((event) => {
+		if (isShiftEnter(event)) {
+			if (event.type === 'keydown') {
+				event.preventDefault();
+				// Through `onData`, so it reaches whichever PTY is current.
+				term.input(SHIFT_ENTER_INPUT, true);
+			}
+			return false;
+		}
 		if (event.type !== 'keydown') return true;
 		// Nothing without a modifier can be one of ours, and this runs on every
 		// keystroke typed into the terminal.

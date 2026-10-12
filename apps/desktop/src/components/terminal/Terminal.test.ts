@@ -1,9 +1,46 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	createOscLinkHandler,
+	isShiftEnter,
 	onLinkActivated,
 	proposeGeometry,
+	SHIFT_ENTER_INPUT,
 } from '@components/terminal/Terminal';
+
+function key(mods: Partial<KeyboardEvent> = {}): KeyboardEvent {
+	return {
+		key: 'Enter',
+		shiftKey: false,
+		ctrlKey: false,
+		altKey: false,
+		metaKey: false,
+		...mods,
+	} as KeyboardEvent;
+}
+
+describe('isShiftEnter', () => {
+	it('matches Shift+Enter alone', () => {
+		expect(isShiftEnter(key({ shiftKey: true }))).toBe(true);
+	});
+
+	it('leaves Enter and every other chord on Enter to xterm', () => {
+		expect(isShiftEnter(key())).toBe(false);
+		expect(isShiftEnter(key({ shiftKey: true, ctrlKey: true }))).toBe(false);
+		expect(isShiftEnter(key({ shiftKey: true, altKey: true }))).toBe(false);
+		expect(isShiftEnter(key({ shiftKey: true, metaKey: true }))).toBe(false);
+		expect(isShiftEnter(key({ key: 'a', shiftKey: true }))).toBe(false);
+	});
+
+	it('leaves a key an IME is composing with to xterm', () => {
+		// Taking it would drop the pending text and write a line feed instead.
+		expect(isShiftEnter(key({ shiftKey: true, isComposing: true }))).toBe(false);
+		expect(isShiftEnter(key({ shiftKey: true, keyCode: 229 }))).toBe(false);
+	});
+
+	it('writes a line feed, which Claude Code inserts and readline runs like Enter', () => {
+		expect(SHIFT_ENTER_INPUT).toBe('\n');
+	});
+});
 
 function click(mods: Partial<MouseEvent> = {}): MouseEvent {
 	return { ctrlKey: false, metaKey: false, ...mods } as MouseEvent;
