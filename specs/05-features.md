@@ -895,6 +895,13 @@ shell alike, since both are one pooled xterm:
 - Both go through `copyText`, the Tauri clipboard plugin, because WebKitGTK
   refuses `navigator.clipboard.writeText`.
 
+**`Shift+Enter` writes a line break** (2026-10-12), in both terminals. xterm
+encodes it exactly like `Enter`, as `\r`, so Claude Code sent the prompt. It now
+writes `\n`, the byte `Ctrl+J` sends, which Claude Code inserts as a newline. In
+the footer shell readline runs `\n` like `Enter`, so nothing changes there; the
+`ESC CR` other terminals use for this would have switched bash into vi mode.
+Never while an input method is composing: that key belongs to the IME.
+
 **No scrollbar, and the grid fills the pane** (2026-08-18). Both came out of one
 report — a white bar down the right of every session on macOS — and they are
 three separate faults that happened to stack in the same 30px.
