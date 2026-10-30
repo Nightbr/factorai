@@ -1,6 +1,6 @@
 use crate::commands::off_main;
 use crate::error::AppResult;
-use crate::models::{FileContents, SopsStatus};
+use crate::models::{FileContents, SopsAwsContext, SopsStatus};
 use crate::services::sops;
 
 /// Whether `sops` can be driven at all, for the viewer's Decrypt control (F27).
@@ -31,8 +31,8 @@ pub fn sops_status() -> SopsStatus {
 /// `async` and off the main thread (PERF-07): `sops` is a child process this
 /// waits for, and with a KMS or a hardware key behind it that wait is seconds.
 #[tauri::command]
-pub async fn sops_decrypt(path: String) -> AppResult<String> {
-	off_main(move || sops::decrypt(&path)).await
+pub async fn sops_decrypt(path: String, aws_profile: Option<String>) -> AppResult<String> {
+	off_main(move || sops::decrypt(&path, aws_profile.as_deref())).await
 }
 
 /// Encrypt the viewer's plaintext buffer and write it over the file (F27).
@@ -49,6 +49,21 @@ pub async fn sops_decrypt(path: String) -> AppResult<String> {
 /// Off the main thread for the same reason as `sops_decrypt`, and this one
 /// spawns `sops` twice.
 #[tauri::command]
-pub async fn sops_encrypt(path: String, plaintext: String) -> AppResult<FileContents> {
-	off_main(move || sops::encrypt(&path, &plaintext)).await
+pub async fn sops_encrypt(
+	path: String,
+	plaintext: String,
+	aws_profile: Option<String>,
+) -> AppResult<FileContents> {
+	off_main(move || sops::encrypt(&path, &plaintext, aws_profile.as_deref())).await
+}
+
+/// The AWS profiles a SOPS file could be decrypted with, or `null` when its
+/// metadata names no AWS KMS key — the viewer shows a profile picker only for a
+/// file that has one (F27 § "Choosing the AWS profile").
+///
+/// Profile names and account ids only: the shared credentials file is read past,
+/// never kept, and the credentials stay for `sops` to find in its own process.
+#[tauri::command]
+pub async fn sops_aws_context(path: String) -> AppResult<Option<SopsAwsContext>> {
+	off_main(move || sops::aws_context(&path)).await
 }

@@ -34,6 +34,7 @@ import type {
 	SessionsChangedEvent,
 	SettingKey,
 	ShellSpawnOpts,
+	SopsAwsContext,
 	SopsStatus,
 	SpawnOpts,
 	TerminalDataEvent,
@@ -179,7 +180,8 @@ export const cmd = {
 	 *  Rejects with a sentence naming which failure this was — no key of yours
 	 *  opens it, no key material at all, a MAC that no longer matches — with
 	 *  `sops`'s own words kept on the end. */
-	sopsDecrypt: (path: string) => invoke<string>('sops_decrypt', { path }),
+	sopsDecrypt: (path: string, awsProfile?: string | null) =>
+		invoke<string>('sops_decrypt', { path, awsProfile: awsProfile ?? null }),
 	/** Encrypt a buffer and write it over the SOPS file at `path` (F27,
 	 *  ADR-0045).
 	 *
@@ -188,8 +190,12 @@ export const cmd = {
 	 *  is compared against them before anything is written — a save that would
 	 *  change who can open the file is refused. Answers with the encrypted file
 	 *  as written, so the cache can be corrected without a second read. */
-	sopsEncrypt: (path: string, plaintext: string) =>
-		invoke<FileContents>('sops_encrypt', { path, plaintext }),
+	sopsEncrypt: (path: string, plaintext: string, awsProfile?: string | null) =>
+		invoke<FileContents>('sops_encrypt', { path, plaintext, awsProfile: awsProfile ?? null }),
+	/** The AWS profiles a SOPS file could be decrypted with, or `null` when its
+	 *  metadata names no AWS KMS key — the picker is shown only for a file that
+	 *  has one (F27 § "Choosing the AWS profile"). Names and account ids only. */
+	sopsAwsContext: (path: string) => invoke<SopsAwsContext | null>('sops_aws_context', { path }),
 	/** Classify a batch of paths for the terminal's link provider (F19), in the
 	 *  order given. Never rejects: everything that isn't an openable path comes
 	 *  back `missing`. */
@@ -763,6 +769,9 @@ interface TestFixture {
 	/** Plaintext keyed by absolute path, for `sops_decrypt` (F27). A path that
 	 *  is not listed rejects, which is how a spec reaches the failure banner. */
 	sopsPlaintext?: Record<string, string>;
+	/** `sops_aws_context` keyed by absolute path (F27). A path that is not
+	 *  listed answers `null`: a file with no AWS KMS key, and no picker. */
+	sopsAws?: Record<string, SopsAwsContext>;
 }
 
 /** One mocked command call, recorded in order while a fixture is installed. */
@@ -1167,6 +1176,8 @@ async function mockInvoke<T>(name: string, args?: Record<string, unknown>): Prom
 			files[path] = written;
 			return written as unknown as T;
 		}
+		case 'sops_aws_context':
+			return (fx?.sopsAws?.[String(args?.path ?? '')] ?? null) as unknown as T;
 		case 'sops_status':
 			// The mocked bridge has no PATH and no child processes, so a fixture
 			// declares the answer. Absent means a machine with no `sops` — the

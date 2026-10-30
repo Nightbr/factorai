@@ -1646,6 +1646,9 @@ test.describe('SOPS (F27)', () => {
 		const viewer = page.getByTestId('file-viewer');
 		const editor = page.getByTestId('file-view-editor');
 		await expect(editor).toContainText('ENC[AES256_GCM');
+		// An age-keyed file has nothing to sign in to, so no AWS profile picker.
+		await expect(viewer.getByTestId('viewer-decrypt')).toBeEnabled();
+		await expect(viewer.getByTestId('viewer-aws-profile')).toHaveCount(0);
 
 		await viewer.getByTestId('viewer-decrypt').click();
 
@@ -1684,6 +1687,57 @@ test.describe('SOPS (F27)', () => {
 
 		await viewer.getByTestId('viewer-decrypt-dismiss').click();
 		await expect(banner).toHaveCount(0);
+	});
+
+	test('@smoke a file keyed by AWS KMS offers a profile, starting on its account, and decrypts with it', async ({
+		page,
+	}) => {
+		const fx = fixtureFileTreeWithSops();
+		const secrets = `${ROOT}/secrets.yaml`;
+		fx.sopsAws = {
+			[secrets]: {
+				profiles: [
+					{ name: 'default', accountId: null },
+					{ name: 'prod', accountId: '222222222222' },
+					{ name: 'staging', accountId: '111111111111' },
+				],
+				accountIds: ['111111111111'],
+				suggested: 'staging',
+				fileProfile: null,
+				envProfile: null,
+			},
+		};
+		await installMockBridge(page, fx);
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'secrets.yaml' }).click();
+
+		const viewer = page.getByTestId('file-viewer');
+		const picker = viewer.getByTestId('viewer-aws-profile');
+		// Starts on the profile that signs in to the key's account.
+		await expect(picker).toContainText('staging');
+		await expect(picker).toHaveAttribute('title', /account 111111111111/);
+
+		await picker.click();
+		await page.getByTestId('viewer-aws-profile-prod').click();
+		await expect(picker).toContainText('prod');
+
+		await viewer.getByTestId('viewer-decrypt').click();
+		await expect(page.getByTestId('file-view-editor')).toContainText('sk-live-abc123');
+
+		// Handed to `sops` as the child's `AWS_PROFILE`, and only there.
+		const args = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'sops_decrypt')
+				.map((c) => c.args?.awsProfile),
+		);
+		expect(args).toEqual(['prod']);
+
+		// Remembered for this file: the next open starts on it.
+		// Polled: the store's writes are deferred a frame or two (PERF-12).
+		await expect
+			.poll(() => page.evaluate(() => localStorage.getItem('factorai.sopsAwsProfiles')))
+			.toContain('"prod"');
 	});
 
 	test('@smoke editing the plaintext and saving writes the encrypted file back', async ({

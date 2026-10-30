@@ -30,7 +30,8 @@ commands/
                       #   read_claude_md/write_claude_md dropped: F26 makes
                       #   every text file editable through write_file
   settings.rs         # get_setting, set_setting, check_claude_cli, validate_claude_binary
-  sops.rs             # sops_status — is there a `sops` we can drive (F27)
+  sops.rs             # sops_status — is there a `sops` we can drive (F27);
+                      #   sops_decrypt, sops_encrypt, sops_aws_context
   updates.rs          # check_update — the channel's manifest (F14, ADR-0064)
   webview.rs          # webview_crash_notice — why this renderer is a fresh one
                       #   (F17, ADR-0059)
@@ -113,7 +114,7 @@ mark it, because which side of the line a command is on is a property of what
 it does rather than of its contract; the ones that are, as of 2026-09-20:
 
 - **Spawns a process, or waits on one**: `terminal_spawn`, `shell_spawn`,
-  `sops_decrypt`, `sops_encrypt`, `check_claude_cli`, `validate_claude_binary`,
+  `sops_decrypt`, `sops_encrypt`, `sops_aws_context`, `check_claude_cli`, `validate_claude_binary`,
   `reveal_in_file_manager`.
 - **Walks the filesystem, or reads something large**: `list_import_candidates`,
   `get_session_tail`, `read_image`, `read_pdf`, `probe_media`, `delete_session`
@@ -360,12 +361,19 @@ sops_status() -> SopsStatus
 // viewer's buffer, and no draft, index or diff ever sees it. Errors arrive
 // classified — none of your keys, no key material at all, a MAC that no longer
 // matches — with `sops`'s own words kept on the end rather than swallowed.
-sops_decrypt(path: String) -> String
+// `aws_profile` is the viewer's AWS profile choice for a file keyed by AWS KMS,
+// set as `AWS_PROFILE` on that one child and never written into the file.
+sops_decrypt(path: String, aws_profile: Option<String>) -> String
 // Encrypt the viewer's buffer and write it over the file (F27, ADR-0045). The
 // recipients come from the file being replaced, not from `.sops.yaml`, and the
 // result is verified against them before anything is written. Plaintext goes in
 // on stdin; the only thing written is the ciphertext, through `write_file`.
-sops_encrypt(path: String, plaintext: String) -> FileContents
+sops_encrypt(path: String, plaintext: String, aws_profile: Option<String>) -> FileContents
+// The AWS profiles a SOPS file could be decrypted with (F27 § "Choosing the
+// AWS profile"), or `null` when its metadata names no AWS KMS key, which is
+// what hides the picker on every other file. Profile names and account ids from
+// the shared config and credentials files; no credential is read into it.
+sops_aws_context(path: String) -> Option<SopsAwsContext>
 // Show a path in the desktop's file manager with the file **selected** (F7,
 // ADR-0033) — a different question from `plugin-shell`'s `open`, which hands
 // the file to the application that owns its type. NotFound on a path that has
@@ -1184,6 +1192,19 @@ from `.sops.yaml`. The new ciphertext's key identifiers are compared against the
 old one's **before** the write, and a difference refuses the save; key groups are
 refused outright, since flags describe one flat set. The write itself is
 `files::write_file`, so it is atomic and keeps the original's `0600`.
+
+`decrypt` and `encrypt` take an optional AWS profile name and set it as
+`AWS_PROFILE` on that child, after `child_env`, so the viewer's choice wins over
+whatever the app was started with. `aws_context(path) -> Option<SopsAwsContext>`
+answers `None` unless the file's metadata has the `kms` backend and at least one
+ARN, which is what keeps the picker off every other file. Otherwise it returns
+the profiles `services::aws_config` reads from the shared config and
+credentials files (names and account ids only, `AWS_CONFIG_FILE` /
+`AWS_SHARED_CREDENTIALS_FILE` honoured), the accounts in the ARNs, a suggestion
+matched by account, the file's own `aws_profile`, and the app's `AWS_PROFILE`.
+An IAM Identity Center session that has expired, and a credential chain that
+ended at EC2 IMDS, are classified ahead of the exit code, with the fix named;
+other AWS refusals keep the verbatim path.
 
 `status() -> SopsStatus` resolves the binary on the **child** `PATH`
 (`shell_path::child_path`) by walking its entries, then runs

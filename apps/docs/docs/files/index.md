@@ -56,6 +56,8 @@ right-click a file for **Add to agent context**.
 
 - **Decrypt** shows the plaintext using your `sops` and keys (disabled, with the reason, if `sops`
   is unusable).
+- A file encrypted with **AWS KMS** gets an AWS profile picker beside Decrypt. It starts on the
+  profile for the key's account and remembers your choice per file; no other file shows it.
 - **Encrypt & save** re-encrypts with the file's recipients; **Re-lock** discards the plaintext.
 - Plaintext never touches disk, the search index or the database. *Add to agent context* is not
   offered.

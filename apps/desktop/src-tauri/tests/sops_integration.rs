@@ -76,12 +76,13 @@ fn sops_decrypts_what_sops_encrypted_and_says_why_when_it_cannot() {
 
 	// ---- the key that opens it ------------------------------------------------
 	set_env(&empty_home, Some(&key_file));
-	let plaintext = sops::decrypt(encrypted.to_str().unwrap()).expect("decrypt with the right key");
+	let plaintext =
+		sops::decrypt(encrypted.to_str().unwrap(), None).expect("decrypt with the right key");
 	assert_eq!(plaintext, PLAINTEXT);
 
 	// ---- a key that does not ---------------------------------------------------
 	set_env(&empty_home, Some(&other_key_file));
-	let err = sops::decrypt(encrypted.to_str().unwrap()).unwrap_err();
+	let err = sops::decrypt(encrypted.to_str().unwrap(), None).unwrap_err();
 	let message = format!("{err}");
 	assert!(
 		message.contains("none of your keys can decrypt this file"),
@@ -93,7 +94,7 @@ fn sops_decrypts_what_sops_encrypted_and_says_why_when_it_cannot() {
 
 	// ---- no key material at all ------------------------------------------------
 	set_env(&empty_home, None);
-	let err = sops::decrypt(encrypted.to_str().unwrap()).unwrap_err();
+	let err = sops::decrypt(encrypted.to_str().unwrap(), None).unwrap_err();
 	let message = format!("{err}");
 	assert!(
 		message.contains("no key material was found"),
@@ -108,7 +109,7 @@ fn sops_decrypts_what_sops_encrypted_and_says_why_when_it_cannot() {
 		on_disk.lines().filter(|l| !l.contains("token: ENC[")).collect::<Vec<_>>().join("\n");
 	std::fs::write(&mangled, format!("{kept}\n")).unwrap();
 	set_env(&empty_home, Some(&key_file));
-	let err = sops::decrypt(mangled.to_str().unwrap()).unwrap_err();
+	let err = sops::decrypt(mangled.to_str().unwrap(), None).unwrap_err();
 	let message = format!("{err}");
 	assert!(
 		message.contains("MAC does not match"),
@@ -118,12 +119,12 @@ fn sops_decrypts_what_sops_encrypted_and_says_why_when_it_cannot() {
 	// ---- a file that is not encrypted at all -----------------------------------
 	let plain = tmp.path().join("plain.yaml");
 	std::fs::write(&plain, PLAINTEXT).unwrap();
-	let err = sops::decrypt(plain.to_str().unwrap()).unwrap_err();
+	let err = sops::decrypt(plain.to_str().unwrap(), None).unwrap_err();
 	assert!(format!("{err}").contains("no longer a SOPS-encrypted file"), "got: {err}");
 
 	// ---- a file that has gone ---------------------------------------------------
 	let gone = tmp.path().join("gone.yaml");
-	let err = sops::decrypt(gone.to_str().unwrap()).unwrap_err();
+	let err = sops::decrypt(gone.to_str().unwrap(), None).unwrap_err();
 	assert!(format!("{err}").contains("could not read"), "got: {err}");
 }
 
@@ -208,7 +209,7 @@ fn saving_keeps_the_recipients_the_file_had_not_the_ones_config_would_pick() {
 	std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
 
 	let edited = "api_key: sk-live-rotated\nnested:\n    token: hunter3\n";
-	let written = sops::encrypt(path.to_str().unwrap(), edited).expect("encrypt and save");
+	let written = sops::encrypt(path.to_str().unwrap(), edited, None).expect("encrypt and save");
 
 	// What is on disk is the ciphertext, and the viewer is told so.
 	assert!(written.sops_encrypted);
@@ -227,7 +228,7 @@ fn saving_keeps_the_recipients_the_file_had_not_the_ones_config_would_pick() {
 	assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
 
 	// And the round trip is exact: what decrypts is what was typed.
-	assert_eq!(sops::decrypt(path.to_str().unwrap()).unwrap(), edited);
+	assert_eq!(sops::decrypt(path.to_str().unwrap(), None).unwrap(), edited);
 }
 
 /// A file whose keys are split into groups cannot be re-made from flags, so the
@@ -250,7 +251,7 @@ fn a_file_with_key_groups_is_refused_rather_than_flattened() {
 	)
 	.unwrap();
 
-	let err = sops::encrypt(path.to_str().unwrap(), "api_key: whatever\n").unwrap_err();
+	let err = sops::encrypt(path.to_str().unwrap(), "api_key: whatever\n", None).unwrap_err();
 	assert!(format!("{err}").contains("key groups"), "got: {err}");
 	// Nothing was written over it.
 	assert!(std::fs::read_to_string(&path).unwrap().contains("shamir_threshold"));

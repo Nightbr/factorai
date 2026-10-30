@@ -1,6 +1,7 @@
 import { ImageView } from '@components/viewer/ImageView';
 import { MediaView } from '@components/viewer/MediaView';
 import { MarkdownView } from '@components/viewer/MarkdownView';
+import { AwsProfilePicker } from '@components/viewer/AwsProfilePicker';
 import {
 	BinaryCard,
 	Centered,
@@ -34,7 +35,9 @@ import { formatBytes } from '@lib/format';
 import { type LineSelection, mentionFor, mentionLabel, mentionRange } from '@lib/mentions';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd } from '@lib/tauri';
+import { awsProfileToSend, initialAwsProfile } from '@lib/sopsAws';
 import { REREAD_ON_OPEN } from '@lib/viewerQuery';
+import { useSopsProfileStore } from '@store/sopsProfileStore';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 import { Code2, Eye, Lock, LockOpen, Sparkles } from 'lucide-react';
@@ -198,12 +201,37 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 		retry: false,
 	});
 
+	// **The AWS profile picker exists only for a file keyed by AWS KMS** (F27 §
+	// "Choosing the AWS profile"): Rust answers `null` for every other file,
+	// age, PGP and the other clouds included, and then nothing is drawn. Asked
+	// per file because the answer is in the file's metadata; re-asked on reopen
+	// with the file itself, since a profile added to `~/.aws/config` meanwhile
+	// should be there the next time.
+	const awsQ = useQuery({
+		queryKey: queryKeys.sopsAwsContext(path),
+		queryFn: () => cmd.sopsAwsContext(path),
+		enabled: encrypted,
+		...REREAD_ON_OPEN,
+		retry: false,
+	});
+	const awsContext = awsQ.data ?? null;
+	const rememberedProfile = useSopsProfileStore((s) => s.byPath[path]);
+	const rememberProfile = useSopsProfileStore((s) => s.remember);
+	/** What the reader picked in this tab; until then, the derived start. */
+	const [pickedProfile, setPickedProfile] = useState<string | null>(null);
+	const awsProfile =
+		pickedProfile ?? (awsContext ? initialAwsProfile(awsContext, rememberedProfile) : null);
+	const pickProfile = (profile: string) => {
+		setPickedProfile(profile);
+		rememberProfile(path, profile);
+	};
+
 	const decrypt = () => {
 		if (decrypting) return;
 		setDecrypting(true);
 		setDecryptError(null);
 		void cmd
-			.sopsDecrypt(path)
+			.sopsDecrypt(path, awsProfileToSend(awsContext, awsProfile))
 			.then((text) => {
 				plainBufferRef.current = text;
 				setPlaintext(text);
@@ -240,7 +268,7 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 		setEncrypting(true);
 		setEncryptError(null);
 		void cmd
-			.sopsEncrypt(path, plainBufferRef.current)
+			.sopsEncrypt(path, plainBufferRef.current, awsProfileToSend(awsContext, awsProfile))
 			.then((written) => {
 				// The cached read is stale the moment the write lands, and the
 				// command answers with the file it wrote precisely so this is exact.
@@ -462,7 +490,7 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 							size="sm"
 							className="-ml-1 h-6 shrink-0 gap-1.5 px-2 font-normal text-xs [&_svg]:-translate-y-px [&_svg]:size-3 disabled:opacity-40"
 							data-testid="viewer-decrypt"
-							disabled={!decrypted && (!sopsQ.data?.usable || decrypting)}
+							disabled={!decrypted && (!sopsQ.data?.usable || decrypting || awsQ.isPending)}
 							aria-pressed={decrypted}
 							title={decrypted ? 'Discard the plaintext' : sopsHint(sopsQ.data)}
 							onClick={decrypted ? relock : decrypt}
@@ -472,6 +500,14 @@ function TextFileView({ path, position, onOpenPath }: FileViewProps) {
 								{decrypted ? 'Re-lock' : decrypting ? 'Decrypting…' : 'Decrypt'}
 							</span>
 						</Button>
+					)}
+					{(encrypted || decrypted) && awsContext && (
+						<AwsProfilePicker
+							context={awsContext}
+							value={awsProfile}
+							disabled={decrypting || encrypting}
+							onChange={pickProfile}
+						/>
 					)}
 					{previewable && !encrypted && !decrypted && (
 						/* `quiet`, `size-3` glyph, lifted a pixel: the house shape for a

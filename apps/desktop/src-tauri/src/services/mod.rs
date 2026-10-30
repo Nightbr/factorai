@@ -1,5 +1,6 @@
 pub mod agent_cli;
 pub mod agent_tools;
+pub mod aws_config;
 pub mod child_env;
 pub mod file_watch;
 pub mod files;

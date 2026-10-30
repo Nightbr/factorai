@@ -45,6 +45,10 @@ export const queryKeys = {
 	 *  is one per machine, the probe is cached in Rust for the run, and every
 	 *  encrypted file asks the same question. */
 	sopsStatus: () => ['sops-status'] as const,
+	/** The AWS profiles a SOPS file could be decrypted with (F27), or `null`
+	 *  for a file with no AWS KMS key. Per path: the answer comes from the
+	 *  file's own metadata. */
+	sopsAwsContext: (path: string) => ['sops-aws-context', path] as const,
 	/** Repository state for one project. **One key per project, shared by the
 	 *  Changes tab and the tree's decorations** — they read the same poll, which
 	 *  is why the interval follows the panel rather than the tab (Q20). */
