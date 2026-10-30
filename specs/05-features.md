@@ -6215,7 +6215,9 @@ factorai writes.
 **Key material is the user's, and factorai holds none of it.**
 `SOPS_AGE_KEY_FILE`, the GPG agent, AWS / GCP / Azure credentials — all of it is
 whatever the child process inherits. No key is read, none is cached, and no
-passphrase is ever prompted for by us.
+passphrase is ever prompted for by us. The one thing the viewer adds is the
+**name** of an AWS profile, for a file keyed by AWS KMS (§ "Choosing the AWS
+profile"), and that is a name, not a credential.
 
 ### Detection
 
@@ -6319,6 +6321,52 @@ applies here in full: one click puts a selection into an agent's context and
 cannot be taken back. A file somebody encrypted is the clearest statement there
 is that its contents are not for onward travel.
 
+### Choosing the AWS profile
+
+A file encrypted with **AWS KMS** is decrypted with whatever AWS credentials
+`sops` finds, and a GUI app usually finds none. Under a desktop launcher
+`AWS_PROFILE` is unset, IAM Identity Center setups have no `[default]` profile,
+and the SDK's credential chain ends at the EC2 instance metadata service, which
+fails on a laptop. The profile cannot go in the file either: `aws_profile` in
+`.sops.yaml` is recorded into the metadata, and a container decrypting with its
+task role has no such profile.
+
+So the viewer asks. **The picker exists only for a file whose metadata has AWS
+KMS recipients** (a non-empty `sops.kms` list). A file keyed only by age, PGP,
+GCP KMS, Azure Key Vault or HashiCorp Vault shows nothing, because no AWS
+profile reaches those keys. A file that mixes AWS KMS with another backend shows
+it. It sits beside Decrypt in the footer, showing the profile name, and its
+`title` names the key's account.
+
+- **The list** is every profile in `~/.aws/config` (`[default]`,
+  `[profile …]`) and `~/.aws/credentials` (`[…]`), with `AWS_CONFIG_FILE` and
+  `AWS_SHARED_CREDENTIALS_FILE` honoured, because those are what the SDK inside
+  `sops` reads. Only names and account ids are kept; the credentials file is
+  read past, never held. No profiles at all → the picker is shown disabled,
+  with where the list comes from as its reason.
+- **It starts on**, in order: the file's own non-empty `aws_profile`, which
+  `sops` uses whatever we say, so the picker shows it locked; the profile chosen
+  for this file last time; the profile whose `sso_account_id`, `aws_account_id`
+  or `role_arn` names the account in the key's ARN (the app's `AWS_PROFILE` if
+  it is one of those, else the first by name); the app's `AWS_PROFILE`;
+  `default`; the first listed. A remembered or suggested name counts only while
+  it is still a profile on this machine.
+- **The choice is passed as `AWS_PROFILE`** to that one `sops` child, for
+  Decrypt and for Encrypt & save alike, since wrapping the new data key reaches
+  KMS too. It is never written into the file. A profile the file names itself
+  is not re-sent.
+- **It is remembered per file path**, in the renderer (ADR-0013), so the next
+  Decrypt does not ask again. Per file rather than per repository, because
+  staging and production secrets usually sit in one repository and belong to
+  different accounts.
+
+Two AWS failures are said in terms of their fix rather than forwarded. An
+**expired or missing IAM Identity Center session** names
+`aws sso login --profile <profile>`. **No credentials at all**, the chain
+ending at the instance metadata service, asks for the profile the file's key
+belongs to, or says the chosen one has no credentials. Every other AWS refusal
+is forwarded whole, as below.
+
 ### Errors, forwarded and readable
 
 `sops` fails with prose that is nearly right already. The job is to classify the
@@ -6375,8 +6423,9 @@ loses the buffer, and saving anyway, which asks first — the same overwrite
 confirm F26 uses, saying what this one actually replaces.
 
 **Backend.** `FileContents.sopsEncrypted` from `services/sops.rs::is_encrypted`,
-`sops_status() -> SopsStatus`, `sops_decrypt(path) -> String` and
-`sops_encrypt(path, plaintext) -> FileContents` in `commands/sops.rs`. See
+`sops_status() -> SopsStatus`, `sops_decrypt(path, awsProfile?) -> String`,
+`sops_encrypt(path, plaintext, awsProfile?) -> FileContents` and
+`sops_aws_context(path) -> SopsAwsContext | null` in `commands/sops.rs`. See
 `03-backend-rust.md` § `sops`.
 
 **Edge cases.**

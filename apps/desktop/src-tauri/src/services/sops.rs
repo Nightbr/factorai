@@ -22,8 +22,8 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{FileContents, SopsStatus};
-use crate::services::shell_path;
+use crate::models::{FileContents, SopsAwsContext, SopsStatus};
+use crate::services::{aws_config, shell_path};
 
 /// The oldest `sops` this feature can drive.
 ///
@@ -129,7 +129,11 @@ fn parse_version(version: &str) -> Option<(u32, u32, u32)> {
 /// The child inherits the user's environment — `SOPS_AGE_KEY_FILE`, the GPG
 /// agent socket, cloud credentials — because that is where every key lives.
 /// Nothing here reads, copies or caches one.
-pub fn decrypt(path: &str) -> AppResult<String> {
+///
+/// `aws_profile` is the viewer's choice for a file keyed by AWS KMS (F27 §
+/// "Choosing the AWS profile"), set as `AWS_PROFILE` on this child and no
+/// other. It is a name, not a credential, and it is never written into the file.
+pub fn decrypt(path: &str, aws_profile: Option<&str>) -> AppResult<String> {
 	let binary = usable_binary()?;
 
 	let mut cmd = Command::new(&binary);
@@ -138,13 +142,19 @@ pub fn decrypt(path: &str) -> AppResult<String> {
 	// for a path that starts with a dash to be read as a flag.
 	cmd.arg("decrypt").arg(path).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
 	crate::services::child_env::changes_for_current_env().apply_to_command(&mut cmd);
+	set_aws_profile(&mut cmd, aws_profile);
 
 	let out = cmd
 		.output()
 		.map_err(|e| AppError::Process(format!("could not run {}: {e}", binary.display())))?;
 
 	if !out.status.success() {
-		return Err(failure(out.status.code(), &String::from_utf8_lossy(&out.stderr), path));
+		return Err(failure(
+			out.status.code(),
+			&String::from_utf8_lossy(&out.stderr),
+			path,
+			aws_profile,
+		));
 	}
 
 	// **`from_utf8`, not `from_utf8_lossy`.** A `binary`-format file can hold
@@ -173,7 +183,11 @@ pub fn decrypt(path: &str) -> AppResult<String> {
 /// target and keeps the original's permission bits — the last of those matters
 /// more here than anywhere else in the app, since this file is the one that is
 /// probably `0600`.
-pub fn encrypt(path: &str, plaintext: &str) -> AppResult<FileContents> {
+///
+/// `aws_profile` is the same choice [`decrypt`] takes: a KMS recipient has to
+/// be reached to wrap the new data key, so encrypting needs it as much as
+/// decrypting does.
+pub fn encrypt(path: &str, plaintext: &str, aws_profile: Option<&str>) -> AppResult<FileContents> {
 	let binary = usable_binary()?;
 
 	// What is on disk now, which is what decides how the replacement is made.
@@ -199,6 +213,7 @@ pub fn encrypt(path: &str, plaintext: &str) -> AppResult<FileContents> {
 	cmd.arg("--filename-override").arg(path).arg("/dev/stdin");
 	cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 	crate::services::child_env::changes_for_current_env().apply_to_command(&mut cmd);
+	set_aws_profile(&mut cmd, aws_profile);
 
 	let mut child = cmd
 		.spawn()
@@ -215,7 +230,12 @@ pub fn encrypt(path: &str, plaintext: &str) -> AppResult<FileContents> {
 		.map_err(|e| AppError::Process(format!("sops did not finish: {e}")))?;
 
 	if !out.status.success() {
-		return Err(failure(out.status.code(), &String::from_utf8_lossy(&out.stderr), path));
+		return Err(failure(
+			out.status.code(),
+			&String::from_utf8_lossy(&out.stderr),
+			path,
+			aws_profile,
+		));
 	}
 	let ciphertext = String::from_utf8(out.stdout)
 		.map_err(|_| AppError::Process("sops produced output that is not text".into()))?;
@@ -526,7 +546,13 @@ fn usable_binary() -> AppResult<PathBuf> {
 /// Anything unclassified is forwarded **verbatim**. A KMS refusal carries the
 /// provider's own wording and a request id, and paraphrasing it would throw
 /// away the half that is actionable.
-fn failure(code: Option<i32>, stderr: &str, path: &str) -> AppError {
+fn failure(code: Option<i32>, stderr: &str, path: &str, aws_profile: Option<&str>) -> AppError {
+	// An AWS sign-in problem has a fix we can name, which the provider's own
+	// words do not: checked before the codes, since `sops` reports it under
+	// whichever code the failing operation happened to have.
+	if let Some(err) = aws_failure(stderr, aws_profile) {
+		return err;
+	}
 	match code {
 		// The MAC no longer matches the contents: hand-edited, badly merged, or
 		// truncated by something. Refuse, and say so — this is the one failure
@@ -637,6 +663,107 @@ pub fn recipients(text: &str) -> Vec<String> {
 	}
 	found
 }
+
+/// Set the viewer's AWS profile on one `sops` child, after the environment it
+/// inherits — so the choice wins over an `AWS_PROFILE` the app was started with,
+/// which is the point of having made one.
+fn set_aws_profile(cmd: &mut Command, aws_profile: Option<&str>) {
+	if let Some(profile) = aws_profile.map(str::trim).filter(|p| !p.is_empty()) {
+		cmd.env("AWS_PROFILE", profile);
+	}
+}
+
+/// What the viewer needs to offer an AWS profile for `path`, or `None` when the
+/// file has no AWS KMS recipient — and then there is no picker (F27 § "Choosing
+/// the AWS profile").
+///
+/// **Only `kms`.** The other cloud backends have their own metadata keys
+/// (`gcp_kms`, `azure_kv`, `hc_vault`) and their own credentials, none of which
+/// an AWS profile reaches; a file keyed by age alone has nothing to sign in to.
+/// The test is the ARNs, which only `kms` entries carry.
+pub fn aws_context(path: &str) -> AppResult<Option<SopsAwsContext>> {
+	let text = std::fs::read_to_string(path)
+		.map_err(|e| AppError::Io(format!("could not read {path}: {e}")))?;
+	Ok(aws_context_for(&text, aws_config::profiles(), aws_config::env_profile()))
+}
+
+fn aws_context_for(
+	text: &str,
+	profiles: Vec<crate::models::AwsProfile>,
+	env_profile: Option<String>,
+) -> Option<SopsAwsContext> {
+	// Both: the backend has to be there, and the ARNs read only from metadata
+	// that has one — a plaintext key ending `_arn` is not a recipient.
+	if !is_encrypted(text) || !backends(text).contains("kms") {
+		return None;
+	}
+	let arns = collect(text, &["arn"]);
+	if arns.is_empty() {
+		return None;
+	}
+	let mut account_ids: Vec<String> = Vec::new();
+	for account in arns.iter().filter_map(|arn| aws_config::arn_account(arn)) {
+		if !account_ids.contains(&account) {
+			account_ids.push(account);
+		}
+	}
+	let matching: Vec<&str> = profiles
+		.iter()
+		.filter(|p| p.account_id.as_ref().is_some_and(|a| account_ids.contains(a)))
+		.map(|p| p.name.as_str())
+		.collect();
+	// The environment's profile when it is one of the matches — somebody who
+	// started the app with it meant it — and otherwise the first by name.
+	let suggested = env_profile
+		.as_deref()
+		.filter(|env| matching.contains(env))
+		.or_else(|| matching.first().copied())
+		.map(str::to_string);
+	let file_profile = collect(text, &["aws_profile"]).into_iter().next();
+	Some(SopsAwsContext { profiles, account_ids, suggested, file_profile, env_profile })
+}
+
+/// An AWS sign-in failure, said in terms of the fix (F27 § "Choosing the AWS
+/// profile").
+///
+/// Two cases have a next step the SDK's words bury: an IAM Identity Center
+/// session that expired or was never started (`aws sso login`), and no
+/// credentials at all, which the SDK reports as the last link of its chain —
+/// the EC2 instance metadata service, on a laptop that is not an EC2 instance.
+/// Everything else from AWS is left to [`key_failure`], which forwards it whole.
+fn aws_failure(stderr: &str, aws_profile: Option<&str>) -> Option<AppError> {
+	let profile = aws_profile.map(str::trim).filter(|p| !p.is_empty());
+	if SSO_MARKERS.iter().any(|m| stderr.contains(m)) {
+		let fix = match profile {
+			Some(p) => format!("run `aws sso login --profile {p}`"),
+			None => "run `aws sso login` for the profile this file's key belongs to".to_string(),
+		};
+		return Some(AppError::Process(format!(
+			"the AWS sign-in session has expired or was never started — {fix}, then decrypt \
+			 again. {}",
+			verbatim(stderr)
+		)));
+	}
+	if NO_AWS_CREDENTIALS_MARKERS.iter().any(|m| stderr.contains(m)) {
+		let what = match profile {
+			Some(p) => format!("the AWS profile `{p}` has no credentials sops could use"),
+			None => "no AWS credentials were found for this file's KMS key — choose the AWS \
+			         profile it belongs to"
+				.to_string(),
+		};
+		return Some(AppError::Process(format!("{what}. {}", verbatim(stderr))));
+	}
+	None
+}
+
+/// Stderr from the AWS SDK when an IAM Identity Center token is missing,
+/// expired or refused.
+const SSO_MARKERS: &[&str] =
+	&["SSO session", "SSO token", "sso/cache", "operation error SSO", "InvalidGrantException"];
+
+/// Stderr from the AWS SDK when its credential chain found nothing and ended at
+/// the instance metadata service.
+const NO_AWS_CREDENTIALS_MARKERS: &[&str] = &["no EC2 IMDS role found", "operation error ec2imds"];
 
 /// `sops`'s own words, collapsed onto one line so they fit a banner.
 ///
@@ -926,5 +1053,87 @@ mod tests {
 		// not, and unknown is reported as unknown rather than as too old.
 		assert_eq!(parse_version("3.10.0-rc1"), Some((3, 10, 0)));
 		assert_eq!(parse_version("nightly"), None);
+	}
+
+	fn profile(name: &str, account: Option<&str>) -> crate::models::AwsProfile {
+		crate::models::AwsProfile {
+			name: name.to_string(),
+			account_id: account.map(str::to_string),
+		}
+	}
+
+	const AWS_FILE: &str = "secret: ENC[AES256_GCM,data:x,iv:y,tag:z,type:str]\nsops:\n    kms:\n        - arn: arn:aws:kms:eu-west-3:111111111111:key/abcd\n          created_at: \"2026-01-01T00:00:00Z\"\n          enc: AQICAH\n          aws_profile: \"\"\n    mac: ENC[x]\n    version: 3.13.1\n";
+
+	#[test]
+	fn only_a_file_with_an_aws_kms_recipient_gets_a_profile_picker() {
+		let age_only = "secret: ENC[x]\nsops:\n    age:\n        - recipient: age1abc\n    mac: ENC[x]\n    version: 3.13.1\n";
+		let gcp_only = "secret: ENC[x]\nsops:\n    gcp_kms:\n        - resource_id: projects/p/locations/l/keyRings/r/cryptoKeys/k\n    mac: ENC[x]\n    version: 3.13.1\n";
+		// A plaintext key that merely ends in `_arn` is not a recipient.
+		let age_with_arn_key = "role_arn: arn:aws:iam::111111111111:role/x\nsops:\n    age:\n        - recipient: age1abc\n    mac: ENC[x]\n    version: 3.13.1\n    unencrypted_suffix: _arn\n";
+		let plain = "kms: arn:aws:kms:eu-west-3:111111111111:key/abcd\n";
+		for text in [age_only, gcp_only, age_with_arn_key, plain] {
+			assert_eq!(aws_context_for(text, vec![], None), None, "{text}");
+		}
+		assert!(aws_context_for(AWS_FILE, vec![], None).is_some());
+	}
+
+	#[test]
+	fn a_file_mixing_aws_kms_with_another_backend_still_gets_the_picker() {
+		let mixed = "secret: ENC[x]\nsops:\n    kms:\n        - arn: arn:aws:kms:eu-west-1:222222222222:key/abcd\n    age:\n        - recipient: age1abc\n    mac: ENC[x]\n    version: 3.13.1\n";
+		let ctx = aws_context_for(mixed, vec![], None).expect("picker");
+		assert_eq!(ctx.account_ids, vec!["222222222222".to_string()]);
+	}
+
+	#[test]
+	fn the_profile_signing_in_to_the_keys_account_is_suggested() {
+		let profiles = vec![
+			profile("default", None),
+			profile("prod", Some("999999999999")),
+			profile("staging-admin", Some("111111111111")),
+			profile("staging-dev", Some("111111111111")),
+		];
+		let ctx = aws_context_for(AWS_FILE, profiles.clone(), None).expect("picker");
+		assert_eq!(ctx.account_ids, vec!["111111111111".to_string()]);
+		assert_eq!(ctx.suggested.as_deref(), Some("staging-admin"));
+		assert_eq!(ctx.file_profile, None, "an empty aws_profile names nothing");
+
+		// The environment's own profile wins among the matches, and only there.
+		let env = aws_context_for(AWS_FILE, profiles.clone(), Some("staging-dev".into()));
+		assert_eq!(env.and_then(|c| c.suggested).as_deref(), Some("staging-dev"));
+		let other = aws_context_for(AWS_FILE, profiles, Some("prod".into()));
+		assert_eq!(other.and_then(|c| c.suggested).as_deref(), Some("staging-admin"));
+	}
+
+	#[test]
+	fn a_profile_named_in_the_file_is_reported() {
+		let named = AWS_FILE.replace("aws_profile: \"\"", "aws_profile: ci");
+		let ctx = aws_context_for(&named, vec![], None).expect("picker");
+		assert_eq!(ctx.file_profile.as_deref(), Some("ci"));
+	}
+
+	#[test]
+	fn an_expired_sso_session_names_the_login_command() {
+		let stderr = "Failed to get the data key required to decrypt the SOPS file. Group 0: FAILED arn:aws:kms:eu-west-3:111111111111:key/abcd: FAILED - failed to decrypt sops data key with AWS KMS: operation error KMS: Decrypt, get identity: get credentials: failed to refresh cached credentials, refresh cached SSO token failed, unable to refresh SSO token, operation error SSO OIDC: CreateToken, InvalidGrantException";
+		let with = failure(Some(128), stderr, "/nope", Some("staging")).to_string();
+		assert!(with.contains("aws sso login --profile staging"), "{with}");
+		let without = failure(Some(128), stderr, "/nope", None).to_string();
+		assert!(without.contains("aws sso login"), "{without}");
+	}
+
+	#[test]
+	fn no_credentials_at_all_asks_for_a_profile_instead_of_blaming_imds() {
+		let stderr = "Failed to get the data key required to decrypt the SOPS file. Group 0: FAILED arn:aws:kms:eu-west-3:111111111111:key/abcd: FAILED - failed to decrypt sops data key with AWS KMS: operation error KMS: Decrypt, get identity: get credentials: failed to refresh cached credentials, no EC2 IMDS role found, operation error ec2imds: GetMetadata, request canceled";
+		let none = failure(Some(128), stderr, "/nope", None).to_string();
+		assert!(none.contains("choose the AWS profile"), "{none}");
+		let named = failure(Some(128), stderr, "/nope", Some("prod")).to_string();
+		assert!(named.contains("`prod` has no credentials"), "{named}");
+	}
+
+	#[test]
+	fn other_aws_refusals_are_still_forwarded_whole() {
+		let stderr = "failed to decrypt sops data key with AWS KMS: could not decrypt data key with AWS KMS: AccessDeniedException: User is not authorized, request id: 1234";
+		let msg = failure(Some(128), stderr, "/nope", Some("prod")).to_string();
+		assert!(msg.contains("sops could not reach a key service"), "{msg}");
+		assert!(msg.contains("request id: 1234"), "{msg}");
 	}
 }

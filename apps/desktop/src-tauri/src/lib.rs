@@ -400,6 +400,7 @@ pub fn run() {
 			commands::sops::sops_status,
 			commands::sops::sops_decrypt,
 			commands::sops::sops_encrypt,
+			commands::sops::sops_aws_context,
 			commands::ide::ide_report_ui,
 			commands::ide::ide_resync,
 			commands::ide::ide_mention,

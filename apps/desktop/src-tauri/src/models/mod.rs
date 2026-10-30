@@ -399,6 +399,40 @@ pub struct SopsStatus {
 	pub too_old: bool,
 }
 
+/// What the viewer needs to choose the AWS profile a SOPS file is decrypted
+/// with (F27 § "Choosing the AWS profile"). Only produced for a file whose
+/// metadata names an AWS KMS key; any other file has no picker at all.
+///
+/// Mirrors `@factorai/types` `SopsAwsContext`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SopsAwsContext {
+	/// Every profile in the shared config and credentials files, by name.
+	pub profiles: Vec<AwsProfile>,
+	/// The accounts the file's KMS keys live in, read out of their ARNs.
+	pub account_ids: Vec<String>,
+	/// A profile signing in to the file's account, when one does: the
+	/// environment's own `AWS_PROFILE` if it is one of them, else the first by
+	/// name.
+	pub suggested: Option<String>,
+	/// A non-empty `aws_profile` in the file's own metadata. `sops` uses it
+	/// whatever the environment says, so the picker shows it and is locked.
+	pub file_profile: Option<String>,
+	/// `AWS_PROFILE` in the app's environment, when it has one.
+	pub env_profile: Option<String>,
+}
+
+/// One named profile from `~/.aws/config` or `~/.aws/credentials`. A name and
+/// an account, never a credential.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AwsProfile {
+	pub name: String,
+	/// From `sso_account_id`, `aws_account_id` or a `role_arn`, when the
+	/// profile names one. What the suggestion matches against.
+	pub account_id: Option<String>,
+}
+
 /// One image, ready for an `<img src>` (F7).
 ///
 /// Separate from [`FileContents`] rather than a field on it. `FileContents` is
