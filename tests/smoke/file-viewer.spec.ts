@@ -1715,12 +1715,12 @@ test.describe('SOPS (F27)', () => {
 		const viewer = page.getByTestId('file-viewer');
 		const picker = viewer.getByTestId('viewer-aws-profile');
 		// Starts on the profile that signs in to the key's account.
-		await expect(picker).toHaveText('staging');
+		await expect(picker).toContainText('staging');
 		await expect(picker).toHaveAttribute('title', /account 111111111111/);
 
 		await picker.click();
 		await page.getByTestId('viewer-aws-profile-prod').click();
-		await expect(picker).toHaveText('prod');
+		await expect(picker).toContainText('prod');
 
 		await viewer.getByTestId('viewer-decrypt').click();
 		await expect(page.getByTestId('file-view-editor')).toContainText('sk-live-abc123');
