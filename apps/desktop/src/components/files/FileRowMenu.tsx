@@ -1,9 +1,10 @@
 import type { DirEntry } from '@factorai/types';
 import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '@factorai/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Clipboard, ExternalLink, FileText, Link, Route, Sparkles } from 'lucide-react';
+import { Clipboard, ExternalLink, FileText, FolderOpen, Link, Route, Sparkles } from 'lucide-react';
 import { iconKeyFor } from '@lib/fileIcon';
 import { relativeToRoot } from '@lib/paths';
+import { revealLabel } from '@lib/platform';
 import { queryKeys } from '@lib/queryKeys';
 import { cmd, copyImageFile, copyText, openExternally } from '@lib/tauri';
 import { usePanelStore } from '@store/panelStore';
@@ -132,6 +133,14 @@ export function FileRowMenu({
 			</ContextMenuItem>
 			<ContextMenuItem onSelect={() => void openExternally(entry.path)}>
 				<ExternalLink /> Open in default app
+			</ContextMenuItem>
+			{/* Folders too: revealing one selects it in its parent, which is the
+			    same answer to *where does this live* (F7, ADR-0033). Only a failure
+			    marks the row — the file manager coming forward is the success. */}
+			<ContextMenuItem
+				onSelect={() => void cmd.revealInFileManager(entry.path).catch(() => onCopied('failed'))}
+			>
+				<FolderOpen /> {revealLabel()}
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<ContextMenuItem
