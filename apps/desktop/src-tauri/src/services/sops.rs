@@ -733,7 +733,11 @@ fn aws_context_for(
 /// Everything else from AWS is left to [`key_failure`], which forwards it whole.
 fn aws_failure(stderr: &str, aws_profile: Option<&str>) -> Option<AppError> {
 	let profile = aws_profile.map(str::trim).filter(|p| !p.is_empty());
-	if SSO_MARKERS.iter().any(|m| stderr.contains(m)) {
+	// **Matched on the unwrapped text.** `sops` wraps a backend's error at a
+	// fixed width behind `|` gutters, so `operation error ec2imds` arrives as
+	// `operation error\n      | ec2imds` and a marker can straddle any break.
+	let text = unwrapped(stderr);
+	if SSO_MARKERS.iter().any(|m| text.contains(m)) {
 		let fix = match profile {
 			Some(p) => format!("run `aws sso login --profile {p}`"),
 			None => "run `aws sso login` for the profile this file's key belongs to".to_string(),
@@ -744,7 +748,7 @@ fn aws_failure(stderr: &str, aws_profile: Option<&str>) -> Option<AppError> {
 			verbatim(stderr)
 		)));
 	}
-	if NO_AWS_CREDENTIALS_MARKERS.iter().any(|m| stderr.contains(m)) {
+	if NO_AWS_CREDENTIALS_MARKERS.iter().any(|m| text.contains(m)) {
 		let what = match profile {
 			Some(p) => format!("the AWS profile `{p}` has no credentials sops could use"),
 			None => "no AWS credentials were found for this file's KMS key — choose the AWS \
@@ -754,6 +758,11 @@ fn aws_failure(stderr: &str, aws_profile: Option<&str>) -> Option<AppError> {
 		return Some(AppError::Process(format!("{what}. {}", verbatim(stderr))));
 	}
 	None
+}
+
+/// `sops`'s stderr as one line with its `|` gutters taken out.
+fn unwrapped(stderr: &str) -> String {
+	stderr.split_whitespace().filter(|word| *word != "|").collect::<Vec<_>>().join(" ")
 }
 
 /// Stderr from the AWS SDK when an IAM Identity Center token is missing,
@@ -1127,6 +1136,19 @@ mod tests {
 		assert!(none.contains("choose the AWS profile"), "{none}");
 		let named = failure(Some(128), stderr, "/nope", Some("prod")).to_string();
 		assert!(named.contains("`prod` has no credentials"), "{named}");
+	}
+
+	/// Captured from sops 3.13 with no credentials anywhere: the wrap splits
+	/// `operation error ec2imds` and could as well split any other marker.
+	#[test]
+	fn markers_are_found_across_the_wrap_sops_puts_in_its_stderr() {
+		let imds = "Failed to get the data key required to decrypt the SOPS file.\n\nGroup 0: FAILED\n  arn:aws:kms:eu-west-3:111111111111:key/0000: FAILED\n    - | failed to decrypt sops data key with AWS KMS: operation\n      | error KMS: Decrypt, get identity: get credentials: failed to\n      | refresh cached credentials, no EC2 IMDS\n      | role found, operation error\n      | ec2imds: GetMetadata, request canceled\n";
+		let msg = failure(Some(128), imds, "/nope", None).to_string();
+		assert!(msg.contains("choose the AWS profile"), "{msg}");
+
+		let sso = "Failed to get the data key required to decrypt the SOPS file.\n\nGroup 0: FAILED\n  arn:aws:kms:eu-west-3:111111111111:key/0000: FAILED\n    - | failed to decrypt sops data key with AWS KMS: operation\n      | error KMS: Decrypt, get identity: get credentials: failed to\n      | refresh cached credentials, failed to read cached SSO\n      | token file, open /home/u/.aws/sso/cache/ee0b.json: no such\n      | file or directory\n";
+		let msg = failure(Some(128), sso, "/nope", Some("staging")).to_string();
+		assert!(msg.contains("aws sso login --profile staging"), "{msg}");
 	}
 
 	#[test]
