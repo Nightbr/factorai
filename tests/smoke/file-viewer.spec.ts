@@ -107,6 +107,33 @@ test.describe('file viewer', () => {
 		expect(asked).toEqual([`${ROOT}/Cargo.toml`]);
 	});
 
+	test('@smoke right-clicking a tab reveals the file without expanding', async ({ page }) => {
+		await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		const panel = await openTree(page);
+		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
+
+		const tab = page.getByTestId('file-tab').filter({ hasText: 'Cargo.toml' });
+		await tab.click({ button: 'right' });
+		await expect(page.getByRole('menuitem', { name: 'Open in default app' })).toBeVisible();
+		await page.getByRole('menuitem', { name: /^Reveal in / }).click();
+
+		const asked = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'reveal_in_file_manager')
+				.map((c) => String(c.args?.path)),
+		);
+		expect(asked).toEqual([`${ROOT}/Cargo.toml`]);
+		await expect(page.getByTestId('file-viewer-modal')).toHaveCount(0);
+
+		// Copy path is the absolute path, and the tab wears the tick.
+		await tab.click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Copy path' }).click();
+		expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${ROOT}/Cargo.toml`);
+		await expect(page.getByTestId('tab-outcome-yes')).toBeVisible();
+	});
+
 	test('@smoke closing the last file clears the URL, and Esc outside the pane closes nothing', async ({
 		page,
 	}) => {

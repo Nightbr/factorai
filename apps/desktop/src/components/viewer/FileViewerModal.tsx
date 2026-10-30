@@ -6,7 +6,7 @@ import { ViewerHostProvider } from '@components/viewer/viewerHost';
 import { useKeymap } from '@hooks/useShortcuts';
 import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import type { DiffMode, ViewerPosition } from '@hooks/useFileViewer';
-import { isMacOS } from '@lib/platform';
+import { revealLabel as platformRevealLabel } from '@lib/platform';
 import { cmd, copyText, openExternally } from '@lib/tauri';
 
 // Monaco is the heaviest thing in the app, and the viewer is the only thing
@@ -68,11 +68,7 @@ export function FileViewerModal({
 
 	if (!path) return null;
 	const { name, parent } = splitPath(path);
-	// The platform's own name for this, because a control labelled something
-	// other than the menu item a reader already knows is a control they have to
-	// read twice. See `lib/platform` for why the sniff is reliable in a webview.
-	const revealTarget = isMacOS() ? 'Finder' : 'file manager';
-	const revealLabel = revealFailed ? 'Reveal failed' : `Reveal in ${revealTarget}`;
+	const revealLabel = revealFailed ? 'Reveal failed' : platformRevealLabel();
 	const copyLabel = copied === 'failed' ? 'Copy failed' : 'Copy path';
 
 	async function copyPath() {

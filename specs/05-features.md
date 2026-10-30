@@ -1268,6 +1268,15 @@ host-agnostic, which is what makes three hosts possible at all.
   deleted while it was on screen and a desktop with no file manager at all,
   and neither is distinguishable from a dead button. There is still no toast
   (roadmap item 7 (#17)).
+- **Right-clicking a tab opens the file's menu** (`FileTabMenu`, #68): Reveal,
+  Open in default app, Copy path (absolute), labelled exactly as in the tree's
+  menu (F12). It is how the split pane reaches the file manager without
+  expanding first — attaching a PDF to an email is reveal, then drag from the
+  file manager — and it leaves the pane header as Expand and nothing else.
+  File actions only: pinning and closing keep their gestures on the tab. The
+  outcome is a transient tick or cross on the tab, as on a tree row, since the
+  menu has closed by then; a reveal marks only its failure. `Shift+F10` or the
+  Menu key opens it on a focused tab.
 - **Footer: `language · size · line count`, as one string**, with the markdown
   toggle to its left and "add to agent context" (F20) at the right. It is a
   `@container` and it degrades in a fixed order, because the viewer's column can
@@ -2456,11 +2465,16 @@ project it shows follows the route (`/projects/$id` or
   row can have no hover actions and still let you do more than open a file —
   at 288px a permanent control is a permanent accident. Right-clicking also
   **selects** the row: `panelStore` holds one `selectedPath` and there is no
-  multi-select, so the row being acted on has to be the one you can see. Five
-  rows, in order:
+  multi-select, so the row being acted on has to be the one you can see. Below
+  **Add to agent context** (F20), in order:
   - **Open** — the viewer, same as a click. Disabled on a directory.
   - **Open in default app** — `openExternally`. Enabled on a directory, where
     it hands the folder to the file manager.
+  - **Reveal in Finder** / **Reveal in file manager** — `reveal_in_file_manager`
+    (ADR-0033), the same call and label as the viewer's header (F7). Enabled on
+    a directory, which comes up selected in its parent. A failure marks the row
+    with the cross below; success marks nothing, because the file manager
+    coming forward already says so (#68).
   - **Copy contents** — the file as text. Disabled, *with the reason in the
     label*, for a directory, a binary, or a file `read_file` returned
     truncated: half a file on the clipboard that looks like a whole one is

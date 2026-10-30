@@ -171,4 +171,24 @@ test.describe('file tree row menu', () => {
 		await expect(page.getByTestId('file-viewer')).toBeVisible();
 		await expect(page).toHaveURL(new RegExp(`file=${encodeURIComponent(`${ROOT}/README.md`)}`));
 	});
+
+	test('@smoke reveals a file, and a folder, in the file manager', async ({ page }) => {
+		await installMockBridge(page, fixtureWithFileTree());
+		await page.goto('/');
+		await openPanelOnProject(page);
+		// Matched by prefix: the label is "Reveal in Finder" on macOS.
+		await rightClick(page, 'README.md');
+		await page.getByRole('menuitem', { name: /^Reveal in / }).click();
+		await rightClick(page, 'apps');
+		await page.getByRole('menuitem', { name: /^Reveal in / }).click();
+
+		const asked = await page.evaluate(() =>
+			(window.__FACTORAI_TEST_CALLS__ ?? [])
+				.filter((c) => c.name === 'reveal_in_file_manager')
+				.map((c) => String(c.args?.path)),
+		);
+		expect(asked).toEqual([`${ROOT}/README.md`, `${ROOT}/apps`]);
+		// Success marks nothing: the file manager coming forward is the answer.
+		await expect(page.getByTestId('row-copied')).toHaveCount(0);
+	});
 });

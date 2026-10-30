@@ -1,6 +1,9 @@
-import { X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { ContextMenu, ContextMenuTrigger } from '@factorai/ui';
+import { Check, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { FileIcon } from '@components/files/FileIcon';
+import type { RowOutcome } from '@components/files/FileRowMenu';
+import { FileTabMenu } from '@components/viewer/FileTabMenu';
 import { nextActivePath, type ViewerTab } from '@store/viewerStore';
 
 /** The file name, which is what a tab is labelled by. */
@@ -35,9 +38,19 @@ interface FileTabsProps {
  * and stays a local `onKeyDown` rather than a keymap action, the same way the
  * arrow keys inside a focused list do (F28) — a settings row offering to
  * rebind it would be offering something the rest of the pane must not honour.
+ *
+ * **Right-click is the file's menu** (`FileTabMenu`): reveal, open in the
+ * default app, copy the path. The mark it leaves sits on the tab, the same way
+ * the tree row wears its own.
  */
 export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps) {
 	const strip = useRef<HTMLDivElement>(null);
+	const [outcome, setOutcome] = useState<{ path: string; kind: RowOutcome } | null>(null);
+
+	function report(path: string, kind: RowOutcome) {
+		setOutcome({ path, kind });
+		setTimeout(() => setOutcome(null), 1400);
+	}
 
 	// **The strip follows what is showing.** A file opened from the tree, from a
 	// terminal link or by the agent lands at the end of a strip that may already
@@ -94,72 +107,88 @@ export function FileTabs({ tabs, active, onOpen, onPin, onClose }: FileTabsProps
 			{tabs.map((tab) => {
 				const name = baseName(tab.path);
 				const isActive = tab.path === active;
+				const mark = outcome?.path === tab.path ? outcome.kind : null;
 				return (
-					<div
-						key={tab.path}
-						role="tab"
-						aria-selected={isActive}
-						aria-keyshortcuts="Escape"
-						tabIndex={0}
-						data-testid="file-tab"
-						data-path={tab.path}
-						data-preview={tab.preview}
-						data-active={isActive}
-						title={tab.path}
-						className={`group flex h-7.5 max-w-60 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-sm ${
-							isActive
-								? 'bg-secondary text-foreground transition-colors'
-								: 'text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground'
-						}`}
-						onClick={() => onOpen(tab)}
-						// Double-click pins, on the tab as well as on the tree row, so
-						// the gesture that promotes a preview is the same one wherever
-						// you happen to be looking.
-						onDoubleClick={() => onPin(tab.path)}
-						// Middle-click closes, the way every tab strip does.
-						onAuxClick={(e) => {
-							if (e.button !== 1) return;
-							e.preventDefault();
-							onClose(tab.path);
-						}}
-						onKeyDown={(e) => {
-							// **`Escape` closes this tab** (F7, ADR-0047), and only from the
-							// tab itself: over the file being read it still closes nothing,
-							// which is what ADR-0037 settled when the viewer stopped being a
-							// modal over the session. Stopped here so the keystroke stays the
-							// strip's — nothing above this row may read a close as a dismiss
-							// of its own.
-							if (e.key === 'Escape') {
-								e.preventDefault();
-								e.stopPropagation();
-								focusNeighbour(tab.path);
-								onClose(tab.path);
-								return;
-							}
-							if (e.key === 'Enter' || e.key === ' ') {
-								e.preventDefault();
-								onOpen(tab);
-							}
-						}}
-					>
-						<FileIcon fileName={name} className="size-3.5 shrink-0" />
-						<span className={`min-w-0 flex-1 truncate ${tab.preview ? 'italic' : ''}`}>{name}</span>
-						{/* Only where the pointer already is, or on the active tab — a row
+					<ContextMenu key={tab.path}>
+						<ContextMenuTrigger asChild>
+							<div
+								role="tab"
+								aria-selected={isActive}
+								aria-keyshortcuts="Escape"
+								tabIndex={0}
+								data-testid="file-tab"
+								data-path={tab.path}
+								data-preview={tab.preview}
+								data-active={isActive}
+								title={tab.path}
+								className={`group flex h-7.5 max-w-60 shrink-0 cursor-pointer items-center gap-1.5 rounded px-2 text-sm ${
+									isActive
+										? 'bg-secondary text-foreground transition-colors'
+										: 'text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground'
+								}`}
+								onClick={() => onOpen(tab)}
+								// Double-click pins, on the tab as well as on the tree row, so
+								// the gesture that promotes a preview is the same one wherever
+								// you happen to be looking.
+								onDoubleClick={() => onPin(tab.path)}
+								// Middle-click closes, the way every tab strip does.
+								onAuxClick={(e) => {
+									if (e.button !== 1) return;
+									e.preventDefault();
+									onClose(tab.path);
+								}}
+								onKeyDown={(e) => {
+									// **`Escape` closes this tab** (F7, ADR-0047), and only from the
+									// tab itself: over the file being read it still closes nothing,
+									// which is what ADR-0037 settled when the viewer stopped being a
+									// modal over the session. Stopped here so the keystroke stays the
+									// strip's — nothing above this row may read a close as a dismiss
+									// of its own.
+									if (e.key === 'Escape') {
+										e.preventDefault();
+										e.stopPropagation();
+										focusNeighbour(tab.path);
+										onClose(tab.path);
+										return;
+									}
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										onOpen(tab);
+									}
+								}}
+							>
+								<FileIcon fileName={name} className="size-3.5 shrink-0" />
+								<span className={`min-w-0 flex-1 truncate ${tab.preview ? 'italic' : ''}`}>
+									{name}
+								</span>
+								{mark === 'yes' && (
+									<Check data-testid="tab-outcome-yes" className="size-3.5 shrink-0 text-primary" />
+								)}
+								{mark === 'failed' && (
+									<X
+										data-testid="tab-outcome-failed"
+										className="size-3.5 shrink-0 text-destructive"
+									/>
+								)}
+								{/* Only where the pointer already is, or on the active tab — a row
 						    of permanent × buttons is a row of accidents waiting (F16). */}
-						<button
-							type="button"
-							aria-label={`Close ${name}`}
-							className={`-mr-1 rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 ${
-								isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-							}`}
-							onClick={(e) => {
-								e.stopPropagation();
-								onClose(tab.path);
-							}}
-						>
-							<X className="size-3.5" />
-						</button>
-					</div>
+								<button
+									type="button"
+									aria-label={`Close ${name}`}
+									className={`-mr-1 rounded p-0.5 text-muted-foreground/70 transition-all hover:text-primary focus-visible:opacity-100 ${
+										isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+									}`}
+									onClick={(e) => {
+										e.stopPropagation();
+										onClose(tab.path);
+									}}
+								>
+									<X className="size-3.5" />
+								</button>
+							</div>
+						</ContextMenuTrigger>
+						<FileTabMenu path={tab.path} onOutcome={(kind) => report(tab.path, kind)} />
+					</ContextMenu>
 				);
 			})}
 		</div>
