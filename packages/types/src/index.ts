@@ -602,6 +602,33 @@ export interface SopsStatus {
 }
 
 /**
+ * What the viewer needs to choose the AWS profile a SOPS file is decrypted with
+ * (F27 § "Choosing the AWS profile"). Mirrors the Rust `SopsAwsContext`.
+ *
+ * Only ever produced for a file whose metadata names an AWS KMS key; for any
+ * other file `sops_aws_context` answers `null` and there is no picker.
+ */
+export interface SopsAwsContext {
+	/** Every profile in the shared config and credentials files, by name. */
+	profiles: AwsProfile[];
+	/** The accounts the file's KMS keys live in, read out of their ARNs. */
+	accountIds: string[];
+	/** A profile signing in to the file's account, when one does. */
+	suggested: string | null;
+	/** A non-empty `aws_profile` in the file's own metadata. `sops` uses it
+	 *  whatever the environment says, so the picker shows it locked. */
+	fileProfile: string | null;
+	/** `AWS_PROFILE` in the app's environment, when it has one. */
+	envProfile: string | null;
+}
+
+/** One named AWS profile. A name and an account, never a credential. */
+export interface AwsProfile {
+	name: string;
+	accountId: string | null;
+}
+
+/**
  * One image, ready for an `<img src>` (F7).
  *
  * Separate from `FileContents` rather than a field on it: that type is shared
