@@ -5,6 +5,14 @@ release adds (ADR-0064); alphas are listed only on their GitHub prereleases.
 
 Releases before 0.49.0 are on [GitHub](https://github.com/Nightbr/factorai/releases).
 
+## 0.56.0 — 2026-11-02
+
+### Features
+
+- Shift+Enter adds a line break in the terminal instead of sending the prompt (#67)
+- reveal in Finder / file manager from the tree menu and the viewer tabs (#69)
+- choose the AWS profile that decrypts a SOPS file keyed by AWS KMS (#70)
+
 ## 0.55.0 — 2026-10-12
 
 ### Fixes
