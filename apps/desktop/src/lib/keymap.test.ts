@@ -4,14 +4,22 @@ import {
 	type Keymap,
 	SHORTCUT_SPECS,
 	assignHotkey,
+	blockingAction,
+	chordsOf,
 	clearHotkey,
 	defaultKeymap,
+	digitsBinding,
+	displayChord,
 	hotkeysOverTerminal,
+	isDigitsOverTerminal,
 	isOverridden,
 	mergeKeymap,
 	overridesFrom,
 	specsFor,
 	stepTab,
+	tabAtDigit,
+	tabDigitOf,
+	withPhysicalDigit,
 } from './keymap';
 
 describe('the shipped map', () => {
@@ -133,8 +141,8 @@ describe('the chords xterm must let through', () => {
 		expect(through).not.toContain('Mod+,');
 	});
 
-	it('covers every spec that claims it', () => {
-		const claiming = SHORTCUT_SPECS.filter((s) => s.overTerminal).length;
+	it('covers every single-chord spec that claims it', () => {
+		const claiming = SHORTCUT_SPECS.filter((s) => s.overTerminal && s.digits !== true).length;
 		expect(hotkeysOverTerminal(defaultKeymap())).toHaveLength(claiming);
 	});
 });
@@ -159,5 +167,146 @@ describe('stepping through a tab strip', () => {
 	it('has nowhere to go from an empty strip or an unknown tab', () => {
 		expect(stepTab([], 'a', 1)).toBeNull();
 		expect(stepTab(strip, 'gone', 1)).toBeNull();
+	});
+});
+
+/** A keydown as far as the digit matcher reads one. */
+function key(
+	code: string,
+	mods: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean } = {},
+) {
+	return {
+		code,
+		ctrlKey: mods.ctrl ?? false,
+		shiftKey: mods.shift ?? false,
+		altKey: mods.alt ?? false,
+		metaKey: mods.meta ?? false,
+	};
+}
+
+describe('the tab digits row', () => {
+	it('ships as Mod+1, standing for Mod+1 through Mod+9', () => {
+		expect(defaultKeymap().switchToTab).toBe('Mod+1');
+		expect(chordsOf('switchToTab', 'Mod+1')).toEqual([
+			'Mod+1',
+			'Mod+2',
+			'Mod+3',
+			'Mod+4',
+			'Mod+5',
+			'Mod+6',
+			'Mod+7',
+			'Mod+8',
+			'Mod+9',
+		]);
+	});
+
+	it('keeps a modifier change across all nine', () => {
+		expect(chordsOf('switchToTab', 'Alt+1')).toContain('Alt+9');
+		expect(chordsOf('switchToTab', 'Mod+Shift+1')).toContain('Mod+Shift+5');
+	});
+
+	it('reads as a range', () => {
+		expect(displayChord('switchToTab', 'Mod+1', 'linux')).toBe('Ctrl+1–9');
+		expect(displayChord('openSettings', 'Mod+,', 'linux')).toBe('Ctrl+,');
+	});
+
+	it('loses the whole row, not one digit, to an override already holding one', () => {
+		const merged = mergeKeymap({ newSession: 'Mod+3' });
+		expect(merged.newSession).toBe('Mod+3');
+		expect(merged.switchToTab).toBeNull();
+	});
+});
+
+describe('the tab digits are never split', () => {
+	const base = defaultKeymap();
+
+	it('refuses another action on one of its chords', () => {
+		expect(blockingAction(base, 'newSession', 'Mod+3')).toBe('switchToTab');
+	});
+
+	it('refuses moving the row onto a modifier another action holds a digit of', () => {
+		const map = assignHotkey(base, 'newSession', 'Alt+4');
+		expect(blockingAction(map, 'switchToTab', 'Alt+1')).toBe('newSession');
+	});
+
+	it('lets everything else steal as before', () => {
+		expect(blockingAction(base, 'newSession', 'Mod+K')).toBeNull();
+		expect(blockingAction(base, 'switchToTab', 'Alt+1')).toBeNull();
+	});
+
+	it('steals any chord in the run when the row moves over a free modifier', () => {
+		const next = assignHotkey(base, 'switchToTab', 'Alt+1');
+		expect(next.switchToTab).toBe('Alt+1');
+		expect(next.newSession).toBe(base.newSession);
+	});
+});
+
+describe('recording a digit row', () => {
+	it('keeps the modifier of whatever digit was pressed', () => {
+		expect(digitsBinding('Alt+3', 'Digit3', 'linux')).toBe('Alt+1');
+		expect(digitsBinding('Mod+Shift+7', 'Digit7', 'linux')).toBe('Mod+Shift+1');
+	});
+
+	// AZERTY: the recorder reports the character, the code is the key.
+	it('reads the physical key, so AZERTY records the digit and not its character', () => {
+		expect(digitsBinding('Mod+é' as Hotkey, 'Digit2', 'linux')).toBe('Mod+1');
+		expect(withPhysicalDigit('Mod+&' as Hotkey, 'Digit1')).toBe('Mod+1');
+		expect(withPhysicalDigit('Mod+K', 'KeyK')).toBe('Mod+K');
+	});
+
+	it('refuses a chord without a digit', () => {
+		expect(digitsBinding('Mod+K', 'KeyK', 'linux')).toBeNull();
+	});
+
+	it('refuses a bare or shifted digit, which is typing', () => {
+		expect(digitsBinding('1' as Hotkey, 'Digit1', 'linux')).toBeNull();
+		expect(digitsBinding('Shift+1' as Hotkey, 'Digit1', 'linux')).toBeNull();
+	});
+});
+
+describe('matching a keystroke to a digit', () => {
+	it('finds the digit under the bound modifier', () => {
+		expect(tabDigitOf('Mod+1', key('Digit4', { ctrl: true }), 'linux')).toBe(4);
+		expect(tabDigitOf('Mod+1', key('Digit4', { meta: true }), 'mac')).toBe(4);
+		expect(tabDigitOf('Mod+1', key('Numpad2', { ctrl: true }), 'linux')).toBe(2);
+	});
+
+	it('wants the modifiers exactly', () => {
+		expect(tabDigitOf('Mod+1', key('Digit4'), 'linux')).toBeNull();
+		expect(tabDigitOf('Mod+1', key('Digit4', { ctrl: true, shift: true }), 'linux')).toBeNull();
+		expect(tabDigitOf('Mod+1', key('Digit4', { meta: true }), 'linux')).toBeNull();
+	});
+
+	it('ignores 0 and anything that is not a digit key', () => {
+		expect(tabDigitOf('Mod+1', key('Digit0', { ctrl: true }), 'linux')).toBeNull();
+		expect(tabDigitOf('Mod+1', key('KeyA', { ctrl: true }), 'linux')).toBeNull();
+	});
+
+	it('is let through xterm while bound, and not once unbound', () => {
+		const event = key('Digit2', { ctrl: true });
+		expect(isDigitsOverTerminal(defaultKeymap(), event, 'linux')).toBe(true);
+		expect(isDigitsOverTerminal(clearHotkey(defaultKeymap(), 'switchToTab'), event, 'linux')).toBe(
+			false,
+		);
+	});
+});
+
+describe('the tab a digit selects', () => {
+	const strip = ['a', 'b', 'c'];
+
+	it('is the tab at that position', () => {
+		expect(tabAtDigit(strip, 1)).toBe('a');
+		expect(tabAtDigit(strip, 3)).toBe('c');
+	});
+
+	it('is nothing past the end', () => {
+		expect(tabAtDigit(strip, 4)).toBeNull();
+		expect(tabAtDigit([], 1)).toBeNull();
+	});
+
+	it('is always the last for 9', () => {
+		expect(tabAtDigit(strip, 9)).toBe('c');
+		expect(tabAtDigit(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'], 9)).toBe('k');
+		expect(tabAtDigit([], 9)).toBeNull();
 	});
 });

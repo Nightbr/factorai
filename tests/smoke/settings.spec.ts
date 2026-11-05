@@ -159,4 +159,28 @@ test.describe('settings', () => {
 		await page.reload();
 		await expect(html).toHaveAttribute('data-theme', 'light');
 	});
+
+	test('@smoke the tab digits are one row that refuses to be split', async ({ page }) => {
+		await installMockBridge(page, fixtureOneProjectOneSession());
+		await page.goto('/?settings=keyboard');
+		const modal = page.getByTestId('settings-modal');
+
+		const digits = modal.getByTestId('shortcut-switchToTab');
+		await expect(digits).toHaveText('Ctrl+1–9');
+
+		// Another row recorded onto one of the nine is refused, not stolen
+		// (ADR-0074): the run would be left with a hole in it.
+		await modal.getByTestId('shortcut-newSession').click();
+		await page.keyboard.press('Control+3');
+		await expect(modal.getByTestId('shortcut-refusal-newSession')).toContainText(
+			'Switch to tab 1–9',
+		);
+		await expect(modal.getByTestId('shortcut-newSession')).toHaveText('Ctrl+N');
+		await expect(digits).toHaveText('Ctrl+1–9');
+
+		// Recording the row with any digit keeps that chord's modifier for all nine.
+		await digits.click();
+		await page.keyboard.press('Alt+4');
+		await expect(digits).toHaveText('Alt+1–9');
+	});
 });

@@ -265,6 +265,30 @@ test.describe('session tabs', () => {
 		expect(await order()).toEqual(['zulu-session-09', 'zulu-session-11', 'zulu-session-10']);
 	});
 
+	test('@smoke Mod+digit jumps to a tab by position, and Mod+9 to the last', async ({ page }) => {
+		await installMockBridge(page, fixtureTwoProjectsManySessions());
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Expand zulu' }).click();
+		await openSession(page, /Zulu task 11/);
+		await openSession(page, /Zulu task 10/);
+		await openSession(page, /Zulu task 9/);
+
+		const tab = (name: RegExp) => page.getByRole('tab', { name });
+		// From inside the terminal, which is where focus nearly always is: the
+		// chord has to get past xterm to be any use (F28, ADR-0074).
+		await page.locator('.xterm:visible textarea').focus();
+		await page.keyboard.press('Control+1');
+		await expect(tab(/Zulu task 11/)).toHaveAttribute('aria-selected', 'true');
+		await page.keyboard.press('Control+2');
+		await expect(tab(/Zulu task 10/)).toHaveAttribute('aria-selected', 'true');
+		// 9 is the last tab, not the ninth.
+		await page.keyboard.press('Control+9');
+		await expect(tab(/Zulu task 9/)).toHaveAttribute('aria-selected', 'true');
+		// A position with no tab does nothing.
+		await page.keyboard.press('Control+5');
+		await expect(tab(/Zulu task 9/)).toHaveAttribute('aria-selected', 'true');
+	});
+
 	test('@smoke the strip spans the bar rather than half of it', async ({ page }) => {
 		await installMockBridge(page, fixtureTwoProjectsManySessions());
 		await page.goto('/');

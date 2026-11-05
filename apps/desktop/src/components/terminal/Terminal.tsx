@@ -13,7 +13,7 @@ import { matchesKeyboardEvent } from '@tanstack/react-hotkeys';
 import { base64ToBytes } from '@lib/base64';
 import { formatError } from '@lib/errors';
 import { isPanelDragging, onPanelDragEnd } from '@lib/panelDrag';
-import { hotkeysOverTerminal, mergeKeymap } from '@lib/keymap';
+import { hotkeysOverTerminal, isDigitsOverTerminal, mergeKeymap } from '@lib/keymap';
 import { cmd, copyText, events, openExternally } from '@lib/tauri';
 import { isMacOS } from '@lib/platform';
 import { currentTheme, onThemeChange } from '@lib/theme';
@@ -415,8 +415,9 @@ export function getOrCreateTerm(
 		}
 		if (event.type !== 'keydown') return true;
 		// Nothing without a modifier can be one of ours, and this runs on every
-		// keystroke typed into the terminal.
-		if (!event.ctrlKey && !event.metaKey) return true;
+		// keystroke typed into the terminal. Alt counts: a row rebound to an Alt
+		// chord — `Alt+1`–`9` for the tab digits, say — must reach the app too.
+		if (!event.ctrlKey && !event.metaKey && !event.altKey) return true;
 		// **Copy the selection** (F5). Only with one, so a bare `Cmd+C` or
 		// `Ctrl+Shift+C` still reaches the PTY when nothing is selected.
 		if (isCopyChord(event) && term.hasSelection()) {
@@ -428,6 +429,7 @@ export function getOrCreateTerm(
 		for (const hotkey of hotkeysOverTerminal(keymap)) {
 			if (matchesKeyboardEvent(event, hotkey)) return false;
 		}
+		if (isDigitsOverTerminal(keymap, event, isMacOS() ? 'mac' : 'linux')) return false;
 		return true;
 	});
 

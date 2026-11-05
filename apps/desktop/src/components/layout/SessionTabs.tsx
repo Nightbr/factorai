@@ -16,7 +16,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dn
 import { CSS as DndCss } from '@dnd-kit/utilities';
 import type { Project, SessionSummary, TerminalStatus } from '@factorai/types';
 import { useShortcuts } from '@hooks/useShortcuts';
-import { stepTab } from '@lib/keymap';
+import { stepTab, tabAtDigit } from '@lib/keymap';
 import { queryKeys } from '@lib/queryKeys';
 import { tabsInKnownProjects } from '@lib/sessionGroups';
 import { cmd } from '@lib/tauri';
@@ -220,6 +220,15 @@ export function SessionTabs() {
 		// restart (F16) — stepping onto a dead one must not land on an empty pane.
 		nextTab: () => stepToTab(1),
 		previousTab: () => stepToTab(-1),
+		// `Mod+1`–`Mod+8` by position, `Mod+9` the last (F28). This strip only,
+		// whatever has focus: the viewer does not claim it for its files.
+		switchToTab: (digit) => {
+			if (digit === undefined) return;
+			const id = tabAtDigit(tabIds, digit);
+			if (!id || id === activeId) return;
+			const tab = tabs.find((t) => t.id === id);
+			if (tab) openSession(tab.id, tab.projectId);
+		},
 	});
 
 	/** One tab along the strip, in the order the tabs are actually in. */

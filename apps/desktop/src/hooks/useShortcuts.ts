@@ -1,6 +1,13 @@
-import { type UseHotkeyDefinition, formatForDisplay, useHotkeys } from '@tanstack/react-hotkeys';
-import { useMemo, useRef } from 'react';
-import { type Keymap, type ShortcutAction, SHORTCUT_SPECS, mergeKeymap } from '@lib/keymap';
+import { type UseHotkeyDefinition, useHotkeys } from '@tanstack/react-hotkeys';
+import { useEffect, useMemo, useRef } from 'react';
+import {
+	type Keymap,
+	type ShortcutAction,
+	SHORTCUT_SPECS,
+	displayChord,
+	mergeKeymap,
+	tabDigitOf,
+} from '@lib/keymap';
 import { isMacOS } from '@lib/platform';
 import { usePrefsStore } from '@store/prefsStore';
 import { useRecordingStore } from '@store/recordingStore';
@@ -16,7 +23,7 @@ export function useKeymap(): Keymap {
 /** What a call site does when its action fires. Absent means "not mine" — a
  *  handler map is a subset, so the shell and the tab strip can each claim the
  *  actions they own without knowing about the other's. */
-type ShortcutHandlers = Partial<Record<ShortcutAction, () => void>>;
+type ShortcutHandlers = Partial<Record<ShortcutAction, (digit?: number) => void>>;
 
 interface ShortcutOptions {
 	/** Only fire while this element, or something inside it, has focus. How a
@@ -64,6 +71,8 @@ export function useShortcuts(handlers: ShortcutHandlers, options: ShortcutOption
 			if (!owned.has(spec.action)) continue;
 			// macOS takes Quit from the app menu, before the webview sees the key.
 			if (spec.linuxOnly === true && mac) continue;
+			// A digit row is matched by physical key below, not by the library.
+			if (spec.digits === true) continue;
 			const hotkey = keymap[spec.action];
 			if (!hotkey) continue;
 			defs.push({
@@ -80,6 +89,31 @@ export function useShortcuts(handlers: ShortcutHandlers, options: ShortcutOption
 		...(target ? { target } : {}),
 		enabled: enabled !== false && !recording,
 	});
+
+	// **Digit rows listen for themselves** (ADR-0074). The library matches by
+	// character and falls back to the physical key only when the character is
+	// not a letter, so on AZERTY — whose digit row types `é`, `è`, `ç`, `à` —
+	// `Ctrl+2` would never fire. Matching on `KeyboardEvent.code` works on every
+	// layout. Every digit row is over-terminal and global, so there is no
+	// `ignoreInputs` or `target` to reproduce here.
+	const digitAction = SHORTCUT_SPECS.find(
+		(s) => s.digits === true && claimed.split(',').includes(s.action),
+	)?.action;
+	const digitHotkey = digitAction ? keymap[digitAction] : null;
+	const live = enabled !== false && !recording && target === undefined;
+	useEffect(() => {
+		if (!digitAction || !digitHotkey || !live) return;
+		const platform = mac ? 'mac' : 'linux';
+		const onKeyDown = (event: KeyboardEvent) => {
+			const digit = tabDigitOf(digitHotkey, event, platform);
+			if (digit === null) return;
+			event.preventDefault();
+			event.stopPropagation();
+			handlersRef.current[digitAction]?.(digit);
+		};
+		document.addEventListener('keydown', onKeyDown);
+		return () => document.removeEventListener('keydown', onKeyDown);
+	}, [digitAction, digitHotkey, live, mac]);
 }
 
 /**
@@ -95,5 +129,5 @@ export function useChordTitle(title: string, action: ShortcutAction): string {
 	const mac = isMacOS();
 	const hotkey = keymap[action];
 	if (!hotkey) return title;
-	return `${title} (${formatForDisplay(hotkey, { platform: mac ? 'mac' : 'linux' })})`;
+	return `${title} (${displayChord(action, hotkey, mac ? 'mac' : 'linux')})`;
 }
