@@ -19,6 +19,8 @@ import Shot from '@site/src/components/Shot';
 | `Mod + W` | Close the focused tab: the session, or the file while the viewer has focus |
 | `Mod + PageDown` | Next tab |
 | `Mod + PageUp` | Previous tab |
+| `Mod + 1` … `Mod + 8` | Session tab at that position |
+| `Mod + 9` | Last session tab |
 | `Mod + ,` | Open settings |
 | `Mod + Q` | Quit factorai |
 
@@ -35,6 +37,9 @@ In **Settings → Keyboard**, click a chord and press the new one (`Escape` canc
 clears).
 
 - Taking a chord another row holds leaves that row unbound.
+- **Switch to tab 1–9** is one row for all nine digits: press any digit with the modifier you want
+  (`Alt+3` gives `Alt+1–9`). It is never split: a chord that would take one of its digits, or a
+  modifier where another row holds a digit, is refused and the row says which one is in the way.
 - `×` unbinds, the reset arrow restores one row, **Reset all** restores every row.
 - Nothing is written until you press **Save**.
 - Your changes survive updates; defaults you have not overridden follow the app.

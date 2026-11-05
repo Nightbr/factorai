@@ -1,4 +1,4 @@
-import type { Hotkey } from '@tanstack/react-hotkeys';
+import { type Hotkey, formatForDisplay, parseHotkey } from '@tanstack/react-hotkeys';
 
 /**
  * Every app-level action that can carry a keyboard binding (F28, ADR-0046).
@@ -16,6 +16,7 @@ export type ShortcutAction =
 	| 'closeFocusedTab'
 	| 'nextTab'
 	| 'previousTab'
+	| 'switchToTab'
 	| 'openSettings'
 	| 'quit';
 
@@ -50,6 +51,14 @@ interface ShortcutSpec {
 	/** Linux only. macOS gets this action from the app menu instead, because
 	 *  AppKit consumes the accelerator before the webview sees it (ADR-0046). */
 	linuxOnly?: true;
+	/**
+	 * The binding is a **modifier applied to the digits 1–9**, not one chord
+	 * (ADR-0074). It is stored as the `1` chord — `Mod+1` stands for `Mod+1`
+	 * through `Mod+9` — so the map's shape, persistence and reset stay the same
+	 * as every other row's. Such a row never loses a digit to a steal: a
+	 * recording that would break the run is refused instead.
+	 */
+	digits?: true;
 }
 
 /**
@@ -134,6 +143,16 @@ export const SHORTCUT_SPECS: readonly ShortcutSpec[] = [
 		overTerminal: true,
 	},
 	{
+		// **Mod+9 is the last tab, not the ninth** — the browser convention, and
+		// the only way to reach the end of a strip longer than nine. Session
+		// tabs only, whatever has focus: the file strip keeps the page keys.
+		action: 'switchToTab',
+		label: 'Switch to tab 1–9 (9 is the last tab)',
+		defaultHotkey: 'Mod+1',
+		overTerminal: true,
+		digits: true,
+	},
+	{
 		action: 'openSettings',
 		label: 'Open settings',
 		defaultHotkey: 'Mod+,',
@@ -194,18 +213,20 @@ export function mergeKeymap(overrides: KeymapOverrides): Keymap {
 	for (const [action, hotkey] of Object.entries(overrides)) {
 		if (!isShortcutAction(action)) continue;
 		map[action] = hotkey;
-		if (hotkey) claimed.set(hotkey, action);
+		if (hotkey) for (const chord of chordsOf(action, hotkey)) claimed.set(chord, action);
 	}
 
 	for (const action of ACTIONS) {
 		const hotkey = map[action];
 		if (!hotkey) continue;
-		const owner = claimed.get(hotkey);
-		if (owner === undefined) {
-			claimed.set(hotkey, action);
+		const chords = chordsOf(action, hotkey);
+		// A digit row is all nine or nothing: one chord held elsewhere unbinds
+		// the whole row rather than leaving a run with a hole in it.
+		if (chords.some((c) => (claimed.get(c) ?? action) !== action)) {
+			map[action] = null;
 			continue;
 		}
-		if (owner !== action) map[action] = null;
+		for (const chord of chords) claimed.set(chord, action);
 	}
 
 	return map;
@@ -222,10 +243,37 @@ export function mergeKeymap(overrides: KeymapOverrides): Keymap {
  */
 export function assignHotkey(map: Keymap, action: ShortcutAction, hotkey: Hotkey): Keymap {
 	const next: Keymap = { ...map, [action]: hotkey };
+	const taken = new Set(chordsOf(action, hotkey));
 	for (const other of ACTIONS) {
-		if (other !== action && next[other] === hotkey) next[other] = null;
+		const held = next[other];
+		if (other === action || !held) continue;
+		if (chordsOf(other, held).some((c) => taken.has(c))) next[other] = null;
 	}
 	return next;
+}
+
+/**
+ * The action that stops this assignment, or `null` when it may go ahead.
+ *
+ * **A digit row is the one exception to stealing** (ADR-0074). Taking one of
+ * its nine chords would leave `Mod+1`–`Mod+9` with a hole in it, and moving it
+ * onto a modifier where another action holds a digit would do the same from the
+ * other side. Both are refused, and the row that would have lost says why.
+ * Every other collision still steals, as ADR-0046 decided.
+ */
+export function blockingAction(
+	map: Keymap,
+	action: ShortcutAction,
+	hotkey: Hotkey,
+): ShortcutAction | null {
+	const taken = new Set(chordsOf(action, hotkey));
+	for (const other of ACTIONS) {
+		const held = map[other];
+		if (other === action || !held) continue;
+		if (!isDigitsAction(action) && !isDigitsAction(other)) continue;
+		if (chordsOf(other, held).some((c) => taken.has(c))) return other;
+	}
+	return null;
 }
 
 /** Unbind one action — what the `×` on a settings row does. */
@@ -265,7 +313,7 @@ export function hotkeysOverTerminal(map: Keymap): Hotkey[] {
 	const out: Hotkey[] = [];
 	for (const spec of SHORTCUT_SPECS) {
 		const hotkey = map[spec.action];
-		if (hotkey && spec.overTerminal) out.push(hotkey);
+		if (hotkey && spec.overTerminal && spec.digits !== true) out.push(hotkey);
 	}
 	return out;
 }
@@ -296,4 +344,120 @@ export function stepTab<T>(items: readonly T[], current: T, delta: 1 | -1): T | 
 	if (from < 0) return null;
 	const to = (from + delta + items.length) % items.length;
 	return items[to] ?? null;
+}
+
+/** The digits a digit row covers, in order. */
+const TAB_DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+
+function isDigitsAction(action: ShortcutAction): boolean {
+	return SHORTCUT_SPECS.some((s) => s.action === action && s.digits === true);
+}
+
+/** `Mod+1` with its key swapped for another. Only ever called on a digit
+ *  row's binding, whose key is a single digit, so the last `+` is the split. */
+function withKey(hotkey: Hotkey, key: string): Hotkey {
+	const at = hotkey.lastIndexOf('+');
+	return `${at < 0 ? '' : hotkey.slice(0, at + 1)}${key}` as Hotkey;
+}
+
+/** Every chord one binding occupies: itself, or nine for a digit row. */
+export function chordsOf(action: ShortcutAction, hotkey: Hotkey): Hotkey[] {
+	if (!isDigitsAction(action)) return [hotkey];
+	return TAB_DIGITS.map((d) => withKey(hotkey, String(d)));
+}
+
+/** A physical digit key, from `KeyboardEvent.code`: the top row or the keypad. */
+function digitOfCode(code: string): number | null {
+	const match = /^(?:Digit|Numpad)([0-9])$/.exec(code);
+	return match ? Number(match[1]) : null;
+}
+
+/**
+ * The recorder's chord with a digit key spelled as the digit it physically is.
+ *
+ * The recorder reads `KeyboardEvent.key`, so `Ctrl+1` on AZERTY records as
+ * `Mod+&` and `Ctrl+2` as `Mod+é`. The bindings themselves fire by physical key,
+ * so a row has to be stored the same way or its conflict checks look at the
+ * wrong chord.
+ */
+export function withPhysicalDigit(hotkey: Hotkey, code: string): Hotkey {
+	const digit = digitOfCode(code);
+	return digit === null ? hotkey : withKey(hotkey, String(digit));
+}
+
+/**
+ * What a digit row stores for a recorded chord: its modifiers on `1`, or
+ * `null` when the chord cannot stand for nine.
+ *
+ * It needs a digit key, any of them — pressing `Alt+3` means "use Alt". And it
+ * needs a modifier other than Shift alone, because a bare or shifted digit is
+ * typing, and this row takes its chords from the terminal.
+ */
+export function digitsBinding(
+	recorded: Hotkey,
+	code: string,
+	platform: 'mac' | 'linux',
+): Hotkey | null {
+	if (digitOfCode(code) === null) return null;
+	const parsed = parseHotkey(recorded, platform);
+	if (!parsed.ctrl && !parsed.alt && !parsed.meta) return null;
+	return withKey(recorded, '1');
+}
+
+/**
+ * The digit a keystroke selects under a digit row's binding, or `null`.
+ *
+ * **By physical key, not by character.** The library falls back to
+ * `KeyboardEvent.code` for some layouts, not for keys that produce a letter —
+ * and AZERTY's digit row gives `é`, `è`, `ç` and `à` unshifted, so `Ctrl+2` would
+ * never match there. Modifiers must match exactly, as they do for every chord.
+ */
+export function tabDigitOf(
+	hotkey: Hotkey,
+	event: Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>,
+	platform: 'mac' | 'linux',
+): number | null {
+	const want = parseHotkey(hotkey, platform);
+	if (event.ctrlKey !== want.ctrl || event.shiftKey !== want.shift) return null;
+	if (event.altKey !== want.alt || event.metaKey !== want.meta) return null;
+	const digit = digitOfCode(event.code);
+	return digit !== null && digit >= 1 ? digit : null;
+}
+
+/** Does this keystroke belong to an over-terminal digit row? The digit half of
+ *  xterm's pass-through, beside `hotkeysOverTerminal`'s chords. */
+export function isDigitsOverTerminal(
+	map: Keymap,
+	event: Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>,
+	platform: 'mac' | 'linux',
+): boolean {
+	return SHORTCUT_SPECS.some((spec) => {
+		const hotkey = map[spec.action];
+		return (
+			spec.digits === true &&
+			spec.overTerminal &&
+			hotkey !== null &&
+			tabDigitOf(hotkey, event, platform) !== null
+		);
+	});
+}
+
+/** A binding as a person reads it: `⌘ 1–9` for a digit row, the chord itself
+ *  for any other. */
+export function displayChord(
+	action: ShortcutAction,
+	hotkey: Hotkey,
+	platform: 'mac' | 'linux',
+): string {
+	const shown = formatForDisplay(hotkey, { platform });
+	return isDigitsAction(action) ? `${shown}–9` : shown;
+}
+
+/**
+ * The tab a digit selects: `1`–`8` by position, `9` the last, whatever the
+ * count. `null` when the strip has no tab there.
+ */
+export function tabAtDigit<T>(items: readonly T[], digit: number): T | null {
+	if (digit === 9) return items.at(-1) ?? null;
+	return items[digit - 1] ?? null;
 }

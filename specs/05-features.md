@@ -3783,6 +3783,7 @@ section that edits them.
 | `Mod + W`            | Close the focused tab                     |
 | `Mod + PageDown`     | Next tab                                  |
 | `Mod + PageUp`       | Previous tab                              |
+| `Mod + 1` … `Mod + 9` | Session tab 1–8 by position; 9 is the last tab |
 | `Mod + Shift + E`    | Toggle the file panel                     |
 | `Mod + ,`            | Open settings                             |
 | `Mod + Q`            | Quit — the menu's on macOS, a binding on Linux |
@@ -6541,6 +6542,31 @@ accept a completion in Claude's prompt. The page keys are in the same place on
 every layout, and xterm binds only `Shift+PageUp` / `Shift+PageDown`, so
 scrolling the terminal is untouched.
 
+### Jumping to a tab by number
+
+`Mod+1` through `Mod+8` select the session tab at that position, in strip order;
+**`Mod+9` selects the last tab**, whatever the count — the browser convention, and
+the only way to reach the end of a strip longer than nine. A position with no tab
+does nothing. Arriving on a stopped tab restarts it, as stepping does.
+
+**Session tabs only, whatever has focus.** Unlike the page keys, this does not
+follow focus into the viewer's files: the digits are how you move between agents,
+and a key that sometimes picks a file instead would have to be checked before
+each press. It fires over a focused terminal, taking the chord from xterm; no
+readline binding uses `Ctrl`+digit.
+
+**One row, nine chords** (ADR-0074). Settings shows a single *Switch to tab 1–9*
+row whose binding is a modifier applied to every digit, stored as its `1` chord
+(`Mod+1` means `Mod+1`…`Mod+9`). Recording it takes any modifier-plus-digit —
+`Alt+3` means "use Alt" — and refuses a chord without a digit, or with Shift as
+its only modifier, since that is typing.
+
+**Matched by physical key.** The digits fire on `KeyboardEvent.code`
+(`Digit1`…`Digit9`, and the keypad), so AZERTY's `Ctrl+&`, `Ctrl+é` and `Ctrl+ç`
+are `Mod+1`, `Mod+2` and `Mod+9` without Shift. The recorder reads the
+character, so the settings section rewrites a digit key to its digit before
+storing any row — otherwise conflict checks would compare `Mod+é` with `Mod+2`.
+
 ### `Mod+F` is context-dependent, `Mod+K` is not
 
 Viewer focused, `Mod+F` opens find — Monaco's widget through the `findHandle` the
@@ -6585,6 +6611,10 @@ it.
   that lost it renders as a **blank row**. Refusing would make swapping two
   bindings impossible without unbinding one first; a row that visibly empties says
   what happened better than an error naming a row you were not looking at.
+- **Except the tab digits, which block** (ADR-0074). A recording that would take
+  one of their nine chords, or move them onto a modifier where another action
+  holds a digit, is refused, and the row being recorded says which row is in
+  the way. Stealing one chord would leave the run with a hole in it.
 - **Unbinding.** A `×` clears the row. The action then has no key, which is a
   state a user is allowed to want.
 - **Resetting.** A per-row reset appears only while that row differs from its
