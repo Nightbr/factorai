@@ -6559,7 +6559,17 @@ readline binding uses `Ctrl`+digit.
 row whose binding is a modifier applied to every digit, stored as its `1` chord
 (`Mod+1` means `Mod+1`…`Mod+9`). Recording it takes any modifier-plus-digit —
 `Alt+3` means "use Alt" — and refuses a chord without a digit, or with Shift as
-its only modifier, since that is typing.
+its only modifier, since that is typing. **On macOS it also refuses Option
+alone** (ADR-0075): Option+digit types `{`, `[`, `]`, `}` or `|` on many Mac
+layouts, and the row would take those characters from the terminal. Option
+with Command or Control is fine, and so is Alt alone on Linux, where AltGr —
+not Alt — types characters.
+
+**Alt chords reach the app from the terminal.** xterm's pass-through considers a
+keystroke with Alt, not only Ctrl or Meta, so any row rebound to an Alt chord
+fires there and the PTY stops receiving that chord — the same trade every
+over-terminal Ctrl row already makes. No default binding uses Alt, so an
+unchanged keymap leaves every Alt key with the shell.
 
 **Matched by physical key.** The digits fire on `KeyboardEvent.code`
 (`Digit1`…`Digit9`, and the keypad), so AZERTY's `Ctrl+&`, `Ctrl+é` and `Ctrl+ç`

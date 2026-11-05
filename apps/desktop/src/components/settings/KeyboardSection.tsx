@@ -3,6 +3,7 @@ import { type Hotkey, useHotkeyRecorder } from '@tanstack/react-hotkeys';
 import { RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
+	type DigitsRefusal,
 	type KeymapOverrides,
 	SHORTCUT_SPECS,
 	type ShortcutAction,
@@ -19,6 +20,26 @@ import {
 } from '@lib/keymap';
 import { isMacOS } from '@lib/platform';
 import { useRecordingStore } from '@store/recordingStore';
+
+const PRESS_A_DIGIT = {
+	mac: 'Press a modifier with a digit, such as ⌘1 or ⌃1.',
+	linux: 'Press a modifier with a digit, such as Ctrl+1 or Alt+1.',
+};
+
+/** What the row says when a recording cannot stand for nine digits. */
+const DIGITS_REFUSALS: Record<DigitsRefusal, { mac: string; linux: string }> = {
+	noDigit: PRESS_A_DIGIT,
+	typing: PRESS_A_DIGIT,
+	// Never shown on Linux: Alt alone is allowed there (ADR-0075).
+	optionTypes: {
+		mac: 'Option with a digit types characters on many layouts. Add ⌘ or ⌃.',
+		linux: PRESS_A_DIGIT.linux,
+	},
+};
+
+function isDigitsRefusal(value: string): value is DigitsRefusal {
+	return value in DIGITS_REFUSALS;
+}
 
 interface KeyboardSectionProps {
 	/** The draft's overrides, and the only thing this section edits. */
@@ -93,8 +114,8 @@ export function KeyboardSection({ value, onChange }: KeyboardSectionProps) {
 		let hotkey = withPhysicalDigit(recorded, lastCode.current);
 		if (spec?.digits === true) {
 			const binding = digitsBinding(recorded, lastCode.current, platform);
-			if (!binding) {
-				setRefusal({ action, reason: 'Press a modifier with a digit, such as Ctrl+1 or Alt+1.' });
+			if (isDigitsRefusal(binding)) {
+				setRefusal({ action, reason: DIGITS_REFUSALS[binding][platform] });
 				return;
 			}
 			hotkey = binding;

@@ -385,22 +385,33 @@ export function withPhysicalDigit(hotkey: Hotkey, code: string): Hotkey {
 	return digit === null ? hotkey : withKey(hotkey, String(digit));
 }
 
+/** Why a digit row refused a chord: no digit key in it, nothing but Shift (or
+ *  nothing) beside the digit, or Option alone on macOS. */
+export type DigitsRefusal = 'noDigit' | 'typing' | 'optionTypes';
+
 /**
- * What a digit row stores for a recorded chord: its modifiers on `1`, or
- * `null` when the chord cannot stand for nine.
+ * What a digit row stores for a recorded chord — its modifiers on `1` — or why
+ * it cannot stand for nine.
  *
- * It needs a digit key, any of them — pressing `Alt+3` means "use Alt". And it
+ * It needs a digit key, any of them: pressing `Alt+3` means "use Alt". And it
  * needs a modifier other than Shift alone, because a bare or shifted digit is
  * typing, and this row takes its chords from the terminal.
+ *
+ * **Option alone is refused on macOS** (ADR-0075). Option+digit types a
+ * character on many Mac layouts — `{`, `[`, `]`, `}` and `|` on French — and the
+ * row would take those characters out of the terminal and Claude's prompt.
+ * Option with Command or Control types nothing, so it stays allowed, and Alt
+ * alone stays allowed on Linux, where AltGr rather than Alt types characters.
  */
 export function digitsBinding(
 	recorded: Hotkey,
 	code: string,
 	platform: 'mac' | 'linux',
-): Hotkey | null {
-	if (digitOfCode(code) === null) return null;
+): Hotkey | DigitsRefusal {
+	if (digitOfCode(code) === null) return 'noDigit';
 	const parsed = parseHotkey(recorded, platform);
-	if (!parsed.ctrl && !parsed.alt && !parsed.meta) return null;
+	if (!parsed.ctrl && !parsed.alt && !parsed.meta) return 'typing';
+	if (platform === 'mac' && parsed.alt && !parsed.ctrl && !parsed.meta) return 'optionTypes';
 	return withKey(recorded, '1');
 }
 
