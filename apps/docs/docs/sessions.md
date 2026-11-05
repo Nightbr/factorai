@@ -51,8 +51,8 @@ Shown on the session, its tab and its project's avatar.
 - Each open session is a tab; it stays after the process exits. Drag to reorder.
 - Tabs return, stopped, on relaunch (**off**: **Settings → Sessions → Restore open tabs on
   launch**).
-- `Mod+W` closes the focused tab, `Mod+PageDown` / `Mod+PageUp` step through tabs, middle-click
-  closes a tab.
+- `Mod+W` closes the focused tab, `Mod+PageDown` / `Mod+PageUp` step through tabs, `Mod+1` …
+  `Mod+8` jump to a tab by position and `Mod+9` to the last, middle-click closes a tab.
 - Closing a working session asks first. **Settings → Confirmations**: **Ask before closing
   a running session** and **Ask when a middle-click closes a tab**.
 

@@ -42,7 +42,7 @@ The strip at the bottom of every project view opens your own shell next to the a
 ## Keyboard
 
 A focused terminal keeps its own keys, except these app chords: `Mod+K`, `Mod+N`, `Mod+W`,
-`Mod+PageDown`, `Mod+PageUp`, `Mod+,` and `Mod+Shift+E`. On Linux that takes readline's `Ctrl+W`;
+`Mod+PageDown`, `Mod+PageUp`, `Mod+1` … `Mod+9`, `Mod+,` and `Mod+Shift+E`. On Linux that takes readline's `Ctrl+W`;
 rebind the row to get it back. `Mod+F` stays the terminal's. See
 [keyboard shortcuts](advanced/keyboard-shortcuts).
 
