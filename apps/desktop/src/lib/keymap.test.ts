@@ -255,12 +255,24 @@ describe('recording a digit row', () => {
 	});
 
 	it('refuses a chord without a digit', () => {
-		expect(digitsBinding('Mod+K', 'KeyK', 'linux')).toBeNull();
+		expect(digitsBinding('Mod+K', 'KeyK', 'linux')).toBe('noDigit');
 	});
 
 	it('refuses a bare or shifted digit, which is typing', () => {
-		expect(digitsBinding('1' as Hotkey, 'Digit1', 'linux')).toBeNull();
-		expect(digitsBinding('Shift+1' as Hotkey, 'Digit1', 'linux')).toBeNull();
+		expect(digitsBinding('1' as Hotkey, 'Digit1', 'linux')).toBe('typing');
+		expect(digitsBinding('Shift+1' as Hotkey, 'Digit1', 'linux')).toBe('typing');
+	});
+
+	// Option+digit types `{`, `[`, `|` on a French Mac (ADR-0075).
+	it('refuses Option alone on macOS, shifted or not', () => {
+		expect(digitsBinding('Alt+1', 'Digit1', 'mac')).toBe('optionTypes');
+		expect(digitsBinding('Alt+Shift+1' as Hotkey, 'Digit1', 'mac')).toBe('optionTypes');
+	});
+
+	it('allows Option with Command or Control on macOS, and Alt alone on Linux', () => {
+		expect(digitsBinding('Mod+Alt+3' as Hotkey, 'Digit3', 'mac')).toBe('Mod+Alt+1');
+		expect(digitsBinding('Control+Alt+3' as Hotkey, 'Digit3', 'mac')).toBe('Control+Alt+1');
+		expect(digitsBinding('Alt+3', 'Digit3', 'linux')).toBe('Alt+1');
 	});
 });
 

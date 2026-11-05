@@ -38,7 +38,8 @@ clears).
 
 - Taking a chord another row holds leaves that row unbound.
 - **Switch to tab 1–9** is one row for all nine digits: press any digit with the modifier you want
-  (`Alt+3` gives `Alt+1–9`). It is never split: a chord that would take one of its digits, or a
+  (`Alt+3` gives `Alt+1–9`). On macOS, Option alone is refused because Option+digit types
+  characters on many layouts; use it with `⌘` or `⌃`. It is never split: a chord that would take one of its digits, or a
   modifier where another row holds a digit, is refused and the row says which one is in the way.
 - `×` unbinds, the reset arrow restores one row, **Reset all** restores every row.
 - Nothing is written until you press **Save**.
