@@ -215,14 +215,15 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
 
 		// Over to the session in the project's own checkout, which has read
-		// nothing yet: the carried file stays rather than the viewer closing,
-		// because `root` resolves in two steps and closing on the second would
-		// shut a deep link a frame after it opened (ADR-0042).
+		// nothing yet: the worktree's file is not carried in (ADR-0076). Carried,
+		// it would land in this checkout's strip and outlive a close in the
+		// worktree.
 		const sessions = page.getByTestId(`sidebar-sessions-${FOO_ID}`);
 		await page.getByRole('button', { name: 'Expand foo' }).click();
 		await sessions.getByRole('link', { name: /Refactor the auth middleware/ }).click();
 		await expect(page).toHaveURL(/sessions\/session-uuid-001/);
-		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
+		await expect(viewer).toBeHidden();
+		expect(page.url()).not.toContain('file=');
 
 		// Read something in this checkout, and now the two strips differ.
 		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
