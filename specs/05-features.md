@@ -1208,11 +1208,18 @@ host-agnostic, which is what makes three hosts possible at all.
   The viewer is isolated per project: switching to a project with no file of its
   own on record leaves the pane empty rather than showing the file the last
   project was reading, and that path is never adopted into the new project's
-  strip. Only a change of *project* does this — a change of checkout inside one
-  project leaves what is showing alone, because `root` resolves in two steps for
-  a session in a worktree (the project's folder, then the worktree once
-  `gitWorktrees` answers) and closing on the second step would shut a deep link a
-  frame after it opened.
+  strip.
+- **A change of checkout closes another checkout's file**
+  ([ADR-0076](adr/0076-a-checkout-switch-does-not-carry-another-checkouts-file.md)).
+  Inside one project, a file carried across is kept only when it belongs to the
+  checkout coming to the front — the deepest known checkout whose folder holds
+  the path, so a worktree nested in the project's folder counts as its own. A
+  file opened in one worktree therefore never lands in another worktree's
+  strip, and closing it in one session cannot leave it open in another. A deep
+  link survives the two-step resolve of a session in a worktree (the project's
+  folder, then the worktree once `gitWorktrees` answers), because the worktree
+  owns the file it names. A file outside every checkout has no owner and is
+  kept.
 - **The modal is the expand, not the default** (ADR-0037). It is reached from
   the pane's header and from nowhere else, for a file too wide to read in a
   column, and closing it puts the file back in the pane rather than closing it.

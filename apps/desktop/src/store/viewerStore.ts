@@ -115,12 +115,17 @@ type ViewerHandoff = { kind: 'keep' } | { kind: 'close' } | { kind: 'restore'; p
  *   checkout. That path belongs to the strip we just left; carrying it would
  *   show one project's file over another project's tree, and the adopt rule in
  *   `AppShell` would then write it into this checkout's strip.
- * - **keep** — anything else, and deliberately the answer for a *checkout*
- *   change inside one project. `root` resolves in two steps for a session in a
- *   worktree — the project's folder first, the worktree once `gitWorktrees`
- *   answers — so closing on that step would shut a deep link a frame after it
- *   opened. A null `previous` is the first resolve of a run, which is that same
- *   step seen from a cold start.
+ * - **close** — the checkout changed inside one project and what is showing
+ *   belongs to another of its checkouts (ADR-0076). Carried across, the adopt
+ *   rule would copy it into this checkout's strip, and a close in the checkout
+ *   it came from would leave the copy behind. "Belongs" is the deepest known
+ *   checkout holding the path, so a worktree nested in the project's folder is
+ *   not mistaken for the folder.
+ * - **keep** — anything else. That includes the two-step resolve of a session
+ *   in a worktree — the project's folder first, the worktree once
+ *   `gitWorktrees` answers — because a deep link there names a file the
+ *   worktree owns, and a file outside every checkout, which no strip owns. A
+ *   null `previous` is the first resolve of a run.
  */
 export function viewerHandoff(args: {
 	previous: ViewerSubject | null;
@@ -132,8 +137,11 @@ export function viewerHandoff(args: {
 	/** `isWithin` from `@lib/paths`, passed so this stays free of imports it
 	 *  would otherwise share with the tree — and so a test can name its own. */
 	within: (path: string, root: string) => boolean;
+	/** The deepest known checkout of this project holding `path`, or null when
+	 *  none does — `checkoutContaining`'s answer, passed for the same reason. */
+	owner: (path: string) => string | null;
 }): ViewerHandoff {
-	const { previous, next, showing, last, within } = args;
+	const { previous, next, showing, last, within, owner } = args;
 	// The first resolve of a run. A URL that already names a file wins — a deep
 	// link, a terminal click and the IDE bridge all arrive that way, and must not
 	// be overwritten by history.
@@ -145,7 +153,10 @@ export function viewerHandoff(args: {
 	if (previous.root === next.root) return { kind: 'keep' };
 	if (last && last !== showing) return { kind: 'restore', path: last };
 	if (!showing) return { kind: 'keep' };
-	if (previous.projectId === next.projectId) return { kind: 'keep' };
+	if (previous.projectId === next.projectId) {
+		const home = owner(showing);
+		return home === null || home === next.root ? { kind: 'keep' } : { kind: 'close' };
+	}
 	return within(showing, next.root) ? { kind: 'keep' } : { kind: 'close' };
 }
 

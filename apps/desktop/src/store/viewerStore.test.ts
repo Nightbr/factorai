@@ -91,7 +91,13 @@ describe('viewerHandoff', () => {
 	const within = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
 	const factorai = { projectId: 'p1', root: '/dev/factorai' };
 	const panora = { projectId: 'p2', root: '/dev/panora' };
-	const handoff = (args: Parameters<typeof viewerHandoff>[0]) => viewerHandoff(args);
+	// The deepest known checkout holding a path, as `checkoutContaining` answers
+	// it: a worktree nested in the project folder wins over the folder.
+	const checkouts = ['/dev/factorai', '/dev/factorai-wt', '/dev/factorai/.claude/worktrees/x'];
+	const owner = (path: string) =>
+		checkouts.filter((c) => within(path, c)).sort((a, b) => b.length - a.length)[0] ?? null;
+	const handoff = (args: Omit<Parameters<typeof viewerHandoff>[0], 'owner'>) =>
+		viewerHandoff({ ...args, owner });
 
 	it('closes a file carried in from another project', () => {
 		expect(
@@ -131,12 +137,51 @@ describe('viewerHandoff', () => {
 		).toEqual({ kind: 'keep' });
 	});
 
-	it('keeps a file from the main checkout when only the checkout changed', () => {
+	it('closes a file from the main checkout when a worktree comes to the front', () => {
+		// The leak: carried in, the adopt rule would write it into the worktree's
+		// strip, and a close in the main checkout would leave that copy behind.
 		expect(
 			handoff({
 				previous: { projectId: 'p1', root: '/dev/factorai' },
 				next: { projectId: 'p1', root: '/dev/factorai-wt' },
 				showing: '/dev/factorai/a.ts',
+				last: undefined,
+				within,
+			}),
+		).toEqual({ kind: 'close' });
+	});
+
+	it('closes a worktree file when the main checkout comes to the front', () => {
+		expect(
+			handoff({
+				previous: { projectId: 'p1', root: '/dev/factorai-wt' },
+				next: { projectId: 'p1', root: '/dev/factorai' },
+				showing: '/dev/factorai-wt/a.ts',
+				last: undefined,
+				within,
+			}),
+		).toEqual({ kind: 'close' });
+	});
+
+	it('closes a file from a worktree nested in the project folder', () => {
+		// Inside `/dev/factorai` by prefix, but it belongs to the nested worktree.
+		expect(
+			handoff({
+				previous: { projectId: 'p1', root: '/dev/factorai/.claude/worktrees/x' },
+				next: { projectId: 'p1', root: '/dev/factorai' },
+				showing: '/dev/factorai/.claude/worktrees/x/a.ts',
+				last: undefined,
+				within,
+			}),
+		).toEqual({ kind: 'close' });
+	});
+
+	it('keeps a file outside every checkout across a checkout change', () => {
+		expect(
+			handoff({
+				previous: { projectId: 'p1', root: '/dev/factorai' },
+				next: { projectId: 'p1', root: '/dev/factorai-wt' },
+				showing: '/etc/hosts',
 				last: undefined,
 				within,
 			}),
