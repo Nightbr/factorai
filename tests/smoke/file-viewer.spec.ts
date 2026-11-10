@@ -215,14 +215,15 @@ test.describe('file viewer', () => {
 		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
 
 		// Over to the session in the project's own checkout, which has read
-		// nothing yet: the carried file stays rather than the viewer closing,
-		// because `root` resolves in two steps and closing on the second would
-		// shut a deep link a frame after it opened (ADR-0042).
+		// nothing yet: the worktree's file is not carried in (ADR-0076). Carried,
+		// it would land in this checkout's strip and outlive a close in the
+		// worktree.
 		const sessions = page.getByTestId(`sidebar-sessions-${FOO_ID}`);
 		await page.getByRole('button', { name: 'Expand foo' }).click();
 		await sessions.getByRole('link', { name: /Refactor the auth middleware/ }).click();
 		await expect(page).toHaveURL(/sessions\/session-uuid-001/);
-		await expect(viewer.getByTestId('file-tab')).toHaveText(/switcher\.ts/);
+		await expect(viewer).toBeHidden();
+		expect(page.url()).not.toContain('file=');
 
 		// Read something in this checkout, and now the two strips differ.
 		await panel.getByRole('button', { name: 'Cargo.toml' }).click();
@@ -239,6 +240,41 @@ test.describe('file viewer', () => {
 		// file — coming back to the session is what put it there — so focus stays
 		// on the link that navigated rather than jumping into the pane.
 		await expect(viewer).not.toBeFocused();
+	});
+
+	test('@smoke a file closed in one checkout is not left open in another', async ({ page }) => {
+		// The bug ADR-0076 fixes: a file open in the main checkout rode across to a
+		// session in a worktree, landed in that worktree's strip, and outlived the
+		// close in the main checkout.
+		await installMockBridge(page, fixtureFileTreeInTwoCheckouts());
+		await page.goto(`/#/projects/${FOO_ID}/sessions/session-uuid-001`);
+		await page.getByRole('button', { name: 'Toggle file tree' }).click();
+		const panel = page.getByTestId('file-tree-panel');
+		const viewer = page.getByTestId('file-viewer');
+		const sessions = page.getByTestId(`sidebar-sessions-${FOO_ID}`);
+		await page.getByRole('button', { name: 'Expand foo' }).click();
+
+		// Open a file in the main checkout's session.
+		await panel.getByRole('button', { name: 'Cargo.toml' }).dblclick();
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/Cargo\.toml/);
+
+		// The worktree's session does not inherit it.
+		await sessions.getByRole('link', { name: /Add the worktree switcher/ }).click();
+		await expect(page).toHaveURL(/sessions\/session-uuid-002/);
+		await expect(viewer).toBeHidden();
+
+		// Back in the main checkout it is still there, and is closed there.
+		await sessions.getByRole('link', { name: /Refactor the auth middleware/ }).click();
+		await expect(page).toHaveURL(/sessions\/session-uuid-001/);
+		await expect(viewer.getByTestId('file-tab')).toHaveText(/Cargo\.toml/);
+		await viewer.getByRole('button', { name: 'Close Cargo.toml' }).click();
+		await expect(viewer).toBeHidden();
+
+		// And nowhere else has a copy.
+		await sessions.getByRole('link', { name: /Add the worktree switcher/ }).click();
+		await expect(page).toHaveURL(/sessions\/session-uuid-002/);
+		await expect(viewer).toBeHidden();
+		expect(page.url()).not.toContain('file=');
 	});
 
 	test('@smoke switching project leaves that project\u2019s own viewer, not the last one\u2019s', async ({

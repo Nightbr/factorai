@@ -9,6 +9,7 @@ import { useActiveCheckout } from '@hooks/useActiveCheckout';
 import { useFileViewer } from '@hooks/useFileViewer';
 import { useGlobalShortcuts } from '@hooks/useGlobalShortcuts';
 import { useUpdaterRuntime } from '@hooks/useUpdater';
+import { checkoutContaining } from '@hooks/useWorktrees';
 import { isWithin } from '@lib/paths';
 import { isMacOS } from '@lib/platform';
 import {
@@ -71,7 +72,7 @@ export function AppShell({ children }: AppShellProps) {
 	// **Which checkout the open files belong to** (F21, ADR-0037). Set from here
 	// rather than from the panel because the panel can be closed, and a file
 	// opened from a terminal link with no panel showing still belongs to a tree.
-	const { projectId, root } = useActiveCheckout();
+	const { projectId, root, projectRoot, worktrees } = useActiveCheckout();
 	useEffect(() => {
 		setCheckout(root ?? null);
 	}, [root, setCheckout]);
@@ -124,6 +125,11 @@ export function AppShell({ children }: AppShellProps) {
 	// at. Found in the dev app, after a reload (ADR-0037). A preview tab,
 	// because nothing about restoring a URL says the file was pinned.
 	const seen = useRef<ViewerSubject | null>(null);
+	// Read through a ref rather than depended on: `gitWorktrees` hands back a
+	// fresh array on every refetch, and the handoff only needs whatever list is
+	// current at the moment the checkout changes.
+	const checkouts = useRef({ projectRoot, worktrees });
+	checkouts.current = { projectRoot, worktrees };
 	// The four fields of `viewer` this effect reads are pulled out first, and
 	// they — not `viewer` — are what it depends on: the object is a fresh one
 	// on every viewer-store change, so depending on it would re-seed the strip
@@ -148,6 +154,15 @@ export function AppShell({ children }: AppShellProps) {
 			showing: viewerPath,
 			last: state.activeByCheckout[root],
 			within: isWithin,
+			// Which of this project's checkouts a path belongs to (ADR-0076). Before
+			// `gitWorktrees` answers the list is empty and the project's folder is
+			// the only checkout known, which is the first step of the resolve.
+			owner: (path) => {
+				const { projectRoot: home, worktrees: known } = checkouts.current;
+				return (
+					checkoutContaining(known, path)?.path ?? (home && isWithin(path, home) ? home : null)
+				);
+			},
 		});
 		if (handoff.kind === 'close') {
 			closeViewer();
