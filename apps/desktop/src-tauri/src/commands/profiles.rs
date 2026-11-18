@@ -36,8 +36,7 @@ pub fn create_profile(
 	input: ProfileInput,
 ) -> AppResult<Profile> {
 	let profile = profiles::create_and_announce(&state.db, &app, &input, crate::epoch_ms())?;
-	state.watch.rearm();
-	crate::services::indexer::spawn_initial_scan(state.indexer.clone());
+	state.watch.profile_added();
 	Ok(profile)
 }
 

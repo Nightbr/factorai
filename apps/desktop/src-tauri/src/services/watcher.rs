@@ -1,13 +1,14 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::new_debouncer;
+use parking_lot::Mutex;
 use tracing::{info, warn};
 
+use crate::agents::{self, codex};
 use crate::services::indexer::{project_dir_for_event, Indexer};
 use crate::services::profiles;
 
@@ -31,9 +32,9 @@ const RETRY: Duration = Duration::from_secs(5);
 
 /// Ask the watcher to reconcile its roots against the `profiles` table.
 ///
-/// Cheap and idempotent: it raises a flag the watcher thread reads on its next
-/// idle tick. Called after a profile is created or deleted — a rename changes no
-/// directory and needs nothing.
+/// The watcher thread checks the request on its next idle tick. Additions
+/// also request a scan after the watches are armed, so writes between profile
+/// creation and reconciliation are picked up.
 ///
 /// **This is the half of `profiles:changed` that Rust has to handle itself.** The
 /// event tells the renderer to re-read a list; a new profile's transcripts,
@@ -41,23 +42,46 @@ const RETRY: Duration = Duration::from_secs(5);
 /// can arrange that.
 #[derive(Default)]
 pub struct Control {
-	dirty: AtomicBool,
+	request: Mutex<Rearm>,
+}
+
+#[derive(Default)]
+enum Rearm {
+	#[default]
+	None,
+	Only,
+	AndScan,
 }
 
 impl Control {
 	pub fn rearm(&self) {
-		self.dirty.store(true, Ordering::Relaxed);
+		let mut request = self.request.lock();
+		if matches!(*request, Rearm::None) {
+			*request = Rearm::Only;
+		}
 	}
 
-	fn take(&self) -> bool {
-		self.dirty.swap(false, Ordering::Relaxed)
+	pub fn profile_added(&self) {
+		*self.request.lock() = Rearm::AndScan;
+	}
+
+	fn take(&self) -> Rearm {
+		std::mem::take(&mut *self.request.lock())
 	}
 }
 
-/// Spawn a debounced filesystem watcher over **every profile's** projects
-/// directory (F25 slice 2). Re-runs the project scan for any project containing
-/// a changed `.jsonl` — including a sub-agent transcript, which maps up to its
-/// project rather than being mistaken for one.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WatchKind {
+	ClaudeProjects,
+	CodexRollouts,
+	CodexNames,
+}
+
+type Roots = HashMap<PathBuf, (String, WatchKind)>;
+
+/// Watch every profile's transcript store (F25, F30). A changed transcript
+/// triggers a project scan, including sub-agent transcripts that map up to
+/// their parent project. Codex's title index also triggers a profile refresh.
 ///
 /// **Each root remembers which profile it belongs to**, and that is not
 /// bookkeeping for its own sake: `scan_dir_path` derives the store key from the
@@ -91,7 +115,7 @@ pub fn spawn(indexer: Arc<Indexer>, control: Arc<Control>) {
 
 			// Watched root → the profile it belongs to. The map *is* the set of
 			// live watches, so reconciling is a diff against the table.
-			let mut watched: HashMap<PathBuf, String> = HashMap::new();
+			let mut watched = Roots::new();
 			// No scan on this first pass: `spawn_initial_scan` is reading the same
 			// stores as we arm them.
 			let mut pending = reconcile(&indexer, &mut debouncer, &mut watched).pending;
@@ -103,54 +127,64 @@ pub fn spawn(indexer: Arc<Indexer>, control: Arc<Control>) {
 						// Root → the project directories under it that changed. Keyed by
 						// root because the profile is what turns a directory name into a
 						// row, and two roots can hold the same name.
-						let mut dirty: HashMap<&PathBuf, std::collections::HashSet<PathBuf>> =
-							HashMap::new();
+						let mut dirty: HashMap<&PathBuf, HashSet<PathBuf>> = HashMap::new();
+						let mut dirty_names = HashSet::new();
 						for ev in events {
 							let path = &ev.path;
+							if let Some(profile_id) = codex_names_profile(&watched, path) {
+								dirty_names.insert(profile_id);
+								continue;
+							}
 							if path.extension().is_none_or(|e| e != "jsonl") {
 								continue;
 							}
 							// A Codex root is a `sessions/` tree: the file itself is the
 							// unit, and its first line says which folder it belongs to.
-							if let Some((root, profile_id)) = watched
-								.iter()
-								.find(|(root, _)| path.starts_with(root) && is_codex_root(root))
-							{
+							if let Some((root, (profile_id, _))) =
+								watched.iter().find(|(root, (_, kind))| {
+									*kind == WatchKind::CodexRollouts && path.starts_with(root)
+								}) {
 								if let Err(e) = indexer.scan_codex_file(profile_id, path) {
 									warn!(path = ?path, root = ?root, error = %e, "codex reindex failed");
 								}
 								continue;
 							}
 							let Some((root, dir)) = watched
-								.keys()
-								.filter(|root| path.starts_with(root))
+								.iter()
+								.filter(|(root, (_, kind))| {
+									*kind == WatchKind::ClaudeProjects && path.starts_with(root)
+								})
+								.map(|(root, _)| root)
 								.filter_map(|root| {
 									project_dir_for_event(path, root).map(|dir| (root, dir))
 								})
 								.next()
 							else {
-								warn!(
-									path = ?path,
-									"changed jsonl is not inside a watched project directory; ignoring"
-								);
+								// The Codex home watch also sees unrelated files such as
+								// history.jsonl.
 								continue;
 							};
 							dirty.entry(root).or_default().insert(dir);
 						}
 						for (root, dirs) in dirty {
-							let Some(profile_id) = watched.get(root) else { continue };
+							let Some((profile_id, _)) = watched.get(root) else { continue };
 							for dir in dirs {
 								if let Err(e) = indexer.scan_dir_path(profile_id, &dir) {
 									warn!(path = ?dir, error = %e, "reindex failed");
 								}
 							}
 						}
+						for profile_id in dirty_names {
+							if let Err(e) = indexer.scan_codex_names(profile_id) {
+								warn!(profile_id, error = %e, "codex name refresh failed");
+							}
+						}
 					}
 					Ok(Err(e)) => warn!(error = %e, "watcher error"),
 					Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-						let asked = control.take();
+						let request = control.take();
 						let due = pending && last_try.elapsed() >= RETRY;
-						if !(asked || due) {
+						if matches!(request, Rearm::None) && !due {
 							continue;
 						}
 						let outcome = reconcile(&indexer, &mut debouncer, &mut watched);
@@ -160,10 +194,8 @@ pub fn spawn(indexer: Arc<Indexer>, control: Arc<Control>) {
 						// mention again: the appends that wrote them happened while
 						// nothing was watching, and a finished session never appends
 						// twice. Read the store once so those sessions are indexed now
-						// rather than at the next boot. Not when a profile write asked
-						// for this — `create_profile` kicks that scan itself, and
-						// `delete_profile` wants none.
-						if outcome.armed && !asked {
+						// rather than at the next boot.
+						if outcome.armed || matches!(request, Rearm::AndScan) {
 							crate::services::indexer::spawn_initial_scan(indexer.clone());
 						}
 					}
@@ -181,24 +213,28 @@ pub fn spawn(indexer: Arc<Indexer>, control: Arc<Control>) {
 fn reconcile<W: notify::Watcher>(
 	indexer: &Indexer,
 	debouncer: &mut notify_debouncer_mini::Debouncer<W>,
-	watched: &mut HashMap<PathBuf, String>,
+	watched: &mut Roots,
 ) -> Reconciled {
 	let mut outcome = Reconciled::default();
-	// Each agent's store layout (F30 § "Discovery"): Claude's `projects/`,
-	// Codex's `sessions/` — recursive, because `YYYY/MM/DD/` appear on their own.
-	let wanted: HashMap<PathBuf, String> = profiles::all(indexer.db())
-		.into_iter()
-		.filter_map(|p| {
-			let root = match p.agent.as_str() {
-				crate::agents::CLAUDE => PathBuf::from(&p.config_dir).join("projects"),
-				crate::agents::CODEX => {
-					PathBuf::from(&p.config_dir).join(crate::agents::codex::SESSIONS_SUBDIR)
-				}
-				_ => return None,
-			};
-			Some((root, p.id))
-		})
-		.collect();
+	// F30 § "Discovery": watch the title index's parent so atomic replacement
+	// keeps the watch attached, without recursively watching the whole home.
+	let mut wanted = Roots::new();
+	for p in profiles::all(indexer.db()) {
+		let home = PathBuf::from(&p.config_dir);
+		match p.agent.as_str() {
+			agents::CLAUDE => {
+				wanted.insert(home.join("projects"), (p.id, WatchKind::ClaudeProjects));
+			}
+			agents::CODEX => {
+				wanted.insert(
+					home.join(codex::SESSIONS_SUBDIR),
+					(p.id.clone(), WatchKind::CodexRollouts),
+				);
+				wanted.insert(home, (p.id, WatchKind::CodexNames));
+			}
+			_ => {}
+		}
+	}
 
 	for (root, _) in watched.clone() {
 		if !wanted.contains_key(&root) {
@@ -210,7 +246,7 @@ fn reconcile<W: notify::Watcher>(
 		}
 	}
 
-	for (root, profile_id) in wanted {
+	for (root, watch) in wanted {
 		if watched.contains_key(&root) {
 			continue;
 		}
@@ -219,21 +255,25 @@ fn reconcile<W: notify::Watcher>(
 			// config directory with no `projects/` in it until its first session
 			// runs, which is the ordinary case rather than a fault. `RETRY` is what
 			// makes sure the moment it appears is noticed.
-			info!(path = ?root, "watcher skipped — projects dir not there yet");
+			info!(path = ?root, "watcher skipped — directory not there yet");
 			outcome.pending = true;
 			continue;
 		}
-		match debouncer.watcher().watch(&root, RecursiveMode::Recursive) {
+		let mode = match watch.1 {
+			WatchKind::CodexNames => RecursiveMode::NonRecursive,
+			WatchKind::ClaudeProjects | WatchKind::CodexRollouts => RecursiveMode::Recursive,
+		};
+		match debouncer.watcher().watch(&root, mode) {
 			Ok(()) => {
 				info!(path = ?root, "watcher started");
-				watched.insert(root, profile_id);
+				watched.insert(root, watch);
 				outcome.armed = true;
 			}
 			// Retried like a root that is not there: the failure is usually the
 			// same one arriving a moment earlier — a directory being created
 			// under us, or an inotify limit that clears.
 			Err(e) => {
-				warn!(error = %e, path = ?root, "failed to watch projects dir");
+				warn!(error = %e, path = ?root, "failed to watch directory");
 				outcome.pending = true;
 			}
 		}
@@ -253,10 +293,12 @@ struct Reconciled {
 	pending: bool,
 }
 
-/// Whether a watched root is a Codex `sessions/` tree rather than a Claude
-/// `projects/` directory (F30).
-fn is_codex_root(root: &std::path::Path) -> bool {
-	root.file_name().and_then(|n| n.to_str()) == Some(crate::agents::codex::SESSIONS_SUBDIR)
+fn codex_names_profile<'a>(watched: &'a Roots, path: &Path) -> Option<&'a str> {
+	if path.file_name()?.to_str()? != codex::INDEX_FILE {
+		return None;
+	}
+	let (profile, kind) = watched.get(path.parent()?)?;
+	(*kind == WatchKind::CodexNames).then_some(profile.as_str())
 }
 
 #[cfg(test)]
@@ -303,7 +345,7 @@ mod tests {
 		let (indexer, config_dir) = fixture(tmp.path());
 		let (tx, _rx) = std::sync::mpsc::channel();
 		let mut debouncer = new_debouncer(DEBOUNCE, tx).unwrap();
-		let mut watched: HashMap<PathBuf, String> = HashMap::new();
+		let mut watched = Roots::new();
 
 		let first = reconcile(&indexer, &mut debouncer, &mut watched);
 		assert!(first.pending, "a root that is not on disk leaves the set unfinished");
@@ -320,5 +362,48 @@ mod tests {
 		let third = reconcile(&indexer, &mut debouncer, &mut watched);
 		assert!(!third.armed, "a root already watched is not armed twice");
 		assert!(!third.pending);
+	}
+
+	#[test]
+	fn a_seeded_codex_profile_watches_names_even_when_the_index_is_replaced() {
+		let tmp = tempfile::tempdir().expect("scratch directory");
+		let (indexer, _) = fixture(tmp.path());
+		let (tx, rx) = std::sync::mpsc::channel();
+		let mut debouncer = new_debouncer(Duration::from_millis(20), tx).expect("debouncer");
+		let mut watched = Roots::new();
+		reconcile(&indexer, &mut debouncer, &mut watched);
+
+		let home = tmp.path().canonicalize().expect("canonical scratch directory").join("codex");
+		std::fs::create_dir_all(home.join(codex::SESSIONS_SUBDIR)).expect("create rollout tree");
+		let (profile, changed) =
+			profiles::ensure_default_for(indexer.db(), agents::CODEX, &home).expect("seed profile");
+		assert!(changed);
+		let (_, changed) =
+			profiles::ensure_default_for(indexer.db(), agents::CODEX, &home).expect("check again");
+		assert!(!changed);
+
+		let control = Control::default();
+		control.profile_added();
+		control.rearm();
+		assert!(matches!(control.take(), Rearm::AndScan));
+		assert!(reconcile(&indexer, &mut debouncer, &mut watched).armed);
+
+		let index = home.join(codex::INDEX_FILE);
+		let replacement = home.join("session_index.tmp");
+		std::fs::write(&replacement, "{}\n").expect("write replacement");
+		std::fs::rename(&replacement, &index).expect("replace index");
+		let deadline = Instant::now() + Duration::from_secs(5);
+		loop {
+			let events = rx
+				.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+				.expect("index replacement event")
+				.expect("filesystem events");
+			if events.iter().any(|event| {
+				codex_names_profile(&watched, &event.path) == Some(profile.id.as_str())
+			}) {
+				break;
+			}
+			assert!(Instant::now() < deadline, "Codex name index event did not arrive");
+		}
 	}
 }

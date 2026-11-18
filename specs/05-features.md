@@ -5802,12 +5802,10 @@ carries the directory its row was found in rather than the indexer holding one o
 N. `scan_dir_path` **takes the profile as a parameter**: it derives the store key
 from the directory's name, and two profiles can hand it the same name.
 
-The watcher holds one root per profile, each remembering which profile it is, and
-reconciles that set against the table when `Control::rearm` is called — which
-`create_profile` and `delete_profile` do. That is the half of `profiles:changed`
-the renderer cannot do for itself: a new profile's transcripts are only noticed by
-something watching its directory. Creating a profile also kicks a scan, because a
-profile pointed at an existing `~/.claude-work` has history from the first moment.
+The watcher keeps each root associated with its profile and reconciles its roots
+against the table when a profile is added or deleted. After arming the watches
+for an added profile, it kicks a scan because an existing store can already
+contain transcripts.
 
 **A store that is merely unreachable is not an empty store.** `index_dir` returns
 without reaping when it cannot read the directory, and the watcher skips a root
@@ -7065,10 +7063,12 @@ in is `payload.cwd` of its first line, the `session_meta` [source:
 - **The scan walks `sessions/` recursively**, reads the first line of each new
   or grown file, and groups by cwd. A first line that is not a `session_meta`
   is skipped and logged, never guessed at.
-- **The watcher root is `sessions/`**, recursive, because `YYYY/MM/DD/`
+- **The watcher watches `sessions/`**, recursively, because `YYYY/MM/DD/`
   directories appear on their own. The 5 s retry for a root that does not
   exist yet (F25) applies: a fresh `CODEX_HOME` has no `sessions/` until the
-  first turn of its first session.
+  first turn of its first session. A nonrecursive watch on `CODEX_HOME`
+  also picks up changes and replacements of `session_index.jsonl`, so a title
+  can refresh even when its rollout did not change.
 - **`archived_sessions/` is not walked.** Codex moves a rollout there by
   rename when the user archives it in Codex [source:
   `thread-store/src/local/archive_thread.rs`]; a session the user hid there is
@@ -7149,9 +7149,10 @@ A rollout line is `{"timestamp": "…", "ordinal": n?, "type": "<kind>",
 ### Storage
 
 - `profiles.agent` is written from the form (ADR-0061 § 5); still `'claude'`
-  or `'codex'` and nothing else; `ensure_default` seeds a `codex` default
-  profile at `~/.codex` **only once a Codex binary has been found**, so an
-  install without Codex has no Codex row to explain.
+  or `'codex'` and nothing else. When the binary probe first finds Codex,
+  it seeds the default profile at the ambient Codex directory and asks the
+  watcher to take on the store and scan it, so existing and new sessions
+  are indexed in the same app run.
 - `project_profiles`: `UNIQUE (project_id)` replaces `UNIQUE (project_id,
   agent)`. Column set unchanged; the triggers stay.
 - `sessions.transcript_path TEXT NULL`.

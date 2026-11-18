@@ -451,6 +451,23 @@ impl Indexer {
 		}
 	}
 
+	/// Names live beside the rollouts, so one title-index event can affect
+	/// sessions in several workspace folders under this profile (F30).
+	pub fn scan_codex_names(&self, profile_id: &str) -> AppResult<()> {
+		let dirs = self.db.read(|conn| {
+			let sql = format!("{LINKED_SELECT} AND d.profile_id = ?1 AND p.agent = 'codex'");
+			let mut stmt = conn.prepare(&sql)?;
+			let rows = stmt.query_map(params![profile_id], map_linked)?;
+			Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+		})?;
+		for dir in dirs {
+			if let Err(e) = self.index_dir(&dir) {
+				warn!(key = %dir.key, error = %e, "codex name refresh failed");
+			}
+		}
+		Ok(())
+	}
+
 	/// Parse every transcript in one linked directory that has changed since we
 	/// last looked.
 	fn index_dir(&self, dir: &LinkedDir) -> AppResult<()> {
