@@ -780,9 +780,9 @@ impl Indexer {
 		// twice, the second time through `Bash` alone.
 		let mut touched_paths: Vec<String> = Vec::new();
 		let mut fts_rows: Vec<(String, String)> = Vec::new(); // (role, body)
-														// Two independent title sources, kept apart so precedence is decided once
-														// at the end rather than by whichever line happens to come last in the
-														// file: `/rename` always beats Claude's own auto-title.
+															  // Two independent title sources, kept apart so precedence is decided once
+															  // at the end rather than by whichever line happens to come last in the
+															  // file: `/rename` always beats Claude's own auto-title.
 		let mut custom_title: Option<String> = None;
 		let mut ai_title: Option<String> = None;
 
