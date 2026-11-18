@@ -39,10 +39,12 @@ pub fn set_setting(
 #[tauri::command]
 pub async fn check_agent_cli(
 	state: State<'_, AppState>,
+	app: tauri::AppHandle,
 	agent: String,
 ) -> AppResult<ClaudeCliStatus> {
 	let desc = descriptor(&agent)?;
 	let db = state.db.clone();
+	let watch = state.watch.clone();
 	off_main(move || {
 		let status =
 			agent_cli::check_agent_cli(desc, settings::binary_override(&db, desc.id).as_deref());
@@ -52,8 +54,15 @@ pub async fn check_agent_cli(
 		// something for the project menu and the picker to name.
 		if status.installed && desc.id != agents::CLAUDE {
 			let dir = agents::ambient_dir(desc);
-			if let Err(e) = profiles::ensure_default_for(&db, desc.id, &dir) {
-				tracing::warn!(error = %e, agent = desc.id, "could not seed the default profile");
+			match profiles::ensure_default_for(&db, desc.id, &dir) {
+				Ok((_, true)) => {
+					watch.profile_added();
+					profiles::announce(&app);
+				}
+				Ok((_, false)) => {}
+				Err(e) => {
+					tracing::warn!(error = %e, agent = desc.id, "could not seed the default profile");
+				}
 			}
 		}
 		Ok(status)
@@ -64,8 +73,11 @@ pub async fn check_agent_cli(
 /// `check_agent_cli` for Claude — kept one release for the renderer that
 /// predates F30.
 #[tauri::command]
-pub async fn check_claude_cli(state: State<'_, AppState>) -> AppResult<ClaudeCliStatus> {
-	check_agent_cli(state, agents::CLAUDE.into()).await
+pub async fn check_claude_cli(
+	state: State<'_, AppState>,
+	app: tauri::AppHandle,
+) -> AppResult<ClaudeCliStatus> {
+	check_agent_cli(state, app, agents::CLAUDE.into()).await
 }
 
 fn descriptor(agent: &str) -> AppResult<&'static agents::AgentDescriptor> {

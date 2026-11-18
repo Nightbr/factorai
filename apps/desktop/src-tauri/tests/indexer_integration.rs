@@ -1316,8 +1316,13 @@ fn a_codex_store_is_discovered_and_its_thread_indexed_with_codexs_own_name() {
 fn a_codex_image_title_uses_the_users_words_and_tracks_index_only_renames() {
 	let tmp = TempDir::new().unwrap();
 	let db = open_db(tmp.path());
-	let (idx, _) = make_indexer(db.clone(), tmp.path().join(".claude"));
+	let (idx, changes) = make_indexer(db.clone(), tmp.path().join(".claude"));
 	let (codex_dir, _, session_id) = fixture_codex_store(tmp.path(), &db);
+	let profile_id = db
+		.with(|conn| factorai_lib::services::profiles::default_for(conn, "codex"))
+		.expect("read profiles")
+		.expect("Codex profile")
+		.id;
 	let index_path = codex_dir.join("session_index.jsonl");
 	let title = || -> (String, String) {
 		db.with(|conn| {
@@ -1336,16 +1341,22 @@ fn a_codex_image_title_uses_the_users_words_and_tracks_index_only_renames() {
 
 	idx.full_scan().expect("initial scan");
 	assert_eq!(title(), ("Reply with pong".into(), "ai".into()));
+	changes.lock().expect("change events").clear();
 
 	set_name(
 		"<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\"> </image> [Image #1] Fix the session title",
 	);
-	idx.full_scan().expect("scan after image title");
+	idx.scan_codex_names(&profile_id).expect("refresh after image title");
 	assert_eq!(title(), ("Fix the session title".into(), "ai".into()));
+	assert!(changes
+		.lock()
+		.expect("change events")
+		.iter()
+		.any(|c| c.session_ids.contains(&session_id)));
 
 	set_name(
 		"<image name=[Image #1] path=\"/tmp/codex-clipboard-VU2vYq.png\"> </image> [Image #1]",
 	);
-	idx.full_scan().expect("scan after marker-only title");
+	idx.scan_codex_names(&profile_id).expect("refresh after marker-only title");
 	assert_eq!(title(), ("Reply with exactly the word: pong".into(), "derived".into()));
 }

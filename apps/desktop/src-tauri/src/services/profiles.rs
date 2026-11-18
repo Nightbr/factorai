@@ -45,7 +45,7 @@ const SEEDED_NAME: &str = "Default";
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProfilesChangedEvent {}
 
-fn announce(app: &tauri::AppHandle) {
+pub(crate) fn announce(app: &tauri::AppHandle) {
 	let _ = app.emit("profiles:changed", ProfilesChangedEvent {});
 }
 
@@ -345,13 +345,14 @@ pub fn all(db: &Db) -> Vec<Profile> {
 /// - **Neither.** One row is written, which is the path a database whose
 ///   `profiles` table was emptied by hand takes.
 pub fn ensure_default(db: &Db, claude_dir: &Path) -> AppResult<Profile> {
-	ensure_default_for(db, CLAUDE, claude_dir)
+	ensure_default_for(db, CLAUDE, claude_dir).map(|(profile, _)| profile)
 }
 
 /// [`ensure_default`] for any agent (F30): Codex's default is seeded at
 /// `~/.codex` the first time a `codex` binary is found, by `check_agent_cli`,
-/// so an install without Codex has no Codex row to explain.
-pub fn ensure_default_for(db: &Db, agent: &str, seed_dir: &Path) -> AppResult<Profile> {
+/// so an install without Codex has no Codex row to explain. The boolean
+/// reports a profile change so only the probe that wrote it requests a scan.
+pub fn ensure_default_for(db: &Db, agent: &str, seed_dir: &Path) -> AppResult<(Profile, bool)> {
 	let dir = seed_dir.to_string_lossy().into_owned();
 	db.with_mut(|conn| {
 		let tx = conn.transaction()?;
@@ -413,11 +414,12 @@ pub fn ensure_default_for(db: &Db, agent: &str, seed_dir: &Path) -> AppResult<Pr
 				}
 			}
 		}
+		let profile = default_for(&tx, agent)?.ok_or_else(|| {
+			AppError::Db("the default profile is missing right after seeding".into())
+		})?;
 		tx.commit()?;
-		Ok(())
-	})?;
-	db.with(|conn| default_for(conn, agent))?
-		.ok_or_else(|| AppError::Db("the default profile is missing right after seeding".into()))
+		Ok((profile, resolved_default.is_none()))
+	})
 }
 
 /// Demote whatever holds the default for an agent. Always called *before* the
